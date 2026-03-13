@@ -6,116 +6,119 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Eye, EyeOff } from "lucide-react";
+import { motion } from "framer-motion";
+import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Signup() {
   const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [country, setCountry] = useState("ng");
+  const { signup } = useAuth();
+  const { toast } = useToast();
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, this would create the user and redirect to onboarding
-    setLocation("/onboarding");
+    setLoading(true);
+    const form = e.target as HTMLFormElement;
+    const data = {
+      firstName: (form.elements.namedItem("firstName") as HTMLInputElement).value,
+      lastName: (form.elements.namedItem("lastName") as HTMLInputElement).value,
+      email: (form.elements.namedItem("email") as HTMLInputElement).value,
+      phone: (form.elements.namedItem("phone") as HTMLInputElement).value,
+      password: (form.elements.namedItem("password") as HTMLInputElement).value,
+      country,
+    };
+    try {
+      await signup(data);
+      setLocation("/onboarding");
+    } catch (err: any) {
+      toast({ title: "Signup failed", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md mb-8">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8">
         <Link href="/">
-          <div className="flex items-center justify-center gap-2 cursor-pointer">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-sm">
+          <div className="flex items-center justify-center gap-2 cursor-pointer group">
+            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-md group-hover:shadow-lg transition-all">
               <span className="text-primary-foreground font-bold text-xl">T</span>
             </div>
             <span className="text-2xl font-bold tracking-tight text-slate-900">TSIA</span>
           </div>
         </Link>
-      </div>
+      </motion.div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="shadow-lg border-0">
-          <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl text-center">Apply for Support</CardTitle>
-            <CardDescription className="text-center">
-              Create your account to start the verification process.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSignup} className="space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" placeholder="John" required />
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card className="shadow-xl border-0 overflow-hidden relative">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-tsia-green to-tsia-gold"></div>
+            <CardHeader className="space-y-2 pt-8">
+              <CardTitle className="text-2xl text-center font-bold">Apply for Support</CardTitle>
+              <CardDescription className="text-center text-base">Create your account to start the verification process.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSignup} className="space-y-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input id="firstName" name="firstName" placeholder="John" required className="h-11 bg-slate-50/50" data-testid="input-firstName" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input id="lastName" name="lastName" placeholder="Doe" required className="h-11 bg-slate-50/50" data-testid="input-lastName" />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" placeholder="Doe" required />
+                  <Label htmlFor="email">Email address</Label>
+                  <Input id="email" name="email" type="email" placeholder="student@example.com" required className="h-11 bg-slate-50/50" data-testid="input-email" />
                 </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="email">Email address</Label>
-                <Input id="email" type="email" placeholder="student@example.com" required />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number (with Country Code)</Label>
-                <Input id="phone" type="tel" placeholder="+234 800 000 0000" required />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="country">Country of Study</Label>
-                <Select required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Country" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ng">Nigeria</SelectItem>
-                    <SelectItem value="gh">Ghana</SelectItem>
-                    <SelectItem value="ke">Kenya</SelectItem>
-                    <SelectItem value="za">Kenya</SelectItem>
-                    <SelectItem value="other">Other African Nation</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Input 
-                    id="password" 
-                    type={showPassword ? "text" : "password"} 
-                    placeholder="••••••••" 
-                    required 
-                    className="pr-10" 
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input id="phone" name="phone" type="tel" placeholder="+234 800 000 0000" required className="h-11 bg-slate-50/50" data-testid="input-phone" />
                 </div>
-              </div>
-
-              <div className="text-sm text-slate-500 my-4">
-                By applying, you agree to our Terms of Service and Verification Policy. 
-                You will be required to pay a $3 portal fee for identity verification in the next step.
-              </div>
-
-              <Button type="submit" className="w-full h-11 text-base bg-primary hover:bg-primary/90">
-                Continue to Verification
-              </Button>
-            </form>
-          </CardContent>
-          <CardFooter className="flex justify-center border-t py-6 mt-2">
-            <p className="text-sm text-slate-600">
-              Already have an account?{' '}
-              <Link href="/login">
-                <span className="font-semibold text-primary hover:text-primary/80 cursor-pointer">Log in</span>
-              </Link>
-            </p>
-          </CardFooter>
-        </Card>
+                <div className="space-y-2">
+                  <Label>Country of Study</Label>
+                  <Select value={country} onValueChange={setCountry}>
+                    <SelectTrigger data-testid="select-country"><SelectValue placeholder="Select Country" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ng">Nigeria</SelectItem>
+                      <SelectItem value="gh">Ghana</SelectItem>
+                      <SelectItem value="ke">Kenya</SelectItem>
+                      <SelectItem value="za">South Africa</SelectItem>
+                      <SelectItem value="other">Other African Nation</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input id="password" name="password" type={showPassword ? "text" : "password"} placeholder="••••••••" required className="pr-10 h-11 bg-slate-50/50" data-testid="input-password" />
+                    <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" onClick={() => setShowPassword(!showPassword)}>
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="text-sm text-slate-500 my-4">
+                  By applying, you agree to our Terms of Service and Verification Policy. A $3 portal fee is required in the next step.
+                </div>
+                <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md" disabled={loading} data-testid="button-signup">
+                  {loading ? "Creating Account..." : "Continue to Verification"}
+                </Button>
+              </form>
+            </CardContent>
+            <CardFooter className="flex justify-center border-t border-slate-100 py-6 bg-slate-50/50">
+              <p className="text-sm text-slate-600">
+                Already have an account?{' '}
+                <Link href="/login"><span className="font-semibold text-primary hover:text-primary/80 cursor-pointer">Log in</span></Link>
+              </p>
+            </CardFooter>
+          </Card>
+        </motion.div>
       </div>
     </div>
   );

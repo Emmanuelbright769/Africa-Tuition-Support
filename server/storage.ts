@@ -1,7 +1,7 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gt } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, verifications, sponsorshipPlans, wallets, transactions, disbursements, leadershipInquiries,
+  users, verifications, sponsorshipPlans, wallets, transactions, disbursements, leadershipInquiries, otpCodes, fileUploads,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -9,6 +9,8 @@ import {
   type Disbursement, type InsertDisbursement,
   type LeadershipInquiry, type InsertLeadershipInquiry,
   type WalletRecord,
+  type OtpCode, type InsertOtp,
+  type FileUpload, type InsertFileUpload,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -17,10 +19,17 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getAllStudents(): Promise<User[]>;
 
+  createOtp(otp: InsertOtp): Promise<OtpCode>;
+  getValidOtp(email: string, code: string): Promise<OtpCode | undefined>;
+  markOtpUsed(id: number): Promise<void>;
+
   createVerification(v: InsertVerification): Promise<Verification>;
   getVerificationByUser(userId: number): Promise<Verification | undefined>;
   updateVerification(id: number, data: Partial<Verification>): Promise<Verification>;
   getPendingVerifications(): Promise<(Verification & { user: User })[]>;
+
+  createFileUpload(file: InsertFileUpload): Promise<FileUpload>;
+  getFilesByUser(userId: number): Promise<FileUpload[]>;
 
   createSponsorshipPlan(plan: InsertSponsorshipPlan): Promise<SponsorshipPlan>;
   getSponsorshipPlanByUser(userId: number): Promise<SponsorshipPlan | undefined>;
@@ -59,6 +68,27 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(users).where(eq(users.role, "student")).orderBy(desc(users.createdAt));
   }
 
+  async createOtp(otp: InsertOtp): Promise<OtpCode> {
+    const [created] = await db.insert(otpCodes).values(otp).returning();
+    return created;
+  }
+
+  async getValidOtp(email: string, code: string): Promise<OtpCode | undefined> {
+    const [otp] = await db.select().from(otpCodes)
+      .where(and(
+        eq(otpCodes.email, email),
+        eq(otpCodes.code, code),
+        eq(otpCodes.used, false),
+        gt(otpCodes.expiresAt, new Date())
+      ))
+      .orderBy(desc(otpCodes.createdAt));
+    return otp;
+  }
+
+  async markOtpUsed(id: number): Promise<void> {
+    await db.update(otpCodes).set({ used: true }).where(eq(otpCodes.id, id));
+  }
+
   async createVerification(v: InsertVerification): Promise<Verification> {
     const [created] = await db.insert(verifications).values(v).returning();
     return created;
@@ -81,6 +111,15 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(verifications.userId, users.id))
       .where(eq(verifications.status, "pending"));
     return results.map(r => ({ ...r.verifications, user: r.users }));
+  }
+
+  async createFileUpload(file: InsertFileUpload): Promise<FileUpload> {
+    const [created] = await db.insert(fileUploads).values(file).returning();
+    return created;
+  }
+
+  async getFilesByUser(userId: number): Promise<FileUpload[]> {
+    return db.select().from(fileUploads).where(eq(fileUploads.userId, userId)).orderBy(desc(fileUploads.createdAt));
   }
 
   async createSponsorshipPlan(plan: InsertSponsorshipPlan): Promise<SponsorshipPlan> {

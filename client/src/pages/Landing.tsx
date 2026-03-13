@@ -20,7 +20,7 @@ const slides = [
     id: 2,
     title: "Merit-Based Sponsorship",
     subtitle: "Your Hard Work Pays Off",
-    description: "Based on your Academic Performance Matrix (WAEC), you can unlock Platinum, Gold, or Silver tiers, giving you up to $690 in tuition coverage annually.",
+    description: "Based on your Academic Performance Matrix (WAEC), you can unlock Platinum, Gold, or Silver tiers, giving you up to $230 in tuition coverage.",
     image: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2071&auto=format&fit=crop",
     primaryButton: { text: "Create an Account", link: "/signup" },
     secondaryButton: { text: "Log in", link: "/login" }
@@ -55,7 +55,6 @@ export default function Landing() {
       <Navbar />
       
       <main className="flex-1">
-        {/* Full-screen Carousel Hero */}
         <section className="relative h-[85vh] overflow-hidden bg-slate-900 flex items-center">
           <AnimatePresence mode="wait">
             <motion.div
@@ -119,7 +118,6 @@ export default function Landing() {
             </div>
           </div>
 
-          {/* Carousel Indicators */}
           <div className="absolute bottom-10 left-0 right-0 flex justify-center gap-3 z-20">
             {slides.map((_, index) => (
               <button
@@ -134,8 +132,7 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* How it Works */}
-        <section id="how-it-works" className="py-24 bg-white">
+        <section id="how-it-works" className="py-24 bg-card">
           <div className="container mx-auto px-4">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -143,37 +140,36 @@ export default function Landing() {
               viewport={{ once: true }}
               className="text-center mb-16"
             >
-              <h2 className="text-4xl font-bold text-slate-900 mb-4">The Path to Sponsorship</h2>
-              <p className="text-lg text-slate-600 max-w-2xl mx-auto">A transparent, merit-based system designed to support dedicated students across Africa.</p>
+              <h2 className="text-4xl font-bold mb-4">The Path to Sponsorship</h2>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">A transparent, merit-based system designed to support dedicated students across Africa.</p>
             </motion.div>
 
             <div className="grid md:grid-cols-3 gap-12 max-w-5xl mx-auto">
               {[
                 { icon: ShieldCheck, title: "1. Verify Identity", desc: "Register with your NIN, phone number, and WAEC details. A nominal $3 portal fee ensures commitment.", color: "text-tsia-green", bg: "bg-tsia-green/10" },
-                { icon: Trophy, title: "2. Academic Tiering", desc: "Your WAEC scores determine your tier (Platinum, Gold, Silver), unlocking different funding limits.", color: "text-amber-600", bg: "bg-amber-100" },
-                { icon: Wallet, title: "3. Get Funded", desc: "Choose a 1, 2, or 3-year plan. Once approved, funds arrive in your digital wallet within 24-48 hours.", color: "text-blue-600", bg: "bg-blue-100" }
-              ].map((step, i) => (
+                { icon: Trophy, title: "2. WAEC Validation", desc: "Submit your WAEC grades for scoring. 75%+ = Platinum ($225-$230), 60-74% = Gold ($160-$180), 50-59% = Silver ($110-$130).", color: "text-amber-600", bg: "bg-amber-100 dark:bg-amber-900/30" },
+                { icon: Wallet, title: "3. Get Funded", desc: "Choose a 1, 2, or 3-year plan. Once approved, funds arrive in your digital wallet within 24-48 hours.", color: "text-blue-600", bg: "bg-blue-100 dark:bg-blue-900/30" }
+              ].map((s, i) => (
                 <motion.div 
                   key={i}
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.2 }}
-                  className="relative flex flex-col items-center text-center space-y-4 p-6 rounded-2xl hover:bg-slate-50 transition-colors"
+                  className="relative flex flex-col items-center text-center space-y-4 p-6 rounded-2xl hover:bg-accent/50 transition-colors"
                 >
-                  <div className={`w-20 h-20 rounded-2xl ${step.bg} ${step.color} flex items-center justify-center mb-2`}>
-                    <step.icon className="w-10 h-10" />
+                  <div className={`w-20 h-20 rounded-2xl ${s.bg} ${s.color} flex items-center justify-center mb-2`}>
+                    <s.icon className="w-10 h-10" />
                   </div>
-                  <h3 className="text-xl font-semibold">{step.title}</h3>
-                  <p className="text-slate-600 leading-relaxed">{step.desc}</p>
+                  <h3 className="text-xl font-semibold">{s.title}</h3>
+                  <p className="text-muted-foreground leading-relaxed">{s.desc}</p>
                 </motion.div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* Subscription Plans */}
-        <section className="py-24 bg-slate-50">
+        <section className="py-24 bg-background">
           <div className="container mx-auto px-4">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -181,107 +177,49 @@ export default function Landing() {
               viewport={{ once: true }}
               className="text-center mb-16"
             >
-              <h2 className="text-4xl font-bold text-slate-900 mb-4">Sponsorship Plans</h2>
-              <p className="text-lg text-slate-600 max-w-2xl mx-auto">Choose the commitment that fits your academic journey. We cover 70%+ of typical tuition costs.</p>
+              <h2 className="text-4xl font-bold mb-4">Sponsorship Plans</h2>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Choose the commitment that fits your academic journey. We cover 70%+ of typical tuition costs.</p>
             </motion.div>
 
             <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-              {/* 1 Year Plan */}
-              <motion.div 
-                whileHover={{ y: -5 }}
-                className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col hover:shadow-xl transition-all"
-              >
-                <h3 className="text-2xl font-semibold mb-2">1 Year Commitment</h3>
-                <div className="mb-6">
-                  <span className="text-4xl font-bold">$35</span>
-                  <span className="text-slate-500">/year</span>
-                </div>
-                <p className="text-slate-600 mb-8 flex-1">Perfect for final year students or those needing short-term support.</p>
-                <div className="space-y-4 mb-8">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                    <span className="text-slate-700">Up to $230 payout</span>
+              {[
+                { years: 1, price: 35, payout: 230, desc: "Perfect for final year students or those needing short-term support.", features: ["Up to $230 payout", "Digital Wallet access", "Standard support"] },
+                { years: 2, price: 45, payout: 460, desc: "Ideal for mid-degree students looking for stable, ongoing funding.", features: ["Up to $460 payout", "Digital Wallet access", "Priority review"], popular: true },
+                { years: 3, price: 50, payout: 690, desc: "Maximum coverage for new students entering their degree programs.", features: ["Up to $690 payout", "Digital Wallet access", "Dedicated academic advisor"] },
+              ].map((p, i) => (
+                <motion.div 
+                  key={i}
+                  whileHover={{ y: -5 }}
+                  className={`bg-card rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all ${p.popular ? 'shadow-2xl border-2 border-primary relative md:-translate-y-4' : 'shadow-sm border'}`}
+                >
+                  {p.popular && (
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-tsia-green text-white px-4 py-1.5 rounded-full text-sm font-bold tracking-wide shadow-sm">
+                      MOST POPULAR
+                    </div>
+                  )}
+                  <h3 className="text-2xl font-semibold mb-2">{p.years} Year Commitment</h3>
+                  <div className="mb-1">
+                    <span className="text-4xl font-bold">${p.price}</span>
+                    <span className="text-muted-foreground">/year</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                    <span className="text-slate-700">Digital Wallet access</span>
+                  <p className="text-xs text-muted-foreground mb-6">₦{(p.price * 1460).toLocaleString()}/year</p>
+                  <p className="text-muted-foreground mb-8 flex-1">{p.desc}</p>
+                  <div className="space-y-4 mb-8">
+                    {p.features.map((f, j) => (
+                      <div key={j} className="flex items-center gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-tsia-green" />
+                        <span className={p.popular && j === 0 ? "font-semibold" : ""}>{f}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                    <span className="text-slate-700">Standard support</span>
-                  </div>
-                </div>
-                <Link href="/signup">
-                  <Button className="w-full bg-slate-900 text-white hover:bg-slate-800 h-12 text-base">Select Plan</Button>
-                </Link>
-              </motion.div>
-
-              {/* 2 Year Plan */}
-              <motion.div 
-                whileHover={{ y: -5 }}
-                className="bg-white rounded-3xl p-8 shadow-2xl border-2 border-tsia-green relative flex flex-col md:-translate-y-4"
-              >
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-tsia-green text-white px-4 py-1.5 rounded-full text-sm font-bold tracking-wide shadow-sm">
-                  MOST POPULAR
-                </div>
-                <h3 className="text-2xl font-semibold mb-2 mt-2">2 Year Commitment</h3>
-                <div className="mb-6">
-                  <span className="text-4xl font-bold">$45</span>
-                  <span className="text-slate-500">/year</span>
-                </div>
-                <p className="text-slate-600 mb-8 flex-1">Ideal for mid-degree students looking for stable, ongoing funding.</p>
-                <div className="space-y-4 mb-8">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                    <span className="text-slate-900 font-semibold">Up to $460 payout</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                    <span className="text-slate-700">Digital Wallet access</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                    <span className="text-slate-700">Priority review</span>
-                  </div>
-                </div>
-                <Link href="/signup">
-                  <Button className="w-full bg-tsia-green text-white hover:bg-tsia-green/90 h-12 text-base">Select Plan</Button>
-                </Link>
-              </motion.div>
-
-              {/* 3 Year Plan */}
-              <motion.div 
-                whileHover={{ y: -5 }}
-                className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col hover:shadow-xl transition-all"
-              >
-                <h3 className="text-2xl font-semibold mb-2">3 Year Commitment</h3>
-                <div className="mb-6">
-                  <span className="text-4xl font-bold">$50</span>
-                  <span className="text-slate-500">/year</span>
-                </div>
-                <p className="text-slate-600 mb-8 flex-1">Maximum coverage for new students entering their degree programs.</p>
-                <div className="space-y-4 mb-8">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                    <span className="text-slate-700">Up to $690 payout</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                    <span className="text-slate-700">Digital Wallet access</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                    <span className="text-slate-700">Dedicated academic advisor</span>
-                  </div>
-                </div>
-                <Link href="/signup">
-                  <Button className="w-full bg-slate-900 text-white hover:bg-slate-800 h-12 text-base">Select Plan</Button>
-                </Link>
-              </motion.div>
+                  <Link href="/signup">
+                    <Button className={`w-full h-12 text-base ${p.popular ? 'bg-tsia-green text-white hover:bg-tsia-green/90' : ''}`} variant={p.popular ? 'default' : 'outline'}>Select Plan</Button>
+                  </Link>
+                </motion.div>
+              ))}
             </div>
           </div>
         </section>
-
       </main>
 
       <Footer />

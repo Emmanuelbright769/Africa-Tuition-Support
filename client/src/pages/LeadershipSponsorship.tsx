@@ -67,7 +67,7 @@ export default function LeadershipSponsorship() {
           </div>
         </section>
 
-        <section className="py-20 bg-white">
+        <section className="py-20 bg-card">
           <div className="container mx-auto px-4">
             <div className="grid md:grid-cols-3 gap-8">
               {[
@@ -76,20 +76,20 @@ export default function LeadershipSponsorship() {
                 { icon: Building2, title: "Detailed Reporting", desc: "Track academic progress and fund utilization through our dashboard." }
               ].map((item, i) => (
                 <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.15 }}
-                  className="p-6 rounded-2xl bg-slate-50 border border-slate-100 hover:shadow-lg transition-shadow"
+                  className="p-6 rounded-2xl bg-background border hover:shadow-lg transition-shadow"
                 >
                   <item.icon className="w-10 h-10 text-tsia-green mb-4" />
                   <h3 className="text-xl font-bold mb-2">{item.title}</h3>
-                  <p className="text-slate-600">{item.desc}</p>
+                  <p className="text-muted-foreground">{item.desc}</p>
                 </motion.div>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="py-24 bg-slate-50 border-t">
+        <section className="py-24 bg-background border-t">
           <div className="container mx-auto px-4 max-w-4xl">
-            <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col md:flex-row">
+            <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="bg-card rounded-3xl shadow-xl overflow-hidden flex flex-col md:flex-row border">
               <div className="md:w-1/3 bg-tsia-green p-8 text-white flex flex-col justify-between">
                 <div>
                   <h3 className="text-2xl font-bold mb-4">Start the Conversation</h3>
@@ -120,7 +120,7 @@ export default function LeadershipSponsorship() {
                     </div>
                   </div>
                   <div className="space-y-2"><Label htmlFor="message">Additional Information</Label><Textarea id="message" name="message" placeholder="Tell us about your CSR goals..." className="h-24" data-testid="textarea-leadership-message" /></div>
-                  <Button type="submit" className="w-full h-12 text-base bg-slate-900 hover:bg-slate-800" disabled={loading} data-testid="button-leadership-submit">
+                  <Button type="submit" className="w-full h-12 text-base bg-slate-900 hover:bg-slate-800 text-white dark:bg-primary dark:hover:bg-primary/90" disabled={loading} data-testid="button-leadership-submit">
                     {loading ? "Submitting..." : "Request Cohort Proposal"} <ChevronRight className="w-4 h-4 ml-2" />
                   </Button>
                 </form>

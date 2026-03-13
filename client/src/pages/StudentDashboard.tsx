@@ -6,16 +6,19 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wallet, Clock, Trophy, History, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut } from "lucide-react";
+import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
+import { CURRENCY_RATES } from "@shared/schema";
 
 export default function StudentDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout, isLoading: authLoading } = useAuth();
+  const { mode, setMode } = useTheme();
   const { toast } = useToast();
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -47,27 +50,27 @@ export default function StudentDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       setWithdrawOpen(false);
       setWithdrawAmount("");
-      toast({ title: "Withdrawal Processed", description: `$${data.netAmount} sent to your bank (VAT: $${data.vatAmount})` });
+      toast({ title: "Withdrawal Processed", description: `$${data.netAmount} (₦${parseFloat(data.netAmountNgn).toLocaleString()}) sent to your bank` });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
-  const handleLogout = async () => {
-    await logout();
-    setLocation("/");
-  };
+  const handleLogout = async () => { await logout(); setLocation("/"); };
 
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><p>Loading...</p></div>;
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted-foreground">Loading...</p></div>;
   if (!user) { setLocation("/login"); return null; }
 
   const balance = parseFloat(walletData?.balance || "0");
+  const balanceNgn = balance * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
   const tier = verification?.tier || "none";
   const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+  const waecPct = verification?.waecPercentage ? parseFloat(verification.waecPercentage) : null;
+  const payoutMin = verification?.payoutMin ? parseFloat(verification.payoutMin) : 0;
+  const payoutMax = verification?.payoutMax ? parseFloat(verification.payoutMax) : 0;
   const commitmentStart = verification?.commitmentStartDate ? new Date(verification.commitmentStartDate) : null;
-  const now = new Date();
-  const daysElapsed = commitmentStart ? Math.floor((now.getTime() - commitmentStart.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+  const daysElapsed = commitmentStart ? Math.floor((Date.now() - commitmentStart.getTime()) / (1000 * 60 * 60 * 24)) : 0;
   const countdown = Math.max(0, 30 - daysElapsed);
   const isVerified = verification?.status === "verified";
   const isPending = verification?.status === "pending";
@@ -76,26 +79,28 @@ export default function StudentDashboard() {
   const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.1 } } };
   const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
-  const tierColors: Record<string, { max: string; bg: string }> = {
-    platinum: { max: "$690", bg: "bg-slate-800 text-white" },
-    gold: { max: "$460", bg: "bg-amber-100 text-amber-800" },
-    silver: { max: "$230", bg: "bg-slate-200 text-slate-700" },
-    none: { max: "$0", bg: "bg-slate-100 text-slate-500" },
-  };
+  const themeOpts = [{ v: "light" as const, i: Sun }, { v: "dark" as const, i: Moon }, { v: "system" as const, i: Monitor }];
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans pb-20">
-      <nav className="bg-white border-b sticky top-0 z-40 shadow-sm">
+    <div className="min-h-screen bg-background font-sans pb-20">
+      <nav className="bg-card border-b sticky top-0 z-40 shadow-sm">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-md">
               <span className="text-primary-foreground font-bold text-lg">T</span>
             </div>
-            <span className="text-xl font-bold tracking-tight text-slate-900">Dashboard</span>
+            <span className="text-xl font-bold tracking-tight">Dashboard</span>
           </div>
           <div className="flex items-center gap-4">
-            <div className="text-sm font-medium text-slate-700 hidden sm:block">Hello, {user.firstName}</div>
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-500 hover:text-slate-700" data-testid="button-logout">
+            <div className="flex items-center bg-muted rounded-full p-1 gap-0.5">
+              {themeOpts.map(o => (
+                <button key={o.v} onClick={() => setMode(o.v)} className={`p-1.5 rounded-full transition-all ${mode === o.v ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                  <o.i className="w-3.5 h-3.5" />
+                </button>
+              ))}
+            </div>
+            <div className="text-sm font-medium hidden sm:block">Hello, {user.firstName}</div>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground hover:text-foreground" data-testid="button-logout">
               <LogOut className="w-4 h-4 mr-1" /> Logout
             </Button>
           </div>
@@ -104,8 +109,7 @@ export default function StudentDashboard() {
 
       <main className="container mx-auto px-4 pt-8">
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-8 max-w-6xl mx-auto">
-          {/* Status Banner */}
-          <motion.div variants={itemVariants} className="bg-slate-900 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
+          <motion.div variants={itemVariants} className="bg-slate-900 dark:bg-slate-800 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary rounded-full blur-3xl opacity-20 -mr-20 -mt-20 pointer-events-none"></div>
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div>
@@ -131,94 +135,96 @@ export default function StudentDashboard() {
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {/* Wallet Card */}
             <motion.div variants={itemVariants} className="md:col-span-2">
-              <Card className="h-full shadow-md border-0 bg-white hover:shadow-lg transition-shadow">
+              <Card className="h-full shadow-md border-0">
                 <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-lg text-slate-800">
-                    <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><Wallet className="w-5 h-5" /></div> Digital Wallet
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <div className="bg-blue-100 dark:bg-blue-900/40 p-2 rounded-lg text-blue-600"><Wallet className="w-5 h-5" /></div> Digital Wallet
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4">
                   <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-6 mb-8">
                     <div>
-                      <div className="text-sm text-slate-500 font-medium mb-2 uppercase tracking-wide">Available Balance</div>
-                      <div className="text-6xl font-bold tracking-tight text-slate-900" data-testid="text-wallet-balance">${balance.toFixed(2)}</div>
+                      <div className="text-sm text-muted-foreground font-medium mb-2 uppercase tracking-wide">Available Balance</div>
+                      <div className="text-5xl font-bold tracking-tight" data-testid="text-wallet-balance">${balance.toFixed(2)}</div>
+                      <div className="text-sm text-muted-foreground mt-1">₦{balanceNgn.toLocaleString()} (at ₦{CURRENCY_RATES.USD_TO_NGN_PAYOUT}/USD)</div>
                     </div>
-                    <div className="flex gap-3 w-full sm:w-auto">
-                      <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
-                        <DialogTrigger asChild>
-                          <Button className="flex-1 sm:flex-none h-12 px-6 bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20" disabled={balance <= 0} data-testid="button-withdraw">
-                            Withdraw <ArrowUpRight className="w-4 h-4 ml-2" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Withdraw Funds</DialogTitle>
-                            <DialogDescription>A 7.5% VAT will be deducted from the withdrawal amount.</DialogDescription>
-                          </DialogHeader>
-                          <div className="space-y-4 py-4">
-                            <div className="space-y-2">
-                              <Label>Amount (USD)</Label>
-                              <Input type="number" placeholder="0.00" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} data-testid="input-withdraw-amount" />
-                            </div>
-                            {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
-                              <div className="bg-slate-50 rounded-xl p-4 border space-y-2 text-sm">
-                                <div className="flex justify-between"><span className="text-slate-500">Withdrawal</span><span className="font-medium">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
-                                <div className="flex justify-between text-red-600"><span>VAT (7.5%)</span><span>-${(parseFloat(withdrawAmount) * 0.075).toFixed(2)}</span></div>
-                                <div className="flex justify-between font-bold border-t pt-2"><span>You Receive</span><span>${(parseFloat(withdrawAmount) * 0.925).toFixed(2)}</span></div>
-                              </div>
-                            )}
+                    <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
+                      <DialogTrigger asChild>
+                        <Button className="h-12 px-6 bg-blue-600 hover:bg-blue-700 shadow-md" disabled={balance <= 0} data-testid="button-withdraw">
+                          Withdraw <ArrowUpRight className="w-4 h-4 ml-2" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Withdraw Funds</DialogTitle>
+                          <DialogDescription>7.5% VAT deducted. Payout rate: ₦{CURRENCY_RATES.USD_TO_NGN_PAYOUT}/USD.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <div className="space-y-2">
+                            <Label>Amount (USD)</Label>
+                            <Input type="number" placeholder="0.00" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} data-testid="input-withdraw-amount" />
                           </div>
-                          <DialogFooter>
-                            <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
-                            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => withdrawMutation.mutate(withdrawAmount)} disabled={withdrawMutation.isPending} data-testid="button-confirm-withdraw">
-                              {withdrawMutation.isPending ? "Processing..." : "Confirm Withdrawal"}
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
+                          {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
+                            <div className="bg-muted rounded-xl p-4 border space-y-2 text-sm">
+                              <div className="flex justify-between"><span className="text-muted-foreground">Withdrawal</span><span className="font-medium">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
+                              <div className="flex justify-between text-destructive"><span>VAT (7.5%)</span><span>-${(parseFloat(withdrawAmount) * 0.075).toFixed(2)}</span></div>
+                              <div className="flex justify-between font-bold border-t pt-2"><span>You Receive (USD)</span><span>${(parseFloat(withdrawAmount) * 0.925).toFixed(2)}</span></div>
+                              <div className="flex justify-between font-bold text-primary"><span>You Receive (NGN)</span><span>₦{(parseFloat(withdrawAmount) * 0.925 * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()}</span></div>
+                            </div>
+                          )}
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
+                          <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => withdrawMutation.mutate(withdrawAmount)} disabled={withdrawMutation.isPending} data-testid="button-confirm-withdraw">
+                            {withdrawMutation.isPending ? "Processing..." : "Confirm Withdrawal"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   </div>
-                  <div className="bg-amber-50/50 border border-amber-100/50 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800/90">
+                  <div className="bg-amber-50/50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
                     <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
-                    <p className="leading-relaxed">A mandatory <strong>7.5% VAT</strong> applies to all withdrawals to local bank accounts.</p>
+                    <p className="leading-relaxed">A mandatory <strong>7.5% VAT</strong> applies to all withdrawals. Conversion at ₦{CURRENCY_RATES.USD_TO_NGN_PAYOUT}/USD payout rate.</p>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
 
-            {/* Academic Tier Card */}
             <motion.div variants={itemVariants}>
-              <Card className="h-full shadow-md border-0 bg-gradient-to-br from-white to-amber-50/30 overflow-hidden relative group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-200/40 to-transparent rounded-bl-full pointer-events-none transition-transform group-hover:scale-110"></div>
+              <Card className="h-full shadow-md border-0 overflow-hidden relative group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-200/40 dark:from-amber-600/20 to-transparent rounded-bl-full pointer-events-none"></div>
                 <CardHeader className="pb-2 relative z-10">
-                  <CardTitle className="flex items-center gap-2 text-lg text-slate-800">
-                    <div className="bg-amber-100 p-2 rounded-lg text-amber-600"><Trophy className="w-5 h-5" /></div> Academic Tier
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <div className="bg-amber-100 dark:bg-amber-900/40 p-2 rounded-lg text-amber-600"><Trophy className="w-5 h-5" /></div> Academic Tier
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center justify-center py-8 relative z-10">
-                  <motion.div initial={{ scale: 0.8, rotate: -10 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", delay: 0.2 }} className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-200 p-1 mb-6 shadow-xl shadow-amber-200/50">
-                    <div className="w-full h-full bg-white rounded-full flex items-center justify-center">
-                      <Trophy className="w-12 h-12 text-amber-500 drop-shadow-sm" />
+                  <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} transition={{ type: "spring", delay: 0.2 }} className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-200 p-1 mb-4 shadow-xl shadow-amber-200/50">
+                    <div className="w-full h-full bg-card rounded-full flex items-center justify-center">
+                      <Trophy className="w-12 h-12 text-amber-500" />
                     </div>
                   </motion.div>
-                  <h3 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight" data-testid="text-tier">{tierLabel} Tier</h3>
-                  <p className="text-sm text-slate-500 text-center mb-5 font-medium">
-                    {tier !== "none" ? `Based on your WAEC results` : "Complete onboarding to set tier"}
+                  <h3 className="text-3xl font-bold mb-1 tracking-tight" data-testid="text-tier">{tierLabel} Tier</h3>
+                  {waecPct !== null && (
+                    <p className="text-lg font-semibold text-primary mb-2">{waecPct}% Score</p>
+                  )}
+                  <p className="text-sm text-muted-foreground text-center mb-4 font-medium">
+                    {tier !== "none" ? "Based on your WAEC results" : "Complete onboarding to set tier"}
                   </p>
-                  <Badge variant="secondary" className={`px-4 py-1.5 text-sm font-semibold ${tierColors[tier].bg}`}>
-                    Eligible for {tierColors[tier].max} max payout
-                  </Badge>
+                  {payoutMax > 0 && (
+                    <Badge variant="secondary" className="px-4 py-1.5 text-sm font-semibold">
+                      Payout: ${payoutMin} - ${payoutMax}
+                    </Badge>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {/* Sponsorship Plans */}
             <motion.div variants={itemVariants} className="md:col-span-2">
-              <Card className="h-full shadow-md border-0 bg-white">
+              <Card className="h-full shadow-md border-0">
                 <CardHeader>
                   <CardTitle className="text-xl">Sponsorship Plan</CardTitle>
                   <CardDescription className="text-base">
@@ -235,12 +241,13 @@ export default function StudentDashboard() {
                       const isActive = plan?.planYears === p.years;
                       const canSelect = isVerified && !plan && countdown === 0;
                       return (
-                        <div key={p.years} className={`relative rounded-2xl p-6 transition-all ${isActive ? 'border-2 border-primary bg-primary/5 shadow-lg' : p.popular ? 'border-2 border-primary/30 bg-white' : 'border border-slate-200 bg-white'}`}>
-                          {p.popular && !isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Recommended</div>}
+                        <div key={p.years} className={`relative rounded-2xl p-6 transition-all ${isActive ? 'border-2 border-primary bg-primary/5 shadow-lg' : p.popular ? 'border-2 border-primary/30' : 'border'}`}>
+                          {p.popular && !isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Recommended</div>}
                           {isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Active</div>}
-                          <h4 className="font-semibold text-lg mb-1 text-slate-800">{p.years} Year Plan</h4>
-                          <div className="text-3xl font-bold text-slate-900 mb-6">${p.price}<span className="text-sm font-medium text-slate-400">/yr</span></div>
-                          <ul className="space-y-3 mb-8 text-sm text-slate-600 font-medium">
+                          <h4 className="font-semibold text-lg mb-1">{p.years} Year Plan</h4>
+                          <div className="text-3xl font-bold mb-1">${p.price}<span className="text-sm font-medium text-muted-foreground">/yr</span></div>
+                          <div className="text-xs text-muted-foreground mb-6">₦{(p.price * CURRENCY_RATES.USD_TO_NGN_PAYMENT).toLocaleString()}/yr</div>
+                          <ul className="space-y-3 mb-8 text-sm font-medium">
                             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Up to ${p.payout} payout</li>
                             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Wallet access</li>
                           </ul>
@@ -261,36 +268,33 @@ export default function StudentDashboard() {
               </Card>
             </motion.div>
 
-            {/* Transaction History */}
             <motion.div variants={itemVariants}>
-              <Card className="h-full shadow-md border-0 bg-white">
-                <CardHeader>
-                  <CardTitle className="text-xl">Activity</CardTitle>
-                </CardHeader>
+              <Card className="h-full shadow-md border-0">
+                <CardHeader><CardTitle className="text-xl">Activity</CardTitle></CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     {(!transactions || transactions.length === 0) ? (
-                      <p className="text-sm text-slate-500 text-center py-8">No transactions yet.</p>
+                      <p className="text-sm text-muted-foreground text-center py-8">No transactions yet.</p>
                     ) : (
                       transactions.slice(0, 6).map((tx: any) => (
-                        <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-white hover:shadow-sm transition-shadow">
+                        <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl border hover:shadow-sm transition-shadow">
                           <div className="flex items-center gap-3">
                             <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
-                              tx.type === 'sponsorship_credit' ? 'bg-green-50 text-green-600' :
-                              tx.type === 'withdrawal' ? 'bg-blue-50 text-blue-600' :
-                              tx.type === 'vat_deduction' ? 'bg-red-50 text-red-600' :
-                              'bg-slate-100 text-slate-600'
+                              tx.type === 'sponsorship_credit' ? 'bg-green-50 dark:bg-green-900/30 text-green-600' :
+                              tx.type === 'withdrawal' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' :
+                              tx.type === 'vat_deduction' ? 'bg-red-50 dark:bg-red-900/30 text-red-600' :
+                              'bg-muted text-muted-foreground'
                             }`}>
                               {tx.type === 'sponsorship_credit' ? <CheckCircle2 className="w-4 h-4" /> :
                                tx.type === 'withdrawal' ? <ArrowUpRight className="w-4 h-4" /> :
                                <CreditCard className="w-4 h-4" />}
                             </div>
                             <div>
-                              <p className="font-medium text-slate-900 text-sm">{tx.description}</p>
-                              <p className="text-xs text-slate-500">{new Date(tx.createdAt).toLocaleDateString()}</p>
+                              <p className="font-medium text-sm">{tx.description}</p>
+                              <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString()}</p>
                             </div>
                           </div>
-                          <div className={`font-bold text-sm ${parseFloat(tx.amount) >= 0 ? 'text-green-600' : 'text-slate-900'}`}>
+                          <div className={`font-bold text-sm ${parseFloat(tx.amount) >= 0 ? 'text-green-600' : ''}`}>
                             {parseFloat(tx.amount) >= 0 ? '+' : ''}${tx.amount}
                           </div>
                         </div>

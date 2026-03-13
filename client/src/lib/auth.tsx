@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
 
@@ -16,8 +16,8 @@ type AuthUser = {
 type AuthContextType = {
   user: AuthUser | null | undefined;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<AuthUser>;
-  signup: (data: any) => Promise<AuthUser>;
+  requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string }) => Promise<{ otpSent: boolean; hint?: string; isNewUser?: boolean }>;
+  verifyOtp: (email: string, code: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 };
 
@@ -40,18 +40,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     retry: false,
   });
 
-  const login = async (email: string, password: string): Promise<AuthUser> => {
-    const res = await apiRequest("POST", "/api/auth/login", { email, password });
-    const data = await res.json();
-    queryClient.setQueryData(["/api/auth/me"], data);
-    return data;
+  const requestOtp = async (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string }) => {
+    const res = await apiRequest("POST", "/api/auth/request-otp", data);
+    return res.json();
   };
 
-  const signup = async (formData: any): Promise<AuthUser> => {
-    const res = await apiRequest("POST", "/api/auth/signup", formData);
-    const data = await res.json();
-    queryClient.setQueryData(["/api/auth/me"], data);
-    return data;
+  const verifyOtp = async (email: string, code: string): Promise<AuthUser> => {
+    const res = await apiRequest("POST", "/api/auth/verify-otp", { email, code });
+    const userData = await res.json();
+    queryClient.setQueryData(["/api/auth/me"], userData);
+    return userData;
   };
 
   const logout = async () => {
@@ -61,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, requestOtp, verifyOtp, logout }}>
       {children}
     </AuthContext.Provider>
   );

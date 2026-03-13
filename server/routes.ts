@@ -4,8 +4,24 @@ import { storage } from "./storage";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
+import multer from "multer";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES } from "@shared/schema";
 
 const PgSession = pgSession(session);
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Only JPEG, PNG, WebP, and PDF files are allowed"));
+  },
+});
+
+function generateOtp(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -23,28 +39,61 @@ export async function registerRoutes(
     })
   );
 
-  // ---- AUTH ----
-  app.post("/api/auth/signup", async (req, res) => {
+  // ---- OTP AUTH ----
+  app.post("/api/auth/request-otp", async (req, res) => {
     try {
-      const { firstName, lastName, email, phone, password, country } = req.body;
-      const existing = await storage.getUserByEmail(email);
-      if (existing) return res.status(400).json({ message: "Email already registered" });
+      const { email, firstName, lastName, phone, country } = req.body;
+      if (!email) return res.status(400).json({ message: "Email is required" });
 
-      const user = await storage.createUser({ firstName, lastName, email, phone, password, country, role: "student" });
-      (req.session as any).userId = user.id;
-      res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role });
+      let user = await storage.getUserByEmail(email);
+      const isSignup = !!firstName;
+
+      if (!user && isSignup) {
+        user = await storage.createUser({
+          firstName, lastName, email, phone: phone || "",
+          password: "otp-only", country: country || "ng", role: "student",
+        });
+      }
+
+      if (!user) {
+        return res.status(404).json({ message: "No account found with this email. Please sign up first." });
+      }
+
+      const code = generateOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await storage.createOtp({ email, code, expiresAt, used: false });
+
+      console.log(`[OTP] Code for ${email}: ${code}`);
+
+      res.json({
+        message: "OTP sent to your email",
+        otpSent: true,
+        isNewUser: isSignup && !await storage.getVerificationByUser(user.id),
+        hint: code,
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/verify-otp", async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const { email, code } = req.body;
+      if (!email || !code) return res.status(400).json({ message: "Email and OTP code are required" });
+
+      const otp = await storage.getValidOtp(email, code);
+      if (!otp) return res.status(401).json({ message: "Invalid or expired OTP code" });
+
+      await storage.markOtpUsed(otp.id);
+
       const user = await storage.getUserByEmail(email);
-      if (!user || user.password !== password) return res.status(401).json({ message: "Invalid credentials" });
+      if (!user) return res.status(404).json({ message: "User not found" });
+
       (req.session as any).userId = user.id;
-      res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role });
+      res.json({
+        id: user.id, firstName: user.firstName, lastName: user.lastName,
+        email: user.email, role: user.role, phone: user.phone, country: user.country,
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -61,6 +110,63 @@ export async function registerRoutes(
   app.post("/api/auth/logout", (req, res) => {
     req.session.destroy(() => {});
     res.json({ ok: true });
+  });
+
+  // Keep legacy login for admin
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const user = await storage.getUserByEmail(email);
+      if (!user || (user.password !== password && user.password !== "otp-only"))
+        return res.status(401).json({ message: "Invalid credentials" });
+      (req.session as any).userId = user.id;
+      res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ---- FILE UPLOAD ----
+  app.post("/api/upload", upload.single("file"), async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      if (!req.file) return res.status(400).json({ message: "No file provided" });
+
+      const fileData = req.file.buffer.toString("base64");
+      const category = (req.body.category as string) || "document";
+
+      const saved = await storage.createFileUpload({
+        userId,
+        fileName: req.file.originalname,
+        fileType: req.file.mimetype,
+        fileSize: req.file.size,
+        fileData,
+        category,
+      });
+
+      res.json({
+        id: saved.id,
+        fileName: saved.fileName,
+        fileType: saved.fileType,
+        fileSize: saved.fileSize,
+        category: saved.category,
+        createdAt: saved.createdAt,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/uploads", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const files = await storage.getFilesByUser(userId);
+    res.json(files.map(f => ({
+      id: f.id, fileName: f.fileName, fileType: f.fileType,
+      fileSize: f.fileSize, category: f.category, createdAt: f.createdAt,
+    })));
   });
 
   // ---- ONBOARDING / VERIFICATION ----
@@ -82,36 +188,24 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/verification/academic", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
-      const { waecRegNumber, waecYear, waecGrades } = req.body;
-      let verification = await storage.getVerificationByUser(userId);
-      if (!verification) return res.status(400).json({ message: "Complete identity step first" });
-
-      let tier: "platinum" | "gold" | "silver" | "none" = "silver";
-      const grades = waecGrades || "";
-      const aCount = (grades.match(/A/gi) || []).length;
-      if (aCount >= 6) tier = "platinum";
-      else if (aCount >= 4) tier = "gold";
-      else tier = "silver";
-
-      verification = await storage.updateVerification(verification.id, { waecRegNumber, waecYear, waecGrades, tier });
-      res.json(verification);
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
-    }
-  });
-
   app.post("/api/verification/pay-fee", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       let verification = await storage.getVerificationByUser(userId);
-      if (!verification) return res.status(400).json({ message: "Complete identity step first" });
+      if (!verification) {
+        verification = await storage.createVerification({
+          userId, status: "pending", portalFeePaid: false, tier: "none",
+        });
+      }
+
+      if (verification.portalFeePaid) {
+        return res.status(400).json({ message: "Fee already paid" });
+      }
+
+      const usdAmount = 3;
+      const ngnEquivalent = usdAmount * CURRENCY_RATES.USD_TO_NGN_PAYMENT;
 
       verification = await storage.updateVerification(verification.id, {
         portalFeePaid: true,
@@ -121,11 +215,62 @@ export async function registerRoutes(
       await storage.createTransaction({
         userId,
         type: "verification_fee",
-        amount: "-3.00",
-        description: "Portal verification fee",
+        amount: `-${usdAmount.toFixed(2)}`,
+        description: `Portal verification fee ($${usdAmount} = ₦${ngnEquivalent.toLocaleString()})`,
       });
 
       res.json(verification);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/verification/academic", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      let verification = await storage.getVerificationByUser(userId);
+      if (!verification) return res.status(400).json({ message: "Start verification first" });
+
+      if (!verification.portalFeePaid) {
+        return res.status(400).json({ message: "You must pay the $3 verification fee before submitting WAEC results" });
+      }
+
+      const { waecRegNumber, waecYear, waecGrades } = req.body;
+      const gradesArray = (waecGrades || "").trim().split(/[\s,]+/).filter(Boolean);
+
+      if (gradesArray.length === 0) {
+        return res.status(400).json({ message: "Please provide your WAEC grades" });
+      }
+
+      const validGrades = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9"];
+      for (const g of gradesArray) {
+        if (!validGrades.includes(g.toUpperCase())) {
+          return res.status(400).json({ message: `Invalid grade "${g}". Valid grades: ${validGrades.join(", ")}` });
+        }
+      }
+
+      const percentage = calculateWaecPercentage(gradesArray);
+      const payoutInfo = getPayoutTier(percentage);
+
+      let tier: "platinum" | "gold" | "silver" | "none" = payoutInfo.label as any;
+
+      verification = await storage.updateVerification(verification.id, {
+        waecRegNumber,
+        waecYear,
+        waecGrades: gradesArray.join(" "),
+        tier,
+        waecPercentage: percentage.toFixed(2),
+        payoutMin: payoutInfo.min.toFixed(2),
+        payoutMax: payoutInfo.max.toFixed(2),
+      });
+
+      res.json({
+        ...verification,
+        calculatedPercentage: percentage,
+        payoutRange: payoutInfo,
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -143,7 +288,9 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const wallet = await storage.getOrCreateWallet(userId);
-    res.json(wallet);
+    const balanceUsd = parseFloat(wallet.balance);
+    const balanceNgn = balanceUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
+    res.json({ ...wallet, balanceNgn: balanceNgn.toFixed(2) });
   });
 
   app.post("/api/wallet/withdraw", async (req, res) => {
@@ -151,7 +298,7 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { amount, bankAccount } = req.body;
+      const { amount } = req.body;
       const wallet = await storage.getOrCreateWallet(userId);
       const withdrawAmount = parseFloat(amount);
       if (withdrawAmount <= 0 || withdrawAmount > parseFloat(wallet.balance)) {
@@ -159,24 +306,28 @@ export async function registerRoutes(
       }
 
       const vatAmount = withdrawAmount * 0.075;
-      const netAmount = withdrawAmount - vatAmount;
+      const netAmountUsd = withdrawAmount - vatAmount;
+      const netAmountNgn = netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
 
       await storage.updateWalletBalance(userId, (-withdrawAmount).toString());
       await storage.createTransaction({
-        userId,
-        type: "withdrawal",
-        amount: (-netAmount).toFixed(2),
-        description: `Withdrawal to bank account (net after 7.5% VAT)`,
+        userId, type: "withdrawal",
+        amount: (-netAmountUsd).toFixed(2),
+        description: `Withdrawal $${netAmountUsd.toFixed(2)} (₦${netAmountNgn.toLocaleString()}) to bank`,
       });
       await storage.createTransaction({
-        userId,
-        type: "vat_deduction",
+        userId, type: "vat_deduction",
         amount: (-vatAmount).toFixed(2),
-        description: `7.5% VAT on withdrawal of $${withdrawAmount.toFixed(2)}`,
+        description: `7.5% VAT on $${withdrawAmount.toFixed(2)} withdrawal`,
       });
 
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ wallet: updated, vatAmount: vatAmount.toFixed(2), netAmount: netAmount.toFixed(2) });
+      res.json({
+        wallet: updated,
+        vatAmount: vatAmount.toFixed(2),
+        netAmount: netAmountUsd.toFixed(2),
+        netAmountNgn: netAmountNgn.toFixed(2),
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -206,19 +357,10 @@ export async function registerRoutes(
       if (!planInfo) return res.status(400).json({ message: "Invalid plan" });
 
       const plan = await storage.createSponsorshipPlan({
-        userId,
-        planYears,
-        annualCost: planInfo.cost,
-        maxPayout: planInfo.payout,
-        active: true,
+        userId, planYears, annualCost: planInfo.cost, maxPayout: planInfo.payout, active: true,
       });
 
-      await storage.createDisbursement({
-        userId,
-        amount: planInfo.payout,
-        status: "pending",
-      });
-
+      await storage.createDisbursement({ userId, amount: planInfo.payout, status: "pending" });
       res.json(plan);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -230,6 +372,11 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const plan = await storage.getSponsorshipPlanByUser(userId);
     res.json(plan || null);
+  });
+
+  // ---- CURRENCY RATES ----
+  app.get("/api/currency-rates", (_req, res) => {
+    res.json(CURRENCY_RATES);
   });
 
   // ---- ADMIN ----
@@ -245,7 +392,8 @@ export async function registerRoutes(
         const v = await storage.getVerificationByUser(s.id);
         const w = await storage.getOrCreateWallet(s.id);
         const plan = await storage.getSponsorshipPlanByUser(s.id);
-        return { ...s, password: undefined, verification: v, wallet: w, plan };
+        const files = await storage.getFilesByUser(s.id);
+        return { ...s, password: undefined, verification: v, wallet: w, plan, fileCount: files.length };
       })
     );
     res.json(enriched);
@@ -256,7 +404,6 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-
     const pending = await storage.getPendingVerifications();
     res.json(pending);
   });
@@ -283,7 +430,6 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-
     const pending = await storage.getPendingDisbursements();
     res.json(pending);
   });
@@ -300,10 +446,9 @@ export async function registerRoutes(
 
       await storage.updateWalletBalance(disbursement.userId, disbursement.amount);
       await storage.createTransaction({
-        userId: disbursement.userId,
-        type: "sponsorship_credit",
+        userId: disbursement.userId, type: "sponsorship_credit",
         amount: disbursement.amount,
-        description: `Sponsorship payout credited to wallet`,
+        description: `Sponsorship payout $${disbursement.amount} (₦${(parseFloat(disbursement.amount) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()})`,
       });
 
       res.json(disbursement);
@@ -321,13 +466,12 @@ export async function registerRoutes(
     const students = await storage.getAllStudents();
     const pendingVerifications = await storage.getPendingVerifications();
     const pendingDisbursements = await storage.getPendingDisbursements();
-    const totalDisbursed = pendingDisbursements.reduce((sum, d) => sum + parseFloat(d.amount), 0);
 
     res.json({
       totalStudents: students.length,
       pendingVerifications: pendingVerifications.length,
       pendingDisbursements: pendingDisbursements.length,
-      totalDisbursementValue: totalDisbursed.toFixed(2),
+      totalDisbursementValue: pendingDisbursements.reduce((sum, d) => sum + parseFloat(d.amount), 0).toFixed(2),
     });
   });
 

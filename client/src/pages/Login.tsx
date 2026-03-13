@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Login() {
   const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
-  const [step, setStep] = useState<1 | 2>(1); // 1: Credentials, 2: 2FA
+  const [step, setStep] = useState<1 | 2>(1);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,104 +23,133 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md mb-8">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans overflow-hidden">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="sm:mx-auto sm:w-full sm:max-w-md mb-8"
+      >
         <Link href="/">
-          <div className="flex items-center justify-center gap-2 cursor-pointer">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-sm">
+          <div className="flex items-center justify-center gap-2 cursor-pointer group">
+            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-md group-hover:shadow-lg transition-all">
               <span className="text-primary-foreground font-bold text-xl">T</span>
             </div>
             <span className="text-2xl font-bold tracking-tight text-slate-900">TSIA</span>
           </div>
         </Link>
-      </div>
+      </motion.div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="shadow-lg border-0">
-          <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl text-center">
-              {step === 1 ? "Welcome back" : "Two-Factor Verification"}
-            </CardTitle>
-            <CardDescription className="text-center">
-              {step === 1 ? "Enter your credentials to access your portal" : "Enter the 6-digit code sent to your email"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {step === 1 ? (
-              <form onSubmit={handleLogin} className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email address</Label>
-                  <Input id="email" type="email" placeholder="student@example.com" required className="h-11" />
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password">Password</Label>
-                    <a href="#" className="text-sm font-medium text-primary hover:text-primary/80">
-                      Forgot password?
-                    </a>
-                  </div>
-                  <div className="relative">
-                    <Input 
-                      id="password" 
-                      type={showPassword ? "text" : "password"} 
-                      placeholder="••••••••" 
-                      required 
-                      className="h-11 pr-10" 
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="shadow-xl border-0 overflow-hidden relative">
+              {/* Decorative top gradient */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-tsia-green to-tsia-gold"></div>
+              
+              <CardHeader className="space-y-2 pt-8">
+                <CardTitle className="text-2xl text-center font-bold text-slate-900">
+                  {step === 1 ? "Welcome back" : "Two-Factor Verification"}
+                </CardTitle>
+                <CardDescription className="text-center text-base">
+                  {step === 1 ? "Enter your credentials to access your portal" : "Enter the 6-digit code sent to your email"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-8">
+                {step === 1 ? (
+                  <form onSubmit={handleLogin} className="space-y-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email address</Label>
+                      <Input id="email" type="email" placeholder="student@example.com" required className="h-12 bg-slate-50/50" />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="password">Password</Label>
+                        <a href="#" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">
+                          Forgot password?
+                        </a>
+                      </div>
+                      <div className="relative">
+                        <Input 
+                          id="password" 
+                          type={showPassword ? "text" : "password"} 
+                          placeholder="••••••••" 
+                          required 
+                          className="h-12 pr-10 bg-slate-50/50" 
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
 
-                <Button type="submit" className="w-full h-11 text-base bg-primary hover:bg-primary/90">
-                  Sign in
-                </Button>
-              </form>
-            ) : (
-              <form onSubmit={handle2FA} className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="code" className="text-center block">Authentication Code</Label>
-                  <div className="flex justify-center gap-2 mb-4">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                      <Input key={i} className="w-12 h-14 text-center text-xl font-bold" maxLength={1} required />
-                    ))}
-                  </div>
-                </div>
-                
-                <Button type="submit" className="w-full h-11 text-base bg-primary hover:bg-primary/90">
-                  Verify & Access Portal
-                </Button>
-                
-                <p className="text-center text-sm text-slate-500">
-                  Didn't receive a code? <button className="text-primary font-medium hover:underline">Resend</button>
-                </p>
-              </form>
-            )}
-          </CardContent>
-          {step === 1 && (
-            <CardFooter className="flex justify-center border-t py-6 mt-2">
-              <p className="text-sm text-slate-600">
-                Don't have an account?{' '}
-                <Link href="/signup">
-                  <span className="font-semibold text-primary hover:text-primary/80 cursor-pointer">Apply now</span>
-                </Link>
-              </p>
-            </CardFooter>
-          )}
-        </Card>
+                    <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md">
+                      Sign in
+                    </Button>
+                  </form>
+                ) : (
+                  <form onSubmit={handle2FA} className="space-y-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="code" className="text-center block text-slate-600 mb-4">Authentication Code</Label>
+                      <div className="flex justify-center gap-3 mb-6">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                          <Input 
+                            key={i} 
+                            className="w-12 h-14 text-center text-xl font-bold bg-slate-50/80 focus:bg-white transition-colors" 
+                            maxLength={1} 
+                            required 
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md">
+                      Verify & Access Portal
+                    </Button>
+                    
+                    <p className="text-center text-sm text-slate-500">
+                      Didn't receive a code? <button type="button" className="text-primary font-medium hover:underline">Resend</button>
+                    </p>
+                  </form>
+                )}
+              </CardContent>
+              {step === 1 && (
+                <CardFooter className="flex justify-center border-t border-slate-100 py-6 bg-slate-50/50">
+                  <p className="text-sm text-slate-600">
+                    Don't have an account?{' '}
+                    <Link href="/signup">
+                      <span className="font-semibold text-primary hover:text-primary/80 cursor-pointer transition-colors">Apply now</span>
+                    </Link>
+                  </p>
+                </CardFooter>
+              )}
+            </Card>
+          </motion.div>
+        </AnimatePresence>
         
         {/* Admin Login shortcut for testing */}
-        <div className="mt-8 text-center">
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="mt-8 text-center"
+        >
           <Link href="/admin">
-            <span className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer">Admin Login (Demo)</span>
+            <span className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer transition-colors px-3 py-1 rounded-full hover:bg-slate-200/50">
+              Admin Login (Demo)
+            </span>
           </Link>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

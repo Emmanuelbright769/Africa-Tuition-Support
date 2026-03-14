@@ -17,7 +17,7 @@ export function Footer() {
             <li><a href="/#how-it-works" className="hover:text-tsia-gold transition-colors">How it works</a></li>
             <li><a href="/#plans" className="hover:text-tsia-gold transition-colors">Pricing & Plans</a></li>
             <li><a href="/leadership" className="hover:text-tsia-gold transition-colors">Leadership Cohorts</a></li>
-            <li><a href="/#affiliate" className="hover:text-tsia-gold transition-colors">Affiliate Program</a></li>
+            <li><a href="/affiliate-signup" className="hover:text-tsia-gold transition-colors">Affiliate Program</a></li>
           </ul>
         </div>
         

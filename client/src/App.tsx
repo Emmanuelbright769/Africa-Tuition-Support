@@ -16,6 +16,8 @@ import AdminDashboard from "@/pages/AdminDashboard";
 import LeadershipSponsorship from "@/pages/LeadershipSponsorship";
 import AboutUs from "@/pages/AboutUs";
 import ContactUs from "@/pages/ContactUs";
+import AffiliateSignup from "@/pages/AffiliateSignup";
+import AffiliateDashboard from "@/pages/AffiliateDashboard";
 
 function Router() {
   return (
@@ -29,6 +31,8 @@ function Router() {
       <Route path="/leadership" component={LeadershipSponsorship} />
       <Route path="/about" component={AboutUs} />
       <Route path="/contact" component={ContactUs} />
+      <Route path="/affiliate-signup" component={AffiliateSignup} />
+      <Route path="/affiliate-dashboard" component={AffiliateDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

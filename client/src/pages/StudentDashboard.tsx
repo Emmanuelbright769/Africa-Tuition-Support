@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor, Share2, Copy, Users } from "lucide-react";
+import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -28,7 +28,6 @@ export default function StudentDashboard() {
   const { data: walletData } = useQuery({ queryKey: ["/api/wallet"] });
   const { data: transactions } = useQuery({ queryKey: ["/api/transactions"] });
   const { data: plan } = useQuery({ queryKey: ["/api/sponsorship/plan"] });
-  const { data: affiliateInfo } = useQuery({ queryKey: ["/api/affiliate/info"] });
 
   const selectPlanMutation = useMutation({
     mutationFn: async (planYears: number) => {
@@ -119,9 +118,18 @@ export default function StudentDashboard() {
                   </div>
                   {isVerified ? "Account Verified" : isPending && feePaid ? "Pending Admin Review" : "Complete Onboarding"}
                 </h2>
-                <p className="text-slate-300 text-sm max-w-xl leading-relaxed">
+                <p className="text-slate-300 text-sm max-w-xl leading-relaxed mb-3">
                   {isVerified ? "Your documents are approved. Choose a sponsorship plan below." : isPending && feePaid ? "Your documents are under review by the TSIA team." : "Please complete onboarding to submit your application."}
                 </p>
+                {!isVerified && !(isPending && feePaid) && (
+                  <Button
+                    onClick={() => setLocation("/onboarding")}
+                    className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold h-11 px-6"
+                    data-testid="button-go-onboarding"
+                  >
+                    <ArrowUpRight className="w-4 h-4 mr-2" /> Go to Onboarding
+                  </Button>
+                )}
               </div>
               {feePaid && (
                 <div className="bg-white/10 border border-white/20 px-8 py-4 rounded-xl text-center backdrop-blur-md min-w-[220px]">
@@ -306,47 +314,6 @@ export default function StudentDashboard() {
             </motion.div>
           </div>
 
-          <motion.div variants={itemVariants}>
-            <Card className="shadow-md border-0 overflow-hidden">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <div className="bg-amber-100 dark:bg-amber-900/40 p-2 rounded-lg text-amber-600"><Share2 className="w-5 h-5" /></div>
-                  Affiliate Program
-                </CardTitle>
-                <CardDescription>Share your referral code and earn commission for every verified student you refer.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
-                  <div className="flex-1 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-muted rounded-xl px-6 py-3 font-mono text-lg font-bold tracking-wider flex-1 text-center" data-testid="text-affiliate-code">
-                        {affiliateInfo?.affiliateCode || user?.affiliateCode || "Loading..."}
-                      </div>
-                      <Button
-                        variant="outline" size="sm"
-                        onClick={() => {
-                          const code = affiliateInfo?.affiliateCode || user?.affiliateCode;
-                          if (code) {
-                            navigator.clipboard.writeText(code);
-                            toast({ title: "Copied!", description: "Referral code copied to clipboard." });
-                          }
-                        }}
-                        data-testid="button-copy-affiliate"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1.5">
-                        <Users className="w-4 h-4" />
-                        <span><strong className="text-foreground">{affiliateInfo?.referralCount || 0}</strong> referrals</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
         </motion.div>
       </main>
     </div>

@@ -33,7 +33,7 @@ const slides = [
     subtitle: "TSIA Affiliate Program",
     description: "Share your unique referral code with fellow students. Earn commission for every verified student you refer to the TSIA platform.",
     image: "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=2070&auto=format&fit=crop",
-    primaryButton: { text: "Join as Affiliate", link: "/signup" },
+    primaryButton: { text: "Join as Affiliate", link: "/affiliate-signup" },
     secondaryButton: { text: "Learn More", link: "#affiliate" }
   }
 ];
@@ -178,7 +178,7 @@ export default function Landing() {
               <h3 className="text-2xl font-bold mb-3">Ready to Start Earning?</h3>
               <p className="text-slate-300 mb-6">Sign up for free and get your affiliate code instantly. No minimum requirements to start referring.</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/signup">
+                <Link href="/affiliate-signup">
                   <Button size="lg" className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 h-12 px-8 font-bold">
                     Join Affiliate Program <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>

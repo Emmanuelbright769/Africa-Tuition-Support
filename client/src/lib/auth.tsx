@@ -17,7 +17,7 @@ type AuthUser = {
 type AuthContextType = {
   user: AuthUser | null | undefined;
   isLoading: boolean;
-  requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string }) => Promise<{ otpSent: boolean; hint?: string; isNewUser?: boolean }>;
+  requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string }) => Promise<{ otpSent: boolean; hint?: string; isNewUser?: boolean }>;
   verifyOtp: (email: string, code: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 };
@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     retry: false,
   });
 
-  const requestOtp = async (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string }) => {
+  const requestOtp = async (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string }) => {
     const res = await apiRequest("POST", "/api/auth/request-otp", data);
     return res.json();
   };

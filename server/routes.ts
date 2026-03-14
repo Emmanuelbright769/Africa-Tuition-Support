@@ -41,16 +41,17 @@ export async function registerRoutes(
 
   app.post("/api/auth/request-otp", async (req, res) => {
     try {
-      const { email, firstName, lastName, phone, country, referralCode } = req.body;
+      const { email, firstName, lastName, phone, country, referralCode, role } = req.body;
       if (!email) return res.status(400).json({ message: "Email is required" });
 
       let user = await storage.getUserByEmail(email);
       const isSignup = !!firstName;
 
       if (!user && isSignup) {
+        const userRole = role === "affiliate" ? "affiliate" : "student";
         user = await storage.createUser({
           firstName, lastName, email, phone: phone || "",
-          password: "otp-only", country: country || "ng", role: "student",
+          password: "otp-only", country: country || "ng", role: userRole,
           referredBy: referralCode || null,
         });
         const affCode = generateAffiliateCode(firstName, user.id);

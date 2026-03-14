@@ -59,6 +59,7 @@ export default function Login() {
     try {
       const user = await verifyOtp(email, code);
       if (user.role === "admin") setLocation("/admin");
+      else if (user.role === "affiliate") setLocation("/affiliate-dashboard");
       else setLocation("/dashboard");
     } catch (err: any) {
       toast({ title: "Invalid Code", description: err.message, variant: "destructive" });

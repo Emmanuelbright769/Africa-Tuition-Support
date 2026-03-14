@@ -23,6 +23,7 @@ export function Navbar() {
     { href: "/", label: "Home" },
     { href: "/about", label: "About Us" },
     { href: "/leadership", label: "Leadership Sponsorship" },
+    { href: "/affiliate-signup", label: "Affiliate Program" },
     { href: "/contact", label: "Contact" },
   ];
 
@@ -61,7 +62,7 @@ export function Navbar() {
           <div className="w-px h-4 bg-border"></div>
 
           {user ? (
-            <Link href={user.role === "admin" ? "/admin" : "/dashboard"}>
+            <Link href={user.role === "admin" ? "/admin" : user.role === "affiliate" ? "/affiliate-dashboard" : "/dashboard"}>
               <Button variant="ghost" className="text-sm">Dashboard</Button>
             </Link>
           ) : (
@@ -125,7 +126,7 @@ export function Navbar() {
               <div className="border-t my-2"></div>
 
               {user ? (
-                <Link href={user.role === "admin" ? "/admin" : "/dashboard"}>
+                <Link href={user.role === "admin" ? "/admin" : user.role === "affiliate" ? "/affiliate-dashboard" : "/dashboard"}>
                   <a onClick={() => setMobileOpen(false)} className="block">
                     <Button className="w-full" data-testid="mobile-nav-dashboard">Dashboard</Button>
                   </a>

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor } from "lucide-react";
+import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor, Hourglass } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -14,7 +14,6 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
-import { CURRENCY_RATES } from "@shared/schema";
 
 export default function StudentDashboard() {
   const [, setLocation] = useLocation();
@@ -46,12 +45,12 @@ export default function StudentDashboard() {
       const res = await apiRequest("POST", "/api/wallet/withdraw", { amount, bankAccount: "local" });
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       setWithdrawOpen(false);
       setWithdrawAmount("");
-      toast({ title: "Withdrawal Processed", description: `$${data.netAmount} (₦${parseFloat(data.netAmountNgn).toLocaleString()}) sent to your bank` });
+      toast({ title: "Withdrawal Processed", description: "Your funds have been sent to your bank account." });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -64,7 +63,6 @@ export default function StudentDashboard() {
   if (!user) { setLocation("/login"); return null; }
 
   const balance = parseFloat(walletData?.balance || "0");
-  const balanceNgn = balance * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
   const tier = verification?.tier || "none";
   const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
   const waecPct = verification?.waecPercentage ? parseFloat(verification.waecPercentage) : null;
@@ -76,6 +74,10 @@ export default function StudentDashboard() {
   const isVerified = verification?.status === "verified";
   const isPending = verification?.status === "pending";
   const feePaid = verification?.portalFeePaid;
+
+  const hasStartedOnboarding = verification !== null && verification !== undefined;
+  const showPendingApproval = isPending && feePaid;
+  const showGoToOnboarding = !isVerified && !showPendingApproval && !feePaid;
 
   const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.1 } } };
   const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
@@ -108,20 +110,25 @@ export default function StudentDashboard() {
 
       <main className="container mx-auto px-4 pt-8">
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-8 max-w-6xl mx-auto">
+
           <motion.div variants={itemVariants} className="bg-slate-900 dark:bg-slate-800 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary rounded-full blur-3xl opacity-20 -mr-20 -mt-20 pointer-events-none"></div>
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div>
                 <h2 className="text-2xl font-bold mb-2 flex items-center gap-3">
-                  <div className={`p-1.5 rounded-full ${isVerified ? 'bg-green-500/20 text-green-400' : isPending ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
-                    {isVerified ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                  <div className={`p-1.5 rounded-full ${isVerified ? 'bg-green-500/20 text-green-400' : showPendingApproval ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
+                    {isVerified ? <CheckCircle2 className="w-5 h-5" /> : showPendingApproval ? <Hourglass className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
                   </div>
-                  {isVerified ? "Account Verified" : isPending && feePaid ? "Pending Admin Review" : "Complete Onboarding"}
+                  {isVerified ? "Account Verified" : showPendingApproval ? "Pending Approval" : "Complete Onboarding"}
                 </h2>
                 <p className="text-slate-300 text-sm max-w-xl leading-relaxed mb-3">
-                  {isVerified ? "Your documents are approved. Choose a sponsorship plan below." : isPending && feePaid ? "Your documents are under review by the TSIA team." : "Please complete onboarding to submit your application."}
+                  {isVerified
+                    ? "Your documents are approved. Choose a sponsorship plan below."
+                    : showPendingApproval
+                    ? "Your application is under review by the TSIA verification team. You'll be notified within 24-48 hours."
+                    : "Please complete onboarding to submit your application."}
                 </p>
-                {!isVerified && !(isPending && feePaid) && (
+                {showGoToOnboarding && (
                   <Button
                     onClick={() => setLocation("/onboarding")}
                     className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold h-11 px-6"
@@ -155,7 +162,6 @@ export default function StudentDashboard() {
                     <div>
                       <div className="text-sm text-muted-foreground font-medium mb-2 uppercase tracking-wide">Available Balance</div>
                       <div className="text-5xl font-bold tracking-tight" data-testid="text-wallet-balance">${balance.toFixed(2)}</div>
-                      <div className="text-sm text-muted-foreground mt-1">₦{balanceNgn.toLocaleString()} (at ₦{CURRENCY_RATES.USD_TO_NGN_PAYOUT}/USD)</div>
                     </div>
                     <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
                       <DialogTrigger asChild>
@@ -166,7 +172,7 @@ export default function StudentDashboard() {
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Withdraw Funds</DialogTitle>
-                          <DialogDescription>7.5% VAT deducted. Payout rate: ₦{CURRENCY_RATES.USD_TO_NGN_PAYOUT}/USD.</DialogDescription>
+                          <DialogDescription>A 7.5% VAT will be deducted from your withdrawal.</DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
                           <div className="space-y-2">
@@ -177,8 +183,7 @@ export default function StudentDashboard() {
                             <div className="bg-muted rounded-xl p-4 border space-y-2 text-sm">
                               <div className="flex justify-between"><span className="text-muted-foreground">Withdrawal</span><span className="font-medium">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
                               <div className="flex justify-between text-destructive"><span>VAT (7.5%)</span><span>-${(parseFloat(withdrawAmount) * 0.075).toFixed(2)}</span></div>
-                              <div className="flex justify-between font-bold border-t pt-2"><span>You Receive (USD)</span><span>${(parseFloat(withdrawAmount) * 0.925).toFixed(2)}</span></div>
-                              <div className="flex justify-between font-bold text-primary"><span>You Receive (NGN)</span><span>₦{(parseFloat(withdrawAmount) * 0.925 * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()}</span></div>
+                              <div className="flex justify-between font-bold border-t pt-2"><span>You Receive</span><span>${(parseFloat(withdrawAmount) * 0.925).toFixed(2)}</span></div>
                             </div>
                           )}
                         </div>
@@ -193,7 +198,7 @@ export default function StudentDashboard() {
                   </div>
                   <div className="bg-amber-50/50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
                     <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
-                    <p className="leading-relaxed">A mandatory <strong>7.5% VAT</strong> applies to all withdrawals. Conversion at ₦{CURRENCY_RATES.USD_TO_NGN_PAYOUT}/USD payout rate.</p>
+                    <p className="leading-relaxed">A mandatory <strong>7.5% VAT</strong> applies to all withdrawals.</p>
                   </div>
                 </CardContent>
               </Card>
@@ -253,8 +258,7 @@ export default function StudentDashboard() {
                           {p.popular && !isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Recommended</div>}
                           {isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Active</div>}
                           <h4 className="font-semibold text-lg mb-1">{p.years} Year Plan</h4>
-                          <div className="text-3xl font-bold mb-1">${p.price}<span className="text-sm font-medium text-muted-foreground">/yr</span></div>
-                          <div className="text-xs text-muted-foreground mb-6">₦{(p.price * CURRENCY_RATES.USD_TO_NGN_PAYMENT).toLocaleString()}/yr</div>
+                          <div className="text-3xl font-bold mb-4">${p.price}<span className="text-sm font-medium text-muted-foreground">/yr</span></div>
                           <ul className="space-y-3 mb-8 text-sm font-medium">
                             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Up to ${p.payout} payout</li>
                             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Wallet access</li>

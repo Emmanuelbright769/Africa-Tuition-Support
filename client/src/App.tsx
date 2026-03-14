@@ -14,6 +14,8 @@ import Onboarding from "@/pages/Onboarding";
 import StudentDashboard from "@/pages/StudentDashboard";
 import AdminDashboard from "@/pages/AdminDashboard";
 import LeadershipSponsorship from "@/pages/LeadershipSponsorship";
+import AboutUs from "@/pages/AboutUs";
+import ContactUs from "@/pages/ContactUs";
 
 function Router() {
   return (
@@ -25,6 +27,8 @@ function Router() {
       <Route path="/dashboard" component={StudentDashboard} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/leadership" component={LeadershipSponsorship} />
+      <Route path="/about" component={AboutUs} />
+      <Route path="/contact" component={ContactUs} />
       <Route component={NotFound} />
     </Switch>
   );

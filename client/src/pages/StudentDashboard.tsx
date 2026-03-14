@@ -6,13 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor } from "lucide-react";
+import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor, Share2, Copy, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
+import { Logo } from "@/components/ui/Logo";
 import { CURRENCY_RATES } from "@shared/schema";
 
 export default function StudentDashboard() {
@@ -27,6 +28,7 @@ export default function StudentDashboard() {
   const { data: walletData } = useQuery({ queryKey: ["/api/wallet"] });
   const { data: transactions } = useQuery({ queryKey: ["/api/transactions"] });
   const { data: plan } = useQuery({ queryKey: ["/api/sponsorship/plan"] });
+  const { data: affiliateInfo } = useQuery({ queryKey: ["/api/affiliate/info"] });
 
   const selectPlanMutation = useMutation({
     mutationFn: async (planYears: number) => {
@@ -85,10 +87,8 @@ export default function StudentDashboard() {
     <div className="min-h-screen bg-background font-sans pb-20">
       <nav className="bg-card border-b sticky top-0 z-40 shadow-sm">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-md">
-              <span className="text-primary-foreground font-bold text-lg">T</span>
-            </div>
+          <div className="flex items-center gap-3">
+            <Logo variant="badge" height={32} />
             <span className="text-xl font-bold tracking-tight">Dashboard</span>
           </div>
           <div className="flex items-center gap-4">
@@ -305,6 +305,48 @@ export default function StudentDashboard() {
               </Card>
             </motion.div>
           </div>
+
+          <motion.div variants={itemVariants}>
+            <Card className="shadow-md border-0 overflow-hidden">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <div className="bg-amber-100 dark:bg-amber-900/40 p-2 rounded-lg text-amber-600"><Share2 className="w-5 h-5" /></div>
+                  Affiliate Program
+                </CardTitle>
+                <CardDescription>Share your referral code and earn commission for every verified student you refer.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-muted rounded-xl px-6 py-3 font-mono text-lg font-bold tracking-wider flex-1 text-center" data-testid="text-affiliate-code">
+                        {affiliateInfo?.affiliateCode || user?.affiliateCode || "Loading..."}
+                      </div>
+                      <Button
+                        variant="outline" size="sm"
+                        onClick={() => {
+                          const code = affiliateInfo?.affiliateCode || user?.affiliateCode;
+                          if (code) {
+                            navigator.clipboard.writeText(code);
+                            toast({ title: "Copied!", description: "Referral code copied to clipboard." });
+                          }
+                        }}
+                        data-testid="button-copy-affiliate"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <Users className="w-4 h-4" />
+                        <span><strong className="text-foreground">{affiliateInfo?.referralCount || 0}</strong> referrals</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         </motion.div>
       </main>
     </div>

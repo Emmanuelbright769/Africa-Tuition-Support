@@ -11,6 +11,7 @@ type AuthUser = {
   role: string;
   phone?: string;
   country?: string;
+  affiliateCode?: string;
 };
 
 type AuthContextType = {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/ui/Logo";
 import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { Menu, X, Sun, Moon, Monitor } from "lucide-react";
@@ -9,7 +10,7 @@ import { AnimatePresence, motion } from "framer-motion";
 export function Navbar() {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { mode, setMode, resolved } = useTheme();
+  const { mode, setMode } = useTheme();
   const { user } = useAuth();
 
   const themeOptions = [
@@ -20,7 +21,9 @@ export function Navbar() {
 
   const navLinks = [
     { href: "/", label: "Home" },
+    { href: "/about", label: "About Us" },
     { href: "/leadership", label: "Leadership Sponsorship" },
+    { href: "/contact", label: "Contact" },
   ];
 
   return (
@@ -28,10 +31,7 @@ export function Navbar() {
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/">
           <a className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg">T</span>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-primary">TSIA</span>
+            <Logo variant="horizontal" height={36} />
           </a>
         </Link>
 

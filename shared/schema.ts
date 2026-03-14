@@ -18,6 +18,8 @@ export const users = pgTable("users", {
   password: text("password").notNull().default("otp-only"),
   country: text("country").notNull().default("ng"),
   role: roleEnum("role").notNull().default("student"),
+  affiliateCode: text("affiliate_code").unique(),
+  referredBy: text("referred_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -36,6 +38,10 @@ export const verifications = pgTable("verifications", {
   nin: text("nin"),
   waecRegNumber: text("waec_reg_number"),
   waecYear: text("waec_year"),
+  waecSubjects: text("waec_subjects"),
+  schoolName: text("school_name"),
+  schoolLocation: text("school_location"),
+  biometricVerified: boolean("biometric_verified").notNull().default(false),
   status: verificationStatusEnum("status").notNull().default("pending"),
   portalFeePaid: boolean("portal_fee_paid").notNull().default(false),
   commitmentStartDate: timestamp("commitment_start_date"),
@@ -146,6 +152,17 @@ export const CURRENCY_RATES = {
   USD_TO_NGN_PAYOUT: 1280,
 };
 
+export const WAEC_COMPULSORY_SUBJECTS = ["Mathematics", "English Language"];
+
+export const WAEC_ELECTIVE_SUBJECTS = [
+  "Physics", "Chemistry", "Biology", "Economics", "Geography",
+  "Agricultural Science", "Civic Education", "Government",
+  "Literature in English", "Commerce", "Financial Accounting",
+  "Further Mathematics", "Computer Studies", "Technical Drawing",
+  "Food and Nutrition", "Christian Religious Studies", "Islamic Studies",
+  "Visual Arts", "Music", "Health Education",
+];
+
 export function calculateWaecPercentage(grades: string[]): number {
   const weights = grades.map(g => WAEC_GRADE_WEIGHTS[g.toUpperCase()] || 0);
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
@@ -159,4 +176,8 @@ export function getPayoutTier(percentage: number): { min: number; max: number; l
   if (percentage >= 60) return { min: 160, max: 180, label: "gold" };
   if (percentage >= 50) return { min: 110, max: 130, label: "silver" };
   return { min: 0, max: 0, label: "none" };
+}
+
+export function generateAffiliateCode(firstName: string, id: number): string {
+  return `TSIA-${firstName.toUpperCase().slice(0, 3)}${id.toString().padStart(4, '0')}`;
 }

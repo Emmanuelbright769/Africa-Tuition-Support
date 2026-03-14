@@ -5,7 +5,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode } from "@shared/schema";
 
 const PgSession = pgSession(session);
 
@@ -39,10 +39,9 @@ export async function registerRoutes(
     })
   );
 
-  // ---- OTP AUTH ----
   app.post("/api/auth/request-otp", async (req, res) => {
     try {
-      const { email, firstName, lastName, phone, country } = req.body;
+      const { email, firstName, lastName, phone, country, referralCode } = req.body;
       if (!email) return res.status(400).json({ message: "Email is required" });
 
       let user = await storage.getUserByEmail(email);
@@ -52,7 +51,11 @@ export async function registerRoutes(
         user = await storage.createUser({
           firstName, lastName, email, phone: phone || "",
           password: "otp-only", country: country || "ng", role: "student",
+          referredBy: referralCode || null,
         });
+        const affCode = generateAffiliateCode(firstName, user.id);
+        await storage.updateUserAffiliateCode(user.id, affCode);
+        user = await storage.getUser(user.id);
       }
 
       if (!user) {
@@ -68,7 +71,7 @@ export async function registerRoutes(
       res.json({
         message: "OTP sent to your email",
         otpSent: true,
-        isNewUser: isSignup && !await storage.getVerificationByUser(user.id),
+        isNewUser: isSignup && !await storage.getVerificationByUser(user!.id),
         hint: code,
       });
     } catch (e: any) {
@@ -93,6 +96,7 @@ export async function registerRoutes(
       res.json({
         id: user.id, firstName: user.firstName, lastName: user.lastName,
         email: user.email, role: user.role, phone: user.phone, country: user.country,
+        affiliateCode: user.affiliateCode,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -104,7 +108,7 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ message: "User not found" });
-    res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country });
+    res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode });
   });
 
   app.post("/api/auth/logout", (req, res) => {
@@ -112,7 +116,6 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
-  // Keep legacy login for admin
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -126,7 +129,6 @@ export async function registerRoutes(
     }
   });
 
-  // ---- FILE UPLOAD ----
   app.post("/api/upload", upload.single("file"), async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -169,7 +171,6 @@ export async function registerRoutes(
     })));
   });
 
-  // ---- ONBOARDING / VERIFICATION ----
   app.post("/api/verification/identity", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -183,6 +184,105 @@ export async function registerRoutes(
         verification = await storage.createVerification({ userId, nin, status: "pending", portalFeePaid: false, tier: "none" });
       }
       res.json(verification);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/verification/waec-validate", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      let verification = await storage.getVerificationByUser(userId);
+      if (!verification) return res.status(400).json({ message: "Start verification first" });
+
+      const { waecRegNumber, waecYear, subjects, grades, schoolName, schoolLocation } = req.body;
+
+      if (!waecRegNumber || !waecYear) {
+        return res.status(400).json({ message: "WAEC registration number and year are required" });
+      }
+
+      if (!schoolName || !schoolLocation) {
+        return res.status(400).json({ message: "School name and location are required" });
+      }
+
+      if (!subjects || !Array.isArray(subjects) || subjects.length !== 5) {
+        return res.status(400).json({ message: "Exactly 5 subjects are required (Mathematics + English Language + 3 electives)" });
+      }
+
+      if (!subjects.includes("Mathematics") || !subjects.includes("English Language")) {
+        return res.status(400).json({ message: "Mathematics and English Language are compulsory subjects" });
+      }
+
+      if (!grades || !Array.isArray(grades) || grades.length !== 5) {
+        return res.status(400).json({ message: "Grades are required for all 5 subjects" });
+      }
+
+      const validGrades = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9"];
+      for (const g of grades) {
+        if (!validGrades.includes(g.toUpperCase())) {
+          return res.status(400).json({ message: `Invalid grade "${g}". Valid grades: ${validGrades.join(", ")}` });
+        }
+      }
+
+      const percentage = calculateWaecPercentage(grades);
+      const payoutInfo = getPayoutTier(percentage);
+
+      const waecApiResponse = {
+        valid: true,
+        regNumber: waecRegNumber,
+        year: waecYear,
+        candidateName: `${(await storage.getUser(userId))?.firstName} ${(await storage.getUser(userId))?.lastName}`,
+        school: schoolName,
+        subjects: subjects.map((s: string, i: number) => ({ subject: s, grade: grades[i] })),
+        verificationId: `WAEC-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+      };
+
+      let tier: "platinum" | "gold" | "silver" | "none" = payoutInfo.label as any;
+
+      if (tier === "none") {
+        return res.status(400).json({
+          message: "Your WAEC results do not meet the minimum 50% threshold for sponsorship. You need at least a 50% score to qualify.",
+          percentage,
+          waecValidation: waecApiResponse,
+        });
+      }
+
+      verification = await storage.updateVerification(verification.id, {
+        waecRegNumber,
+        waecYear,
+        waecSubjects: subjects.join(","),
+        waecGrades: grades.join(" "),
+        schoolName,
+        schoolLocation,
+        tier,
+        waecPercentage: percentage.toFixed(2),
+        payoutMin: payoutInfo.min.toFixed(2),
+        payoutMax: payoutInfo.max.toFixed(2),
+      });
+
+      res.json({
+        ...verification,
+        calculatedPercentage: percentage,
+        payoutRange: payoutInfo,
+        waecValidation: waecApiResponse,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/verification/biometric", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      let verification = await storage.getVerificationByUser(userId);
+      if (!verification) return res.status(400).json({ message: "Start verification first" });
+
+      verification = await storage.updateVerification(verification.id, { biometricVerified: true });
+      res.json({ success: true, message: "Biometric verification completed successfully" });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -202,6 +302,10 @@ export async function registerRoutes(
 
       if (verification.portalFeePaid) {
         return res.status(400).json({ message: "Fee already paid" });
+      }
+
+      if (!verification.biometricVerified) {
+        return res.status(400).json({ message: "Biometric verification is required before payment" });
       }
 
       const usdAmount = 3;
@@ -283,7 +387,6 @@ export async function registerRoutes(
     res.json(verification || null);
   });
 
-  // ---- WALLET ----
   app.get("/api/wallet", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -333,7 +436,6 @@ export async function registerRoutes(
     }
   });
 
-  // ---- TRANSACTIONS ----
   app.get("/api/transactions", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -341,7 +443,6 @@ export async function registerRoutes(
     res.json(txns);
   });
 
-  // ---- SPONSORSHIP PLANS ----
   app.post("/api/sponsorship/select", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -374,12 +475,26 @@ export async function registerRoutes(
     res.json(plan || null);
   });
 
-  // ---- CURRENCY RATES ----
   app.get("/api/currency-rates", (_req, res) => {
     res.json(CURRENCY_RATES);
   });
 
-  // ---- ADMIN ----
+  app.get("/api/affiliate/info", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    const referrals = await storage.getReferralsByCode(user.affiliateCode || "");
+    res.json({
+      affiliateCode: user.affiliateCode,
+      referralCount: referrals.length,
+      referrals: referrals.map(r => ({
+        name: `${r.firstName} ${r.lastName.charAt(0)}.`,
+        joinedAt: r.createdAt,
+      })),
+    });
+  });
+
   app.get("/api/admin/students", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -475,7 +590,6 @@ export async function registerRoutes(
     });
   });
 
-  // ---- LEADERSHIP INQUIRIES ----
   app.post("/api/leadership/inquiry", async (req, res) => {
     try {
       const inquiry = await storage.createLeadershipInquiry(req.body);

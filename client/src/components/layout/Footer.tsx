@@ -1,14 +1,11 @@
+import { Logo } from "@/components/ui/Logo";
+
 export function Footer() {
   return (
     <footer className="bg-slate-950 text-slate-200 py-12 border-t border-slate-800">
       <div className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-8">
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-tsia-green rounded-md flex items-center justify-center">
-              <span className="text-white font-bold text-lg">T</span>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-white">TSIA</span>
-          </div>
+          <Logo variant="horizontal" forceDark={true} height={32} />
           <p className="text-sm text-slate-400">
             Tuition Support Initiative for Africa. Empowering the next generation of African leaders through sustainable academic funding.
           </p>
@@ -17,20 +14,19 @@ export function Footer() {
         <div>
           <h4 className="font-semibold text-white mb-4">Platform</h4>
           <ul className="space-y-2 text-sm text-slate-400">
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">How it works</a></li>
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">Pricing & Plans</a></li>
+            <li><a href="/#how-it-works" className="hover:text-tsia-gold transition-colors">How it works</a></li>
+            <li><a href="/#plans" className="hover:text-tsia-gold transition-colors">Pricing & Plans</a></li>
             <li><a href="/leadership" className="hover:text-tsia-gold transition-colors">Leadership Cohorts</a></li>
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">Academic Matrix</a></li>
+            <li><a href="/#affiliate" className="hover:text-tsia-gold transition-colors">Affiliate Program</a></li>
           </ul>
         </div>
         
         <div>
           <h4 className="font-semibold text-white mb-4">Company</h4>
           <ul className="space-y-2 text-sm text-slate-400">
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">About Us</a></li>
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">Careers</a></li>
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">Contact</a></li>
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">Partners</a></li>
+            <li><a href="/about" className="hover:text-tsia-gold transition-colors">About Us</a></li>
+            <li><a href="/contact" className="hover:text-tsia-gold transition-colors">Contact Us</a></li>
+            <li><a href="/leadership" className="hover:text-tsia-gold transition-colors">Partners</a></li>
           </ul>
         </div>
         

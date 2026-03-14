@@ -9,13 +9,14 @@ import { KeyRound } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { Logo } from "@/components/ui/Logo";
 
 export default function Signup() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
   const [country, setCountry] = useState("ng");
-  const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "" });
+  const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "", referralCode: "" });
   const [otpHint, setOtpHint] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -69,14 +70,11 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8 flex justify-center">
         <Link href="/">
-          <div className="flex items-center justify-center gap-2 cursor-pointer group">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-md group-hover:shadow-lg transition-all">
-              <span className="text-primary-foreground font-bold text-xl">T</span>
-            </div>
-            <span className="text-2xl font-bold tracking-tight text-foreground">TSIA</span>
-          </div>
+          <a className="cursor-pointer">
+            <Logo variant="badge" height={64} />
+          </a>
         </Link>
       </motion.div>
 
@@ -127,8 +125,12 @@ export default function Signup() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="referral">Referral Code (Optional)</Label>
+                      <Input id="referral" placeholder="e.g. TSIA-JOH0001" className="h-11 bg-muted/30" value={formData.referralCode} onChange={e => setFormData({ ...formData, referralCode: e.target.value })} data-testid="input-referral" />
+                    </div>
                     <div className="text-sm text-muted-foreground my-4">
-                      By applying, you agree to our Terms of Service and Verification Policy. A $3 portal fee is required in the next step.
+                      By applying, you agree to our Terms of Service and Verification Policy. A $3 portal fee is required during onboarding.
                     </div>
                     <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md" disabled={loading} data-testid="button-signup">
                       {loading ? "Creating Account..." : "Continue to Verification"}

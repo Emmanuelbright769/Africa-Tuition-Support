@@ -18,6 +18,8 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getAllStudents(): Promise<User[]>;
+  updateUserAffiliateCode(userId: number, code: string): Promise<void>;
+  getReferralsByCode(affiliateCode: string): Promise<User[]>;
 
   createOtp(otp: InsertOtp): Promise<OtpCode>;
   getValidOtp(email: string, code: string): Promise<OtpCode | undefined>;
@@ -66,6 +68,15 @@ export class DatabaseStorage implements IStorage {
 
   async getAllStudents(): Promise<User[]> {
     return db.select().from(users).where(eq(users.role, "student")).orderBy(desc(users.createdAt));
+  }
+
+  async updateUserAffiliateCode(userId: number, code: string): Promise<void> {
+    await db.update(users).set({ affiliateCode: code }).where(eq(users.id, userId));
+  }
+
+  async getReferralsByCode(affiliateCode: string): Promise<User[]> {
+    if (!affiliateCode) return [];
+    return db.select().from(users).where(eq(users.referredBy, affiliateCode)).orderBy(desc(users.createdAt));
   }
 
   async createOtp(otp: InsertOtp): Promise<OtpCode> {

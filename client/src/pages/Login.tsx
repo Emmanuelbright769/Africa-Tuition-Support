@@ -8,6 +8,7 @@ import { Mail, KeyRound } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { Logo } from "@/components/ui/Logo";
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -82,14 +83,11 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans overflow-hidden">
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8 flex justify-center">
         <Link href="/">
-          <div className="flex items-center justify-center gap-2 cursor-pointer group">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center shadow-md group-hover:shadow-lg transition-all">
-              <span className="text-primary-foreground font-bold text-xl">T</span>
-            </div>
-            <span className="text-2xl font-bold tracking-tight text-foreground">TSIA</span>
-          </div>
+          <a className="cursor-pointer">
+            <Logo variant="badge" height={64} />
+          </a>
         </Link>
       </motion.div>
 

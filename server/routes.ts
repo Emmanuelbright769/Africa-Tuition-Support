@@ -172,12 +172,79 @@ export async function registerRoutes(
     })));
   });
 
+  app.post("/api/verification/validate-nin", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { nin } = req.body;
+      if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) {
+        return res.status(400).json({ message: "NIN must be exactly 11 digits." });
+      }
+
+      const apiKey = process.env.VERIFYME_API_KEY;
+
+      if (!apiKey) {
+        console.warn("[NIN] VERIFYME_API_KEY not set — running format-only validation");
+        return res.json({
+          valid: true,
+          nin,
+          message: "NIN format validated. Live NIMC lookup pending API key configuration.",
+          demo: true,
+          data: { firstName: "Verified", lastName: "User", nin },
+        });
+      }
+
+      const verifyRes = await fetch(
+        `https://vapi.verifyme.ng/v1/verifications/identities/nin/${nin}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        }
+      );
+
+      const verifyData = await verifyRes.json();
+
+      if (!verifyRes.ok || verifyData.status !== "success") {
+        return res.status(400).json({
+          message: "NIN could not be verified. Please check the number and try again.",
+          details: verifyData?.message || "Verification failed",
+        });
+      }
+
+      const ninData = verifyData.data || {};
+      return res.json({
+        valid: true,
+        nin,
+        message: "NIN verified successfully via NIMC database.",
+        data: {
+          firstName: ninData.firstname || "",
+          lastName: ninData.lastname || "",
+          middleName: ninData.middlename || "",
+          gender: ninData.gender || "",
+          phone: ninData.phone || "",
+          birthdate: ninData.birthdate || "",
+          photo: ninData.photo || null,
+        },
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/verification/identity", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const { nin } = req.body;
+      if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) {
+        return res.status(400).json({ message: "A valid 11-digit NIN is required." });
+      }
       let verification = await storage.getVerificationByUser(userId);
       if (verification) {
         verification = await storage.updateVerification(verification.id, { nin });

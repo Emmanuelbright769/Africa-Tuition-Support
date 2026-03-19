@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor, Hourglass } from "lucide-react";
+import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -22,6 +22,7 @@ export default function StudentDashboard() {
   const { toast } = useToast();
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [balanceHidden, setBalanceHidden] = useState(false);
 
   const { data: verification } = useQuery({ queryKey: ["/api/verification/status"] });
   const { data: walletData } = useQuery({ queryKey: ["/api/wallet"] });
@@ -160,8 +161,20 @@ export default function StudentDashboard() {
                 <CardContent className="pt-4">
                   <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-6 mb-8">
                     <div>
-                      <div className="text-sm text-muted-foreground font-medium mb-2 uppercase tracking-wide">Available Balance</div>
-                      <div className="text-5xl font-bold tracking-tight" data-testid="text-wallet-balance">${balance.toFixed(2)}</div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm text-muted-foreground font-medium uppercase tracking-wide">Available Balance</span>
+                        <button
+                          onClick={() => setBalanceHidden(h => !h)}
+                          className="p-1 rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                          data-testid="button-toggle-balance"
+                          title={balanceHidden ? "Show balance" : "Hide balance"}
+                        >
+                          {balanceHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <div className="text-3xl font-bold tracking-tight transition-all" data-testid="text-wallet-balance">
+                        {balanceHidden ? <span className="tracking-[0.25em] text-muted-foreground select-none">••••••</span> : `$${balance.toFixed(2)}`}
+                      </div>
                     </div>
                     <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
                       <DialogTrigger asChild>

@@ -94,10 +94,14 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "User not found" });
 
       (req.session as any).userId = user.id;
-      res.json({
-        id: user.id, firstName: user.firstName, lastName: user.lastName,
-        email: user.email, role: user.role, phone: user.phone, country: user.country,
-        affiliateCode: user.affiliateCode,
+
+      req.session.save((err) => {
+        if (err) return res.status(500).json({ message: "Session save failed" });
+        res.json({
+          id: user.id, firstName: user.firstName, lastName: user.lastName,
+          email: user.email, role: user.role, phone: user.phone, country: user.country,
+          affiliateCode: user.affiliateCode,
+        });
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -124,7 +128,10 @@ export async function registerRoutes(
       if (!user || (user.password !== password && user.password !== "otp-only"))
         return res.status(401).json({ message: "Invalid credentials" });
       (req.session as any).userId = user.id;
-      res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role });
+      req.session.save((err) => {
+        if (err) return res.status(500).json({ message: "Session save failed" });
+        res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role });
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

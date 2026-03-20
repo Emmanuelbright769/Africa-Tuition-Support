@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,8 +60,15 @@ export default function StudentDashboard() {
 
   const handleLogout = async () => { await logout(); setLocation("/"); };
 
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted-foreground">Loading...</p></div>;
-  if (!user) { setLocation("/login"); return null; }
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { redirectTimerRef.current = setTimeout(() => setLocation("/login"), 200); }
+    else if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
+    return () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current); };
+  }, [authLoading, user]);
+
+  if (authLoading || (!user && !authLoading)) return <div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted-foreground">Loading...</p></div>;
 
   const balance = parseFloat(walletData?.balance || "0");
   const tier = verification?.tier || "none";

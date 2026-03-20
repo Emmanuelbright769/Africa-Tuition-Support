@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,8 +64,15 @@ export default function AdminDashboard() {
 
   const handleLogout = async () => { await logout(); setLocation("/"); };
 
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><p>Loading...</p></div>;
-  if (!user || user.role !== "admin") { setLocation("/login"); return null; }
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user || user.role !== "admin") { redirectTimerRef.current = setTimeout(() => setLocation("/login"), 200); }
+    else if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
+    return () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current); };
+  }, [authLoading, user]);
+
+  if (authLoading || (!user && !authLoading)) return <div className="min-h-screen flex items-center justify-center"><p>Loading...</p></div>;
 
   const contentVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } }, exit: { opacity: 0, y: -20, transition: { duration: 0.3 } } };
 

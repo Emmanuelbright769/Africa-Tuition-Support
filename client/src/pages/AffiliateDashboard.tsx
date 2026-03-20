@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,8 +63,25 @@ export default function AffiliateDashboard() {
 
   const themeOpts = [{ v: "light" as const, icon: Sun }, { v: "dark" as const, icon: Moon }, { v: "system" as const, icon: Monitor }];
 
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
-  if (!user) { setLocation("/login"); return null; }
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      redirectTimerRef.current = setTimeout(() => setLocation("/login"), 200);
+    } else {
+      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
+    }
+    return () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current); };
+  }, [authLoading, user]);
+
+  if (authLoading || (!user && !authLoading)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   const affiliateCode = affiliateInfo?.affiliateCode || user?.affiliateCode || "";
   const referralCount = affiliateInfo?.referralCount || 0;

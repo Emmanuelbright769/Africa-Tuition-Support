@@ -5,7 +5,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM } from "@shared/schema";
 
 const PgSession = pgSession(session);
 
@@ -561,6 +561,77 @@ export async function registerRoutes(
         joinedAt: r.createdAt,
       })),
     });
+  });
+
+  app.get("/api/co-affiliate/program", async (req, res) => {
+    try {
+      const totalEnrolled = await storage.getCoAffiliateCount();
+      const pricing = getCoAffiliatePricing(totalEnrolled);
+      const progress = getMilestoneProgress(totalEnrolled);
+      res.json({
+        totalEnrolled,
+        target: CO_AFFILIATE_PROGRAM.TARGET,
+        milestoneInterval: CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL,
+        pricing,
+        progress,
+        spotsRemaining: CO_AFFILIATE_PROGRAM.TARGET - totalEnrolled,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/co-affiliate/my-info", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const record = await storage.getCoAffiliateByUser(userId);
+      res.json(record || null);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/co-affiliate/subscribe", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.role !== "affiliate") return res.status(403).json({ message: "Only affiliate accounts can join the Co-Affiliate programme." });
+
+      const existing = await storage.getCoAffiliateByUser(userId);
+      if (existing) return res.status(400).json({ message: "You are already enrolled in the Co-Affiliate programme." });
+
+      const { category } = req.body;
+      if (![100, 200, 500].includes(Number(category))) {
+        return res.status(400).json({ message: "Invalid category. Must be 100, 200, or 500." });
+      }
+      const investmentCategory = Number(category) as 100 | 200 | 500;
+
+      const totalEnrolled = await storage.getCoAffiliateCount();
+      const pricing = getCoAffiliatePricing(totalEnrolled);
+      const tier = pricing.find(p => p.category === investmentCategory);
+      if (!tier) return res.status(400).json({ message: "Invalid category" });
+
+      const record = await storage.createCoAffiliate({
+        userId,
+        investmentCategory,
+        amountPaid: tier.currentPrice.toFixed(2),
+        sharePercentage: tier.sharePercentage.toFixed(10),
+        status: "active",
+      });
+
+      res.json({
+        ...record,
+        currentPrice: tier.currentPrice,
+        shareLabel: tier.shareLabel,
+        message: "Successfully enrolled as Co-Affiliate/Initiator!",
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
   });
 
   app.get("/api/admin/students", async (req, res) => {

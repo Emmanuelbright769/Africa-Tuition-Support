@@ -1,7 +1,7 @@
-import { eq, desc, and, gt } from "drizzle-orm";
+import { eq, desc, and, gt, count } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, verifications, sponsorshipPlans, wallets, transactions, disbursements, leadershipInquiries, otpCodes, fileUploads,
+  users, verifications, sponsorshipPlans, wallets, transactions, disbursements, leadershipInquiries, otpCodes, fileUploads, coAffiliates,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -11,6 +11,7 @@ import {
   type WalletRecord,
   type OtpCode, type InsertOtp,
   type FileUpload, type InsertFileUpload,
+  type CoAffiliate, type InsertCoAffiliate,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -47,6 +48,11 @@ export interface IStorage {
   updateDisbursement(id: number, data: Partial<Disbursement>): Promise<Disbursement>;
 
   createLeadershipInquiry(inquiry: InsertLeadershipInquiry): Promise<LeadershipInquiry>;
+
+  createCoAffiliate(data: InsertCoAffiliate): Promise<CoAffiliate>;
+  getCoAffiliateByUser(userId: number): Promise<CoAffiliate | undefined>;
+  getCoAffiliateCount(): Promise<number>;
+  getAllCoAffiliates(): Promise<CoAffiliate[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -188,6 +194,25 @@ export class DatabaseStorage implements IStorage {
   async createLeadershipInquiry(inquiry: InsertLeadershipInquiry): Promise<LeadershipInquiry> {
     const [created] = await db.insert(leadershipInquiries).values(inquiry).returning();
     return created;
+  }
+
+  async createCoAffiliate(data: InsertCoAffiliate): Promise<CoAffiliate> {
+    const [created] = await db.insert(coAffiliates).values(data).returning();
+    return created;
+  }
+
+  async getCoAffiliateByUser(userId: number): Promise<CoAffiliate | undefined> {
+    const [row] = await db.select().from(coAffiliates).where(eq(coAffiliates.userId, userId));
+    return row;
+  }
+
+  async getCoAffiliateCount(): Promise<number> {
+    const [result] = await db.select({ total: count() }).from(coAffiliates).where(eq(coAffiliates.status, "active"));
+    return result?.total ?? 0;
+  }
+
+  async getAllCoAffiliates(): Promise<CoAffiliate[]> {
+    return db.select().from(coAffiliates).orderBy(desc(coAffiliates.createdAt));
   }
 }
 

@@ -4,6 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const roleEnum = pgEnum("role", ["student", "admin", "affiliate"]);
+export const coAffiliateStatusEnum = pgEnum("co_affiliate_status", ["active", "pending", "cancelled"]);
 export const verificationStatusEnum = pgEnum("verification_status", ["pending", "verified", "rejected"]);
 export const tierEnum = pgEnum("tier", ["platinum", "gold", "silver", "none"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["verification_fee", "sponsorship_credit", "withdrawal", "vat_deduction"]);
@@ -98,6 +99,16 @@ export const disbursements = pgTable("disbursements", {
   processedAt: timestamp("processed_at"),
 });
 
+export const coAffiliates = pgTable("co_affiliates", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id).unique(),
+  investmentCategory: integer("investment_category").notNull(),
+  amountPaid: decimal("amount_paid", { precision: 10, scale: 2 }).notNull(),
+  sharePercentage: decimal("share_percentage", { precision: 14, scale: 10 }).notNull(),
+  status: coAffiliateStatusEnum("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const leadershipInquiries = pgTable("leadership_inquiries", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   firstName: text("first_name").notNull(),
@@ -141,6 +152,10 @@ export const insertLeadershipInquirySchema = createInsertSchema(leadershipInquir
 export type InsertLeadershipInquiry = z.infer<typeof insertLeadershipInquirySchema>;
 export type LeadershipInquiry = typeof leadershipInquiries.$inferSelect;
 
+export const insertCoAffiliateSchema = createInsertSchema(coAffiliates).omit({ id: true, createdAt: true });
+export type InsertCoAffiliate = z.infer<typeof insertCoAffiliateSchema>;
+export type CoAffiliate = typeof coAffiliates.$inferSelect;
+
 export type WalletRecord = typeof wallets.$inferSelect;
 
 export const WAEC_GRADE_WEIGHTS: Record<string, number> = {
@@ -180,4 +195,44 @@ export function getPayoutTier(percentage: number): { min: number; max: number; l
 
 export function generateAffiliateCode(firstName: string, id: number): string {
   return `TSIA-${firstName.toUpperCase().slice(0, 3)}${id.toString().padStart(4, '0')}`;
+}
+
+export const CO_AFFILIATE_PROGRAM = {
+  TARGET: 1_000_000,
+  MILESTONE_INTERVAL: 150_000,
+  PRICE_INCREASE_RATE: 0.20,
+  BASE_CATEGORIES: [100, 200, 500] as const,
+  SHARE_FACTOR: 0.000005,
+} as const;
+
+export type CoAffiliateCategory = 100 | 200 | 500;
+
+export interface CoAffiliateTier {
+  category: CoAffiliateCategory;
+  currentPrice: number;
+  sharePercentage: number;
+  shareLabel: string;
+}
+
+export function getCoAffiliatePricing(totalEnrolled: number): CoAffiliateTier[] {
+  const milestones = Math.floor(totalEnrolled / CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
+  const multiplier = Math.pow(1 + CO_AFFILIATE_PROGRAM.PRICE_INCREASE_RATE, milestones);
+  return CO_AFFILIATE_PROGRAM.BASE_CATEGORIES.map(base => {
+    const sharePct = CO_AFFILIATE_PROGRAM.SHARE_FACTOR * (base / 100);
+    return {
+      category: base as CoAffiliateCategory,
+      currentPrice: Math.round(base * multiplier),
+      sharePercentage: sharePct,
+      shareLabel: (sharePct * 100).toFixed(6) + "%",
+    };
+  });
+}
+
+export function getMilestoneProgress(totalEnrolled: number) {
+  const milestones = Math.floor(totalEnrolled / CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
+  const nextMilestone = (milestones + 1) * CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL;
+  const progressInCurrentMilestone = totalEnrolled % CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL;
+  const pctToNext = (progressInCurrentMilestone / CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL) * 100;
+  const overallPct = Math.min((totalEnrolled / CO_AFFILIATE_PROGRAM.TARGET) * 100, 100);
+  return { milestones, nextMilestone: Math.min(nextMilestone, CO_AFFILIATE_PROGRAM.TARGET), pctToNext, overallPct };
 }

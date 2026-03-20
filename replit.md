@@ -22,6 +22,9 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - Currency conversion: payments at ₦1,460/USD, payouts at ₦1,280/USD
 - Digital wallet with 7.5% VAT on bank withdrawals
 - Affiliate program (separate from students) with own signup, dashboard, referral codes
+- Co-Affiliate/Initiator Programme: 1M investor cap, 3 tiers ($100/$200/$500), +20% price per 150k milestone, lifetime 5% TSIA profit share proportional to category
+- Co-Affiliate routes: GET /api/co-affiliate/program, GET /api/co-affiliate/my-info, POST /api/co-affiliate/subscribe
+- Affiliate Loan button → "Coming Soon" dialog
 - MSc "Coming Soon" section (always disabled)
 - About Us and Contact Us pages
 - Admin panel: verify students, approve/reject, process disbursements (24-48hr SLA)

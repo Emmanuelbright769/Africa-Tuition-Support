@@ -7,12 +7,12 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Copy, Users, Share2, LogOut, Sun, Moon, Monitor, TrendingUp, Link2,
   Banknote, Clock, Crown, Sparkles, CheckCircle2, AlertCircle, Loader2,
   Target, BarChart3, Infinity, Star, Wallet, ArrowUpRight, ArrowDownLeft,
-  ShoppingBag, RefreshCcw, ChevronDown, ChevronUp, Shield, Zap, Globe
+  ShoppingBag, ChevronDown, ChevronUp, Shield, Zap, Globe,
+  Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -27,11 +27,21 @@ const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, trans
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
 const TIER_STYLES: Record<string, { bg: string; border: string; text: string; badge: string; icon: string }> = {
-  "100":  { bg: "bg-blue-50 dark:bg-blue-900/20",   border: "border-blue-200 dark:border-blue-800",   text: "text-blue-700 dark:text-blue-300",   badge: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",   icon: "🥉" },
-  "300":  { bg: "bg-purple-50 dark:bg-purple-900/20",border: "border-purple-200 dark:border-purple-800",text: "text-purple-700 dark:text-purple-300",badge: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",icon: "🥈" },
-  "500":  { bg: "bg-amber-50 dark:bg-amber-900/20",  border: "border-amber-200 dark:border-amber-800",  text: "text-amber-700 dark:text-amber-300",  badge: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",  icon: "🏆" },
+  "100": { bg: "bg-blue-50 dark:bg-blue-900/20",    border: "border-blue-200 dark:border-blue-800",    text: "text-blue-700 dark:text-blue-300",    badge: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",    icon: "🥉" },
+  "300": { bg: "bg-purple-50 dark:bg-purple-900/20", border: "border-purple-200 dark:border-purple-800", text: "text-purple-700 dark:text-purple-300", badge: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300", icon: "🥈" },
+  "500": { bg: "bg-amber-50 dark:bg-amber-900/20",   border: "border-amber-200 dark:border-amber-800",   text: "text-amber-700 dark:text-amber-300",   badge: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",   icon: "🏆" },
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
+
+type Section = "overview" | "trade" | "trust_fund" | "ecommerce" | "referrals";
+
+const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
+  { id: "overview",   label: "Overview",         icon: LayoutDashboard },
+  { id: "trade",      label: "Trade Market",      icon: Globe },
+  { id: "trust_fund", label: "Affiliate Trust Fund", icon: Crown },
+  { id: "ecommerce",  label: "E-Commerce",        icon: ShoppingCart, badge: "Coming Soon" },
+  { id: "referrals",  label: "Referrals",         icon: Users },
+];
 
 export default function AffiliateDashboard() {
   const [, setLocation] = useLocation();
@@ -39,8 +49,10 @@ export default function AffiliateDashboard() {
   const { mode, setMode } = useTheme();
   const { toast } = useToast();
 
-  const [loanOpen, setLoanOpen]   = useState(false);
-  const [subscribeOpen, setSubscribeOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<Section>("overview");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const [subscribeOpen, setSubscribeOpen]       = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [eliteCustomAmount, setEliteCustomAmount] = useState("500");
   const [depositOpen, setDepositOpen]   = useState(false);
@@ -70,11 +82,11 @@ export default function AffiliateDashboard() {
     return () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current); };
   }, [authLoading, user]);
 
-  const { data: affiliateInfo } = useQuery({ queryKey: ["/api/affiliate/info"] });
-  const { data: programData }   = useQuery({ queryKey: ["/api/co-affiliate/program"] });
+  const { data: affiliateInfo }   = useQuery({ queryKey: ["/api/affiliate/info"] });
+  const { data: programData }     = useQuery({ queryKey: ["/api/co-affiliate/program"] });
   const { data: myCoAff, refetch: refetchMyCoAff } = useQuery({ queryKey: ["/api/co-affiliate/my-info"] });
   const { data: tradeWallet, refetch: refetchTradeWallet } = useQuery({ queryKey: ["/api/trade/wallet"] });
-  const { data: tradeTxs = [], refetch: refetchTradeTxs }  = useQuery({ queryKey: ["/api/trade/transactions"] });
+  const { data: tradeTxs = [], refetch: refetchTradeTxs } = useQuery({ queryKey: ["/api/trade/transactions"] });
 
   const subscribeMutation = useMutation({
     mutationFn: async ({ category, customAmount }: { category: number; customAmount?: number }) => {
@@ -127,8 +139,7 @@ export default function AffiliateDashboard() {
     },
     onSuccess: () => {
       toast({ title: "Wallets Connected ✓", description: "Your exchange wallet address(es) have been saved." });
-      setConnectOpen(false);
-      refetchTradeWallet();
+      setConnectOpen(false); refetchTradeWallet();
     },
     onError: (err: any) => toast({ title: "Connection Failed", description: err.message, variant: "destructive" }),
   });
@@ -148,23 +159,41 @@ export default function AffiliateDashboard() {
   const isEnrolled     = !!myCoAff;
   const myCategory     = myCoAff ? Number(myCoAff.investmentCategory) : null;
   const tradeBalance   = parseFloat(tradeWallet?.tradeBalance ?? "0");
+  const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
+  const eliteShare     = getEliteSharePercentage(eliteAmt);
 
-  const eliteAmt   = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
-  const eliteShare = getEliteSharePercentage(eliteAmt);
-
-  const copyCode = () => { navigator.clipboard.writeText(affiliateCode); toast({ title: "Copied!", description: "Code copied." }); };
-  const copyLink = () => { navigator.clipboard.writeText(referralLink); toast({ title: "Copied!", description: "Link copied." }); };
+  const copyCode = () => { navigator.clipboard.writeText(affiliateCode); toast({ title: "Copied!", description: "Affiliate code copied." }); };
+  const copyLink = () => { navigator.clipboard.writeText(referralLink); toast({ title: "Copied!", description: "Referral link copied." }); };
   const handleLogout = async () => { await logout(); setLocation("/"); };
 
   const txTypeLabel: Record<string, string> = { deposit: "Deposit", withdraw_exchange: "Withdraw → Exchange", withdraw_bank: "Withdraw → Bank" };
   const txTypeIcon: Record<string, any> = { deposit: ArrowDownLeft, withdraw_exchange: ArrowUpRight, withdraw_bank: ArrowUpRight };
 
+  const navigate = (s: Section) => { setActiveSection(s); setMenuOpen(false); };
+  const currentNav = NAV_ITEMS.find(n => n.id === activeSection)!;
+
   return (
-    <div className="min-h-screen bg-background font-sans pb-20">
+    <div className="min-h-screen bg-background font-sans">
+
       {/* Navbar */}
       <nav className="bg-card border-b sticky top-0 z-40 shadow-sm">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Link href="/"><a className="flex items-center gap-3"><Logo variant="badge" height={32} /><span className="text-xl font-bold tracking-tight">Affiliate Portal</span></a></Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              className="p-2 rounded-xl hover:bg-muted transition-colors text-foreground"
+              data-testid="button-hamburger-menu"
+              aria-label="Open navigation"
+            >
+              {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+            <Link href="/"><a className="flex items-center gap-2"><Logo variant="badge" height={32} /></a></Link>
+            <span className="text-xl font-bold tracking-tight hidden sm:block">Affiliate Portal</span>
+            <span className="text-sm text-muted-foreground hidden sm:flex items-center gap-1">
+              <ChevronRight className="w-3.5 h-3.5" />
+              <span className="font-medium text-foreground">{currentNav.label}</span>
+            </span>
+          </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center bg-muted rounded-full p-1 gap-0.5">
               {themeOpts.map(o => (
@@ -174,279 +203,336 @@ export default function AffiliateDashboard() {
               ))}
             </div>
             <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-aff-logout">
-              <LogOut className="w-4 h-4 mr-1" /> Logout
+              <LogOut className="w-4 h-4 sm:mr-1" /><span className="hidden sm:inline">Logout</span>
             </Button>
           </div>
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 pt-8">
-        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-8 max-w-5xl mx-auto">
-
-          {/* Hero banner */}
-          <motion.div variants={itemVariants} className="bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-500 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full blur-3xl opacity-10 -mr-20 -mt-20 pointer-events-none"></div>
-            <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <h2 className="text-2xl font-bold mb-1">Welcome, {user!.firstName}!</h2>
-                <p className="text-amber-100 text-sm">Your affiliate account is active. Share your code and start earning.</p>
-              </div>
-              <Button onClick={() => setLoanOpen(true)} className="bg-white/20 hover:bg-white/30 text-white border border-white/30 h-11 px-5 font-semibold backdrop-blur-sm shrink-0" data-testid="button-take-loan">
-                <Banknote className="w-4 h-4 mr-2" /> Take a Loan
-              </Button>
-            </div>
-          </motion.div>
-
-          {/* Stats row */}
-          <div className="grid md:grid-cols-3 gap-5">
-            <motion.div variants={itemVariants}>
-              <Card className="shadow-md border-0 h-full"><CardContent className="pt-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="bg-amber-100 dark:bg-amber-900/40 p-3 rounded-xl"><Share2 className="w-6 h-6 text-amber-600" /></div>
-                  <div><p className="text-sm text-muted-foreground font-medium">Referral Code</p><p className="text-xl font-bold font-mono tracking-wider" data-testid="text-aff-code">{affiliateCode || "—"}</p></div>
-                </div>
-                <Button variant="outline" className="w-full" onClick={copyCode} data-testid="button-copy-aff-code"><Copy className="w-4 h-4 mr-2" /> Copy Code</Button>
-              </CardContent></Card>
-            </motion.div>
-            <motion.div variants={itemVariants}>
-              <Card className="shadow-md border-0 h-full"><CardContent className="pt-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="bg-blue-100 dark:bg-blue-900/40 p-3 rounded-xl"><Users className="w-6 h-6 text-blue-600" /></div>
-                  <div><p className="text-sm text-muted-foreground font-medium">Total Referrals</p><p className="text-3xl font-bold" data-testid="text-aff-referral-count">{referralCount}</p></div>
-                </div>
-                <p className="text-xs text-muted-foreground">Students signed up via your code</p>
-              </CardContent></Card>
-            </motion.div>
-            <motion.div variants={itemVariants}>
-              <Card className="shadow-md border-0 h-full"><CardContent className="pt-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className={`p-3 rounded-xl ${isEnrolled ? 'bg-green-100 dark:bg-green-900/40' : 'bg-muted'}`}>
-                    <TrendingUp className={`w-6 h-6 ${isEnrolled ? 'text-green-600' : 'text-muted-foreground'}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground font-medium">Trust Fund Status</p>
-                    <Badge className={`text-sm mt-1 ${isEnrolled ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
-                      {isEnrolled ? (myCategory && myCategory >= 500 ? `Elite ($${myCategory}) ✓` : myCategory === 300 ? "Growth ✓" : "Starter ✓") : "Not Enrolled"}
-                    </Badge>
-                  </div>
-                </div>
-                {isEnrolled && myCoAff ? (
-                  <p className="text-xs text-green-600 dark:text-green-400 font-semibold">Share: {(parseFloat(myCoAff.sharePercentage) * 100).toFixed(6)}% lifetime</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Join the Trust Fund below</p>
-                )}
-              </CardContent></Card>
-            </motion.div>
-          </div>
-
-          {/* Referral link */}
-          <motion.div variants={itemVariants}>
-            <Card className="shadow-md border-0">
-              <CardHeader><CardTitle className="flex items-center gap-2"><Link2 className="w-5 h-5 text-primary" /> Your Referral Link</CardTitle></CardHeader>
-              <CardContent>
+      {/* Slide-in menu */}
+      <AnimatePresence>
+        {menuOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-30 backdrop-blur-sm"
+              onClick={() => setMenuOpen(false)}
+            />
+            <motion.aside
+              initial={{ x: -300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="fixed top-0 left-0 h-full w-72 bg-card border-r shadow-2xl z-40 flex flex-col"
+            >
+              <div className="p-5 border-b flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex-1 bg-muted rounded-xl px-4 py-3 font-mono text-sm truncate" data-testid="text-aff-link">{referralLink}</div>
-                  <Button onClick={copyLink} data-testid="button-copy-aff-link"><Copy className="w-4 h-4 mr-2" /> Copy</Button>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* ── TRADE MARKET ── */}
-          <motion.div variants={itemVariants}>
-            <Card className="shadow-xl border-2 border-blue-200 dark:border-blue-800 overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 p-6 text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                <div className="relative z-10">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center border border-blue-400/30">
-                      <Globe className="w-7 h-7 text-blue-400" />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold">Global Trade Market</h3>
-                      <p className="text-blue-300 text-sm">Invest globally — deposit & withdraw using BYBIT, BINANCE & more</p>
-                    </div>
+                  <Logo variant="badge" height={36} />
+                  <div>
+                    <p className="font-bold text-sm">{user!.firstName} {user!.lastName}</p>
+                    <p className="text-xs text-muted-foreground">Affiliate Account</p>
                   </div>
-                  <p className="text-slate-300 text-sm max-w-2xl leading-relaxed">
-                    Connect your crypto exchange wallet (TRC20 / BEP20) or use direct bank credit/debit. All deposits automatically allocate 20% to the TSIA Reserve Fund and 5% to the Affiliate Pool.
-                  </p>
                 </div>
+                <button onClick={() => setMenuOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <CardContent className="p-6 space-y-6">
+              <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+                {NAV_ITEMS.map(item => {
+                  const isActive = activeSection === item.id;
+                  return (
+                    <button key={item.id} onClick={() => navigate(item.id)} data-testid={`nav-${item.id}`}
+                      className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                        isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-muted text-foreground'
+                      }`}>
+                      <div className="flex items-center gap-3">
+                        <item.icon className="w-4 h-4 shrink-0" />
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <Badge className="text-[10px] py-0 px-2 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold">{item.badge}</Badge>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+              <div className="p-4 border-t">
+                <Button variant="outline" className="w-full" onClick={handleLogout}><LogOut className="w-4 h-4 mr-2" /> Logout</Button>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
 
-                {/* Trade balance + actions */}
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="bg-gradient-to-br from-blue-50 to-slate-50 dark:from-blue-900/20 dark:to-slate-800/50 rounded-2xl p-5 border border-blue-200 dark:border-blue-800">
-                    <p className="text-sm text-muted-foreground mb-1">Trade Wallet Balance</p>
-                    <p className="text-4xl font-bold text-blue-700 dark:text-blue-400 mb-4">${tradeBalance.toFixed(2)}</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button size="sm" className="h-9 bg-green-600 hover:bg-green-700 text-white" onClick={() => setDepositOpen(true)} data-testid="button-trade-deposit">
-                        <ArrowDownLeft className="w-3.5 h-3.5 mr-1" /> Deposit
-                      </Button>
-                      <Button size="sm" variant="outline" className="h-9" onClick={() => setWithdrawOpen(true)} data-testid="button-trade-withdraw">
-                        <ArrowUpRight className="w-3.5 h-3.5 mr-1" /> Withdraw
-                      </Button>
-                    </div>
+      {/* Main */}
+      <main className="container mx-auto px-4 pt-8 pb-20 max-w-5xl">
+        <AnimatePresence mode="wait">
+          <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+
+            {/* ── OVERVIEW ── */}
+            {activeSection === "overview" && (
+              <>
+                <motion.div variants={itemVariants} className="bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-500 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full blur-3xl opacity-10 -mr-20 -mt-20 pointer-events-none"></div>
+                  <div className="relative z-10">
+                    <h2 className="text-2xl font-bold mb-1">Welcome back, {user!.firstName}!</h2>
+                    <p className="text-amber-100 text-sm mb-4">Your affiliate account is active. Share your code and start earning.</p>
                   </div>
-                  <div className="space-y-3">
-                    <div className="rounded-xl border p-4 bg-muted/30 space-y-2 text-sm">
-                      <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-2">Connected Wallets</p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">TRC20 (USDT)</span>
-                        <span className="font-mono text-xs truncate max-w-[120px]">{tradeWallet?.trc20Address || <span className="text-muted-foreground italic">Not set</span>}</span>
+                </motion.div>
+
+                {/* Stats */}
+                <div className="grid sm:grid-cols-3 gap-5">
+                  <motion.div variants={itemVariants}>
+                    <Card className="shadow-md border-0 h-full"><CardContent className="pt-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="bg-amber-100 dark:bg-amber-900/40 p-3 rounded-xl"><Share2 className="w-6 h-6 text-amber-600" /></div>
+                        <div><p className="text-sm text-muted-foreground font-medium">Referral Code</p><p className="text-xl font-bold font-mono tracking-wider" data-testid="text-aff-code">{affiliateCode || "—"}</p></div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">BEP20 (USDT)</span>
-                        <span className="font-mono text-xs truncate max-w-[120px]">{tradeWallet?.bep20Address || <span className="text-muted-foreground italic">Not set</span>}</span>
+                      <Button variant="outline" className="w-full" onClick={copyCode} data-testid="button-copy-aff-code"><Copy className="w-4 h-4 mr-2" /> Copy Code</Button>
+                    </CardContent></Card>
+                  </motion.div>
+                  <motion.div variants={itemVariants}>
+                    <Card className="shadow-md border-0 h-full"><CardContent className="pt-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="bg-blue-100 dark:bg-blue-900/40 p-3 rounded-xl"><Users className="w-6 h-6 text-blue-600" /></div>
+                        <div><p className="text-sm text-muted-foreground font-medium">Total Referrals</p><p className="text-3xl font-bold" data-testid="text-aff-referral-count">{referralCount}</p></div>
                       </div>
-                      <Button size="sm" variant="outline" className="w-full h-8 text-xs mt-1" onClick={() => { setTrc20Input(tradeWallet?.trc20Address || ""); setBep20Input(tradeWallet?.bep20Address || ""); setConnectOpen(true); }} data-testid="button-connect-wallet">
-                        <Zap className="w-3 h-3 mr-1" /> {tradeWallet?.trc20Address || tradeWallet?.bep20Address ? "Update" : "Connect"} Exchange Wallet
-                      </Button>
-                    </div>
-                  </div>
+                      <p className="text-xs text-muted-foreground">Students signed up via your code</p>
+                    </CardContent></Card>
+                  </motion.div>
+                  <motion.div variants={itemVariants}>
+                    <Card className="shadow-md border-0 h-full"><CardContent className="pt-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className={`p-3 rounded-xl ${isEnrolled ? 'bg-green-100 dark:bg-green-900/40' : 'bg-muted'}`}>
+                          <TrendingUp className={`w-6 h-6 ${isEnrolled ? 'text-green-600' : 'text-muted-foreground'}`} />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground font-medium">Trust Fund</p>
+                          <Badge className={`text-sm mt-1 ${isEnrolled ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
+                            {isEnrolled ? (myCategory && myCategory >= 500 ? `Elite ($${myCategory}) ✓` : myCategory === 300 ? "Growth ✓" : "Starter ✓") : "Not Enrolled"}
+                          </Badge>
+                        </div>
+                      </div>
+                      {isEnrolled && myCoAff
+                        ? <p className="text-xs text-green-600 dark:text-green-400 font-semibold">Share: {(parseFloat(myCoAff.sharePercentage) * 100).toFixed(6)}% lifetime</p>
+                        : <p className="text-xs text-muted-foreground">Join via the Trust Fund section</p>}
+                    </CardContent></Card>
+                  </motion.div>
                 </div>
+
+                {/* Referral link */}
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-0">
+                    <CardHeader><CardTitle className="flex items-center gap-2"><Link2 className="w-5 h-5 text-primary" /> Your Referral Link</CardTitle></CardHeader>
+                    <CardContent>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-muted rounded-xl px-4 py-3 font-mono text-sm truncate" data-testid="text-aff-link">{referralLink}</div>
+                        <Button onClick={copyLink} data-testid="button-copy-aff-link"><Copy className="w-4 h-4 mr-2" /> Copy</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {/* Quick nav */}
+                <motion.div variants={itemVariants}>
+                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Quick Access</p>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {NAV_ITEMS.filter(n => n.id !== "overview").map(item => (
+                      <button key={item.id} onClick={() => navigate(item.id)}
+                        className="flex items-center gap-3 p-4 rounded-xl border bg-card hover:border-primary hover:shadow-md transition-all text-left"
+                        data-testid={`quick-nav-${item.id}`}>
+                        <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
+                          <item.icon className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">{item.label}</p>
+                          {item.badge && <p className="text-xs text-amber-600">{item.badge}</p>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              </>
+            )}
+
+            {/* ── TRADE MARKET ── */}
+            {activeSection === "trade" && (
+              <>
+                <motion.div variants={itemVariants}>
+                  <h2 className="text-2xl font-bold mb-1">Global Trade Market</h2>
+                  <p className="text-muted-foreground text-sm mb-2">Invest globally — deposit & withdraw using BYBIT, BINANCE & more.</p>
+                </motion.div>
+
+                {/* Balance + actions */}
+                <motion.div variants={itemVariants}>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <Card className="shadow-md border-0 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-blue-900/20 dark:to-slate-800/50 border border-blue-200 dark:border-blue-800">
+                      <CardContent className="pt-6">
+                        <p className="text-sm text-muted-foreground mb-1">Trade Wallet Balance</p>
+                        <p className="text-5xl font-bold text-blue-700 dark:text-blue-400 mb-6">${tradeBalance.toFixed(2)}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button className="h-10 bg-green-600 hover:bg-green-700 text-white" onClick={() => setDepositOpen(true)} data-testid="button-trade-deposit">
+                            <ArrowDownLeft className="w-4 h-4 mr-1" /> Deposit
+                          </Button>
+                          <Button variant="outline" className="h-10" onClick={() => setWithdrawOpen(true)} data-testid="button-trade-withdraw">
+                            <ArrowUpRight className="w-4 h-4 mr-1" /> Withdraw
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card className="shadow-md border-0">
+                      <CardContent className="pt-6 space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Connected Wallets</p>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">TRC20 (USDT)</span>
+                          <span className="font-mono text-xs truncate max-w-[140px]">{tradeWallet?.trc20Address || <span className="italic text-muted-foreground">Not set</span>}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">BEP20 (USDT)</span>
+                          <span className="font-mono text-xs truncate max-w-[140px]">{tradeWallet?.bep20Address || <span className="italic text-muted-foreground">Not set</span>}</span>
+                        </div>
+                        <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => { setTrc20Input(tradeWallet?.trc20Address || ""); setBep20Input(tradeWallet?.bep20Address || ""); setConnectOpen(true); }} data-testid="button-connect-wallet">
+                          <Zap className="w-3.5 h-3.5 mr-2" /> {tradeWallet?.trc20Address || tradeWallet?.bep20Address ? "Update" : "Connect"} Exchange Wallet
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </motion.div>
 
                 {/* Fee schedule */}
-                <div className="grid sm:grid-cols-3 gap-3">
-                  {[
-                    { label: "Deposit Allocation", desc: "75% credited to you", sub: "20% Reserve Fund · 5% Affiliate Pool", color: "text-green-600 dark:text-green-400", bg: "bg-green-50 dark:bg-green-900/20", border: "border-green-200 dark:border-green-800", icon: ArrowDownLeft },
-                    { label: "Exchange Withdrawal", desc: "5% fee", sub: "+ 5% Affiliate Pool deducted", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-900/20", border: "border-blue-200 dark:border-blue-800", icon: ArrowUpRight },
-                    { label: "Bank Withdrawal", desc: "8% fee", sub: "+ 5% Affiliate Pool deducted", color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-900/20", border: "border-purple-200 dark:border-purple-800", icon: Banknote },
-                  ].map((f, i) => (
-                    <div key={i} className={`rounded-xl p-4 border ${f.bg} ${f.border}`}>
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 ${f.bg} border ${f.border}`}>
-                        <f.icon className={`w-4 h-4 ${f.color}`} />
+                <motion.div variants={itemVariants}>
+                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Fee Structure</p>
+                  <div className="grid sm:grid-cols-3 gap-3">
+                    {[
+                      { label: "On Deposit", desc: "75% to you", sub: "20% Reserve Fund · 5% Affiliate Pool", color: "text-green-600 dark:text-green-400", bg: "bg-green-50 dark:bg-green-900/20", border: "border-green-200 dark:border-green-800", icon: ArrowDownLeft },
+                      { label: "Exchange Withdrawal", desc: "5% fee", sub: "+ 5% Affiliate Pool", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-900/20", border: "border-blue-200 dark:border-blue-800", icon: ArrowUpRight },
+                      { label: "Bank Withdrawal", desc: "8% fee", sub: "+ 5% Affiliate Pool", color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-900/20", border: "border-purple-200 dark:border-purple-800", icon: Banknote },
+                    ].map((f, i) => (
+                      <div key={i} className={`rounded-xl p-4 border ${f.bg} ${f.border}`}>
+                        <f.icon className={`w-5 h-5 mb-2 ${f.color}`} />
+                        <p className="text-xs font-semibold text-muted-foreground mb-1">{f.label}</p>
+                        <p className={`text-xl font-bold ${f.color}`}>{f.desc}</p>
+                        <p className="text-xs text-muted-foreground">{f.sub}</p>
                       </div>
-                      <p className="text-xs font-semibold text-muted-foreground mb-1">{f.label}</p>
-                      <p className={`text-lg font-bold ${f.color}`}>{f.desc}</p>
-                      <p className="text-xs text-muted-foreground">{f.sub}</p>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </motion.div>
 
-                {/* Reserve fund note */}
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
-                  <div className="flex items-start gap-3">
+                {/* Reserve fund info */}
+                <motion.div variants={itemVariants}>
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-start gap-3">
                     <Shield className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div>
                       <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm">20% Reserve Fund</p>
-                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Every deposit automatically allocates 20% to TSIA's Reserve Fund — a safety net protecting investors and ensuring platform sustainability. The fund is managed transparently and reported quarterly.</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">Every deposit allocates 20% to TSIA's Reserve Fund — a safety net protecting investors and ensuring platform sustainability. Reported quarterly.</p>
                     </div>
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Deposit instructions */}
-                <div className="border rounded-xl overflow-hidden">
-                  <div className="bg-muted/50 px-4 py-3 border-b flex items-center gap-2">
-                    <Wallet className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">How to Deposit</span>
-                  </div>
-                  <div className="p-4 space-y-3 text-sm">
-                    <p className="text-muted-foreground">Send USDT to TSIA's receiving wallet address for your chosen network, then click <strong>Deposit</strong> and enter the amount + transaction hash.</p>
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <div className="bg-muted/50 rounded-lg p-3 border">
-                        <p className="text-xs font-bold text-muted-foreground mb-1">TRC20 (TRON Network)</p>
-                        <p className="font-mono text-xs break-all">{TRADE_MARKET.TSIA_RECEIVING_TRC20}</p>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs mt-1 w-full" onClick={() => { navigator.clipboard.writeText(TRADE_MARKET.TSIA_RECEIVING_TRC20); toast({ title: "Copied TRC20 address" }); }}>
-                          <Copy className="w-3 h-3 mr-1" /> Copy
-                        </Button>
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-0">
+                    <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Wallet className="w-5 h-5 text-primary" /> How to Deposit</CardTitle></CardHeader>
+                    <CardContent className="space-y-3 text-sm">
+                      <p className="text-muted-foreground">Send USDT to TSIA's wallet address for your network, then click <strong>Deposit</strong> and enter the amount and transaction hash.</p>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <div className="bg-muted/50 rounded-xl p-4 border">
+                          <p className="text-xs font-bold text-muted-foreground mb-2">TRC20 (TRON Network)</p>
+                          <p className="font-mono text-xs break-all mb-2">{TRADE_MARKET.TSIA_RECEIVING_TRC20}</p>
+                          <Button size="sm" variant="ghost" className="w-full h-7 text-xs" onClick={() => { navigator.clipboard.writeText(TRADE_MARKET.TSIA_RECEIVING_TRC20); toast({ title: "TRC20 address copied" }); }}>
+                            <Copy className="w-3 h-3 mr-1" /> Copy
+                          </Button>
+                        </div>
+                        <div className="bg-muted/50 rounded-xl p-4 border">
+                          <p className="text-xs font-bold text-muted-foreground mb-2">BEP20 (BSC Network)</p>
+                          <p className="font-mono text-xs break-all mb-2">{TRADE_MARKET.TSIA_RECEIVING_BEP20}</p>
+                          <Button size="sm" variant="ghost" className="w-full h-7 text-xs" onClick={() => { navigator.clipboard.writeText(TRADE_MARKET.TSIA_RECEIVING_BEP20); toast({ title: "BEP20 address copied" }); }}>
+                            <Copy className="w-3 h-3 mr-1" /> Copy
+                          </Button>
+                        </div>
                       </div>
-                      <div className="bg-muted/50 rounded-lg p-3 border">
-                        <p className="text-xs font-bold text-muted-foreground mb-1">BEP20 (BSC Network)</p>
-                        <p className="font-mono text-xs break-all">{TRADE_MARKET.TSIA_RECEIVING_BEP20}</p>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs mt-1 w-full" onClick={() => { navigator.clipboard.writeText(TRADE_MARKET.TSIA_RECEIVING_BEP20); toast({ title: "Copied BEP20 address" }); }}>
-                          <Copy className="w-3 h-3 mr-1" /> Copy
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
 
-                {/* Tx history */}
-                <div>
-                  <button onClick={() => setShowTxHistory(!showTxHistory)} className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors w-full justify-between">
-                    <span>Transaction History ({(tradeTxs as any[]).length})</span>
-                    {showTxHistory ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
-                  {showTxHistory && (
-                    <div className="mt-3 space-y-2">
-                      {(tradeTxs as any[]).length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">No trade transactions yet.</p>
-                      ) : (tradeTxs as any[]).slice(0, 10).map((tx: any) => {
-                        const TxIcon = txTypeIcon[tx.type] || ArrowUpRight;
-                        const isDeposit = tx.type === "deposit";
-                        return (
-                          <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border text-sm" data-testid={`row-trade-tx-${tx.id}`}>
-                            <div className="flex items-center gap-3">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isDeposit ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-                                <TxIcon className={`w-4 h-4 ${isDeposit ? 'text-green-600' : 'text-red-500'}`} />
+                {/* Transaction history */}
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-0">
+                    <CardHeader>
+                      <button onClick={() => setShowTxHistory(v => !v)} className="flex items-center justify-between w-full text-left">
+                        <CardTitle className="text-base">Transaction History ({(tradeTxs as any[]).length})</CardTitle>
+                        {showTxHistory ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                      </button>
+                    </CardHeader>
+                    {showTxHistory && (
+                      <CardContent className="pt-0">
+                        {(tradeTxs as any[]).length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-6">No trade transactions yet.</p>
+                        ) : (tradeTxs as any[]).slice(0, 10).map((tx: any) => {
+                          const TxIcon = txTypeIcon[tx.type] || ArrowUpRight;
+                          const isDeposit = tx.type === "deposit";
+                          return (
+                            <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border text-sm mb-2" data-testid={`row-trade-tx-${tx.id}`}>
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isDeposit ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
+                                  <TxIcon className={`w-4 h-4 ${isDeposit ? 'text-green-600' : 'text-red-500'}`} />
+                                </div>
+                                <div>
+                                  <p className="font-medium">{txTypeLabel[tx.type]}</p>
+                                  <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString()}</p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-medium">{txTypeLabel[tx.type]}</p>
-                                <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString()}</p>
+                              <div className="text-right">
+                                <p className={`font-semibold ${isDeposit ? 'text-green-600' : 'text-red-500'}`}>{isDeposit ? '+' : '-'}${parseFloat(tx.amountUsd).toFixed(2)}</p>
+                                <Badge variant="outline" className="text-[10px]">{tx.status}</Badge>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <p className={`font-semibold ${isDeposit ? 'text-green-600' : 'text-red-500'}`}>{isDeposit ? '+' : '-'}${parseFloat(tx.amountUsd).toFixed(2)}</p>
-                              <Badge variant="outline" className="text-[10px]">{tx.status}</Badge>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                          );
+                        })}
+                      </CardContent>
+                    )}
+                  </Card>
+                </motion.div>
+              </>
+            )}
 
-          {/* ── AFFILIATE TRUST FUND ── */}
-          <motion.div variants={itemVariants}>
-            <Card className="shadow-xl border-2 border-amber-200 dark:border-amber-800 overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-amber-900 p-6 text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-48 h-48 bg-tsia-gold/20 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                <div className="relative z-10">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 bg-tsia-gold/20 rounded-xl flex items-center justify-center border border-tsia-gold/30">
-                      <Crown className="w-7 h-7 text-tsia-gold" />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold">Co-Affiliate / Initiator Programme</h3>
-                      <p className="text-amber-200 text-sm">Lifetime profit sharing — exclusively for affiliate accounts</p>
-                    </div>
-                  </div>
-                  <p className="text-slate-300 text-sm max-w-2xl">Invest once and earn a <strong className="text-white">lifetime 5% TSIA profit share</strong> proportional to your investment category. Prices increase +20% every 150,000 enrollments.</p>
-                </div>
-              </div>
+            {/* ── TRUST FUND ── */}
+            {activeSection === "trust_fund" && (
+              <>
+                <motion.div variants={itemVariants}>
+                  <h2 className="text-2xl font-bold mb-1">Co-Affiliate / Initiator Programme</h2>
+                  <p className="text-muted-foreground text-sm mb-2">Invest once, earn lifetime profit share — exclusively for affiliate accounts.</p>
+                </motion.div>
 
-              <CardContent className="p-6 space-y-6">
-                {/* Programme progress */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-semibold flex items-center gap-1.5"><Target className="w-4 h-4 text-primary" /> Programme Progress</span>
-                    <span className="text-muted-foreground font-mono">{totalEnrolled.toLocaleString()} / {CO_AFFILIATE_PROGRAM.TARGET.toLocaleString()}</span>
-                  </div>
-                  <Progress value={progress.overallPct} className="h-3" />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{spotsRemaining.toLocaleString()} spots remaining</span>
-                    <span>{progress.overallPct.toFixed(2)}% filled</span>
-                  </div>
-                </div>
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5"><BarChart3 className="w-4 h-4" /> Next price increase at {progress.nextMilestone.toLocaleString()}</span>
-                    <span className="text-xs text-amber-700 dark:text-amber-400 font-medium">+20%</span>
-                  </div>
-                  <Progress value={progress.pctToNext} className="h-2 bg-amber-100 dark:bg-amber-900/40" />
-                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                    {progress.milestones === 0 ? "Join now at the lowest founding price!" : `Price has increased ${progress.milestones}× (${progress.milestones * 20}% total increase).`}
-                  </p>
-                </div>
+                {/* Progress */}
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-0">
+                    <CardContent className="pt-6 space-y-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-semibold flex items-center gap-1.5"><Target className="w-4 h-4 text-primary" /> Programme Progress</span>
+                        <span className="text-muted-foreground font-mono">{totalEnrolled.toLocaleString()} / {CO_AFFILIATE_PROGRAM.TARGET.toLocaleString()}</span>
+                      </div>
+                      <Progress value={progress.overallPct} className="h-3" />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{spotsRemaining.toLocaleString()} spots remaining</span>
+                        <span>{progress.overallPct.toFixed(2)}% filled</span>
+                      </div>
+                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5"><BarChart3 className="w-4 h-4" /> Next price increase at {progress.nextMilestone.toLocaleString()}</span>
+                          <span className="text-xs text-amber-700 dark:text-amber-400 font-medium">+20%</span>
+                        </div>
+                        <Progress value={progress.pctToNext} className="h-2 bg-amber-100 dark:bg-amber-900/40" />
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                          {progress.milestones === 0 ? "Join now at the lowest founding price!" : `Price has increased ${progress.milestones}× (${progress.milestones * 20}% total increase).`}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
 
-                {/* ── Affiliate Trust Fund Categories (renamed from "Current Investment Categories") ── */}
-                <div>
-                  <h4 className="font-bold text-base mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-tsia-gold" /> Affiliate Trust Fund Categories</h4>
-                  <div className="grid sm:grid-cols-3 gap-4">
+                {/* Categories */}
+                <motion.div variants={itemVariants}>
+                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Affiliate Trust Fund Categories</p>
+                  <div className="grid sm:grid-cols-3 gap-5">
                     {pricing.map((tier: any) => {
                       const col = getTierStyle(tier.category);
                       const isMyTier = myCategory !== null && (tier.isElite ? myCategory >= 500 : myCategory === tier.category);
@@ -460,23 +546,10 @@ export default function AffiliateDashboard() {
                           <div className="text-3xl mb-2">{col.icon}</div>
                           <h5 className={`font-bold text-lg ${col.text}`}>{tier.label}</h5>
                           <p className="text-xs text-muted-foreground mb-3">Base: ${tier.category}{isEliteTier ? " – $10,000" : ""}</p>
-
                           {isEliteTier ? (
                             <div className="mb-3">
-                              <p className="text-xs text-muted-foreground mb-1">Choose your amount</p>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xl font-bold text-amber-600">$</span>
-                                <Input
-                                  type="number"
-                                  min={500} max={10000} step={50}
-                                  value={eliteCustomAmount}
-                                  onChange={e => setEliteCustomAmount(e.target.value)}
-                                  className="h-9 font-bold text-lg border-amber-300"
-                                  disabled={isEnrolled}
-                                  data-testid="input-elite-amount"
-                                />
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-1">Max: $10,000</p>
+                              <p className="text-xs text-muted-foreground mb-1">Choose your amount ($500 – $10,000)</p>
+                              <Input type="number" min={500} max={10000} step={50} value={eliteCustomAmount} onChange={e => setEliteCustomAmount(e.target.value)} className="h-9 font-bold border-amber-300" disabled={isEnrolled} data-testid="input-elite-amount" />
                             </div>
                           ) : (
                             <div className="text-3xl font-bold mb-1">${tier.currentPrice}</div>
@@ -503,119 +576,141 @@ export default function AffiliateDashboard() {
                       );
                     })}
                   </div>
-                </div>
+                </motion.div>
 
-                {/* Profit share explanation */}
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-5 border">
-                  <h4 className="font-bold flex items-center gap-2 text-sm mb-3"><BarChart3 className="w-4 h-4 text-primary" /> How Profit Sharing Works</h4>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <p>TSIA allocates <strong className="text-foreground">5%</strong> of all profits to 1,000,000 Co-Affiliates for life.</p>
-                    <div className="bg-card rounded-lg p-3 border font-mono text-xs space-y-1">
-                      <div className="text-primary font-bold">Share = 0.000005 × (your amount ÷ 100)</div>
-                      <div>$100 → <strong>0.0005%</strong> · $300 → <strong>0.0015%</strong> · $500 → <strong>0.0025%</strong> · $10,000 → <strong>0.05%</strong></div>
-                    </div>
-                  </div>
-                </div>
+                {/* How it works */}
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-0">
+                    <CardContent className="pt-6 space-y-4">
+                      <h4 className="font-bold flex items-center gap-2"><BarChart3 className="w-4 h-4 text-primary" /> How Profit Sharing Works</h4>
+                      <p className="text-sm text-muted-foreground">TSIA allocates <strong className="text-foreground">5%</strong> of all profits across up to 1,000,000 Co-Affiliates for life.</p>
+                      <div className="bg-card rounded-xl p-4 border font-mono text-xs space-y-1">
+                        <div className="text-primary font-bold">Your Share = 0.000005 × (your amount ÷ 100)</div>
+                        <div>$100 → <strong>0.0005%</strong> · $300 → <strong>0.0015%</strong> · $500 → <strong>0.0025%</strong> · $10,000 → <strong>0.05%</strong></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
 
                 {/* Price table */}
-                <div className="border rounded-xl overflow-hidden">
-                  <div className="bg-muted/50 px-4 py-2 border-b"><h4 className="text-sm font-semibold">Price Schedule (every 150,000 enrollments)</h4></div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead><tr className="border-b bg-muted/30">
-                        <th className="text-left px-4 py-2 font-semibold">Co-Affiliates Enrolled</th>
-                        <th className="text-center px-4 py-2 font-semibold">Starter ($100)</th>
-                        <th className="text-center px-4 py-2 font-semibold">Growth ($300)</th>
-                        <th className="text-center px-4 py-2 font-semibold">Elite ($500+)</th>
-                      </tr></thead>
-                      <tbody>
-                        {[0,150000,300000,450000,600000,750000,900000].map((milestone, i) => {
-                          const mult = Math.pow(1.20, i);
-                          const isCur = totalEnrolled >= milestone && totalEnrolled < (milestone + CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
-                          const isPast = totalEnrolled >= (milestone + CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
-                          return (
-                            <tr key={milestone} className={`border-b ${isCur ? 'bg-tsia-gold/10 font-bold' : isPast ? 'opacity-40' : ''}`}>
-                              <td className="px-4 py-2">
-                                {milestone === 0 ? "0 – 149,999" : `${milestone.toLocaleString()} – ${(milestone+149999).toLocaleString()}`}
-                                {isCur && <span className="ml-2 text-[10px] bg-tsia-gold text-slate-900 px-1.5 py-0.5 rounded-full font-bold">NOW</span>}
-                              </td>
-                              <td className="px-4 py-2 text-center">${Math.round(100*mult)}</td>
-                              <td className="px-4 py-2 text-center">${Math.round(300*mult)}</td>
-                              <td className="px-4 py-2 text-center">${Math.round(500*mult)}+</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* ── E-COMMERCE (Coming Soon) ── */}
-          <motion.div variants={itemVariants}>
-            <Card className="shadow-md border-2 border-dashed border-muted-foreground/20 overflow-hidden">
-              <CardContent className="pt-6 pb-6">
-                <div className="flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
-                  <div className="w-16 h-16 bg-muted/50 rounded-2xl flex items-center justify-center shrink-0">
-                    <ShoppingBag className="w-8 h-8 text-muted-foreground/50" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-                      <h3 className="text-xl font-bold">E-Commerce Marketplace</h3>
-                      <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs">Coming Soon</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground max-w-xl">An integrated e-commerce marketplace for affiliates — sell products, earn commissions, and grow your income beyond referrals. Built to empower African entrepreneurs.</p>
-                  </div>
-                  <Button variant="outline" disabled className="shrink-0"><Clock className="w-4 h-4 mr-2" /> Coming Soon</Button>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Referrals */}
-          <motion.div variants={itemVariants}>
-            <Card className="shadow-md border-0">
-              <CardHeader><CardTitle className="flex items-center gap-2"><Users className="w-5 h-5 text-primary" /> Your Referrals</CardTitle></CardHeader>
-              <CardContent>
-                {referrals.length === 0 ? (
-                  <div className="text-center py-12"><Users className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" /><p className="text-sm text-muted-foreground">No referrals yet. Share your link to start.</p></div>
-                ) : (
-                  <div className="space-y-3">
-                    {referrals.map((r: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-muted/50 border" data-testid={`row-referral-${i}`}>
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center"><span className="text-sm font-bold text-primary">{r.name?.charAt(0) || "?"}</span></div>
-                          <div><p className="font-medium text-sm">{r.name}</p><p className="text-xs text-muted-foreground">Joined {new Date(r.joinedAt).toLocaleDateString()}</p></div>
-                        </div>
-                        <Badge variant="outline" className="text-xs">Referred</Badge>
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-0 overflow-hidden">
+                    <CardHeader className="bg-muted/50 pb-3"><CardTitle className="text-sm">Price Schedule (every 150,000 enrollments)</CardTitle></CardHeader>
+                    <CardContent className="p-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead><tr className="border-b bg-muted/30">
+                            <th className="text-left px-4 py-2 font-semibold">Enrollment Band</th>
+                            <th className="text-center px-4 py-2">Starter ($100)</th>
+                            <th className="text-center px-4 py-2">Growth ($300)</th>
+                            <th className="text-center px-4 py-2">Elite ($500+)</th>
+                          </tr></thead>
+                          <tbody>
+                            {[0,150000,300000,450000,600000,750000,900000].map((ms, i) => {
+                              const mult = Math.pow(1.20, i);
+                              const isCur = totalEnrolled >= ms && totalEnrolled < (ms + CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
+                              const isPast = totalEnrolled >= (ms + CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
+                              return (
+                                <tr key={ms} className={`border-b ${isCur ? 'bg-tsia-gold/10 font-bold' : isPast ? 'opacity-40' : ''}`}>
+                                  <td className="px-4 py-2">
+                                    {ms === 0 ? "0 – 149,999" : `${ms.toLocaleString()} – ${(ms+149999).toLocaleString()}`}
+                                    {isCur && <span className="ml-2 text-[10px] bg-tsia-gold text-slate-900 px-1.5 py-0.5 rounded-full font-bold">NOW</span>}
+                                  </td>
+                                  <td className="px-4 py-2 text-center">${Math.round(100*mult)}</td>
+                                  <td className="px-4 py-2 text-center">${Math.round(300*mult)}</td>
+                                  <td className="px-4 py-2 text-center">${Math.round(500*mult)}+</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </>
+            )}
 
-        </motion.div>
+            {/* ── E-COMMERCE ── */}
+            {activeSection === "ecommerce" && (
+              <>
+                <motion.div variants={itemVariants}>
+                  <h2 className="text-2xl font-bold mb-1">E-Commerce Marketplace</h2>
+                  <p className="text-muted-foreground text-sm mb-6">Browse and purchase products at exclusive affiliate rates.</p>
+                </motion.div>
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-2 border-dashed border-muted-foreground/20">
+                    <CardContent className="pt-12 pb-14 text-center">
+                      <div className="w-24 h-24 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <ShoppingCart className="w-12 h-12 text-muted-foreground/40" />
+                      </div>
+                      <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-sm px-4 py-1.5 mb-4">Coming Soon</Badge>
+                      <h3 className="text-2xl font-bold mb-3">Launching Soon</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto leading-relaxed mb-8">
+                        Shop a curated marketplace of products at special affiliate rates — from educational materials to everyday essentials. Built for TSIA affiliate members.
+                      </p>
+                      <div className="grid sm:grid-cols-3 gap-4 max-w-lg mx-auto text-sm">
+                        {[
+                          { label: "Exclusive Deals", desc: "Affiliate-only pricing", icon: Tag },
+                          { label: "Wide Selection", desc: "Curated product catalog", icon: ShoppingBag },
+                          { label: "Fast Delivery", desc: "Nationwide shipping", icon: CheckCircle2 },
+                        ].map(f => (
+                          <div key={f.label} className="bg-muted/50 rounded-xl p-4 border">
+                            <f.icon className="w-5 h-5 text-primary mx-auto mb-2" />
+                            <p className="font-semibold mb-1">{f.label}</p>
+                            <p className="text-xs text-muted-foreground">{f.desc}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </>
+            )}
+
+            {/* ── REFERRALS ── */}
+            {activeSection === "referrals" && (
+              <>
+                <motion.div variants={itemVariants}>
+                  <h2 className="text-2xl font-bold mb-1">Your Referrals</h2>
+                  <p className="text-muted-foreground text-sm mb-6">Students who signed up using your referral code.</p>
+                </motion.div>
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-0">
+                    <CardContent className="pt-6">
+                      {referrals.length === 0 ? (
+                        <div className="text-center py-16">
+                          <Users className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                          <p className="text-sm text-muted-foreground font-medium">No referrals yet</p>
+                          <p className="text-xs text-muted-foreground mt-1">Share your referral link to start earning</p>
+                          <Button className="mt-4" onClick={() => navigate("overview")} variant="outline">Copy your link</Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {referrals.map((r: any, i: number) => (
+                            <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-muted/50 border" data-testid={`row-referral-${i}`}>
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center"><span className="text-sm font-bold text-primary">{r.name?.charAt(0) || "?"}</span></div>
+                                <div><p className="font-medium text-sm">{r.name}</p><p className="text-xs text-muted-foreground">Joined {new Date(r.joinedAt).toLocaleDateString()}</p></div>
+                              </div>
+                              <Badge variant="outline" className="text-xs">Referred</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </>
+            )}
+
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* ── DIALOGS ── */}
 
-      {/* Loan Coming Soon */}
-      <Dialog open={loanOpen} onOpenChange={setLoanOpen}>
-        <DialogContent className="sm:max-w-md text-center">
-          <DialogHeader>
-            <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4"><Clock className="w-10 h-10 text-amber-500" /></div>
-            <DialogTitle className="text-2xl">Coming Soon</DialogTitle>
-            <DialogDescription className="text-base">The Affiliate Loan feature is currently under development and will be available soon.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter><Button className="w-full" onClick={() => setLoanOpen(false)}>Got it</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Trust Fund Subscribe */}
+      {/* Subscribe to Trust Fund */}
       <Dialog open={subscribeOpen} onOpenChange={setSubscribeOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -635,9 +730,9 @@ export default function AffiliateDashboard() {
                   <div><p className="text-xs text-muted-foreground">Category</p><h4 className={`text-2xl font-bold ${col.text}`}>{tier.label}{isElite ? ` ($${Math.round(eliteAmt)})` : ""}</h4></div>
                   <div className="text-right"><p className="text-xs text-muted-foreground">Amount</p><p className="text-2xl font-bold">${finalAmt}</p></div>
                 </div>
-                <div className={`text-sm font-semibold px-3 py-2 rounded-lg ${col.badge}`}>Lifetime share: {finalShare} of TSIA profits</div>
+                <div className={`text-sm font-semibold px-3 py-2 rounded-lg ${col.badge}`}>Lifetime share: {finalShare}% of TSIA profits</div>
                 <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> Lifetime participation, no renewal</div>
+                  <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> Lifetime participation, no renewal needed</div>
                   <div className="flex items-center gap-1.5"><AlertCircle className="w-3 h-3 text-amber-500" /> Investment is non-refundable</div>
                 </div>
               </div>
@@ -738,12 +833,12 @@ export default function AffiliateDashboard() {
               <Label>Withdrawal Method</Label>
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => setWithdrawType("withdraw_exchange")}
-                  className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all ${withdrawType === "withdraw_exchange" ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
-                  <Globe className="w-4 h-4 mx-auto mb-1" /> Exchange Wallet<br /><span className="text-xs font-normal">5% fee</span>
+                  className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all text-center ${withdrawType === "withdraw_exchange" ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
+                  <Globe className="w-4 h-4 mx-auto mb-1" /> Exchange<br /><span className="text-xs font-normal">5% fee</span>
                 </button>
                 <button onClick={() => setWithdrawType("withdraw_bank")}
-                  className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all ${withdrawType === "withdraw_bank" ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
-                  <Banknote className="w-4 h-4 mx-auto mb-1" /> Bank Account<br /><span className="text-xs font-normal">8% fee</span>
+                  className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all text-center ${withdrawType === "withdraw_bank" ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
+                  <Banknote className="w-4 h-4 mx-auto mb-1" /> Bank<br /><span className="text-xs font-normal">8% fee</span>
                 </button>
               </div>
             </div>
@@ -766,13 +861,13 @@ export default function AffiliateDashboard() {
             </div>
             {withdrawAmt && parseFloat(withdrawAmt) >= TRADE_MARKET.MIN_WITHDRAW && parseFloat(withdrawAmt) <= tradeBalance && (
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs space-y-1">
-                <p className="font-semibold text-blue-800 dark:text-blue-300">Payout Preview</p>
                 {(() => {
                   const amt = parseFloat(withdrawAmt);
                   const fee = amt * (withdrawType === "withdraw_bank" ? 0.08 : 0.05);
                   const pool = amt * 0.05;
                   const net = amt - fee - pool;
                   return <>
+                    <p className="font-semibold text-blue-800 dark:text-blue-300">Payout Preview</p>
                     <p>Platform fee ({withdrawType === "withdraw_bank" ? "8%" : "5%"}): <strong>-${fee.toFixed(2)}</strong></p>
                     <p>Affiliate Pool (5%): <strong>-${pool.toFixed(2)}</strong></p>
                     <p className="font-bold text-blue-700 dark:text-blue-300">Net payout: ${net.toFixed(2)}</p>

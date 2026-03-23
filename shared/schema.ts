@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, boolean, timestamp, pgEnum, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -9,6 +9,9 @@ export const verificationStatusEnum = pgEnum("verification_status", ["pending", 
 export const tierEnum = pgEnum("tier", ["platinum", "gold", "silver", "none"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["verification_fee", "sponsorship_credit", "withdrawal", "vat_deduction"]);
 export const disbursementStatusEnum = pgEnum("disbursement_status", ["pending", "approved", "rejected", "completed"]);
+export const tradeWalletTypeEnum = pgEnum("trade_wallet_type", ["trc20", "bep20"]);
+export const tradeTransactionTypeEnum = pgEnum("trade_transaction_type", ["deposit", "withdraw_exchange", "withdraw_bank"]);
+export const tradeTransactionStatusEnum = pgEnum("trade_transaction_status", ["pending", "completed", "failed"]);
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -109,6 +112,48 @@ export const coAffiliates = pgTable("co_affiliates", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const tradeWallets = pgTable("trade_wallets", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id).unique(),
+  trc20Address: text("trc20_address"),
+  bep20Address: text("bep20_address"),
+  tradeBalance: decimal("trade_balance", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const tradeTransactions = pgTable("trade_transactions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  type: tradeTransactionTypeEnum("type").notNull(),
+  walletType: tradeWalletTypeEnum("wallet_type"),
+  amountUsd: decimal("amount_usd", { precision: 16, scale: 6 }).notNull(),
+  feeUsd: decimal("fee_usd", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  reserveFundDeduction: decimal("reserve_fund_deduction", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  affiliateShareDeduction: decimal("affiliate_share_deduction", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  netAmount: decimal("net_amount", { precision: 16, scale: 6 }).notNull(),
+  txHash: text("tx_hash"),
+  status: tradeTransactionStatusEnum("status").notNull().default("pending"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const tradeReserveFund = pgTable("trade_reserve_fund", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  totalBalance: decimal("total_balance", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  totalDeposited: decimal("total_deposited", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const affiliateTradeShares = pgTable("affiliate_trade_shares", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  tradeTransactionId: integer("trade_transaction_id").notNull().references(() => tradeTransactions.id),
+  totalPoolAmount: decimal("total_pool_amount", { precision: 16, scale: 6 }).notNull(),
+  affiliateCount: integer("affiliate_count").notNull().default(0),
+  perAffiliateAmount: decimal("per_affiliate_amount", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const leadershipInquiries = pgTable("leadership_inquiries", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   firstName: text("first_name").notNull(),
@@ -156,6 +201,14 @@ export const insertCoAffiliateSchema = createInsertSchema(coAffiliates).omit({ i
 export type InsertCoAffiliate = z.infer<typeof insertCoAffiliateSchema>;
 export type CoAffiliate = typeof coAffiliates.$inferSelect;
 
+export const insertTradeWalletSchema = createInsertSchema(tradeWallets).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTradeWallet = z.infer<typeof insertTradeWalletSchema>;
+export type TradeWallet = typeof tradeWallets.$inferSelect;
+
+export const insertTradeTransactionSchema = createInsertSchema(tradeTransactions).omit({ id: true, createdAt: true });
+export type InsertTradeTransaction = z.infer<typeof insertTradeTransactionSchema>;
+export type TradeTransaction = typeof tradeTransactions.$inferSelect;
+
 export type WalletRecord = typeof wallets.$inferSelect;
 
 export const WAEC_GRADE_WEIGHTS: Record<string, number> = {
@@ -201,31 +254,66 @@ export const CO_AFFILIATE_PROGRAM = {
   TARGET: 1_000_000,
   MILESTONE_INTERVAL: 150_000,
   PRICE_INCREASE_RATE: 0.20,
-  BASE_CATEGORIES: [100, 200, 500] as const,
+  BASE_CATEGORIES: [100, 300, 500] as const,
   SHARE_FACTOR: 0.000005,
+  ELITE_MIN: 500,
+  ELITE_MAX: 10_000,
 } as const;
 
-export type CoAffiliateCategory = 100 | 200 | 500;
+export type CoAffiliateBaseCategory = 100 | 300;
+export type CoAffiliateCategory = 100 | 300 | number; // 500–10000 for elite
+
+export const TRADE_MARKET = {
+  FEE_EXCHANGE_WITHDRAW: 0.05,
+  FEE_BANK_WITHDRAW: 0.08,
+  RESERVE_FUND_RATE: 0.20,
+  AFFILIATE_SHARE_RATE: 0.05,
+  MIN_DEPOSIT: 10,
+  MIN_WITHDRAW: 5,
+  TSIA_RECEIVING_TRC20: "TRXTSIAWalletAddressHere",
+  TSIA_RECEIVING_BEP20: "0xTSIAWalletAddressHere",
+} as const;
 
 export interface CoAffiliateTier {
-  category: CoAffiliateCategory;
+  category: number;
+  label: string;
   currentPrice: number;
   sharePercentage: number;
   shareLabel: string;
+  isElite?: boolean;
 }
 
 export function getCoAffiliatePricing(totalEnrolled: number): CoAffiliateTier[] {
   const milestones = Math.floor(totalEnrolled / CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
   const multiplier = Math.pow(1 + CO_AFFILIATE_PROGRAM.PRICE_INCREASE_RATE, milestones);
-  return CO_AFFILIATE_PROGRAM.BASE_CATEGORIES.map(base => {
+  const labels: Record<number, string> = { 100: "Starter", 300: "Growth" };
+  const bases = [100, 300];
+  const result: CoAffiliateTier[] = bases.map(base => {
     const sharePct = CO_AFFILIATE_PROGRAM.SHARE_FACTOR * (base / 100);
     return {
-      category: base as CoAffiliateCategory,
+      category: base,
+      label: labels[base],
       currentPrice: Math.round(base * multiplier),
       sharePercentage: sharePct,
       shareLabel: (sharePct * 100).toFixed(6) + "%",
     };
   });
+  // Elite tier — base $500, scales with multiplier
+  const eliteBase = 500;
+  const eliteSharePct = CO_AFFILIATE_PROGRAM.SHARE_FACTOR * (eliteBase / 100);
+  result.push({
+    category: eliteBase,
+    label: "Elite",
+    currentPrice: Math.round(eliteBase * multiplier),
+    sharePercentage: eliteSharePct,
+    shareLabel: (eliteSharePct * 100).toFixed(6) + "%",
+    isElite: true,
+  });
+  return result;
+}
+
+export function getEliteSharePercentage(customAmount: number): number {
+  return CO_AFFILIATE_PROGRAM.SHARE_FACTOR * (customAmount / 100);
 }
 
 export function getMilestoneProgress(totalEnrolled: number) {

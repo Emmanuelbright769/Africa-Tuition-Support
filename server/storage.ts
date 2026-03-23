@@ -1,7 +1,9 @@
-import { eq, desc, and, gt, count } from "drizzle-orm";
+import { eq, desc, and, gt, count, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, verifications, sponsorshipPlans, wallets, transactions, disbursements, leadershipInquiries, otpCodes, fileUploads, coAffiliates,
+  users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
+  leadershipInquiries, otpCodes, fileUploads, coAffiliates,
+  tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -12,6 +14,9 @@ import {
   type OtpCode, type InsertOtp,
   type FileUpload, type InsertFileUpload,
   type CoAffiliate, type InsertCoAffiliate,
+  type TradeWallet, type InsertTradeWallet,
+  type TradeTransaction, type InsertTradeTransaction,
+  TRADE_MARKET,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -53,6 +58,17 @@ export interface IStorage {
   getCoAffiliateByUser(userId: number): Promise<CoAffiliate | undefined>;
   getCoAffiliateCount(): Promise<number>;
   getAllCoAffiliates(): Promise<CoAffiliate[]>;
+
+  // Trade Market
+  getOrCreateTradeWallet(userId: number): Promise<TradeWallet>;
+  updateTradeWalletAddresses(userId: number, trc20?: string, bep20?: string): Promise<TradeWallet>;
+  updateTradeBalance(userId: number, delta: string): Promise<TradeWallet>;
+  createTradeTransaction(tx: InsertTradeTransaction): Promise<TradeTransaction>;
+  getTradeTransactionsByUser(userId: number): Promise<TradeTransaction[]>;
+  getTradeReserveFund(): Promise<{ total_balance: string; total_deposited: string }>;
+  addToReserveFund(amount: string): Promise<void>;
+  recordAffiliateTradeShare(tradeTransactionId: number, poolAmount: string, affiliateCount: number, perAffiliate: string): Promise<void>;
+  getAffiliateCount(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -213,6 +229,60 @@ export class DatabaseStorage implements IStorage {
 
   async getAllCoAffiliates(): Promise<CoAffiliate[]> {
     return db.select().from(coAffiliates).orderBy(desc(coAffiliates.createdAt));
+  }
+
+  async getOrCreateTradeWallet(userId: number): Promise<TradeWallet> {
+    const [existing] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, userId));
+    if (existing) return existing;
+    const [created] = await db.insert(tradeWallets).values({ userId, tradeBalance: "0.000000" }).returning();
+    return created;
+  }
+
+  async updateTradeWalletAddresses(userId: number, trc20?: string, bep20?: string): Promise<TradeWallet> {
+    const updates: any = { updatedAt: new Date() };
+    if (trc20 !== undefined) updates.trc20Address = trc20;
+    if (bep20 !== undefined) updates.bep20Address = bep20;
+    const [updated] = await db.update(tradeWallets).set(updates).where(eq(tradeWallets.userId, userId)).returning();
+    return updated;
+  }
+
+  async updateTradeBalance(userId: number, delta: string): Promise<TradeWallet> {
+    const [updated] = await db.update(tradeWallets)
+      .set({ tradeBalance: sql`trade_balance + ${delta}::decimal`, updatedAt: new Date() })
+      .where(eq(tradeWallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async createTradeTransaction(tx: InsertTradeTransaction): Promise<TradeTransaction> {
+    const [created] = await db.insert(tradeTransactions).values(tx).returning();
+    return created;
+  }
+
+  async getTradeTransactionsByUser(userId: number): Promise<TradeTransaction[]> {
+    return db.select().from(tradeTransactions).where(eq(tradeTransactions.userId, userId)).orderBy(desc(tradeTransactions.createdAt));
+  }
+
+  async getTradeReserveFund(): Promise<{ total_balance: string; total_deposited: string }> {
+    const [row] = await db.select().from(tradeReserveFund);
+    return { total_balance: row?.totalBalance ?? "0", total_deposited: row?.totalDeposited ?? "0" };
+  }
+
+  async addToReserveFund(amount: string): Promise<void> {
+    await db.update(tradeReserveFund).set({
+      totalBalance: sql`total_balance + ${amount}::decimal`,
+      totalDeposited: sql`total_deposited + ${amount}::decimal`,
+      updatedAt: new Date(),
+    });
+  }
+
+  async recordAffiliateTradeShare(tradeTransactionId: number, poolAmount: string, affiliateCount: number, perAffiliate: string): Promise<void> {
+    await db.insert(affiliateTradeShares).values({ tradeTransactionId, totalPoolAmount: poolAmount, affiliateCount, perAffiliateAmount: perAffiliate });
+  }
+
+  async getAffiliateCount(): Promise<number> {
+    const [result] = await db.select({ total: count() }).from(users).where(eq(users.role, "affiliate"));
+    return result?.total ?? 0;
   }
 }
 

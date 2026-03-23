@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff } from "lucide-react";
+import { Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight, LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -337,6 +337,29 @@ export default function StudentDashboard() {
               </Card>
             </motion.div>
           </div>
+
+          {/* Student Loan Coming Soon */}
+          <motion.div variants={itemVariants}>
+            <Card className="shadow-md border-2 border-dashed border-muted-foreground/20">
+              <CardContent className="pt-6 pb-6">
+                <div className="flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
+                  <div className="w-16 h-16 bg-muted/50 rounded-2xl flex items-center justify-center shrink-0">
+                    <Banknote className="w-8 h-8 text-muted-foreground/50" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
+                      <h3 className="text-xl font-bold">Student Loan Programme</h3>
+                      <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs">Coming Soon</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground max-w-xl">Access low-interest education loans to cover tuition, accommodation, and study materials. Exclusive to verified TSIA students — stay tuned for our launch date.</p>
+                  </div>
+                  <Button variant="outline" disabled className="shrink-0" data-testid="button-student-loan">
+                    <Clock className="w-4 h-4 mr-2" /> Coming Soon
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
 
         </motion.div>
       </main>

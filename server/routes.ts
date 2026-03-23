@@ -5,7 +5,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, getEliteSharePercentage } from "@shared/schema";
 
 const PgSession = pgSession(session);
 
@@ -603,42 +603,217 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.role !== "affiliate") return res.status(403).json({ message: "Only affiliate accounts can join the Co-Affiliate programme." });
-
       const existing = await storage.getCoAffiliateByUser(userId);
       if (existing) return res.status(400).json({ message: "You are already enrolled in the Co-Affiliate programme." });
 
-      const { category } = req.body;
-      if (![100, 200, 500].includes(Number(category))) {
-        return res.status(400).json({ message: "Invalid category. Must be 100, 200, or 500." });
-      }
-      const investmentCategory = Number(category) as 100 | 200 | 500;
+      const { category, customAmount } = req.body;
+      const cat = Number(category);
+      let investmentCategory: number;
+      let amountPaid: number;
+      let sharePercentage: number;
 
       const totalEnrolled = await storage.getCoAffiliateCount();
       const pricing = getCoAffiliatePricing(totalEnrolled);
-      const tier = pricing.find(p => p.category === investmentCategory);
-      if (!tier) return res.status(400).json({ message: "Invalid category" });
+      const milestones = Math.floor(totalEnrolled / CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
+      const multiplier = Math.pow(1 + CO_AFFILIATE_PROGRAM.PRICE_INCREASE_RATE, milestones);
+
+      if (cat === 100 || cat === 300) {
+        const tier = pricing.find(p => p.category === cat);
+        if (!tier) return res.status(400).json({ message: "Invalid category" });
+        investmentCategory = cat;
+        amountPaid = tier.currentPrice;
+        sharePercentage = tier.sharePercentage;
+      } else if (cat === 500) {
+        // Elite tier — custom amount $500–$10,000
+        const custom = Number(customAmount);
+        if (isNaN(custom) || custom < 500 || custom > 10000) {
+          return res.status(400).json({ message: "Elite category amount must be between $500 and $10,000." });
+        }
+        investmentCategory = Math.round(custom);
+        amountPaid = Math.round(custom * multiplier);
+        sharePercentage = getEliteSharePercentage(custom);
+      } else {
+        return res.status(400).json({ message: "Invalid category. Must be 100, 300, or 500 (elite)." });
+      }
 
       const record = await storage.createCoAffiliate({
         userId,
         investmentCategory,
-        amountPaid: tier.currentPrice.toFixed(2),
-        sharePercentage: tier.sharePercentage.toFixed(10),
+        amountPaid: amountPaid.toFixed(2),
+        sharePercentage: sharePercentage.toFixed(10),
         status: "active",
       });
 
       res.json({
         ...record,
-        currentPrice: tier.currentPrice,
-        shareLabel: tier.shareLabel,
+        currentPrice: amountPaid,
+        shareLabel: (sharePercentage * 100).toFixed(6) + "%",
         message: "Successfully enrolled as Co-Affiliate/Initiator!",
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  // ── TRADE MARKET ROUTES ──
+
+  app.get("/api/trade/wallet", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const wallet = await storage.getOrCreateTradeWallet(userId);
+      res.json(wallet);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/trade/wallet/connect", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { trc20Address, bep20Address } = req.body;
+      if (!trc20Address && !bep20Address) return res.status(400).json({ message: "Provide at least one wallet address." });
+      await storage.getOrCreateTradeWallet(userId);
+      const updated = await storage.updateTradeWalletAddresses(userId, trc20Address, bep20Address);
+      res.json({ ...updated, message: "Wallet address(es) saved successfully." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/trade/deposit", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { amountUsd, walletType, txHash } = req.body;
+      const amount = parseFloat(amountUsd);
+      if (isNaN(amount) || amount < TRADE_MARKET.MIN_DEPOSIT) {
+        return res.status(400).json({ message: `Minimum deposit is $${TRADE_MARKET.MIN_DEPOSIT}.` });
+      }
+      if (!["trc20", "bep20"].includes(walletType)) {
+        return res.status(400).json({ message: "walletType must be trc20 or bep20." });
+      }
+      // Allocations on deposit
+      const reserveCut = amount * TRADE_MARKET.RESERVE_FUND_RATE;      // 20%
+      const affiliateCut = amount * TRADE_MARKET.AFFILIATE_SHARE_RATE; // 5%
+      const userCredit = amount - reserveCut - affiliateCut;           // 75%
+
+      await storage.getOrCreateTradeWallet(userId);
+      const tx = await storage.createTradeTransaction({
+        userId,
+        type: "deposit",
+        walletType,
+        amountUsd: amount.toFixed(6),
+        feeUsd: "0.000000",
+        reserveFundDeduction: reserveCut.toFixed(6),
+        affiliateShareDeduction: affiliateCut.toFixed(6),
+        netAmount: userCredit.toFixed(6),
+        txHash: txHash || null,
+        status: "completed",
+        note: `Deposit via ${walletType.toUpperCase()} — 20% reserve, 5% affiliate pool`,
+      });
+
+      await storage.updateTradeBalance(userId, userCredit.toFixed(6));
+      await storage.addToReserveFund(reserveCut.toFixed(6));
+      const affiliateCount = await storage.getAffiliateCount();
+      const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
+      await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+
+      const wallet = await storage.getOrCreateTradeWallet(userId);
+      res.json({
+        transaction: tx,
+        newBalance: wallet.tradeBalance,
+        breakdown: {
+          deposited: amount,
+          reserveFund: reserveCut,
+          affiliatePool: affiliateCut,
+          creditedToYou: userCredit,
+        },
+        message: "Deposit confirmed.",
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/trade/withdraw", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { amountUsd, withdrawalType, walletType, bankAccountName } = req.body;
+      const amount = parseFloat(amountUsd);
+      if (isNaN(amount) || amount < TRADE_MARKET.MIN_WITHDRAW) {
+        return res.status(400).json({ message: `Minimum withdrawal is $${TRADE_MARKET.MIN_WITHDRAW}.` });
+      }
+      if (!["withdraw_exchange", "withdraw_bank"].includes(withdrawalType)) {
+        return res.status(400).json({ message: "withdrawalType must be withdraw_exchange or withdraw_bank." });
+      }
+      const feeRate = withdrawalType === "withdraw_bank" ? TRADE_MARKET.FEE_BANK_WITHDRAW : TRADE_MARKET.FEE_EXCHANGE_WITHDRAW;
+      const fee = amount * feeRate;
+      const affiliateCut = amount * TRADE_MARKET.AFFILIATE_SHARE_RATE; // 5% on withdrawal too
+      const netPayout = amount - fee - affiliateCut;
+
+      await storage.getOrCreateTradeWallet(userId);
+      const wallet = await storage.getOrCreateTradeWallet(userId);
+      const currentBalance = parseFloat(wallet.tradeBalance);
+      if (currentBalance < amount) {
+        return res.status(400).json({ message: `Insufficient balance. Available: $${currentBalance.toFixed(2)}` });
+      }
+
+      const txType = withdrawalType === "withdraw_bank" ? "withdraw_bank" : "withdraw_exchange";
+      const tx = await storage.createTradeTransaction({
+        userId,
+        type: txType,
+        walletType: walletType || null,
+        amountUsd: amount.toFixed(6),
+        feeUsd: fee.toFixed(6),
+        reserveFundDeduction: "0.000000",
+        affiliateShareDeduction: affiliateCut.toFixed(6),
+        netAmount: netPayout.toFixed(6),
+        txHash: null,
+        status: "completed",
+        note: withdrawalType === "withdraw_bank"
+          ? `Bank withdrawal — 8% fee + 5% affiliate pool`
+          : `Exchange wallet withdrawal — 5% fee + 5% affiliate pool`,
+      });
+
+      await storage.updateTradeBalance(userId, (-amount).toFixed(6));
+      const affiliateCount = await storage.getAffiliateCount();
+      const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
+      await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+
+      const updatedWallet = await storage.getOrCreateTradeWallet(userId);
+      res.json({
+        transaction: tx,
+        newBalance: updatedWallet.tradeBalance,
+        breakdown: {
+          requested: amount,
+          fee: fee,
+          feeRate: `${(feeRate * 100).toFixed(0)}%`,
+          affiliatePool: affiliateCut,
+          netPayout: netPayout,
+        },
+        message: "Withdrawal processed.",
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/trade/transactions", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const txs = await storage.getTradeTransactionsByUser(userId);
+      res.json(txs);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/trade/reserve-fund", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin only." });
+      const fund = await storage.getTradeReserveFund();
+      res.json(fund);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   app.get("/api/admin/students", async (req, res) => {

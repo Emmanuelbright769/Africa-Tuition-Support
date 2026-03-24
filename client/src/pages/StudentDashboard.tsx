@@ -94,9 +94,14 @@ export default function StudentDashboard() {
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (authLoading) return;
-    if (!user) { redirectTimerRef.current = setTimeout(() => setLocation("/login"), 200); }
-    else if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
-    return () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current); };
+    if (!user) {
+      redirectTimerRef.current = setTimeout(() => {
+        if (!queryClient.getQueryData(["/api/auth/me"])) setLocation("/login");
+      }, 800);
+    } else {
+      if (redirectTimerRef.current) { clearTimeout(redirectTimerRef.current); redirectTimerRef.current = null; }
+    }
+    return () => { if (redirectTimerRef.current) { clearTimeout(redirectTimerRef.current); redirectTimerRef.current = null; } };
   }, [authLoading, user]);
 
   if (authLoading || (!user && !authLoading)) {

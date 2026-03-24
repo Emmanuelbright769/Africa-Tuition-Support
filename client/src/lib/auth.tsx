@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
 
-const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
 type AuthUser = {
   id: number;
@@ -25,6 +25,11 @@ type AuthContextType = {
 };
 
 const AuthContext = createContext<AuthContextType>(null!);
+
+function clearSessionCache() {
+  queryClient.setQueryData(["/api/auth/me"], null);
+  queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "/api/auth/me" });
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: user, isLoading } = useQuery<AuthUser | null>({
@@ -52,8 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await apiRequest("POST", "/api/auth/logout");
     } catch {}
-    queryClient.setQueryData(["/api/auth/me"], null);
-    queryClient.clear();
+    clearSessionCache();
     window.location.href = "/login?reason=inactivity";
   };
 
@@ -86,15 +90,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyOtp = async (email: string, code: string): Promise<AuthUser> => {
     const res = await apiRequest("POST", "/api/auth/verify-otp", { email, code });
     const userData = await res.json();
+    queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "/api/auth/me" });
     queryClient.setQueryData(["/api/auth/me"], userData);
     return userData;
   };
 
   const logout = async () => {
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    await apiRequest("POST", "/api/auth/logout");
-    queryClient.setQueryData(["/api/auth/me"], null);
-    queryClient.clear();
+    if (inactivityTimer.current) { clearTimeout(inactivityTimer.current); inactivityTimer.current = null; }
+    try { await apiRequest("POST", "/api/auth/logout"); } catch {}
+    clearSessionCache();
   };
 
   return (

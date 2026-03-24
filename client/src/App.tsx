@@ -1,4 +1,5 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route } from "wouter";
+import { Component, ReactNode } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -19,6 +20,29 @@ import ContactUs from "@/pages/ContactUs";
 import AffiliateSignup from "@/pages/AffiliateSignup";
 import AffiliateDashboard from "@/pages/AffiliateDashboard";
 import TourAfrica from "@/pages/TourAfrica";
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 40, fontFamily: "monospace", background: "#1a1a2e", color: "#e94560", minHeight: "100vh" }}>
+          <h2 style={{ fontSize: 22, marginBottom: 16, color: "#f5a623" }}>App Crashed — Runtime Error</h2>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", background: "#16213e", padding: 20, borderRadius: 8, color: "#e0e0e0" }}>
+            {this.state.error.message}{"\n\n"}{this.state.error.stack}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function Router() {
   return (
@@ -42,16 +66,18 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Router />
-          </TooltipProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AuthProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Router />
+            </TooltipProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

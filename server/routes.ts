@@ -658,6 +658,66 @@ export async function registerRoutes(
     }
   });
 
+  // ── CO-AFFILIATE UPGRADE ──
+  app.post("/api/co-affiliate/upgrade", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const existing = await storage.getCoAffiliateByUser(userId);
+      if (!existing) return res.status(400).json({ message: "You are not enrolled in the Co-Affiliate programme. Please subscribe first." });
+
+      const { category, customAmount } = req.body;
+      const cat = Number(category);
+      const totalEnrolled = await storage.getCoAffiliateCount();
+      const milestones = Math.floor(totalEnrolled / CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
+      const multiplier = Math.pow(1 + CO_AFFILIATE_PROGRAM.PRICE_INCREASE_RATE, milestones);
+      const pricing = getCoAffiliatePricing(totalEnrolled);
+
+      let newCategory: number;
+      let newAmountPaid: number;
+      let newSharePercentage: number;
+
+      if (cat === 100 || cat === 300) {
+        if (Number(existing.investmentCategory) >= cat) {
+          return res.status(400).json({ message: `You are already at the ${cat === 300 ? "Growth" : "Starter"} tier or higher.` });
+        }
+        const tier = pricing.find(p => p.category === cat);
+        if (!tier) return res.status(400).json({ message: "Invalid category" });
+        newCategory = cat;
+        newAmountPaid = tier.currentPrice;
+        newSharePercentage = tier.sharePercentage;
+      } else if (cat === 500) {
+        const custom = Number(customAmount);
+        if (isNaN(custom) || custom < 500 || custom > 10000) {
+          return res.status(400).json({ message: "Elite upgrade amount must be $500 – $10,000." });
+        }
+        if (Number(existing.investmentCategory) >= custom) {
+          return res.status(400).json({ message: "Your current investment is already at this amount or higher." });
+        }
+        newCategory = Math.round(custom);
+        newAmountPaid = Math.round(custom * multiplier);
+        newSharePercentage = getEliteSharePercentage(custom);
+      } else {
+        return res.status(400).json({ message: "Invalid category." });
+      }
+
+      const updated = await storage.updateCoAffiliate(userId, {
+        investmentCategory: newCategory,
+        amountPaid: newAmountPaid.toFixed(2),
+        sharePercentage: newSharePercentage.toFixed(10),
+      });
+
+      res.json({
+        ...updated,
+        currentPrice: newAmountPaid,
+        shareLabel: (newSharePercentage * 100).toFixed(6) + "%",
+        message: `Successfully upgraded to ${cat === 500 ? "Elite" : cat === 300 ? "Growth" : "Starter"} tier!`,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ── TRADE MARKET ROUTES ──
 
   app.get("/api/trade/wallet", async (req, res) => {

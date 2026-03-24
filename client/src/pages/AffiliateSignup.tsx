@@ -5,17 +5,35 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { KeyRound, Share2, DollarSign, Users } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 
+const AFRICAN_COUNTRIES = [
+  { value: "ng", label: "Nigeria" },
+  { value: "gh", label: "Ghana" },
+  { value: "ke", label: "Kenya" },
+  { value: "za", label: "South Africa" },
+  { value: "et", label: "Ethiopia" },
+  { value: "tz", label: "Tanzania" },
+  { value: "ug", label: "Uganda" },
+  { value: "eg", label: "Egypt" },
+  { value: "cm", label: "Cameroon" },
+  { value: "sn", label: "Senegal" },
+  { value: "ci", label: "Côte d'Ivoire" },
+  { value: "other_africa", label: "Other African Country" },
+];
+
 export default function AffiliateSignup() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
-  const [country, setCountry] = useState("ng");
+  const [africanCountry, setAfricanCountry] = useState("ng");
+  const [diaspora, setDiaspora] = useState(false);
+  const [diasporaCountry, setDiasporaCountry] = useState("");
   const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "" });
   const [otpHint, setOtpHint] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
@@ -23,11 +41,17 @@ export default function AffiliateSignup() {
   const { requestOtp, verifyOtp } = useAuth();
   const { toast } = useToast();
 
+  const getCountryValue = () => diaspora && diasporaCountry.trim() ? diasporaCountry.trim() : africanCountry;
+
   const handleSubmitDetails = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (diaspora && !diasporaCountry.trim()) {
+      toast({ title: "Country required", description: "Please specify the country you currently live in.", variant: "destructive" });
+      return;
+    }
     setLoading(true);
     try {
-      const result = await requestOtp({ ...formData, country, role: "affiliate" });
+      const result = await requestOtp({ ...formData, country: getCountryValue(), role: "affiliate" });
       setOtpHint(result.hint || "");
       setStep(2);
       toast({ title: "OTP Sent", description: "Check your email for the 6-digit verification code." });
@@ -60,7 +84,7 @@ export default function AffiliateSignup() {
     setLoading(true);
     try {
       await verifyOtp(formData.email, code);
-      setLocation("/affiliate-dashboard");
+      setLocation("/affiliate-dashboard?welcome=1");
     } catch (err: any) {
       toast({ title: "Invalid Code", description: err.message, variant: "destructive" });
     } finally {
@@ -72,11 +96,7 @@ export default function AffiliateSignup() {
     <div className="min-h-screen bg-background flex flex-col font-sans">
       <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white py-12">
         <div className="container mx-auto px-4 text-center">
-          <Link href="/">
-            <a className="cursor-pointer inline-block mb-6">
-              <Logo variant="badge" height={56} />
-            </a>
-          </Link>
+          <Link href="/"><a className="cursor-pointer inline-block mb-6"><Logo variant="badge" height={56} /></a></Link>
           <h1 className="text-3xl font-bold mb-2">Join the TSIA Affiliate Program</h1>
           <p className="text-slate-300 max-w-lg mx-auto">Earn commission by referring students to TSIA. No age or eligibility requirements.</p>
         </div>
@@ -91,10 +111,7 @@ export default function AffiliateSignup() {
           ].map((item, i) => (
             <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-card border">
               <div className="bg-tsia-gold/10 p-2 rounded-lg shrink-0"><item.icon className="w-5 h-5 text-tsia-gold" /></div>
-              <div>
-                <h3 className="font-semibold text-sm">{item.title}</h3>
-                <p className="text-xs text-muted-foreground">{item.desc}</p>
-              </div>
+              <div><h3 className="font-semibold text-sm">{item.title}</h3><p className="text-xs text-muted-foreground">{item.desc}</p></div>
             </div>
           ))}
         </div>
@@ -134,18 +151,30 @@ export default function AffiliateSignup() {
                         <Input id="phone" type="tel" placeholder="+234 800 000 0000" required className="h-11 bg-muted/30" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} data-testid="input-aff-phone" />
                       </div>
                       <div className="space-y-2">
-                        <Label>Country</Label>
-                        <Select value={country} onValueChange={setCountry}>
+                        <Label>Country of Origin (Africa)</Label>
+                        <Select value={africanCountry} onValueChange={setAfricanCountry}>
                           <SelectTrigger data-testid="select-aff-country"><SelectValue placeholder="Select Country" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="ng">Nigeria</SelectItem>
-                            <SelectItem value="gh">Ghana</SelectItem>
-                            <SelectItem value="ke">Kenya</SelectItem>
-                            <SelectItem value="za">South Africa</SelectItem>
-                            <SelectItem value="other">Other African Nation</SelectItem>
+                            {AFRICAN_COUNTRIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
+                      <div className="flex items-start gap-3 p-3 rounded-xl border bg-muted/30">
+                        <Checkbox id="diaspora" checked={diaspora} onCheckedChange={(v) => setDiaspora(!!v)} data-testid="checkbox-diaspora" className="mt-0.5" />
+                        <div>
+                          <label htmlFor="diaspora" className="text-sm font-medium cursor-pointer leading-snug">
+                            I am from Africa but currently live outside Africa
+                          </label>
+                          <p className="text-xs text-muted-foreground mt-0.5">Check this if you live in the diaspora or any other part of the world</p>
+                        </div>
+                      </div>
+                      {diaspora && (
+                        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+                          <Label htmlFor="diasporaCountry">Country you currently live in</Label>
+                          <Input id="diasporaCountry" placeholder="e.g. United Kingdom, Canada, USA..." className="h-11 bg-muted/30"
+                            value={diasporaCountry} onChange={e => setDiasporaCountry(e.target.value)} required={diaspora} data-testid="input-diaspora-country" />
+                        </motion.div>
+                      )}
                       <Button type="submit" className="w-full h-12 text-base font-semibold bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 shadow-md" disabled={loading} data-testid="button-aff-signup">
                         {loading ? "Creating Account..." : "Join Affiliate Program"}
                       </Button>
@@ -164,16 +193,8 @@ export default function AffiliateSignup() {
                       )}
                       <div className="flex justify-center gap-3">
                         {otpDigits.map((digit, i) => (
-                          <Input
-                            key={i}
-                            ref={el => { inputRefs.current[i] = el; }}
-                            className="w-12 h-14 text-center text-xl font-bold bg-muted/30 focus:bg-background transition-colors"
-                            maxLength={1}
-                            value={digit}
-                            onChange={e => handleOtpChange(i, e.target.value)}
-                            onKeyDown={e => handleOtpKeyDown(i, e)}
-                            data-testid={`input-aff-otp-${i}`}
-                          />
+                          <Input key={i} ref={el => { inputRefs.current[i] = el; }} className="w-12 h-14 text-center text-xl font-bold bg-muted/30 focus:bg-background transition-colors"
+                            maxLength={1} value={digit} onChange={e => handleOtpChange(i, e.target.value)} onKeyDown={e => handleOtpKeyDown(i, e)} data-testid={`input-aff-otp-${i}`} />
                         ))}
                       </div>
                       <Button type="submit" className="w-full h-12 text-base font-semibold bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 shadow-md" disabled={loading || otpDigits.join("").length !== 6} data-testid="button-verify-aff-otp">

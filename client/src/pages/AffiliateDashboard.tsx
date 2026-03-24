@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation, useSearch, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,8 @@ import {
   Banknote, Clock, Crown, Sparkles, CheckCircle2, AlertCircle, Loader2,
   Target, BarChart3, Infinity, Star, Wallet, ArrowUpRight, ArrowDownLeft,
   ShoppingBag, ChevronDown, ChevronUp, Shield, Zap, Globe,
-  Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag
+  Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag,
+  Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -33,18 +34,21 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "trade" | "trust_fund" | "ecommerce" | "referrals";
+type Section = "overview" | "trade" | "trust_fund" | "ecommerce" | "referrals" | "loan" | "tour_africa";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
-  { id: "overview",   label: "Overview",         icon: LayoutDashboard },
-  { id: "trade",      label: "Trade Market",      icon: Globe },
-  { id: "trust_fund", label: "Affiliate Trust Fund", icon: Crown },
-  { id: "ecommerce",  label: "E-Commerce",        icon: ShoppingCart, badge: "Coming Soon" },
-  { id: "referrals",  label: "Referrals",         icon: Users },
+  { id: "overview",   label: "Overview",              icon: LayoutDashboard },
+  { id: "trade",      label: "Trade Market",           icon: Globe },
+  { id: "trust_fund", label: "Affiliate Trust Fund",   icon: Crown },
+  { id: "ecommerce",  label: "E-Commerce",             icon: ShoppingCart, badge: "Coming Soon" },
+  { id: "loan",       label: "Loan",                   icon: Banknote, badge: "Coming Soon" },
+  { id: "referrals",  label: "Referrals",              icon: Users },
+  { id: "tour_africa", label: "TOUR AFRICA",           icon: Car },
 ];
 
 export default function AffiliateDashboard() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const { user, logout, isLoading: authLoading } = useAuth();
   const { mode, setMode } = useTheme();
   const { toast } = useToast();
@@ -67,6 +71,15 @@ export default function AffiliateDashboard() {
   const [trc20Input, setTrc20Input]     = useState("");
   const [bep20Input, setBep20Input]     = useState("");
   const [showTxHistory, setShowTxHistory] = useState(false);
+
+  // Welcome wallet walkthrough
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const [walkthroughStep, setWalkthroughStep] = useState(0);
+
+  // Tier upgrade
+  const [upgradeOpen, setUpgradeOpen]     = useState(false);
+  const [upgradeCategory, setUpgradeCategory] = useState<number>(300);
+  const [upgradeEliteAmt, setUpgradeEliteAmt] = useState("500");
 
   const themeOpts = [
     { v: "light" as const, icon: Sun },
@@ -144,6 +157,32 @@ export default function AffiliateDashboard() {
     onError: (err: any) => toast({ title: "Connection Failed", description: err.message, variant: "destructive" }),
   });
 
+  const upgradeMutation = useMutation({
+    mutationFn: async ({ category, customAmount }: { category: number; customAmount?: number }) => {
+      const res = await apiRequest("POST", "/api/co-affiliate/upgrade", { category, customAmount });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Tier Upgraded! 🎉", description: data.message });
+      setUpgradeOpen(false);
+      refetchMyCoAff();
+      queryClient.invalidateQueries({ queryKey: ["/api/co-affiliate/program"] });
+    },
+    onError: (err: any) => toast({ title: "Upgrade Failed", description: err.message, variant: "destructive" }),
+  });
+
+  // Trigger wallet walkthrough on first visit via ?welcome=1
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    if (params.get("welcome") === "1") {
+      const shownKey = "tsia_aff_walkthrough_shown";
+      if (!localStorage.getItem(shownKey)) {
+        setTimeout(() => { setWalkthroughOpen(true); setWalkthroughStep(0); }, 800);
+        localStorage.setItem(shownKey, "1");
+      }
+    }
+  }, [search]);
+
   if (authLoading || (!user && !authLoading)) {
     return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
@@ -169,8 +208,12 @@ export default function AffiliateDashboard() {
   const txTypeLabel: Record<string, string> = { deposit: "Deposit", withdraw_exchange: "Withdraw → Exchange", withdraw_bank: "Withdraw → Bank" };
   const txTypeIcon: Record<string, any> = { deposit: ArrowDownLeft, withdraw_exchange: ArrowUpRight, withdraw_bank: ArrowUpRight };
 
-  const navigate = (s: Section) => { setActiveSection(s); setMenuOpen(false); };
-  const currentNav = NAV_ITEMS.find(n => n.id === activeSection)!;
+  const navigate = (s: Section) => {
+    if (s === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
+    setActiveSection(s); setMenuOpen(false);
+  };
+  const currentNav = NAV_ITEMS.find(n => n.id === activeSection) ?? NAV_ITEMS[0]!;
+  const upgradeEliteAmtNum = Math.max(500, Math.min(10000, parseFloat(upgradeEliteAmt) || 500));
 
   return (
     <div className="min-h-screen bg-background font-sans">
@@ -358,7 +401,32 @@ export default function AffiliateDashboard() {
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Global Trade Market</h2>
-                  <p className="text-muted-foreground text-sm mb-2">Invest globally — deposit & withdraw using BYBIT, BINANCE & more.</p>
+                  <p className="text-muted-foreground text-sm mb-4">Invest globally — deposit & withdraw using BYBIT, BINANCE & more.</p>
+
+                  {/* ROI + BOT Info Banner */}
+                  <div className="rounded-2xl overflow-hidden shadow-lg mb-2">
+                    <div className="bg-gradient-to-r from-green-800 to-emerald-700 text-white p-5">
+                      <div className="flex items-start gap-3 mb-3">
+                        <TrendingUp className="w-6 h-6 shrink-0 mt-0.5 text-green-200" />
+                        <div>
+                          <p className="font-bold text-lg leading-tight">100% ROI @ 2% Daily</p>
+                          <p className="text-green-200 text-sm mt-0.5">Trades profit & loss on capital markets using arithmetic algorithms with the power of a BOT (AI)</p>
+                        </div>
+                      </div>
+                      <p className="text-green-100 text-sm leading-relaxed">
+                        TSIA's Global Trade Market targets a <strong className="text-white">100% total return on investment</strong> through consistent 2% daily capital market trading — powered by advanced arithmetic algorithms and an AI-driven BOT. At the end of your investment cycle, your capital will have grown to double what you deposited.
+                      </p>
+                    </div>
+                    <div className="bg-amber-600 text-white p-4 flex items-start gap-3">
+                      <Bot className="w-5 h-5 shrink-0 mt-0.5 text-amber-200" />
+                      <div>
+                        <p className="font-bold text-sm">Important: Manual BOT Activation Required</p>
+                        <p className="text-amber-100 text-xs mt-1 leading-relaxed">
+                          You must <strong className="text-white">manually activate the Trading BOT every working day at 1:00 PM</strong> for it to execute trades for that day. If the BOT is not activated by 1PM on a working day, no trades will run for that day. Activate it from the Trade Market section when you are ready.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </motion.div>
 
                 {/* Balance + actions */}
@@ -569,9 +637,27 @@ export default function AffiliateDashboard() {
                               data-testid={`button-subscribe-${tier.category}`}>
                               {isEliteTier ? `Join for $${Math.round(eliteAmt * Math.pow(1.2, progress.milestones))}` : `Join for $${tier.currentPrice}`}
                             </Button>
-                          ) : (
-                            <Button variant="outline" className="w-full h-10 text-sm" disabled>{isMyTier ? "Enrolled ✓" : "Already Enrolled"}</Button>
-                          )}
+                          ) : isMyTier ? (
+                            <Button variant="outline" className="w-full h-10 text-sm border-tsia-gold text-tsia-gold" disabled>Enrolled ✓</Button>
+                          ) : (() => {
+                            const canUpgrade = myCategory !== null && (
+                              isEliteTier
+                                ? myCategory < 10000
+                                : myCategory < tier.category
+                            );
+                            if (!canUpgrade) return <Button variant="outline" className="w-full h-10 text-sm" disabled>Already at higher tier</Button>;
+                            return (
+                              <Button className="w-full h-10 text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white"
+                                onClick={() => {
+                                  setUpgradeCategory(isEliteTier ? 500 : tier.category);
+                                  setUpgradeEliteAmt(isEliteTier ? eliteCustomAmount : "");
+                                  setUpgradeOpen(true);
+                                }}
+                                data-testid={`button-upgrade-${tier.category}`}>
+                                ↑ Upgrade to {tier.label}
+                              </Button>
+                            );
+                          })()}
                         </motion.div>
                       );
                     })}
@@ -659,6 +745,44 @@ export default function AffiliateDashboard() {
                             <f.icon className="w-5 h-5 text-primary mx-auto mb-2" />
                             <p className="font-semibold mb-1">{f.label}</p>
                             <p className="text-xs text-muted-foreground">{f.desc}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </>
+            )}
+
+            {/* ── LOAN ── */}
+            {activeSection === "loan" && (
+              <>
+                <motion.div variants={itemVariants}>
+                  <h2 className="text-2xl font-bold mb-1">Business Loan</h2>
+                  <p className="text-muted-foreground text-sm mb-6">Access flexible business financing tailored to TSIA affiliate members.</p>
+                </motion.div>
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-2 border-dashed border-muted-foreground/20">
+                    <CardContent className="pt-12 pb-14 text-center">
+                      <div className="w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Banknote className="w-12 h-12 text-blue-400" />
+                      </div>
+                      <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-sm px-4 py-1.5 mb-4">Coming Soon</Badge>
+                      <h3 className="text-2xl font-bold mb-3">Business Loan — Launching Soon</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto leading-relaxed mb-8">
+                        TSIA is building a business financing solution exclusively for verified affiliate members. Access capital to grow your business, scale referrals, and invest in opportunities — with competitive interest rates and flexible repayment terms.
+                      </p>
+                      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-2xl mx-auto text-sm">
+                        {[
+                          { label: "Flexible Terms", desc: "Choose your repayment period", icon: Clock },
+                          { label: "Fast Approval", desc: "Quick turnaround for members", icon: Zap },
+                          { label: "No Collateral", desc: "Identity-based underwriting", icon: Shield },
+                          { label: "Competitive Rates", desc: "Tailored for affiliates", icon: TrendingDown },
+                        ].map(f => (
+                          <div key={f.label} className="bg-muted/50 rounded-xl p-4 border flex flex-col items-center gap-2">
+                            <f.icon className="w-5 h-5 text-blue-500" />
+                            <p className="font-semibold">{f.label}</p>
+                            <p className="text-xs text-muted-foreground text-center">{f.desc}</p>
                           </div>
                         ))}
                       </div>
@@ -886,6 +1010,128 @@ export default function AffiliateDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Upgrade Modal */}
+      <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-purple-600" /> Upgrade Your Investment Tier</DialogTitle>
+            <DialogDescription>Move to a higher co-affiliate tier and increase your lifetime profit share.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {myCoAff && (
+              <div className="bg-muted/50 rounded-xl p-4 border text-sm">
+                <p className="text-muted-foreground text-xs mb-1">Current tier</p>
+                <p className="font-bold">{myCategory && myCategory >= 500 ? `Elite ($${myCategory})` : myCategory === 300 ? "Growth ($300)" : "Starter ($100)"}</p>
+                <p className="text-xs text-muted-foreground mt-1">Share: {(parseFloat(myCoAff.sharePercentage) * 100).toFixed(6)}% lifetime</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Upgrade to</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([{cat: 300, label: "Growth"}, {cat: 500, label: "Elite"}, {cat: -1, label: "Elite+"}]).map((opt) => {
+                  if (opt.cat === 300 && myCategory !== null && myCategory >= 300) return null;
+                  if (opt.cat === 500 && myCategory !== null && myCategory >= 10000) return null;
+                  if (opt.cat === -1) return null;
+                  return (
+                    <button key={opt.cat} onClick={() => setUpgradeCategory(opt.cat)}
+                      className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all ${upgradeCategory === opt.cat ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700' : 'border-muted hover:border-muted-foreground'}`}>
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {upgradeCategory === 500 && (
+              <div className="space-y-2">
+                <Label>Elite Amount ($500 – $10,000)</Label>
+                <Input type="number" min={500} max={10000} step={50} value={upgradeEliteAmt} onChange={e => setUpgradeEliteAmt(e.target.value)} data-testid="input-upgrade-elite-amount" />
+                <p className="text-xs text-muted-foreground">New share: {(getEliteSharePercentage(upgradeEliteAmtNum) * 100).toFixed(6)}% lifetime</p>
+              </div>
+            )}
+            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-3 text-xs">
+              <p className="font-semibold text-purple-800 dark:text-purple-300 mb-1">What changes after upgrade:</p>
+              <p className="text-purple-700 dark:text-purple-400">Your lifetime profit share percentage increases immediately to match the new tier. The investment is one-time and non-refundable.</p>
+            </div>
+          </div>
+          <DialogFooter className="gap-3">
+            <Button variant="outline" onClick={() => setUpgradeOpen(false)}>Cancel</Button>
+            <Button onClick={() => upgradeMutation.mutate({ category: upgradeCategory, customAmount: upgradeCategory === 500 ? upgradeEliteAmtNum : undefined })}
+              disabled={upgradeMutation.isPending} className="bg-purple-600 hover:bg-purple-700 text-white font-bold" data-testid="button-confirm-upgrade">
+              {upgradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />} Confirm Upgrade
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Welcome Wallet Walkthrough */}
+      <Dialog open={walkthroughOpen} onOpenChange={setWalkthroughOpen}>
+        <DialogContent className="sm:max-w-md">
+          {(() => {
+            const steps = [
+              {
+                icon: Wallet,
+                iconBg: "bg-blue-100 dark:bg-blue-900/40",
+                iconColor: "text-blue-600",
+                title: "Welcome to TSIA Affiliate Portal!",
+                body: "Your account is set up. To get the most out of the platform, you'll want to connect your exchange wallet — this allows you to deposit funds into the Trade Market and withdraw your earnings.",
+              },
+              {
+                icon: Zap,
+                iconBg: "bg-green-100 dark:bg-green-900/40",
+                iconColor: "text-green-600",
+                title: "Connect Your Exchange Wallet",
+                body: "Go to Trade Market → click 'Connect Exchange Wallet' → enter your TRC20 (TRON) or BEP20 (Binance) USDT wallet address from your BYBIT, BINANCE or compatible exchange.",
+              },
+              {
+                icon: ArrowDownLeft,
+                iconBg: "bg-amber-100 dark:bg-amber-900/40",
+                iconColor: "text-amber-600",
+                title: "Make Your First Deposit",
+                body: "Send USDT to TSIA's receiving address, then click Deposit and enter the amount. 75% is credited to your trade wallet, 20% goes to the reserve fund, and 5% to the affiliate pool.",
+              },
+              {
+                icon: Bot,
+                iconBg: "bg-purple-100 dark:bg-purple-900/40",
+                iconColor: "text-purple-600",
+                title: "Activate the Trading BOT Daily at 1PM",
+                body: "The AI Trading BOT must be manually activated every working day at 1:00 PM for it to execute trades that day. The target is 100% ROI @ 2% daily through arithmetic algorithm trading on capital markets.",
+              },
+            ];
+            const s = steps[walkthroughStep];
+            const Icon = s.icon;
+            const isLast = walkthroughStep === steps.length - 1;
+            return (
+              <>
+                <DialogHeader>
+                  <div className={`w-14 h-14 rounded-2xl ${s.iconBg} flex items-center justify-center mb-3 mx-auto`}>
+                    <Icon className={`w-8 h-8 ${s.iconColor}`} />
+                  </div>
+                  <DialogTitle className="text-center text-xl">{s.title}</DialogTitle>
+                  <DialogDescription className="text-center text-sm leading-relaxed mt-2">{s.body}</DialogDescription>
+                </DialogHeader>
+                <div className="flex items-center justify-center gap-2 my-3">
+                  {steps.map((_, i) => (
+                    <div key={i} className={`h-2 rounded-full transition-all ${i === walkthroughStep ? 'w-6 bg-primary' : 'w-2 bg-muted-foreground/30'}`} />
+                  ))}
+                </div>
+                <DialogFooter className="gap-3 sm:flex-row">
+                  {walkthroughStep > 0 && (
+                    <Button variant="outline" onClick={() => setWalkthroughStep(s => s - 1)} className="flex-1">Back</Button>
+                  )}
+                  <Button onClick={() => {
+                    if (isLast) { setWalkthroughOpen(false); navigate("trade"); }
+                    else setWalkthroughStep(s => s + 1);
+                  }} className="flex-1 bg-primary font-semibold" data-testid={`button-walkthrough-${walkthroughStep}`}>
+                    {isLast ? "Go to Trade Market →" : "Next"}
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

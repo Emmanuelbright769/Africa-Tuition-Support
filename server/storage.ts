@@ -58,6 +58,7 @@ export interface IStorage {
   getCoAffiliateByUser(userId: number): Promise<CoAffiliate | undefined>;
   getCoAffiliateCount(): Promise<number>;
   getAllCoAffiliates(): Promise<CoAffiliate[]>;
+  updateCoAffiliate(userId: number, data: Partial<InsertCoAffiliate>): Promise<CoAffiliate>;
 
   // Trade Market
   getOrCreateTradeWallet(userId: number): Promise<TradeWallet>;
@@ -229,6 +230,11 @@ export class DatabaseStorage implements IStorage {
 
   async getAllCoAffiliates(): Promise<CoAffiliate[]> {
     return db.select().from(coAffiliates).orderBy(desc(coAffiliates.createdAt));
+  }
+
+  async updateCoAffiliate(userId: number, data: Partial<InsertCoAffiliate>): Promise<CoAffiliate> {
+    const [updated] = await db.update(coAffiliates).set({ ...data, updatedAt: new Date() }).where(eq(coAffiliates.userId, userId)).returning();
+    return updated;
   }
 
   async getOrCreateTradeWallet(userId: number): Promise<TradeWallet> {

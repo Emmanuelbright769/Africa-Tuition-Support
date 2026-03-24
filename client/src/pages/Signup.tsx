@@ -5,17 +5,35 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { KeyRound } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 
+const AFRICAN_COUNTRIES = [
+  { value: "ng", label: "Nigeria" },
+  { value: "gh", label: "Ghana" },
+  { value: "ke", label: "Kenya" },
+  { value: "za", label: "South Africa" },
+  { value: "et", label: "Ethiopia" },
+  { value: "tz", label: "Tanzania" },
+  { value: "ug", label: "Uganda" },
+  { value: "eg", label: "Egypt" },
+  { value: "cm", label: "Cameroon" },
+  { value: "sn", label: "Senegal" },
+  { value: "ci", label: "Côte d'Ivoire" },
+  { value: "other_africa", label: "Other African Country" },
+];
+
 export default function Signup() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
-  const [country, setCountry] = useState("ng");
+  const [africanCountry, setAfricanCountry] = useState("ng");
+  const [diaspora, setDiaspora] = useState(false);
+  const [diasporaCountry, setDiasporaCountry] = useState("");
   const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "", referralCode: "" });
   const [otpHint, setOtpHint] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
@@ -23,11 +41,17 @@ export default function Signup() {
   const { requestOtp, verifyOtp } = useAuth();
   const { toast } = useToast();
 
+  const getCountryValue = () => diaspora && diasporaCountry.trim() ? diasporaCountry.trim() : africanCountry;
+
   const handleSubmitDetails = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (diaspora && !diasporaCountry.trim()) {
+      toast({ title: "Country required", description: "Please specify the country you currently live in.", variant: "destructive" });
+      return;
+    }
     setLoading(true);
     try {
-      const result = await requestOtp({ ...formData, country });
+      const result = await requestOtp({ ...formData, country: getCountryValue() });
       setOtpHint(result.hint || "");
       setStep(2);
       toast({ title: "OTP Sent", description: "Check your email for the 6-digit verification code." });
@@ -71,11 +95,7 @@ export default function Signup() {
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8 flex justify-center">
-        <Link href="/">
-          <a className="cursor-pointer">
-            <Logo variant="badge" height={64} />
-          </a>
-        </Link>
+        <Link href="/"><a className="cursor-pointer"><Logo variant="badge" height={64} /></a></Link>
       </motion.div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -113,18 +133,43 @@ export default function Signup() {
                       <Input id="phone" type="tel" placeholder="+234 800 000 0000" required className="h-11 bg-muted/30" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} data-testid="input-phone" />
                     </div>
                     <div className="space-y-2">
-                      <Label>Country of Study</Label>
-                      <Select value={country} onValueChange={setCountry}>
+                      <Label>Country of Origin (Africa)</Label>
+                      <Select value={africanCountry} onValueChange={setAfricanCountry}>
                         <SelectTrigger data-testid="select-country"><SelectValue placeholder="Select Country" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="ng">Nigeria</SelectItem>
-                          <SelectItem value="gh">Ghana</SelectItem>
-                          <SelectItem value="ke">Kenya</SelectItem>
-                          <SelectItem value="za">South Africa</SelectItem>
-                          <SelectItem value="other">Other African Nation</SelectItem>
+                          {AFRICAN_COUNTRIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="flex items-start gap-3 p-3 rounded-xl border bg-muted/30">
+                      <Checkbox
+                        id="diaspora"
+                        checked={diaspora}
+                        onCheckedChange={(v) => setDiaspora(!!v)}
+                        data-testid="checkbox-diaspora"
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <label htmlFor="diaspora" className="text-sm font-medium cursor-pointer leading-snug">
+                          I am from Africa but currently live outside Africa
+                        </label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Check this if you live in the diaspora or any other part of the world</p>
+                      </div>
+                    </div>
+                    {diaspora && (
+                      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+                        <Label htmlFor="diasporaCountry">Country you currently live in</Label>
+                        <Input
+                          id="diasporaCountry"
+                          placeholder="e.g. United Kingdom, Canada, USA..."
+                          className="h-11 bg-muted/30"
+                          value={diasporaCountry}
+                          onChange={e => setDiasporaCountry(e.target.value)}
+                          required={diaspora}
+                          data-testid="input-diaspora-country"
+                        />
+                      </motion.div>
+                    )}
                     <div className="space-y-2">
                       <Label htmlFor="referral">Referral Code (Optional)</Label>
                       <Input id="referral" placeholder="e.g. TSIA-JOH0001" className="h-11 bg-muted/30" value={formData.referralCode} onChange={e => setFormData({ ...formData, referralCode: e.target.value })} data-testid="input-referral" />
@@ -150,16 +195,8 @@ export default function Signup() {
                     )}
                     <div className="flex justify-center gap-3">
                       {otpDigits.map((digit, i) => (
-                        <Input
-                          key={i}
-                          ref={el => { inputRefs.current[i] = el; }}
-                          className="w-12 h-14 text-center text-xl font-bold bg-muted/30 focus:bg-background transition-colors"
-                          maxLength={1}
-                          value={digit}
-                          onChange={e => handleOtpChange(i, e.target.value)}
-                          onKeyDown={e => handleOtpKeyDown(i, e)}
-                          data-testid={`input-signup-otp-${i}`}
-                        />
+                        <Input key={i} ref={el => { inputRefs.current[i] = el; }} className="w-12 h-14 text-center text-xl font-bold bg-muted/30 focus:bg-background transition-colors"
+                          maxLength={1} value={digit} onChange={e => handleOtpChange(i, e.target.value)} onKeyDown={e => handleOtpKeyDown(i, e)} data-testid={`input-signup-otp-${i}`} />
                       ))}
                     </div>
                     <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md" disabled={loading || otpDigits.join("").length !== 6} data-testid="button-verify-signup-otp">

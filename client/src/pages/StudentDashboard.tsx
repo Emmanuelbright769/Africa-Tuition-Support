@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import {
   Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight,
   LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X,
-  LayoutDashboard, Star, History, ChevronRight
+  LayoutDashboard, Star, History, ChevronRight, Car, Globe
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -21,14 +21,15 @@ import { Logo } from "@/components/ui/Logo";
 
 const BALANCE_HIDDEN_KEY = "tsia_balance_hidden";
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan";
+type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
-  { id: "overview",  label: "Overview",         icon: LayoutDashboard },
-  { id: "wallet",    label: "Digital Wallet",    icon: Wallet },
-  { id: "plans",     label: "Sponsorship Plans", icon: Star },
-  { id: "activity",  label: "Activity",          icon: History },
-  { id: "loan",      label: "Student Loan",      icon: Banknote, badge: "Coming Soon" },
+  { id: "overview",    label: "Overview",         icon: LayoutDashboard },
+  { id: "wallet",      label: "Digital Wallet",    icon: Wallet },
+  { id: "plans",       label: "Sponsorship Plans", icon: Star },
+  { id: "activity",    label: "Activity",          icon: History },
+  { id: "loan",        label: "Student Loan",      icon: Banknote, badge: "Coming Soon" },
+  { id: "tour_africa", label: "TOUR AFRICA",       icon: Car },
 ];
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
@@ -119,8 +120,11 @@ export default function StudentDashboard() {
 
   const themeOpts = [{ v: "light" as const, i: Sun }, { v: "dark" as const, i: Moon }, { v: "system" as const, i: Monitor }];
 
-  const navigate = (section: Section) => { setActiveSection(section); setMenuOpen(false); };
-  const currentNav = NAV_ITEMS.find(n => n.id === activeSection)!;
+  const navigate = (section: Section) => {
+    if (section === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
+    setActiveSection(section); setMenuOpen(false);
+  };
+  const currentNav = NAV_ITEMS.find(n => n.id === activeSection) ?? NAV_ITEMS[0]!;
 
   return (
     <div className="min-h-screen bg-background font-sans">

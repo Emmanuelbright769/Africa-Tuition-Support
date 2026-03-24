@@ -1,7 +1,9 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
+
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 type AuthUser = {
   id: number;
@@ -41,6 +43,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     retry: false,
   });
 
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+
+  const doAutoLogout = async () => {
+    if (!userRef.current) return;
+    try {
+      await apiRequest("POST", "/api/auth/logout");
+    } catch {}
+    queryClient.setQueryData(["/api/auth/me"], null);
+    queryClient.clear();
+    window.location.href = "/login?reason=inactivity";
+  };
+
+  const resetTimer = () => {
+    if (!userRef.current) return;
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    inactivityTimer.current = setTimeout(doAutoLogout, INACTIVITY_TIMEOUT_MS);
+  };
+
+  useEffect(() => {
+    if (!user) {
+      if (inactivityTimer.current) { clearTimeout(inactivityTimer.current); inactivityTimer.current = null; }
+      return;
+    }
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"];
+    const handler = () => resetTimer();
+    events.forEach(e => window.addEventListener(e, handler, { passive: true }));
+    resetTimer();
+    return () => {
+      events.forEach(e => window.removeEventListener(e, handler));
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    };
+  }, [user]);
+
   const requestOtp = async (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string }) => {
     const res = await apiRequest("POST", "/api/auth/request-otp", data);
     return res.json();
@@ -54,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
     await apiRequest("POST", "/api/auth/logout");
     queryClient.setQueryData(["/api/auth/me"], null);
     queryClient.clear();

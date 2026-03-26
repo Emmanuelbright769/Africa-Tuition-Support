@@ -31,6 +31,13 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - Leadership sponsorship page for corporate cohorts (100+ students)
 - File upload support for verification documents (JPEG, PNG, WebP, PDF up to 5MB)
 - Real TSIA logos via Logo.tsx component (horizontal/badge/full variants, light/dark auto-switching)
+- Global Trade Market (TRC20/BEP20 USDT deposits/withdrawals, 20% reserve fund, 100% ROI @ 2% daily AI BOT, broker selection from 7 brokers, live TradingView chart)
+- Co-Affiliate Trust Fund (1M investor cap, 3 tiers $100/$300/$500-$10k, +20% milestone pricing, 5% lifetime profit share)
+- TOUR AFRICA (Dispatch + E-Taxi at /tour-africa)
+- Landlord Tenancy Programme (/tenancy): landlords list property → TSIA pays lump-sum upfront (12% disc); tenants pay monthly installments at 5% interest
+- AI Customer Care Assistant (floating chatbot with 14+ KB entries, quick-action chips, WhatsApp fallback wa.me/2348012345678)
+- 15-minute inactivity auto-logout on both student and affiliate dashboards
+- ErrorBoundary wrapping all pages to prevent blank screen crashes
 
 ## User Roles
 - **student** - Signs up, completes onboarding (NIN + WAEC + biometric + $3 fee), gets sponsored
@@ -47,6 +54,14 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - `transactions` - All financial activity
 - `disbursements` - Admin-processed payouts
 - `leadership_inquiries` - Corporate sponsorship requests
+- `co_affiliates` - Co-affiliate Trust Fund subscriptions (tier, investment, status)
+- `trade_wallets` - Trade Market wallet (TRC20/BEP20 addresses, balance)
+- `trade_transactions` - All Trade Market deposits/withdrawals
+- `trade_reserve_fund` - Aggregated reserve fund balance
+- `affiliate_trade_shares` - Per-deposit affiliate pool shares
+- `landlord_properties` - Tenancy properties listed by users (status: pending_review/available/leased)
+- `tenancy_leases` - Active tenant lease agreements
+- `tenancy_payments` - Monthly tenancy payment records
 
 ## API Routes (all prefixed /api)
 - Auth: `/auth/request-otp`, `/auth/verify-otp`, `/auth/me`, `/auth/logout`, `/auth/login` (admin legacy)
@@ -58,15 +73,20 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - Currency: `/currency-rates`
 - Admin: `/admin/stats`, `/admin/students`, `/admin/pending-verifications`, `/admin/verify/:id`, `/admin/pending-disbursements`, `/admin/process-disbursement/:id`
 - Leadership: `/leadership/inquiry`
+- Co-Affiliate: `/co-affiliate/program`, `/co-affiliate/my-info`, `/co-affiliate/subscribe`
+- Trade Market: `/trade/wallet`, `/trade/deposit`, `/trade/withdraw`, `/trade/connect-wallet`, `/trade/transactions`, `/trade/reserve-fund`
+- Tenancy: `/tenancy/properties`, `/tenancy/my-properties`, `/tenancy/list-property`, `/tenancy/apply`, `/tenancy/my-leases`
 
 ## Pages
-- `/` - Landing page (carousel, how-it-works, affiliate section, sponsorship plans, MSc coming soon, about preview, contact preview)
+- `/` - Landing page (carousel, how-it-works, affiliate section, sponsorship plans, tenancy section, MSc coming soon, about preview, contact preview)
 - `/signup` - Student signup (OTP)
 - `/login` - OTP login (routes to correct dashboard by role)
 - `/onboarding` - 2-step student verification flow
 - `/dashboard` - Student dashboard (wallet, plan selection, transactions, onboarding button)
 - `/affiliate-signup` - Affiliate signup (separate from student)
-- `/affiliate-dashboard` - Affiliate portal (referral code, link, referral list, tips)
+- `/affiliate-dashboard` - Affiliate portal (Co-Affiliate tier, Trade Market with broker selection + live TradingView chart, wallet, referrals, loan)
+- `/tour-africa` - TOUR AFRICA (Dispatch + E-Taxi service)
+- `/tenancy` - Tenancy Programme (browse properties, list property, calculator, how-it-works)
 - `/admin` - Admin panel
 - `/leadership` - Leadership sponsorship page
 - `/about` - About Us

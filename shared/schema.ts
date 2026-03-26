@@ -324,3 +324,80 @@ export function getMilestoneProgress(totalEnrolled: number) {
   const overallPct = Math.min((totalEnrolled / CO_AFFILIATE_PROGRAM.TARGET) * 100, 100);
   return { milestones, nextMilestone: Math.min(nextMilestone, CO_AFFILIATE_PROGRAM.TARGET), pctToNext, overallPct };
 }
+
+// ─── TENANCY MODULE ────────────────────────────────────────────────────────────
+export const tenancyPropertyStatusEnum = pgEnum("tenancy_property_status", ["pending_review", "available", "leased", "expired"]);
+export const tenancyLeaseStatusEnum = pgEnum("tenancy_lease_status", ["active", "completed", "defaulted"]);
+export const tenancyPaymentStatusEnum = pgEnum("tenancy_payment_status", ["pending", "paid", "overdue"]);
+
+export const landlordProperties = pgTable("landlord_properties", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerId: integer("owner_id").notNull().references(() => users.id),
+  propertyName: text("property_name").notNull(),
+  address: text("address").notNull(),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  country: text("country").notNull().default("ng"),
+  propertyType: text("property_type").notNull().default("apartment"),
+  bedrooms: integer("bedrooms").notNull().default(1),
+  bathrooms: integer("bathrooms").notNull().default(1),
+  annualRentNgn: decimal("annual_rent_ngn", { precision: 14, scale: 2 }).notNull(),
+  leasePeriodYears: integer("lease_period_years").notNull().default(5),
+  discountRate: decimal("discount_rate", { precision: 5, scale: 2 }).notNull().default("12.00"),
+  tsiaPaymentNgn: decimal("tsia_payment_ngn", { precision: 14, scale: 2 }).notNull(),
+  tenantInterestRate: decimal("tenant_interest_rate", { precision: 5, scale: 2 }).notNull().default("5.00"),
+  description: text("description"),
+  amenities: text("amenities").array(),
+  status: tenancyPropertyStatusEnum("status").notNull().default("pending_review"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const tenancyLeases = pgTable("tenancy_leases", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => landlordProperties.id),
+  tenantId: integer("tenant_id").notNull().references(() => users.id),
+  monthlyPaymentNgn: decimal("monthly_payment_ngn", { precision: 14, scale: 2 }).notNull(),
+  totalPayableNgn: decimal("total_payable_ngn", { precision: 14, scale: 2 }).notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  status: tenancyLeaseStatusEnum("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const tenancyPayments = pgTable("tenancy_payments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  leaseId: integer("lease_id").notNull().references(() => tenancyLeases.id),
+  amountNgn: decimal("amount_ngn", { precision: 14, scale: 2 }).notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  paidDate: timestamp("paid_date"),
+  status: tenancyPaymentStatusEnum("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertLandlordPropertySchema = createInsertSchema(landlordProperties).omit({ id: true, createdAt: true });
+export type InsertLandlordProperty = z.infer<typeof insertLandlordPropertySchema>;
+export type LandlordProperty = typeof landlordProperties.$inferSelect;
+
+export const insertTenancyLeaseSchema = createInsertSchema(tenancyLeases).omit({ id: true, createdAt: true });
+export type InsertTenancyLease = z.infer<typeof insertTenancyLeaseSchema>;
+export type TenancyLease = typeof tenancyLeases.$inferSelect;
+
+export function calculateTenancyDeal(annualRentNgn: number, leasePeriodYears: number, discountRate: number, tenantInterestRate: number) {
+  const totalGross = annualRentNgn * leasePeriodYears;
+  const tsiaPayment = totalGross * (1 - discountRate / 100);
+  const totalTenantPayable = annualRentNgn * (1 + tenantInterestRate / 100) * leasePeriodYears;
+  const monthlyTenantPayment = totalTenantPayable / (leasePeriodYears * 12);
+  const tsiaRevenue = totalTenantPayable - tsiaPayment;
+  return { totalGross, tsiaPayment, totalTenantPayable, monthlyTenantPayment, tsiaRevenue };
+}
+
+// ─── TRADE BROKERS ────────────────────────────────────────────────────────────
+export const TRADE_BROKERS = [
+  { id: "binance", name: "Binance", specialty: "Crypto & Futures", rating: 4.9, minDeposit: 10, fee: "0.1%", description: "World's largest crypto exchange with deep liquidity." },
+  { id: "exness", name: "Exness", specialty: "Forex & Crypto", rating: 4.8, minDeposit: 10, fee: "0.3 pips", description: "Ultra-low spreads, instant withdrawals, regulated globally." },
+  { id: "octafx", name: "OctaFX", specialty: "Forex & CFDs", rating: 4.7, minDeposit: 25, fee: "0.4 pips", description: "Award-winning African forex broker with MT4/MT5 support." },
+  { id: "xm_group", name: "XM Group", specialty: "Forex & Metals", rating: 4.6, minDeposit: 5, fee: "0.6 pips", description: "Over 15 years of experience, 3.5M clients worldwide." },
+  { id: "etoro", name: "eToro", specialty: "Social Copy Trading", rating: 4.5, minDeposit: 50, fee: "1%", description: "Copy top traders automatically. Best for beginners." },
+  { id: "bybit", name: "Bybit", specialty: "Crypto Derivatives", rating: 4.7, minDeposit: 10, fee: "0.1%", description: "Industry-leading derivatives exchange with 100x leverage." },
+  { id: "iq_option", name: "IQ Option", specialty: "Options & Crypto", rating: 4.4, minDeposit: 10, fee: "Variable", description: "Intuitive platform with smart trading tools for all levels." },
+] as const;

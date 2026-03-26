@@ -4,6 +4,7 @@ import {
   users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
   leadershipInquiries, otpCodes, fileUploads, coAffiliates,
   tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
+  landlordProperties, tenancyLeases, tenancyPayments,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -16,6 +17,8 @@ import {
   type CoAffiliate, type InsertCoAffiliate,
   type TradeWallet, type InsertTradeWallet,
   type TradeTransaction, type InsertTradeTransaction,
+  type LandlordProperty, type InsertLandlordProperty,
+  type TenancyLease, type InsertTenancyLease,
   TRADE_MARKET,
 } from "@shared/schema";
 
@@ -70,6 +73,14 @@ export interface IStorage {
   addToReserveFund(amount: string): Promise<void>;
   recordAffiliateTradeShare(tradeTransactionId: number, poolAmount: string, affiliateCount: number, perAffiliate: string): Promise<void>;
   getAffiliateCount(): Promise<number>;
+
+  // Tenancy
+  createLandlordProperty(data: InsertLandlordProperty): Promise<LandlordProperty>;
+  getLandlordProperties(status?: string): Promise<(LandlordProperty & { owner: Pick<User,"firstName"|"lastName"|"email"> })[]>;
+  getLandlordPropertiesByOwner(ownerId: number): Promise<LandlordProperty[]>;
+  getLandlordProperty(id: number): Promise<LandlordProperty | undefined>;
+  createTenancyLease(data: InsertTenancyLease): Promise<TenancyLease>;
+  getTenancyLeasesByTenant(tenantId: number): Promise<(TenancyLease & { property: LandlordProperty })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -289,6 +300,50 @@ export class DatabaseStorage implements IStorage {
   async getAffiliateCount(): Promise<number> {
     const [result] = await db.select({ total: count() }).from(users).where(eq(users.role, "affiliate"));
     return result?.total ?? 0;
+  }
+
+  async createLandlordProperty(data: InsertLandlordProperty): Promise<LandlordProperty> {
+    const [prop] = await db.insert(landlordProperties).values(data).returning();
+    return prop;
+  }
+
+  async getLandlordProperties(status?: string): Promise<(LandlordProperty & { owner: Pick<User,"firstName"|"lastName"|"email"> })[]> {
+    const rows = await db.select({
+      id: landlordProperties.id, ownerId: landlordProperties.ownerId,
+      propertyName: landlordProperties.propertyName, address: landlordProperties.address,
+      city: landlordProperties.city, state: landlordProperties.state, country: landlordProperties.country,
+      propertyType: landlordProperties.propertyType, bedrooms: landlordProperties.bedrooms, bathrooms: landlordProperties.bathrooms,
+      annualRentNgn: landlordProperties.annualRentNgn, leasePeriodYears: landlordProperties.leasePeriodYears,
+      discountRate: landlordProperties.discountRate, tsiaPaymentNgn: landlordProperties.tsiaPaymentNgn,
+      tenantInterestRate: landlordProperties.tenantInterestRate, description: landlordProperties.description,
+      amenities: landlordProperties.amenities, status: landlordProperties.status, createdAt: landlordProperties.createdAt,
+      ownerFirstName: users.firstName, ownerLastName: users.lastName, ownerEmail: users.email,
+    }).from(landlordProperties).innerJoin(users, eq(landlordProperties.ownerId, users.id))
+      .where(status ? eq(landlordProperties.status, status as any) : undefined)
+      .orderBy(desc(landlordProperties.createdAt));
+    return rows.map(r => ({ ...r, owner: { firstName: r.ownerFirstName, lastName: r.ownerLastName, email: r.ownerEmail } })) as any;
+  }
+
+  async getLandlordPropertiesByOwner(ownerId: number): Promise<LandlordProperty[]> {
+    return db.select().from(landlordProperties).where(eq(landlordProperties.ownerId, ownerId)).orderBy(desc(landlordProperties.createdAt));
+  }
+
+  async getLandlordProperty(id: number): Promise<LandlordProperty | undefined> {
+    const [prop] = await db.select().from(landlordProperties).where(eq(landlordProperties.id, id));
+    return prop;
+  }
+
+  async createTenancyLease(data: InsertTenancyLease): Promise<TenancyLease> {
+    const [lease] = await db.insert(tenancyLeases).values(data).returning();
+    return lease;
+  }
+
+  async getTenancyLeasesByTenant(tenantId: number): Promise<(TenancyLease & { property: LandlordProperty })[]> {
+    const rows = await db.select().from(tenancyLeases)
+      .innerJoin(landlordProperties, eq(tenancyLeases.propertyId, landlordProperties.id))
+      .where(eq(tenancyLeases.tenantId, tenantId))
+      .orderBy(desc(tenancyLeases.createdAt));
+    return rows.map(r => ({ ...(r as any).tenancyLeases, property: (r as any).landlordProperties }));
   }
 }
 

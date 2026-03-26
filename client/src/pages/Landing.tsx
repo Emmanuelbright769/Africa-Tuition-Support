@@ -4,7 +4,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
-import { CheckCircle2, ShieldCheck, Wallet, Trophy, ArrowRight, Users, Share2, DollarSign, GraduationCap, Lock, Mail, Phone, MapPin, Globe, Sparkles } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Wallet, Trophy, ArrowRight, Users, Share2, DollarSign, GraduationCap, Lock, Mail, Phone, MapPin, Globe, Sparkles, Building2, Home, Clock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Logo, logoBadgeColor } from "@/components/ui/Logo";
 
@@ -283,7 +283,45 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="about-preview" className="py-24 bg-background">
+        {/* Tenancy Section */}
+        <section id="tenancy" className="py-24 bg-background">
+          <div className="container mx-auto px-4">
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-14">
+              <div className="inline-flex items-center gap-2 bg-tsia-green/10 text-tsia-green px-4 py-1.5 rounded-full text-sm font-bold mb-4">
+                <Home className="w-4 h-4" /> TSIA Tenancy Programme
+              </div>
+              <h2 className="text-4xl font-bold mb-4">Housing Made Affordable</h2>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">No more massive annual rent payments. TSIA pays your landlord upfront so you pay in small monthly installments.</p>
+            </motion.div>
+
+            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-12">
+              {[
+                { icon: Building2, color: "text-tsia-green", bg: "bg-tsia-green/10", title: "Landlords: Get Paid Upfront", desc: "List your property and receive a lump-sum payment covering years of rent. TSIA handles all tenant management." },
+                { icon: Clock, color: "text-blue-600", bg: "bg-blue-100 dark:bg-blue-900/30", title: "Tenants: Pay Monthly", desc: "Rent a quality home and pay in small monthly installments instead of one huge annual payment. Just 5% interest." },
+                { icon: CheckCircle2, color: "text-amber-600", bg: "bg-amber-100 dark:bg-amber-900/30", title: "TSIA Guarantees Everyone", desc: "Landlords are guaranteed their money. Tenants are guaranteed a home. TSIA manages the trust layer between both parties." },
+              ].map((item, i) => (
+                <motion.div key={i} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.15 }}
+                  className="flex flex-col items-center text-center space-y-4 p-6 rounded-2xl hover:bg-accent/50 transition-colors">
+                  <div className={`w-20 h-20 rounded-2xl ${item.bg} ${item.color} flex items-center justify-center`}>
+                    <item.icon className="w-10 h-10" />
+                  </div>
+                  <h3 className="text-xl font-semibold">{item.title}</h3>
+                  <p className="text-muted-foreground leading-relaxed">{item.desc}</p>
+                </motion.div>
+              ))}
+            </div>
+
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center">
+              <Link href="/tenancy">
+                <Button size="lg" className="bg-tsia-green hover:bg-tsia-green/90 text-white h-14 px-8 text-base font-semibold rounded-xl" data-testid="button-explore-tenancy">
+                  Explore Tenancy Programme <ArrowRight className="ml-2 w-5 h-5" />
+                </Button>
+              </Link>
+            </motion.div>
+          </div>
+        </section>
+
+        <section id="about-preview" className="py-24 bg-card border-t">
           <div className="container mx-auto px-4">
             <div className="grid md:grid-cols-2 gap-16 items-center max-w-6xl mx-auto">
               <motion.div initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>

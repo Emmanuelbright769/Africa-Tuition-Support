@@ -980,5 +980,82 @@ export async function registerRoutes(
     }
   });
 
+  // ─── TENANCY ROUTES ────────────────────────────────────────────────────────
+  app.get("/api/tenancy/properties", async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const props = await storage.getLandlordProperties(status || "available");
+      res.json(props);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/tenancy/my-properties", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const props = await storage.getLandlordPropertiesByOwner(userId);
+      res.json(props);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/tenancy/list-property", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { propertyName, address, city, state, country, propertyType, bedrooms, bathrooms, annualRentNgn, leasePeriodYears, description, amenities } = req.body;
+      if (!propertyName || !address || !city || !state || !annualRentNgn) return res.status(400).json({ message: "Missing required fields" });
+      const annual = parseFloat(annualRentNgn);
+      const years = parseInt(leasePeriodYears) || 5;
+      const discountRate = 12;
+      const tsiaPaymentNgn = (annual * years * (1 - discountRate / 100)).toFixed(2);
+      const prop = await storage.createLandlordProperty({
+        ownerId: userId, propertyName, address, city, state,
+        country: country || "ng", propertyType: propertyType || "apartment",
+        bedrooms: parseInt(bedrooms) || 1, bathrooms: parseInt(bathrooms) || 1,
+        annualRentNgn: annual.toFixed(2), leasePeriodYears: years,
+        discountRate: discountRate.toFixed(2), tsiaPaymentNgn,
+        tenantInterestRate: "5.00", description: description || null,
+        amenities: Array.isArray(amenities) ? amenities : [],
+        status: "pending_review",
+      });
+      res.json(prop);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/tenancy/apply", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { propertyId } = req.body;
+      const prop = await storage.getLandlordProperty(parseInt(propertyId));
+      if (!prop) return res.status(404).json({ message: "Property not found" });
+      if (prop.status !== "available") return res.status(400).json({ message: "Property is not available for leasing" });
+      const annual = parseFloat(prop.annualRentNgn);
+      const interestRate = parseFloat(prop.tenantInterestRate);
+      const years = prop.leasePeriodYears;
+      const totalPayable = annual * (1 + interestRate / 100) * years;
+      const monthly = totalPayable / (years * 12);
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setFullYear(endDate.getFullYear() + years);
+      const lease = await storage.createTenancyLease({
+        propertyId: prop.id, tenantId: userId,
+        monthlyPaymentNgn: monthly.toFixed(2),
+        totalPayableNgn: totalPayable.toFixed(2),
+        startDate, endDate, status: "active",
+      });
+      res.json(lease);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/tenancy/my-leases", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const leases = await storage.getTenancyLeasesByTenant(userId);
+      res.json(leases);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   return httpServer;
 }

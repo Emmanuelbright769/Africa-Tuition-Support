@@ -22,7 +22,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
-import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, getEliteSharePercentage } from "@shared/schema";
+import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage } from "@shared/schema";
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
@@ -62,6 +62,8 @@ export default function AffiliateDashboard() {
   const [depositOpen, setDepositOpen]   = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [connectOpen, setConnectOpen]   = useState(false);
+  const [selectedBroker, setSelectedBroker] = useState<typeof TRADE_BROKERS[0] | null>(null);
+  const [chartSymbol, setChartSymbol] = useState("BINANCE:BTCUSDT");
   const [depositAmt, setDepositAmt]     = useState("");
   const [depositWallet, setDepositWallet] = useState<"trc20"|"bep20">("trc20");
   const [depositTxHash, setDepositTxHash] = useState("");
@@ -497,6 +499,81 @@ export default function AffiliateDashboard() {
                       <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm">20% Reserve Fund</p>
                       <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">Every deposit allocates 20% to TSIA's Reserve Fund — a safety net protecting investors and ensuring platform sustainability. Reported quarterly.</p>
                     </div>
+                  </div>
+                </motion.div>
+
+                {/* Broker Selection */}
+                <motion.div variants={itemVariants}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Select Your Broker</p>
+                    {selectedBroker && (
+                      <Badge className="bg-tsia-green/10 text-tsia-green border-tsia-green/30">
+                        Active: {selectedBroker.name}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {TRADE_BROKERS.map((broker) => {
+                      const isSelected = selectedBroker?.id === broker.id;
+                      return (
+                        <button key={broker.id} onClick={() => { setSelectedBroker(broker); if (broker.id === "binance") setChartSymbol("BINANCE:BTCUSDT"); else if (broker.id === "bybit") setChartSymbol("BYBIT:BTCUSDT"); else if (broker.id === "exness") setChartSymbol("FX:EURUSD"); else if (broker.id === "etoro") setChartSymbol("ETORO:BTCUSD"); else setChartSymbol("BINANCE:BTCUSDT"); }}
+                          data-testid={`button-broker-${broker.id}`}
+                          className={`text-left p-4 rounded-xl border transition-all ${isSelected ? "border-tsia-green bg-tsia-green/10 shadow-md" : "border-border hover:border-tsia-green/40 bg-card"}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-sm">{broker.name}</span>
+                            {isSelected && <CheckCircle2 className="w-4 h-4 text-tsia-green" />}
+                          </div>
+                          <div className="flex gap-1.5 mb-2">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <div key={i} className={`h-1 flex-1 rounded-full ${i < broker.rating ? "bg-tsia-gold" : "bg-muted"}`} />
+                            ))}
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-1">{broker.specialty}</p>
+                          <p className="text-xs text-muted-foreground">Min: ${broker.minDeposit} · Fee: {broker.fee}%</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedBroker && (
+                    <div className="mt-3 bg-muted/50 rounded-xl p-4 border">
+                      <p className="font-semibold text-sm mb-1">{selectedBroker.name}</p>
+                      <p className="text-xs text-muted-foreground">{selectedBroker.description}</p>
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* Live TradingView Chart */}
+                <motion.div variants={itemVariants}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Live Market Chart</p>
+                    <div className="flex gap-2">
+                      {[
+                        { label: "BTC/USDT", symbol: "BINANCE:BTCUSDT" },
+                        { label: "ETH/USDT", symbol: "BINANCE:ETHUSD" },
+                        { label: "EUR/USD", symbol: "FX:EURUSD" },
+                      ].map(({ label, symbol }) => (
+                        <button key={symbol} onClick={() => setChartSymbol(symbol)}
+                          data-testid={`button-chart-${label.replace("/", "-")}`}
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${chartSymbol === symbol ? "bg-tsia-green text-white border-tsia-green" : "border-border hover:border-tsia-green/40"}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl overflow-hidden border border-border shadow-md" style={{ height: 420 }}>
+                    <iframe
+                      key={chartSymbol}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_trade&symbol=${encodeURIComponent(chartSymbol)}&interval=60&hidesidetoolbar=0&hidetooltip=0&theme=dark&style=1&locale=en&toolbar_bg=%23131722&enable_publishing=false&withdateranges=1&showpopupbutton=0&no_referral_id=1&timezone=Africa%2FLagos`}
+                      width="100%"
+                      height="420"
+                      frameBorder="0"
+                      allowTransparency={true}
+                      scrolling="no"
+                      allow="fullscreen"
+                      title="TradingView Live Chart"
+                      data-testid="iframe-tradingview-chart"
+                      style={{ display: "block" }}
+                    />
                   </div>
                 </motion.div>
 

@@ -5,7 +5,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, getEliteSharePercentage } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly } from "@shared/schema";
 
 const PgSession = pgSession(session);
 
@@ -978,6 +978,93 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  // ─── LOAN ROUTES ─────────────────────────────────────────────────────────────
+  app.get("/api/loans/my-loans", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const userLoans = await storage.getLoansByUser(userId);
+      res.json(userLoans);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/loans/limit", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const activeLoan = await storage.getActiveLoanByUser(userId);
+      if (user.role === "student") {
+        const verification = await storage.getVerificationByUser(userId);
+        if (!verification || verification.verificationStatus !== "verified") {
+          return res.json({ eligible: false, reason: "You must complete enrollment (identity + WAEC + biometric + $3 fee) to qualify for a student loan.", limitUsd: 0 });
+        }
+        const tier = verification.tier || "none";
+        const limitUsd = calculateStudentLoanLimit(tier);
+        res.json({ eligible: limitUsd > 0, limitUsd, tier, activeLoan: activeLoan || null, interestRate: 10, terms: [6, 12, 18] });
+      } else if (user.role === "affiliate") {
+        const referrals = await storage.getReferralsByCode(user.affiliateCode || "");
+        const tradeWallet = await storage.getOrCreateTradeWallet(userId);
+        const coAffiliate = await storage.getCoAffiliateByUser(userId);
+        const tradeBalance = parseFloat(tradeWallet.balance || "0");
+        const refCount = referrals.length;
+        const coAmount = coAffiliate ? parseFloat(coAffiliate.investedAmount) : 0;
+        const hasEarnings = refCount > 0 || tradeBalance > 0;
+        if (!hasEarnings) {
+          return res.json({ eligible: false, reason: "You need at least 1 verified referral or a trade wallet balance to qualify for a business loan.", limitUsd: 0 });
+        }
+        const limitUsd = calculateAffiliateLoanLimit(refCount, tradeBalance, coAmount);
+        res.json({ eligible: true, limitUsd: Math.round(limitUsd), referralCount: refCount, tradeBalance, coAffiliateAmount: coAmount, activeLoan: activeLoan || null, interestRate: 15, terms: [6, 12, 24] });
+      } else {
+        res.json({ eligible: false, reason: "Loans are available for students and affiliates only.", limitUsd: 0 });
+      }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/loans/apply", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { amountUsd, termMonths, purpose } = req.body;
+      if (!amountUsd || !termMonths) return res.status(400).json({ message: "Amount and term are required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const activeLoan = await storage.getActiveLoanByUser(userId);
+      if (activeLoan) return res.status(400).json({ message: "You already have an active loan. Please repay it before applying for another." });
+      let interestRate = 10;
+      let maxLimit = 0;
+      if (user.role === "student") {
+        const verification = await storage.getVerificationByUser(userId);
+        if (!verification || verification.verificationStatus !== "verified") return res.status(400).json({ message: "You must be a verified student to apply for a student loan." });
+        maxLimit = calculateStudentLoanLimit(verification.tier || "none");
+        interestRate = 10;
+      } else if (user.role === "affiliate") {
+        const referrals = await storage.getReferralsByCode(user.affiliateCode || "");
+        const tradeWallet = await storage.getOrCreateTradeWallet(userId);
+        const coAffiliate = await storage.getCoAffiliateByUser(userId);
+        const tradeBalance = parseFloat(tradeWallet.balance || "0");
+        if (referrals.length === 0 && tradeBalance === 0) return res.status(400).json({ message: "You need earnings to qualify for a business loan." });
+        maxLimit = calculateAffiliateLoanLimit(referrals.length, tradeBalance, coAffiliate ? parseFloat(coAffiliate.investedAmount) : 0);
+        interestRate = 15;
+      }
+      if (parseFloat(amountUsd) > maxLimit) return res.status(400).json({ message: `Loan amount exceeds your limit of $${Math.round(maxLimit).toFixed(2)}` });
+      const { totalPayable, monthly } = calculateLoanMonthly(parseFloat(amountUsd), interestRate, parseInt(termMonths));
+      const loan = await storage.createLoan({
+        userId, userRole: user.role as "student" | "affiliate",
+        amountUsd: parseFloat(amountUsd).toFixed(2),
+        interestRate: interestRate.toFixed(2),
+        termMonths: parseInt(termMonths),
+        monthlyPaymentUsd: monthly.toFixed(2),
+        totalPayableUsd: totalPayable.toFixed(2),
+        totalPaidUsd: "0",
+        purpose: purpose || null,
+        status: "pending",
+      });
+      res.json(loan);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ─── TENANCY ROUTES ────────────────────────────────────────────────────────

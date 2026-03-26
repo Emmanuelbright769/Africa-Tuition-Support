@@ -4,7 +4,7 @@ import {
   users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
   leadershipInquiries, otpCodes, fileUploads, coAffiliates,
   tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
-  landlordProperties, tenancyLeases, tenancyPayments,
+  landlordProperties, tenancyLeases, tenancyPayments, loans,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -19,6 +19,7 @@ import {
   type TradeTransaction, type InsertTradeTransaction,
   type LandlordProperty, type InsertLandlordProperty,
   type TenancyLease, type InsertTenancyLease,
+  type Loan, type InsertLoan,
   TRADE_MARKET,
 } from "@shared/schema";
 
@@ -73,6 +74,12 @@ export interface IStorage {
   addToReserveFund(amount: string): Promise<void>;
   recordAffiliateTradeShare(tradeTransactionId: number, poolAmount: string, affiliateCount: number, perAffiliate: string): Promise<void>;
   getAffiliateCount(): Promise<number>;
+
+  // Loans
+  createLoan(data: InsertLoan): Promise<Loan>;
+  getLoansByUser(userId: number): Promise<Loan[]>;
+  getActiveLoanByUser(userId: number): Promise<Loan | undefined>;
+  updateLoan(id: number, data: Partial<Loan>): Promise<Loan>;
 
   // Tenancy
   createLandlordProperty(data: InsertLandlordProperty): Promise<LandlordProperty>;
@@ -300,6 +307,27 @@ export class DatabaseStorage implements IStorage {
   async getAffiliateCount(): Promise<number> {
     const [result] = await db.select({ total: count() }).from(users).where(eq(users.role, "affiliate"));
     return result?.total ?? 0;
+  }
+
+  async createLoan(data: InsertLoan): Promise<Loan> {
+    const [loan] = await db.insert(loans).values(data).returning();
+    return loan;
+  }
+
+  async getLoansByUser(userId: number): Promise<Loan[]> {
+    return db.select().from(loans).where(eq(loans.userId, userId)).orderBy(desc(loans.createdAt));
+  }
+
+  async getActiveLoanByUser(userId: number): Promise<Loan | undefined> {
+    const [loan] = await db.select().from(loans)
+      .where(and(eq(loans.userId, userId), sql`status IN ('pending','approved','active')`))
+      .orderBy(desc(loans.createdAt)).limit(1);
+    return loan;
+  }
+
+  async updateLoan(id: number, data: Partial<Loan>): Promise<Loan> {
+    const [updated] = await db.update(loans).set(data as any).where(eq(loans.id, id)).returning();
+    return updated;
   }
 
   async createLandlordProperty(data: InsertLandlordProperty): Promise<LandlordProperty> {

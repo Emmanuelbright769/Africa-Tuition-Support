@@ -13,7 +13,8 @@ import {
   Target, BarChart3, Infinity, Star, Wallet, ArrowUpRight, ArrowDownLeft,
   ShoppingBag, ChevronDown, ChevronUp, Shield, Zap, Globe,
   Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag,
-  Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink
+  Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink,
+  Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -22,7 +23,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
-import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage } from "@shared/schema";
+import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
@@ -34,16 +35,17 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "trade" | "trust_fund" | "ecommerce" | "referrals" | "loan" | "tour_africa";
+type Section = "overview" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",   label: "Overview",              icon: LayoutDashboard },
   { id: "trade",      label: "Trade Market",           icon: Globe },
   { id: "trust_fund", label: "Affiliate Trust Fund",   icon: Crown },
   { id: "ecommerce",  label: "E-Commerce",             icon: ShoppingCart, badge: "Coming Soon" },
-  { id: "loan",       label: "Loan",                   icon: Banknote, badge: "Coming Soon" },
+  { id: "tenancy",    label: "Tenancy Business",        icon: Home },
+  { id: "loan",       label: "Business Loan",           icon: Banknote },
   { id: "referrals",  label: "Referrals",              icon: Users },
-  { id: "tour_africa", label: "TOUR AFRICA",           icon: Car },
+  { id: "tour_africa", label: "Tour Africa",            icon: Car },
 ];
 
 export default function AffiliateDashboard() {
@@ -64,6 +66,9 @@ export default function AffiliateDashboard() {
   const [connectOpen, setConnectOpen]   = useState(false);
   const [selectedBroker, setSelectedBroker] = useState<typeof TRADE_BROKERS[0] | null>(null);
   const [chartSymbol, setChartSymbol] = useState("BINANCE:BTCUSDT");
+  const [loanAmount, setLoanAmount] = useState("");
+  const [loanTerm, setLoanTerm] = useState(12);
+  const [loanPurpose, setLoanPurpose] = useState("");
   const [depositAmt, setDepositAmt]     = useState("");
   const [depositWallet, setDepositWallet] = useState<"trc20"|"bep20">("trc20");
   const [depositTxHash, setDepositTxHash] = useState("");
@@ -107,6 +112,9 @@ export default function AffiliateDashboard() {
   const { data: myCoAff, refetch: refetchMyCoAff } = useQuery({ queryKey: ["/api/co-affiliate/my-info"] });
   const { data: tradeWallet, refetch: refetchTradeWallet } = useQuery({ queryKey: ["/api/trade/wallet"] });
   const { data: tradeTxs = [], refetch: refetchTradeTxs } = useQuery({ queryKey: ["/api/trade/transactions"] });
+  const { data: loanLimit, refetch: refetchLoanLimit } = useQuery<any>({ queryKey: ["/api/loans/limit"] });
+  const { data: myLoans = [], refetch: refetchMyLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"] });
+  const { data: myTenancyProps = [] } = useQuery<any[]>({ queryKey: ["/api/tenancy/my-properties"] });
 
   const subscribeMutation = useMutation({
     mutationFn: async ({ category, customAmount }: { category: number; customAmount?: number }) => {
@@ -120,6 +128,20 @@ export default function AffiliateDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/co-affiliate/program"] });
     },
     onError: (err: any) => toast({ title: "Enrollment Failed", description: err.message, variant: "destructive" }),
+  });
+
+  const applyLoanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/loans/apply", { amountUsd: parseFloat(loanAmount), termMonths: loanTerm, purpose: loanPurpose });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Loan application submitted", description: "Your business loan application is under review. We'll notify you shortly." });
+      setLoanAmount(""); setLoanPurpose("");
+      refetchLoanLimit(); refetchMyLoans();
+    },
+    onError: (err: any) => toast({ title: "Application failed", description: err.message, variant: "destructive" }),
   });
 
   const depositMutation = useMutation({
@@ -383,7 +405,7 @@ export default function AffiliateDashboard() {
 
                 {/* Quick nav */}
                 <motion.div variants={itemVariants}>
-                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Quick Access</p>
+                  <p className="text-sm font-semibold text-muted-foreground mb-3">Quick access</p>
                   <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {NAV_ITEMS.filter(n => n.id !== "overview").map(item => (
                       <button key={item.id} onClick={() => navigate(item.id)}
@@ -455,7 +477,7 @@ export default function AffiliateDashboard() {
                     </Card>
                     <Card className="shadow-md border-0">
                       <CardContent className="pt-6 space-y-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Connected Wallets</p>
+                        <p className="text-xs font-semibold text-muted-foreground mb-3">Connected wallets</p>
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-muted-foreground">TRC20 (USDT)</span>
                           <span className="font-mono text-xs truncate max-w-[140px]">{tradeWallet?.trc20Address || <span className="italic text-muted-foreground">Not set</span>}</span>
@@ -474,7 +496,7 @@ export default function AffiliateDashboard() {
 
                 {/* Fee schedule */}
                 <motion.div variants={itemVariants}>
-                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Fee Structure</p>
+                  <p className="text-sm font-semibold text-muted-foreground mb-3">Fee structure</p>
                   <div className="grid sm:grid-cols-3 gap-3">
                     {[
                       { label: "On Deposit", desc: "75% to you", sub: "20% Reserve Fund · 5% Affiliate Pool", color: "text-green-600 dark:text-green-400", bg: "bg-green-50 dark:bg-green-900/20", border: "border-green-200 dark:border-green-800", icon: ArrowDownLeft },
@@ -505,7 +527,7 @@ export default function AffiliateDashboard() {
                 {/* Broker Selection */}
                 <motion.div variants={itemVariants}>
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Select Your Broker</p>
+                    <p className="text-sm font-semibold text-muted-foreground">Select your broker</p>
                     {selectedBroker && (
                       <Badge className="bg-tsia-green/10 text-tsia-green border-tsia-green/30">
                         Active: {selectedBroker.name}
@@ -545,7 +567,7 @@ export default function AffiliateDashboard() {
                 {/* Live TradingView Chart */}
                 <motion.div variants={itemVariants}>
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Live Market Chart</p>
+                    <p className="text-sm font-semibold text-muted-foreground">Live market chart</p>
                     <div className="flex gap-2">
                       {[
                         { label: "BTC/USDT", symbol: "BINANCE:BTCUSDT" },
@@ -681,7 +703,7 @@ export default function AffiliateDashboard() {
 
                 {/* Categories */}
                 <motion.div variants={itemVariants}>
-                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Affiliate Trust Fund Categories</p>
+                  <p className="text-sm font-semibold text-muted-foreground mb-3">Affiliate Trust Fund categories</p>
                   <div className="grid sm:grid-cols-3 gap-5">
                     {pricing.map((tier: any) => {
                       const col = getTierStyle(tier.category);
@@ -840,34 +862,267 @@ export default function AffiliateDashboard() {
             {activeSection === "loan" && (
               <>
                 <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Business Loan</h2>
-                  <p className="text-muted-foreground text-sm mb-6">Access flexible business financing tailored to TSIA affiliate members.</p>
+                  <h2 className="text-2xl font-bold mb-1">Business loan</h2>
+                  <p className="text-muted-foreground text-sm mb-6">Access flexible financing based on your referral activity and trade balance.</p>
                 </motion.div>
+
+                {/* Eligibility / limit card */}
                 <motion.div variants={itemVariants}>
-                  <Card className="shadow-md border-2 border-dashed border-muted-foreground/20">
-                    <CardContent className="pt-12 pb-14 text-center">
-                      <div className="w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <Banknote className="w-12 h-12 text-blue-400" />
-                      </div>
-                      <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-sm px-4 py-1.5 mb-4">Coming Soon</Badge>
-                      <h3 className="text-2xl font-bold mb-3">Business Loan — Launching Soon</h3>
-                      <p className="text-muted-foreground max-w-md mx-auto leading-relaxed mb-8">
-                        TSIA is building a business financing solution exclusively for verified affiliate members. Access capital to grow your business, scale referrals, and invest in opportunities — with competitive interest rates and flexible repayment terms.
-                      </p>
-                      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-2xl mx-auto text-sm">
-                        {[
-                          { label: "Flexible Terms", desc: "Choose your repayment period", icon: Clock },
-                          { label: "Fast Approval", desc: "Quick turnaround for members", icon: Zap },
-                          { label: "No Collateral", desc: "Identity-based underwriting", icon: Shield },
-                          { label: "Competitive Rates", desc: "Tailored for affiliates", icon: TrendingDown },
-                        ].map(f => (
-                          <div key={f.label} className="bg-muted/50 rounded-xl p-4 border flex flex-col items-center gap-2">
-                            <f.icon className="w-5 h-5 text-blue-500" />
-                            <p className="font-semibold">{f.label}</p>
-                            <p className="text-xs text-muted-foreground text-center">{f.desc}</p>
+                  {!loanLimit ? (
+                    <Card className="shadow-sm border-0 mb-4"><CardContent className="pt-8 pb-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></CardContent></Card>
+                  ) : !loanLimit.eligible ? (
+                    <Card className="shadow-sm border-0 mb-4 bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800">
+                      <CardContent className="pt-6 pb-6">
+                        <div className="flex gap-3 items-start">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Not yet eligible</p>
+                            <p className="text-sm text-amber-700 dark:text-amber-400">{loanLimit.reason}</p>
                           </div>
-                        ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="grid sm:grid-cols-3 gap-4 mb-5">
+                      {[
+                        { label: "Loan limit", value: `$${loanLimit.limitUsd?.toLocaleString()}`, sub: "Your maximum", color: "text-green-600 dark:text-green-400" },
+                        { label: "Interest rate", value: `${loanLimit.interestRate}% /yr`, sub: "Flat rate", color: "text-blue-600 dark:text-blue-400" },
+                        { label: "Referrals", value: loanLimit.referralCount || 0, sub: `Trade: $${parseFloat(loanLimit.tradeBalance||0).toFixed(2)}`, color: "text-purple-600 dark:text-purple-400" },
+                      ].map(s => (
+                        <Card key={s.label} className="shadow-sm border-0">
+                          <CardContent className="pt-5 pb-5">
+                            <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
+                            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* Active loan status */}
+                {loanLimit?.activeLoan && (
+                  <motion.div variants={itemVariants}>
+                    <Card className="shadow-sm border-0 mb-5 bg-blue-50 dark:bg-blue-900/10">
+                      <CardHeader className="pb-2 pt-5"><CardTitle className="text-base flex items-center gap-2"><Banknote className="w-4 h-4" />Active loan</CardTitle></CardHeader>
+                      <CardContent className="pb-5">
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                          {[
+                            { label: "Amount", value: `$${parseFloat(loanLimit.activeLoan.amountUsd).toFixed(2)}` },
+                            { label: "Total payable", value: `$${parseFloat(loanLimit.activeLoan.totalPayableUsd).toFixed(2)}` },
+                            { label: "Monthly", value: `$${parseFloat(loanLimit.activeLoan.monthlyPaymentUsd).toFixed(2)}` },
+                            { label: "Status", value: <Badge className="capitalize">{loanLimit.activeLoan.status}</Badge> },
+                          ].map(f => (
+                            <div key={f.label} className="bg-white dark:bg-blue-900/30 rounded-lg p-3">
+                              <p className="text-xs text-muted-foreground mb-1">{f.label}</p>
+                              <p className="font-semibold">{f.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
+
+                {/* Application form */}
+                {loanLimit?.eligible && !loanLimit?.activeLoan && (
+                  <motion.div variants={itemVariants}>
+                    <Card className="shadow-sm border-0 mb-5">
+                      <CardHeader className="pb-3 pt-5"><CardTitle className="text-base">Apply for a business loan</CardTitle></CardHeader>
+                      <CardContent className="pb-6 space-y-4">
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-sm font-medium mb-1.5 block">Loan amount (USD)</label>
+                            <input
+                              type="number"
+                              min={50}
+                              max={loanLimit.limitUsd}
+                              step={50}
+                              value={loanAmount}
+                              onChange={e => setLoanAmount(e.target.value)}
+                              placeholder={`Max $${loanLimit.limitUsd}`}
+                              className="w-full px-3 py-2 rounded-lg border bg-background text-sm"
+                              data-testid="input-loan-amount"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium mb-1.5 block">Repayment term</label>
+                            <select
+                              value={loanTerm}
+                              onChange={e => setLoanTerm(Number(e.target.value))}
+                              className="w-full px-3 py-2 rounded-lg border bg-background text-sm"
+                              data-testid="select-loan-term"
+                            >
+                              {(loanLimit.terms || [6,12,24]).map((t: number) => <option key={t} value={t}>{t} months</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1.5 block">Purpose (optional)</label>
+                          <input
+                            type="text"
+                            value={loanPurpose}
+                            onChange={e => setLoanPurpose(e.target.value)}
+                            placeholder="e.g. Business expansion, inventory, marketing..."
+                            className="w-full px-3 py-2 rounded-lg border bg-background text-sm"
+                            data-testid="input-loan-purpose"
+                          />
+                        </div>
+                        {loanAmount && parseFloat(loanAmount) > 0 && parseFloat(loanAmount) <= loanLimit.limitUsd && (() => {
+                          const { totalPayable, monthly } = calculateLoanMonthly(parseFloat(loanAmount), loanLimit.interestRate, loanTerm);
+                          return (
+                            <div className="bg-muted/40 rounded-xl p-4 text-sm grid grid-cols-3 gap-3">
+                              <div><p className="text-xs text-muted-foreground">Monthly payment</p><p className="font-bold text-green-600">${monthly.toFixed(2)}</p></div>
+                              <div><p className="text-xs text-muted-foreground">Total payable</p><p className="font-bold">${totalPayable.toFixed(2)}</p></div>
+                              <div><p className="text-xs text-muted-foreground">Interest</p><p className="font-bold">${(totalPayable - parseFloat(loanAmount)).toFixed(2)}</p></div>
+                            </div>
+                          );
+                        })()}
+                        <Button
+                          onClick={() => applyLoanMutation.mutate()}
+                          disabled={applyLoanMutation.isPending || !loanAmount || parseFloat(loanAmount) < 50 || parseFloat(loanAmount) > loanLimit.limitUsd}
+                          className="w-full bg-green-700 hover:bg-green-800 text-white"
+                          data-testid="button-apply-loan"
+                        >
+                          {applyLoanMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Banknote className="w-4 h-4 mr-2" />}
+                          Submit loan application
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
+
+                {/* Loan history */}
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-sm border-0">
+                    <CardHeader className="pb-2 pt-5"><CardTitle className="text-base">Loan history</CardTitle></CardHeader>
+                    <CardContent className="pb-5">
+                      {(myLoans as any[]).length === 0 ? (
+                        <div className="text-center py-10">
+                          <DollarSign className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                          <p className="text-sm text-muted-foreground">No loans yet</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {(myLoans as any[]).map((loan: any) => (
+                            <div key={loan.id} className="flex items-center justify-between p-4 rounded-xl bg-muted/40 border" data-testid={`row-loan-${loan.id}`}>
+                              <div>
+                                <p className="font-semibold">${parseFloat(loan.amountUsd).toFixed(2)} over {loan.termMonths} months</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{loan.purpose || "No purpose stated"} · {loan.interestRate}% /yr</p>
+                              </div>
+                              <Badge className={loan.status === "active" ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" : loan.status === "pending" ? "bg-amber-100 text-amber-800" : "bg-muted text-muted-foreground"}>
+                                {loan.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {/* Features info */}
+                <motion.div variants={itemVariants}>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 text-sm">
+                    {[
+                      { label: "Flexible terms", desc: "6, 12, or 24 months", icon: Clock },
+                      { label: "Quick review", desc: "Fast turnaround for active members", icon: Zap },
+                      { label: "No collateral", desc: "Activity-based underwriting", icon: Shield },
+                      { label: "15% flat rate", desc: "Competitive for business loans", icon: TrendingDown },
+                    ].map(f => (
+                      <div key={f.label} className="bg-muted/50 rounded-xl p-4 border flex flex-col items-center gap-2">
+                        <f.icon className="w-5 h-5 text-blue-500" />
+                        <p className="font-semibold">{f.label}</p>
+                        <p className="text-xs text-muted-foreground text-center">{f.desc}</p>
                       </div>
+                    ))}
+                  </div>
+                </motion.div>
+              </>
+            )}
+
+            {/* ── TENANCY ── */}
+            {activeSection === "tenancy" && (
+              <>
+                <motion.div variants={itemVariants}>
+                  <h2 className="text-2xl font-bold mb-1">Tenancy business</h2>
+                  <p className="text-muted-foreground text-sm mb-6">List your properties or browse available rentals — TSIA pays landlords upfront while tenants pay in instalments.</p>
+                </motion.div>
+
+                {/* Quick stats */}
+                <motion.div variants={itemVariants}>
+                  <div className="grid sm:grid-cols-3 gap-4 mb-5">
+                    {[
+                      { label: "Your listings", value: (myTenancyProps as any[]).length, sub: "Properties listed", icon: Building2, color: "text-green-600 dark:text-green-400" },
+                      { label: "How it works", value: "Landlord → TSIA → Tenant", sub: "Lump-sum to landlord; instalments from tenant", icon: ArrowRight, color: "text-blue-600 dark:text-blue-400" },
+                      { label: "Interest model", value: "5% /yr", sub: "TSIA adds interest to tenant payments", icon: TrendingUp, color: "text-amber-600 dark:text-amber-400" },
+                    ].map(s => (
+                      <Card key={s.label} className="shadow-sm border-0">
+                        <CardContent className="pt-5 pb-5 flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-muted/60 flex items-center justify-center shrink-0">
+                            <s.icon className="w-4 h-4 text-muted-foreground" />
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-0.5">{s.label}</p>
+                            <p className={`font-bold text-lg ${s.color}`}>{s.value}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{s.sub}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </motion.div>
+
+                {/* Your properties */}
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-sm border-0 mb-5">
+                    <CardHeader className="pb-2 pt-5 flex-row items-center justify-between">
+                      <CardTitle className="text-base">Your listed properties</CardTitle>
+                      <Button size="sm" variant="outline" onClick={() => setLocation("/tenancy")} data-testid="button-list-property">
+                        <Home className="w-3.5 h-3.5 mr-1.5" /> List a property
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="pb-5">
+                      {(myTenancyProps as any[]).length === 0 ? (
+                        <div className="text-center py-10">
+                          <Building2 className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                          <p className="text-sm text-muted-foreground font-medium">No properties listed yet</p>
+                          <p className="text-xs text-muted-foreground mt-1 mb-4">List a property so TSIA can pay you upfront and manage tenant collections</p>
+                          <Button size="sm" onClick={() => setLocation("/tenancy")} className="bg-green-700 hover:bg-green-800 text-white" data-testid="button-go-to-tenancy">
+                            Browse tenancy portal
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {(myTenancyProps as any[]).map((p: any) => (
+                            <div key={p.id} className="flex items-center justify-between p-4 rounded-xl bg-muted/40 border" data-testid={`row-property-${p.id}`}>
+                              <div>
+                                <p className="font-semibold">{p.propertyName}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{p.location} · ${parseFloat(p.annualRentUsd).toLocaleString()} /yr</p>
+                              </div>
+                              <Badge className={p.status === "available" ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" : "bg-muted text-muted-foreground"}>
+                                {p.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {/* Browse CTA */}
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-sm border-0 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10 border border-green-100 dark:border-green-900/30">
+                    <CardContent className="pt-6 pb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div>
+                        <p className="font-semibold text-green-800 dark:text-green-300 mb-1">Looking for a rental?</p>
+                        <p className="text-sm text-green-700 dark:text-green-400">Browse available properties and apply for tenancy — pay in monthly instalments.</p>
+                      </div>
+                      <Button onClick={() => setLocation("/tenancy")} className="bg-green-700 hover:bg-green-800 text-white shrink-0" data-testid="button-browse-tenancy">
+                        Browse rentals <ArrowRight className="w-4 h-4 ml-2" />
+                      </Button>
                     </CardContent>
                   </Card>
                 </motion.div>

@@ -24,7 +24,9 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - Affiliate program (separate from students) with own signup, dashboard, referral codes
 - Co-Affiliate/Initiator Programme: 1M investor cap, 3 tiers ($100/$200/$500), +20% price per 150k milestone, lifetime 5% TSIA profit share proportional to category
 - Co-Affiliate routes: GET /api/co-affiliate/program, GET /api/co-affiliate/my-info, POST /api/co-affiliate/subscribe
-- Affiliate Loan button → "Coming Soon" dialog
+- Student loan programme: active for verified students; Platinum=$200, Gold=$150, Silver=$100 limit; 10%/yr flat; 6/12/18-month terms; eligibility check, live calculator, application form, loan history
+- Affiliate business loan: active when referralCount>0 or tradeBalance>0; base $500 + $50/referral + 50% tradeBalance × co-affiliate multiplier (max $5k); 15%/yr flat; 6/12/24-month terms
+- Loan API routes: GET /api/loans/limit, GET /api/loans/my-loans, POST /api/loans/apply
 - MSc "Coming Soon" section (always disabled)
 - About Us and Contact Us pages
 - Admin panel: verify students, approve/reject, process disbursements (24-48hr SLA)
@@ -35,6 +37,7 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - Co-Affiliate Trust Fund (1M investor cap, 3 tiers $100/$300/$500-$10k, +20% milestone pricing, 5% lifetime profit share)
 - TOUR AFRICA (Dispatch + E-Taxi at /tour-africa)
 - Landlord Tenancy Programme (/tenancy): landlords list property → TSIA pays lump-sum upfront (12% disc); tenants pay monthly installments at 5% interest
+- AffiliateDashboard tenancy nav section: shows affiliate's listed properties, links to /tenancy portal, quick stats
 - AI Customer Care Assistant (floating chatbot with 14+ KB entries, quick-action chips, WhatsApp fallback wa.me/2348012345678)
 - 15-minute inactivity auto-logout on both student and affiliate dashboards
 - ErrorBoundary wrapping all pages to prevent blank screen crashes

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, boolean, timestamp, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, boolean, timestamp, pgEnum, jsonb, serial, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -389,6 +389,51 @@ export function calculateTenancyDeal(annualRentNgn: number, leasePeriodYears: nu
   const monthlyTenantPayment = totalTenantPayable / (leasePeriodYears * 12);
   const tsiaRevenue = totalTenantPayable - tsiaPayment;
   return { totalGross, tsiaPayment, totalTenantPayable, monthlyTenantPayment, tsiaRevenue };
+}
+
+// ─── LOANS ───────────────────────────────────────────────────────────────────
+export const loans = pgTable("loans", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  userRole: text("user_role", { enum: ["student", "affiliate"] }).notNull(),
+  amountUsd: numeric("amount_usd", { precision: 12, scale: 2 }).notNull(),
+  interestRate: numeric("interest_rate", { precision: 5, scale: 2 }).notNull(),
+  termMonths: integer("term_months").notNull(),
+  monthlyPaymentUsd: numeric("monthly_payment_usd", { precision: 12, scale: 2 }).notNull(),
+  totalPayableUsd: numeric("total_payable_usd", { precision: 12, scale: 2 }).notNull(),
+  totalPaidUsd: numeric("total_paid_usd", { precision: 12, scale: 2 }).notNull().default("0"),
+  purpose: text("purpose"),
+  status: text("status", { enum: ["pending", "approved", "active", "repaid", "rejected"] }).notNull().default("pending"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  disbursedAt: timestamp("disbursed_at"),
+});
+
+export const insertLoanSchema = createInsertSchema(loans).omit({ id: true, createdAt: true, disbursedAt: true });
+export type InsertLoan = z.infer<typeof insertLoanSchema>;
+export type Loan = typeof loans.$inferSelect;
+
+export function calculateStudentLoanLimit(tier: string): number {
+  if (tier === "platinum") return 200;
+  if (tier === "gold") return 150;
+  if (tier === "silver") return 100;
+  return 0;
+}
+
+export function calculateAffiliateLoanLimit(referralCount: number, tradeBalance: number, coAffiliateAmount: number): number {
+  const base = 500;
+  const fromReferrals = Math.min(referralCount * 50, 2000);
+  const fromTrade = Math.min(tradeBalance * 0.5, 3000);
+  let multiplier = 1;
+  if (coAffiliateAmount >= 500) multiplier = 2;
+  else if (coAffiliateAmount >= 300) multiplier = 1.5;
+  return Math.min((base + fromReferrals + fromTrade) * multiplier, 5000);
+}
+
+export function calculateLoanMonthly(principalUsd: number, annualRatePercent: number, termMonths: number) {
+  const totalInterest = principalUsd * (annualRatePercent / 100) * (termMonths / 12);
+  const totalPayable = principalUsd + totalInterest;
+  const monthly = totalPayable / termMonths;
+  return { totalInterest, totalPayable, monthly };
 }
 
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────

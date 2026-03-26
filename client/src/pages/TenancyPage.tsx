@@ -456,7 +456,7 @@ export default function TenancyPage() {
 
                     {calcResult && (
                       <div className="space-y-3 pt-4 border-t border-border">
-                        <p className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Results</p>
+                        <p className="font-semibold text-sm text-muted-foreground">Results</p>
                         <div className="space-y-2.5">
                           {[
                             { label: "Total Gross Value", val: formatNgn(calcResult.totalGross), color: "text-foreground" },

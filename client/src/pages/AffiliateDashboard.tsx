@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import FinancialHub from "./FinancialHub";
+import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import { useLocation, useSearch, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,19 +39,20 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech";
+type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech" | "reserve_fund";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
-  { id: "overview",   label: "Overview",              icon: LayoutDashboard },
-  { id: "fintech",    label: "Fintech Hub",            icon: CreditCard },
-  { id: "wallet",     label: "Wallet",                icon: Wallet },
-  { id: "trade",      label: "Trade Market",           icon: Globe },
-  { id: "trust_fund", label: "Affiliate Trust Fund",   icon: Crown },
-  { id: "ecommerce",  label: "E-Commerce",             icon: ShoppingCart },
-  { id: "tenancy",    label: "Tenancy Business",        icon: Home },
-  { id: "loan",       label: "Business Loan",           icon: Banknote },
-  { id: "referrals",  label: "Referrals",              icon: Users },
-  { id: "tour_africa", label: "Tour Africa",            icon: Car },
+  { id: "overview",     label: "Overview",               icon: LayoutDashboard },
+  { id: "fintech",      label: "Fintech Hub",             icon: CreditCard },
+  { id: "wallet",       label: "Wallet",                 icon: Wallet },
+  { id: "reserve_fund", label: "Strategic Reserve Fund",  icon: Shield },
+  { id: "trade",        label: "Trade Market",            icon: Globe },
+  { id: "trust_fund",   label: "Affiliate Trust Fund",    icon: Crown },
+  { id: "ecommerce",    label: "E-Commerce",              icon: ShoppingCart },
+  { id: "tenancy",      label: "Tenancy Business",         icon: Home },
+  { id: "loan",         label: "Business Loan",            icon: Banknote },
+  { id: "referrals",    label: "Referrals",               icon: Users },
+  { id: "tour_africa",  label: "Tour Africa",             icon: Car },
 ];
 
 export default function AffiliateDashboard() {
@@ -846,6 +848,11 @@ export default function AffiliateDashboard() {
                     )}
                   </Card>
                 </motion.div>
+
+                {/* ── Live Reserve Fund Mini-Widget ── */}
+                <motion.div variants={itemVariants}>
+                  <ReserveFundWidget onNavigate={() => setActiveSection("reserve_fund")} />
+                </motion.div>
               </>
             )}
 
@@ -1008,6 +1015,19 @@ export default function AffiliateDashboard() {
             {activeSection === "ecommerce" && (
               <motion.div variants={itemVariants}>
                 <EcommerceSection />
+              </motion.div>
+            )}
+
+            {/* ── STRATEGIC RESERVE FUND ── */}
+            {activeSection === "reserve_fund" && (
+              <motion.div variants={itemVariants}>
+                <div className="mb-5">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <Shield className="w-6 h-6 text-tsia-green" /> Strategic Reserve Fund
+                  </h2>
+                  <p className="text-muted-foreground text-sm">20% of every trade deposit — growing in real-time</p>
+                </div>
+                <ReserveFund />
               </motion.div>
             )}
 

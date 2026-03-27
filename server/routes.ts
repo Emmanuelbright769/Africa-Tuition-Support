@@ -865,6 +865,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Admin-only detailed view
   app.get("/api/trade/reserve-fund", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -873,6 +874,22 @@ export async function registerRoutes(
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin only." });
       const fund = await storage.getTradeReserveFund();
       res.json(fund);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Public (all authenticated users) — live reserve fund balance
+  app.get("/api/reserve-fund/live", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const fund = await storage.getTradeReserveFund();
+      res.json({
+        totalBalance: fund.total_balance ?? "0",
+        totalDeposited: fund.total_deposited ?? "0",
+        contributionRate: 20,
+        description: "20% of every Global Trade Market deposit is ring-fenced into this strategic reserve.",
+        updatedAt: new Date().toISOString(),
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

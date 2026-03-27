@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import FinancialHub from "./FinancialHub";
+import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,16 +25,17 @@ import { Logo } from "@/components/ui/Logo";
 
 const BALANCE_HIDDEN_KEY = "tsia_balance_hidden";
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech";
+type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
-  { id: "overview",    label: "Overview",         icon: LayoutDashboard },
-  { id: "fintech",     label: "Fintech Hub",       icon: CreditCard },
-  { id: "wallet",      label: "Digital Wallet",    icon: Wallet },
-  { id: "plans",       label: "Sponsorship Plans", icon: Star },
-  { id: "activity",    label: "Activity",          icon: History },
-  { id: "loan",        label: "Student loan",      icon: Banknote },
-  { id: "tour_africa", label: "Tour Africa",       icon: Car },
+  { id: "overview",     label: "Overview",             icon: LayoutDashboard },
+  { id: "fintech",      label: "Fintech Hub",           icon: CreditCard },
+  { id: "wallet",       label: "Digital Wallet",        icon: Wallet },
+  { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
+  { id: "plans",        label: "Sponsorship Plans",     icon: Star },
+  { id: "activity",     label: "Activity",              icon: History },
+  { id: "loan",         label: "Student loan",          icon: Banknote },
+  { id: "tour_africa",  label: "Tour Africa",           icon: Car },
 ];
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
@@ -617,6 +619,19 @@ export default function StudentDashboard() {
                   </Card>
                 </motion.div>
               </>
+            )}
+
+            {/* ── STRATEGIC RESERVE FUND ── */}
+            {activeSection === "reserve_fund" && (
+              <motion.div variants={itemVariants}>
+                <div className="mb-5">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <Shield className="w-6 h-6 text-tsia-green" /> Strategic Reserve Fund
+                  </h2>
+                  <p className="text-muted-foreground text-sm">20% of every trade deposit — growing in real-time</p>
+                </div>
+                <ReserveFund />
+              </motion.div>
             )}
 
             {/* ── FINTECH HUB ── */}

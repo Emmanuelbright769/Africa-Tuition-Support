@@ -202,24 +202,27 @@ export default function Landing() {
 
             <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
               {[
-                { years: 1, price: 35, payout: 230, desc: "Perfect for final year students or those needing short-term support.", features: ["Up to $230 payout", "Digital Wallet access", "Standard support"] },
-                { years: 2, price: 45, payout: 460, desc: "Ideal for mid-degree students looking for stable, ongoing funding.", features: ["Up to $460 payout", "Digital Wallet access", "Priority review"], popular: true },
-                { years: 3, price: 50, payout: 690, desc: "Maximum coverage for new students entering their degree programs.", features: ["Up to $690 payout", "Digital Wallet access", "Dedicated academic advisor"] },
+                { years: 1, price: 35, payout: 230, coverage: "~85%", desc: "Ideal for final-year students or those needing focused short-term support.", features: ["Up to $230 payout/year", "Digital Wallet access", "Standard support", "~85% academic cost covered"] },
+                { years: 2, price: 45, payout: 460, coverage: "~90%", desc: "Designed for mid-degree students seeking stable, ongoing academic funding.", features: ["Up to $460 total payout", "Digital Wallet access", "Priority review", "~90% academic cost covered"], popular: true },
+                { years: 3, price: 50, payout: 690, coverage: "~92%", desc: "Maximum coverage for students entering full degree programmes.", features: ["Up to $690 total payout", "Digital Wallet access", "Dedicated academic advisor", "~92% academic cost covered"] },
               ].map((p, i) => (
                 <motion.div key={i} whileHover={{ y: -5 }}
                   className={`bg-card rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all ${p.popular ? 'shadow-2xl border-2 border-primary relative md:-translate-y-4' : 'shadow-sm border'}`}
                 >
                   {p.popular && (
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-tsia-green text-white px-4 py-1.5 rounded-full text-sm font-bold tracking-wide shadow-sm">
-                      MOST POPULAR
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-tsia-green text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-sm">
+                      Most popular
                     </div>
                   )}
-                  <h3 className="text-2xl font-semibold mb-2">{p.years} Year Commitment</h3>
+                  <div className="flex items-start justify-between mb-4">
+                    <h3 className="text-2xl font-semibold">{p.years}-Year Commitment</h3>
+                    <span className="text-xs font-bold bg-tsia-green/10 text-tsia-green border border-tsia-green/20 rounded-full px-2.5 py-1">{p.coverage} sponsored</span>
+                  </div>
                   <div className="mb-1">
                     <span className="text-4xl font-bold">${p.price}</span>
                     <span className="text-muted-foreground">/year</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-6">{'\u20A6'}{(p.price * 1460).toLocaleString()}/year</p>
+                  <p className="text-xs text-muted-foreground mb-6">₦{(p.price * 1460).toLocaleString()}/year</p>
                   <p className="text-muted-foreground mb-8 flex-1">{p.desc}</p>
                   <div className="space-y-4 mb-8">
                     {p.features.map((f, j) => (
@@ -230,7 +233,7 @@ export default function Landing() {
                     ))}
                   </div>
                   <Link href="/signup">
-                    <Button className={`w-full h-12 text-base ${p.popular ? 'bg-tsia-green text-white hover:bg-tsia-green/90' : ''}`} variant={p.popular ? 'default' : 'outline'}>Select Plan</Button>
+                    <Button className={`w-full h-12 text-base ${p.popular ? 'bg-tsia-green text-white hover:bg-tsia-green/90' : ''}`} variant={p.popular ? 'default' : 'outline'}>Select plan</Button>
                   </Link>
                 </motion.div>
               ))}
@@ -326,16 +329,19 @@ export default function Landing() {
             <div className="grid md:grid-cols-2 gap-16 items-center max-w-6xl mx-auto">
               <motion.div initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
                 <h2 className="text-4xl font-bold mb-6">About TSIA</h2>
-                <p className="text-lg text-muted-foreground leading-relaxed mb-6">
-                  The Tuition Support Initiative for Africa (TSIA) is a merit-based educational funding platform dedicated to bridging the financial gap for talented African students.
+                <p className="text-lg text-muted-foreground leading-relaxed mb-4">
+                  The Tuition Support Initiative for Africa (TSIA) is a sophisticated financial ecosystem built on the principle of <em>Educational Audacity</em> — the belief that knowledge should be the only requirement for success, not capital.
+                </p>
+                <p className="text-muted-foreground leading-relaxed mb-4">
+                  A primary subsidiary of <strong>SMAKEMGGOLD Ltd</strong> (RC: 1359954), an established brand in credit, loans, and investments since 2016, TSIA leverages a <strong>$150 Million international fund</strong> provided by partners in the United Kingdom and Turkey to sponsor verified students across Africa.
                 </p>
                 <p className="text-muted-foreground leading-relaxed mb-8">
-                  We believe that academic excellence should be rewarded, not hindered by financial limitations. Through our transparent verification system, WAEC-based scoring, and digital wallet infrastructure, we connect deserving students with sponsors who share our vision.
+                  Our circular economy model connects student sponsorship, affiliate participation, and global crypto trading — ensuring long-term sustainability and accountability through quarterly Reserve Fund reporting.
                 </p>
                 <div className="grid grid-cols-2 gap-6 mb-8">
                   {[
                     { value: "1,000+", label: "Students Supported" },
-                    { value: "$150K+", label: "Funds Disbursed" },
+                    { value: "$150M", label: "Partner Fund" },
                     { value: "15+", label: "African Countries" },
                     { value: "24-48hrs", label: "Payout Speed" },
                   ].map((stat, i) => (

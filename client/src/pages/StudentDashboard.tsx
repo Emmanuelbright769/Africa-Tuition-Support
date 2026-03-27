@@ -427,9 +427,9 @@ export default function StudentDashboard() {
                 <motion.div variants={itemVariants}>
                   <div className="grid sm:grid-cols-3 gap-5">
                     {[
-                      { years: 1, price: 35, payout: 230 },
-                      { years: 2, price: 45, payout: 460, popular: true },
-                      { years: 3, price: 50, payout: 690 },
+                      { years: 1, price: 35, payout: 230, coverage: "~85%" },
+                      { years: 2, price: 45, payout: 460, coverage: "~90%", popular: true },
+                      { years: 3, price: 50, payout: 690, coverage: "~92%" },
                     ].map(p => {
                       const isActive = plan?.planYears === p.years;
                       const canSelect = isVerified && !plan && countdown === 0;
@@ -437,10 +437,14 @@ export default function StudentDashboard() {
                         <div key={p.years} className={`relative rounded-2xl p-6 transition-all ${isActive ? 'border-2 border-primary bg-primary/5 shadow-lg' : p.popular ? 'border-2 border-primary/30' : 'border'}`}>
                           {p.popular && !isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Recommended</div>}
                           {isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Active</div>}
-                          <h4 className="font-semibold text-lg mb-1">{p.years} Year Plan</h4>
+                          <div className="flex items-start justify-between mb-1">
+                            <h4 className="font-semibold text-lg">{p.years}-Year Plan</h4>
+                            <span className="text-[10px] font-bold bg-tsia-green/10 text-tsia-green border border-tsia-green/20 rounded-full px-2 py-0.5">{p.coverage} sponsored</span>
+                          </div>
                           <div className="text-4xl font-bold mb-4">${p.price}<span className="text-sm font-medium text-muted-foreground">/yr</span></div>
                           <ul className="space-y-3 mb-8 text-sm font-medium">
                             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Up to ${p.payout} payout</li>
+                            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> {p.coverage} academic cost covered</li>
                             <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Wallet access</li>
                           </ul>
                           <Button
@@ -450,7 +454,7 @@ export default function StudentDashboard() {
                             onClick={() => selectPlanMutation.mutate(p.years)}
                             data-testid={`button-plan-${p.years}`}
                           >
-                            {isActive ? 'Active ✓' : canSelect ? 'Select Plan' : 'Locked'}
+                            {isActive ? 'Active ✓' : canSelect ? 'Select plan' : 'Locked'}
                           </Button>
                         </div>
                       );

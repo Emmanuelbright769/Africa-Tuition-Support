@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import FinancialHub from "./FinancialHub";
 import { useLocation, useSearch, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
   Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag,
   Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink,
   Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
-  Eye, EyeOff, Bell, Power, Timer
+  Eye, EyeOff, Bell, Power, Timer, CreditCard
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -37,10 +38,11 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa";
+type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",   label: "Overview",              icon: LayoutDashboard },
+  { id: "fintech",    label: "Fintech Hub",            icon: CreditCard },
   { id: "wallet",     label: "Wallet",                icon: Wallet },
   { id: "trade",      label: "Trade Market",           icon: Globe },
   { id: "trust_fund", label: "Affiliate Trust Fund",   icon: Crown },
@@ -1006,6 +1008,17 @@ export default function AffiliateDashboard() {
             {activeSection === "ecommerce" && (
               <motion.div variants={itemVariants}>
                 <EcommerceSection />
+              </motion.div>
+            )}
+
+            {/* ── FINTECH HUB ── */}
+            {activeSection === "fintech" && (
+              <motion.div variants={itemVariants}>
+                <div className="mb-5">
+                  <h2 className="text-2xl font-bold">Fintech Hub</h2>
+                  <p className="text-muted-foreground text-sm">Send money, pay bills &amp; manage transfers</p>
+                </div>
+                <FinancialHub />
               </motion.div>
             )}
 

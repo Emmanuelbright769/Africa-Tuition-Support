@@ -530,6 +530,36 @@ export const ECOMMERCE = {
   MIN_DEPOSIT: 3,
 } as const;
 
+// ─── FINTECH / WALLET TRANSFERS ──────────────────────────────────────────────
+export const walletTransfers = pgTable("wallet_transfers", {
+  id:          integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  senderId:    integer("sender_id").notNull().references(() => users.id),
+  recipientId: integer("recipient_id").notNull().references(() => users.id),
+  amount:      decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  fee:         decimal("fee",    { precision: 10, scale: 2 }).notNull().default("0.00"),
+  note:        text("note"),
+  status:      text("status").notNull().default("completed"),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+});
+
+export const billPayments = pgTable("bill_payments", {
+  id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:    integer("user_id").notNull().references(() => users.id),
+  service:   text("service").notNull(),
+  amount:    decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  reference: text("reference").notNull(),
+  status:    text("status").notNull().default("completed"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWalletTransferSchema = createInsertSchema(walletTransfers).omit({ id: true, createdAt: true });
+export type InsertWalletTransfer = z.infer<typeof insertWalletTransferSchema>;
+export type WalletTransfer = typeof walletTransfers.$inferSelect;
+
+export const insertBillPaymentSchema = createInsertSchema(billPayments).omit({ id: true, createdAt: true });
+export type InsertBillPayment = z.infer<typeof insertBillPaymentSchema>;
+export type BillPayment = typeof billPayments.$inferSelect;
+
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [
   { id: "binance", name: "Binance", specialty: "Crypto & Futures", rating: 4.9, minDeposit: 10, fee: "0.1%", description: "World's largest crypto exchange with deep liquidity." },

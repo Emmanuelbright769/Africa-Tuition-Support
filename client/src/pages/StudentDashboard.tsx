@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import FinancialHub from "./FinancialHub";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,10 +24,11 @@ import { Logo } from "@/components/ui/Logo";
 
 const BALANCE_HIDDEN_KEY = "tsia_balance_hidden";
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa";
+type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",    label: "Overview",         icon: LayoutDashboard },
+  { id: "fintech",     label: "Fintech Hub",       icon: CreditCard },
   { id: "wallet",      label: "Digital Wallet",    icon: Wallet },
   { id: "plans",       label: "Sponsorship Plans", icon: Star },
   { id: "activity",    label: "Activity",          icon: History },
@@ -615,6 +617,17 @@ export default function StudentDashboard() {
                   </Card>
                 </motion.div>
               </>
+            )}
+
+            {/* ── FINTECH HUB ── */}
+            {activeSection === "fintech" && (
+              <motion.div variants={itemVariants}>
+                <div className="mb-5">
+                  <h2 className="text-2xl font-bold">Fintech Hub</h2>
+                  <p className="text-muted-foreground text-sm">Send money, pay bills &amp; manage transfers</p>
+                </div>
+                <FinancialHub />
+              </motion.div>
             )}
 
             {/* ── STUDENT LOAN ── */}

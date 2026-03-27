@@ -5,7 +5,7 @@ import {
   leadershipInquiries, otpCodes, fileUploads, coAffiliates,
   tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
   landlordProperties, tenancyLeases, tenancyPayments, loans,
-  products, orders, walletDeposits,
+  products, orders, walletDeposits, walletTransfers, billPayments,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -24,6 +24,7 @@ import {
   type Product, type InsertProduct,
   type Order, type InsertOrder,
   type WalletDeposit, type InsertWalletDeposit,
+  type WalletTransfer, type BillPayment,
   TRADE_MARKET, ECOMMERCE,
 } from "@shared/schema";
 
@@ -108,6 +109,14 @@ export interface IStorage {
   getWalletDepositsByUser(userId: number): Promise<WalletDeposit[]>;
   getPendingWalletDeposits(): Promise<(WalletDeposit & { user: User })[]>;
   updateWalletDeposit(id: number, data: Partial<WalletDeposit>): Promise<WalletDeposit>;
+
+  // Fintech: P2P Transfers
+  createWalletTransfer(data: { senderId: number; recipientId: number; amount: number; note?: string }): Promise<WalletTransfer>;
+  getWalletTransfersByUser(userId: number): Promise<(WalletTransfer & { recipientName?: string; senderName?: string })[]>;
+
+  // Fintech: Bill Payments
+  createBillPayment(data: { userId: number; service: string; amount: number; reference: string }): Promise<BillPayment>;
+  getBillPaymentsByUser(userId: number): Promise<BillPayment[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -490,6 +499,52 @@ export class DatabaseStorage implements IStorage {
   async updateWalletDeposit(id: number, data: Partial<WalletDeposit>): Promise<WalletDeposit> {
     const [d] = await db.update(walletDeposits).set(data as any).where(eq(walletDeposits.id, id)).returning();
     return d;
+  }
+
+  // ── Fintech: P2P Transfers ──────────────────────────────────────────────
+  async createWalletTransfer(data: { senderId: number; recipientId: number; amount: number; note?: string }): Promise<WalletTransfer> {
+    const [transfer] = await db.insert(walletTransfers).values({
+      senderId: data.senderId,
+      recipientId: data.recipientId,
+      amount: data.amount.toFixed(2),
+      note: data.note || null,
+      status: "completed",
+    }).returning();
+    return transfer;
+  }
+
+  async getWalletTransfersByUser(userId: number): Promise<(WalletTransfer & { recipientName?: string; senderName?: string })[]> {
+    const rows = await db.select().from(walletTransfers)
+      .where(or(eq(walletTransfers.senderId, userId), eq(walletTransfers.recipientId, userId)))
+      .orderBy(desc(walletTransfers.createdAt))
+      .limit(50);
+    const userIds = [...new Set(rows.flatMap(r => [r.senderId, r.recipientId]))];
+    const usersData = userIds.length ? await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName }).from(users).where(sql`id = ANY(${sql.raw(`ARRAY[${userIds.join(",")}]`)})`) : [];
+    const userMap = Object.fromEntries(usersData.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+    return rows.map(r => ({
+      ...r,
+      recipientName: userMap[r.recipientId] || "Unknown",
+      senderName: userMap[r.senderId] || "Unknown",
+    }));
+  }
+
+  // ── Fintech: Bill Payments ──────────────────────────────────────────────
+  async createBillPayment(data: { userId: number; service: string; amount: number; reference: string }): Promise<BillPayment> {
+    const [payment] = await db.insert(billPayments).values({
+      userId: data.userId,
+      service: data.service,
+      amount: data.amount.toFixed(2),
+      reference: data.reference,
+      status: "completed",
+    }).returning();
+    return payment;
+  }
+
+  async getBillPaymentsByUser(userId: number): Promise<BillPayment[]> {
+    return db.select().from(billPayments)
+      .where(eq(billPayments.userId, userId))
+      .orderBy(desc(billPayments.createdAt))
+      .limit(50);
   }
 }
 

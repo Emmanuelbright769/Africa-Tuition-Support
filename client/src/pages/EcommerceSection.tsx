@@ -12,7 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   Search, ShoppingBag, Package, Star, MapPin, Plus, Eye, ShoppingCart,
   Tag, Truck, CheckCircle2, X, Camera, TrendingUp, Loader2, Heart,
-  Filter, Mic, ChevronRight, BadgePercent, Bell, Zap, ArrowRight, Flame
+  Filter, ChevronRight, BadgePercent, Bell, Zap, ArrowRight, Flame,
+  Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ECOMMERCE } from "@shared/schema";
@@ -581,6 +582,13 @@ export default function EcommerceSection() {
     try { return new Set(JSON.parse(localStorage.getItem("tsia_wishlist") || "[]")); } catch { return new Set(); }
   });
   const [showAllProducts, setShowAllProducts] = useState(false);
+  const [showCategoriesModal, setShowCategoriesModal] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterSort, setFilterSort] = useState<"newest"|"price-asc"|"price-desc"|"popular">("newest");
+  const [filterMinPrice, setFilterMinPrice] = useState("");
+  const [filterMaxPrice, setFilterMaxPrice] = useState("");
+  const [filterCondition, setFilterCondition] = useState<""|"new"|"used"|"refurbished">("");
+  const [filterViewMode, setFilterViewMode] = useState<"grid"|"list">("grid");
 
   const { data: wallet } = useQuery<any>({ queryKey: ["/api/wallet"] });
   const walletBalance = parseFloat(wallet?.balance ?? "0");
@@ -619,8 +627,22 @@ export default function EcommerceSection() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const featured = (products as Product[]).slice(0, 8);
-  const gridProducts = showAllProducts ? (products as Product[]) : (products as Product[]).slice(0, 12);
+  // Apply client-side filter/sort
+  const filteredProducts = (products as Product[]).filter(p => {
+    if (filterCondition && p.condition !== filterCondition) return false;
+    const price = parseFloat(p.price);
+    if (filterMinPrice && price < parseFloat(filterMinPrice)) return false;
+    if (filterMaxPrice && price > parseFloat(filterMaxPrice)) return false;
+    return true;
+  }).sort((a, b) => {
+    if (filterSort === "price-asc")  return parseFloat(a.price) - parseFloat(b.price);
+    if (filterSort === "price-desc") return parseFloat(b.price) - parseFloat(a.price);
+    if (filterSort === "popular")    return b.viewCount - a.viewCount;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // newest
+  });
+  const activeFilterCount = [filterCondition, filterMinPrice, filterMaxPrice, filterSort !== "newest" ? filterSort : ""].filter(Boolean).length;
+  const featured = filteredProducts.slice(0, 8);
+  const gridProducts = showAllProducts ? filteredProducts : filteredProducts.slice(0, 12);
 
   const TABS = [
     { id: "browse" as Tab, label: "Home", icon: ShoppingBag },
@@ -666,10 +688,16 @@ export default function EcommerceSection() {
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           {search && <button onClick={() => { setSearch(""); setActiveSearch(""); }}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>}
-          <button onClick={() => setActiveSearch(search)} className="text-muted-foreground hover:text-foreground"><Mic className="w-4 h-4" /></button>
         </div>
-        <button className="w-12 h-12 bg-slate-900 dark:bg-white rounded-2xl flex items-center justify-center shadow-md shrink-0" onClick={() => {}}>
-          <Filter className="w-5 h-5 text-white dark:text-slate-900" />
+        <button
+          className="relative w-12 h-12 bg-slate-900 dark:bg-white rounded-2xl flex items-center justify-center shadow-md shrink-0 hover:opacity-90 transition-opacity"
+          onClick={() => setFilterOpen(true)}
+          data-testid="btn-filter"
+        >
+          <SlidersHorizontal className="w-5 h-5 text-white dark:text-slate-900" />
+          {activeFilterCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-tsia-green text-white text-[9px] font-bold rounded-full flex items-center justify-center">{activeFilterCount}</span>
+          )}
         </button>
       </div>
 
@@ -690,7 +718,7 @@ export default function EcommerceSection() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-base">Categories</h3>
-              <button className="text-xs text-tsia-green font-semibold flex items-center gap-0.5">View All <ChevronRight className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setShowCategoriesModal(true)} className="text-xs text-tsia-green font-semibold flex items-center gap-0.5" data-testid="btn-view-all-cats">View All <ChevronRight className="w-3.5 h-3.5" /></button>
             </div>
             <CategoryRow activeCategory={activeCategory} setActiveCategory={setActiveCategory} />
           </div>
@@ -749,14 +777,40 @@ export default function EcommerceSection() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-3">
-                  {gridProducts.map(p => (
-                    <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} />
-                  ))}
-                </div>
-                {!showAllProducts && (products as Product[]).length > 12 && (
+                {filterViewMode === "grid" ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {gridProducts.map(p => (
+                      <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {gridProducts.map(p => {
+                      const img = p.images?.[0];
+                      return (
+                        <div key={p.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3 hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleView(p)}>
+                          <div className="w-16 h-16 rounded-xl bg-muted overflow-hidden shrink-0">
+                            {img ? <img src={img} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-xl">{CATEGORY_ICONS[p.category]}</div>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-sm line-clamp-1">{p.title}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{p.condition} · {p.category}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-tsia-green font-black text-sm">${parseFloat(p.price).toFixed(2)}</span>
+                              <span className="text-[11px] text-muted-foreground line-through">${originalPrice(p.price)}</span>
+                            </div>
+                          </div>
+                          <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-9 h-9 bg-tsia-green rounded-xl flex items-center justify-center shrink-0">
+                            <ShoppingCart className="w-4 h-4 text-white" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {!showAllProducts && filteredProducts.length > 12 && (
                   <Button variant="outline" className="w-full mt-4 rounded-2xl" onClick={() => setShowAllProducts(true)}>
-                    Load more products <ChevronRight className="w-4 h-4 ml-1" />
+                    Load more products ({filteredProducts.length - 12} more) <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
                 )}
               </>
@@ -910,6 +964,139 @@ export default function EcommerceSection() {
       <ListProductModal open={listOpen} onClose={() => setListOpen(false)} />
       <ProductDetailModal product={selectedProduct} open={detailOpen} onClose={() => setDetailOpen(false)} onBuy={() => { setDetailOpen(false); setBuyProduct(selectedProduct); setBuyOpen(true); }} />
       <BuyModal product={buyProduct} open={buyOpen} onClose={() => setBuyOpen(false)} walletBalance={walletBalance} />
+
+      {/* ── Categories Grid Modal ──────────────────────────────────────── */}
+      <Dialog open={showCategoriesModal} onOpenChange={setShowCategoriesModal}>
+        <DialogContent className="max-w-sm max-h-[80vh] overflow-y-auto" data-testid="modal-categories">
+          <DialogHeader>
+            <DialogTitle>All Categories</DialogTitle>
+            <DialogDescription>Select a category to filter products</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            {/* All */}
+            <button
+              onClick={() => { setActiveCategory(""); setShowCategoriesModal(false); }}
+              className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${!activeCategory ? "border-tsia-green bg-tsia-green/5" : "border-transparent bg-muted/50 hover:bg-muted"}`}
+              data-testid="cat-modal-all"
+            >
+              <span className="text-2xl">🛍️</span>
+              <div className="text-left">
+                <p className="font-bold text-sm">All</p>
+                <p className="text-[10px] text-muted-foreground">Everything</p>
+              </div>
+              {!activeCategory && <Check className="w-4 h-4 text-tsia-green ml-auto" />}
+            </button>
+            {CATEGORIES.map(c => (
+              <button key={c}
+                onClick={() => { setActiveCategory(c); setShowCategoriesModal(false); }}
+                className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${activeCategory === c ? "border-tsia-green bg-tsia-green/5" : "border-transparent bg-muted/50 hover:bg-muted"}`}
+                data-testid={`cat-modal-${c}`}
+              >
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${CATEGORY_GRADIENTS[c]} flex items-center justify-center text-xl shrink-0`}>
+                  {CATEGORY_ICONS[c]}
+                </div>
+                <div className="text-left min-w-0">
+                  <p className="font-bold text-sm truncate">{CATEGORY_LABELS[c]}</p>
+                </div>
+                {activeCategory === c && <Check className="w-4 h-4 text-tsia-green ml-auto shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Filter Panel (slide-up sheet) ────────────────────────────── */}
+      <AnimatePresence>
+        {filterOpen && (
+          <>
+            <motion.div key="filter-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-40" onClick={() => setFilterOpen(false)} />
+            <motion.div key="filter-panel" initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[80vh] overflow-y-auto"
+              data-testid="filter-panel"
+            >
+              <div className="flex items-center justify-between p-5 border-b">
+                <h3 className="font-bold text-lg flex items-center gap-2"><SlidersHorizontal className="w-5 h-5 text-tsia-green" /> Filter & Sort</h3>
+                <button onClick={() => setFilterOpen(false)} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-6">
+                {/* Sort */}
+                <div>
+                  <p className="font-bold text-sm mb-3 flex items-center gap-1.5"><ArrowUpDown className="w-4 h-4" /> Sort by</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { id: "newest",     label: "Newest",        icon: "🆕" },
+                      { id: "price-asc",  label: "Price: Low→High", icon: "⬆️" },
+                      { id: "price-desc", label: "Price: High→Low", icon: "⬇️" },
+                      { id: "popular",    label: "Most Popular",  icon: "🔥" },
+                    ] as const).map(s => (
+                      <button key={s.id} onClick={() => setFilterSort(s.id)}
+                        className={`flex items-center gap-2 p-3 rounded-xl border-2 text-sm font-semibold transition-all ${filterSort === s.id ? "border-tsia-green bg-tsia-green/5 text-tsia-green" : "border-muted bg-muted/50"}`}
+                        data-testid={`sort-${s.id}`}>
+                        <span>{s.icon}</span> {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Price Range */}
+                <div>
+                  <p className="font-bold text-sm mb-3">💰 Price Range (USD)</p>
+                  <div className="flex items-center gap-3">
+                    <Input type="number" placeholder="Min" value={filterMinPrice} onChange={e => setFilterMinPrice(e.target.value)} className="rounded-xl" data-testid="input-min-price" min={0} />
+                    <span className="text-muted-foreground font-bold">–</span>
+                    <Input type="number" placeholder="Max" value={filterMaxPrice} onChange={e => setFilterMaxPrice(e.target.value)} className="rounded-xl" data-testid="input-max-price" min={0} />
+                  </div>
+                </div>
+
+                {/* Condition */}
+                <div>
+                  <p className="font-bold text-sm mb-3">📦 Condition</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {(["", "new", "used", "refurbished"] as const).map(c => (
+                      <button key={c} onClick={() => setFilterCondition(c)}
+                        className={`px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all capitalize ${filterCondition === c ? "border-tsia-green bg-tsia-green/5 text-tsia-green" : "border-muted bg-muted/50"}`}
+                        data-testid={`cond-${c || "any"}`}>
+                        {c || "Any"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* View mode */}
+                <div>
+                  <p className="font-bold text-sm mb-3">🖼️ View mode</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setFilterViewMode("grid")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border-2 text-sm font-semibold ${filterViewMode === "grid" ? "border-tsia-green bg-tsia-green/5 text-tsia-green" : "border-muted bg-muted/50"}`}
+                      data-testid="view-grid">
+                      <Grid3X3 className="w-4 h-4" /> Grid
+                    </button>
+                    <button onClick={() => setFilterViewMode("list")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border-2 text-sm font-semibold ${filterViewMode === "list" ? "border-tsia-green bg-tsia-green/5 text-tsia-green" : "border-muted bg-muted/50"}`}
+                      data-testid="view-list">
+                      <List className="w-4 h-4" /> List
+                    </button>
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-3 pt-2">
+                  <Button variant="outline" className="flex-1 rounded-2xl" onClick={() => { setFilterSort("newest"); setFilterMinPrice(""); setFilterMaxPrice(""); setFilterCondition(""); }}>
+                    Clear all
+                  </Button>
+                  <Button className="flex-1 rounded-2xl bg-tsia-green text-white" onClick={() => setFilterOpen(false)}>
+                    Apply {activeFilterCount > 0 ? `(${activeFilterCount})` : ""}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

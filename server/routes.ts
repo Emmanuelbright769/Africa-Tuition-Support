@@ -1167,6 +1167,82 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── FINTECH: P2P TRANSFERS ─────────────────────────────────────────────────
+  // Lookup user by email or affiliate code
+  app.post("/api/wallet/lookup-user", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+    try {
+      const user = await storage.getUserByEmail(email.trim().toLowerCase());
+      if (!user) return res.status(404).json({ message: "No TSIA member found with that email address" });
+      if (user.id === userId) return res.status(400).json({ message: "You cannot send money to yourself" });
+      res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Send money wallet-to-wallet
+  app.post("/api/wallet/send", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { recipientId, amount, note } = req.body;
+    if (!recipientId || !amount || amount <= 0) return res.status(400).json({ message: "Invalid transfer details" });
+    try {
+      const senderWallet    = await storage.getOrCreateWallet(userId);
+      const senderBalance   = parseFloat(senderWallet.balance);
+      if (senderBalance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${senderBalance.toFixed(2)}` });
+      const recipient = await storage.getUser(recipientId);
+      if (!recipient) return res.status(404).json({ message: "Recipient not found" });
+      // Deduct from sender
+      await storage.updateWalletBalance(userId, (senderBalance - amount).toFixed(2));
+      // Credit recipient
+      const recipientWallet  = await storage.getOrCreateWallet(recipientId);
+      const recipientBalance = parseFloat(recipientWallet.balance);
+      await storage.updateWalletBalance(recipientId, (recipientBalance + amount).toFixed(2));
+      // Record transfer
+      await storage.createWalletTransfer({ senderId: userId, recipientId, amount, note });
+      res.json({ message: `$${amount.toFixed(2)} sent to ${recipient.firstName} ${recipient.lastName} successfully` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Get transfers for current user
+  app.get("/api/wallet/transfers", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const transfers = await storage.getWalletTransfersByUser(userId);
+      res.json(transfers);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Pay a bill (deduct from wallet)
+  app.post("/api/wallet/bill", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { service, amount, note } = req.body;
+    if (!service || !amount || amount <= 0) return res.status(400).json({ message: "Invalid bill details" });
+    try {
+      const wallet  = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(wallet.balance);
+      if (balance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+      await storage.updateWalletBalance(userId, (balance - amount).toFixed(2));
+      const reference = `TSIA-BILL-${service.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+      await storage.createBillPayment({ userId, service, amount, reference });
+      res.json({ message: `${service} bill of $${amount.toFixed(2)} paid successfully. Ref: ${reference}` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Get bill payments for current user
+  app.get("/api/wallet/bills", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const bills = await storage.getBillPaymentsByUser(userId);
+      res.json(bills);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Admin: confirm wallet deposit
   app.post("/api/admin/wallet-deposit/:id/confirm", async (req, res) => {
     const userId = (req.session as any)?.userId;

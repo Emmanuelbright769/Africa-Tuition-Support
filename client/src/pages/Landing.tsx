@@ -14,7 +14,7 @@ const slides = [
     title: "Secure Your Academic Future",
     subtitle: "Opening doors for African Students",
     description: "The Tuition Support Initiative for Africa provides up to 70%+ coverage on tuition for verified students. Apply today, verify your identity, and get matched with sponsors.",
-    image: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=2070&auto=format&fit=crop",
+    image: "/slide1.jpeg",
     primaryButton: { text: "Apply for Support", link: "/signup" },
     secondaryButton: { text: "Learn More", link: "#how-it-works" }
   },
@@ -23,7 +23,7 @@ const slides = [
     title: "Merit-Based Sponsorship",
     subtitle: "Your Hard Work Pays Off",
     description: "Based on your Academic Performance Matrix (WAEC), you can unlock Platinum, Gold, or Silver tiers, giving you up to $230 in tuition coverage.",
-    image: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2071&auto=format&fit=crop",
+    image: "/slide2.jpeg",
     primaryButton: { text: "Create an Account", link: "/signup" },
     secondaryButton: { text: "Log in", link: "/login" }
   },
@@ -32,7 +32,7 @@ const slides = [
     title: "Earn by Referring Students",
     subtitle: "TSIA Affiliate Program",
     description: "Share your unique referral code with fellow students. Earn commission for every verified student you refer to the TSIA platform.",
-    image: "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=2070&auto=format&fit=crop",
+    image: "/slide3.jpeg",
     primaryButton: { text: "Join as Affiliate", link: "/affiliate-signup" },
     secondaryButton: { text: "Learn More", link: "#affiliate" }
   }

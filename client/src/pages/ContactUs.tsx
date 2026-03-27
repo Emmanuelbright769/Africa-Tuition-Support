@@ -43,8 +43,8 @@ export default function ContactUs() {
             <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-16">
               {[
                 { icon: Mail, title: "Email", detail: "support@tsia.africa", sub: "General inquiries & support", color: "text-blue-600 bg-blue-100 dark:bg-blue-900/30" },
-                { icon: Phone, title: "Phone", detail: "+234 800 TSIA 000", sub: "Mon - Fri, 9am - 5pm WAT", color: "text-green-600 bg-green-100 dark:bg-green-900/30" },
-                { icon: MapPin, title: "Office", detail: "Victoria Island, Lagos", sub: "Nigeria, West Africa", color: "text-purple-600 bg-purple-100 dark:bg-purple-900/30" },
+                { icon: Phone, title: "Phone", detail: "+44 20 7946 0000", sub: "Mon - Fri, 9am - 5pm GMT", color: "text-green-600 bg-green-100 dark:bg-green-900/30" },
+                { icon: MapPin, title: "Office", detail: "Canary Wharf, London", sub: "United Kingdom", color: "text-purple-600 bg-purple-100 dark:bg-purple-900/30" },
               ].map((item, i) => (
                 <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.15 }}
                   className="p-8 rounded-2xl bg-card border text-center hover:shadow-lg transition-shadow"
@@ -80,7 +80,7 @@ export default function ContactUs() {
                 <div className="grid sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone (Optional)</Label>
-                    <Input id="phone" name="phone" type="tel" placeholder="+234 800 000 0000" className="h-11" data-testid="input-contact-phone" />
+                    <Input id="phone" name="phone" type="tel" placeholder="+44 20 0000 0000" className="h-11" data-testid="input-contact-phone" />
                   </div>
                   <div className="space-y-2">
                     <Label>Subject</Label>
@@ -113,7 +113,7 @@ export default function ContactUs() {
               <Clock className="w-10 h-10 text-tsia-gold shrink-0 hidden sm:block" />
               <div>
                 <h4 className="font-bold mb-1">Support Hours</h4>
-                <p className="text-sm text-muted-foreground">Monday to Friday: 9:00 AM - 5:00 PM (WAT). Weekend inquiries will be addressed on the next business day. For urgent verification issues, please include your WAEC registration number in the message.</p>
+                <p className="text-sm text-muted-foreground">Monday to Friday: 9:00 AM - 5:00 PM (GMT). Weekend inquiries will be addressed on the next business day. For urgent verification issues, please include your WAEC registration number in the message.</p>
               </div>
             </motion.div>
           </div>

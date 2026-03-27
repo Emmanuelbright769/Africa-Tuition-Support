@@ -47,14 +47,14 @@ export function Footer() {
             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
             </svg>
-            NDPR Compliant
+            NDPR & UK GDPR Compliant
           </div>
         </div>
       </div>
 
       <div className="container mx-auto px-4 mt-10 pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
         <span>&copy; {new Date().getFullYear()} Tuition Support Initiative for Africa. All rights reserved.</span>
-        <span>Backed by a $150M international fund &middot; UK &amp; Turkey partners &middot; NDPR compliant</span>
+        <span>Backed by a $150M international fund &middot; UK &amp; Turkey partners &middot; NDPR & UK GDPR compliant &middot; London, United Kingdom</span>
       </div>
     </footer>
   );

@@ -382,8 +382,8 @@ export default function Landing() {
               <div className="grid sm:grid-cols-3 gap-8 max-w-3xl mx-auto mb-12">
                 {[
                   { icon: Mail, title: "Email Us", detail: "support@tsia.africa", sub: "Response within 24hrs" },
-                  { icon: Phone, title: "Call Us", detail: "+234 800 TSIA 000", sub: "Mon - Fri, 9am - 5pm WAT" },
-                  { icon: MapPin, title: "Visit Us", detail: "Lagos, Nigeria", sub: "Head Office" },
+                  { icon: Phone, title: "Call Us", detail: "+44 20 7946 0000", sub: "Mon - Fri, 9am - 5pm GMT" },
+                  { icon: MapPin, title: "Visit Us", detail: "London, United Kingdom", sub: "Head Office" },
                 ].map((item, i) => (
                   <div key={i} className="p-6 rounded-2xl bg-background border hover:shadow-lg transition-shadow">
                     <item.icon className="w-8 h-8 text-primary mx-auto mb-4" />

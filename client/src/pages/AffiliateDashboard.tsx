@@ -14,7 +14,8 @@ import {
   ShoppingBag, ChevronDown, ChevronUp, Shield, Zap, Globe,
   Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag,
   Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink,
-  Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle
+  Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
+  Eye, EyeOff, Bell, Power, Timer
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -64,7 +65,6 @@ export default function AffiliateDashboard() {
   const [depositOpen, setDepositOpen]   = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [connectOpen, setConnectOpen]   = useState(false);
-  const [selectedBroker, setSelectedBroker] = useState<typeof TRADE_BROKERS[0] | null>(null);
   const [chartSymbol, setChartSymbol] = useState("BINANCE:BTCUSDT");
   const [loanAmount, setLoanAmount] = useState("");
   const [loanTerm, setLoanTerm] = useState(12);
@@ -78,6 +78,89 @@ export default function AffiliateDashboard() {
   const [trc20Input, setTrc20Input]     = useState("");
   const [bep20Input, setBep20Input]     = useState("");
   const [showTxHistory, setShowTxHistory] = useState(false);
+
+  // Trade balance visibility (persisted)
+  const [tradeBalanceHidden, setTradeBalanceHidden] = useState<boolean>(() => {
+    try { return localStorage.getItem("tsia_trade_balance_hidden") === "true"; } catch { return false; }
+  });
+  const toggleTradeBalanceHidden = () => {
+    setTradeBalanceHidden(prev => {
+      const next = !prev;
+      try { localStorage.setItem("tsia_trade_balance_hidden", String(next)); } catch {}
+      return next;
+    });
+  };
+
+  // Broker selection (persisted)
+  const [selectedBrokerId, setSelectedBrokerId] = useState<string>(() => {
+    try { return localStorage.getItem("tsia_selected_broker_id") || ""; } catch { return ""; }
+  });
+  const selectedBroker = TRADE_BROKERS.find(b => b.id === selectedBrokerId) ?? null;
+  const handleBrokerChange = (id: string) => {
+    setSelectedBrokerId(id);
+    try { localStorage.setItem("tsia_selected_broker_id", id); } catch {}
+    if (id === "binance") setChartSymbol("BINANCE:BTCUSDT");
+    else if (id === "bybit") setChartSymbol("BYBIT:BTCUSDT");
+    else if (id === "exness") setChartSymbol("FX:EURUSD");
+    else if (id === "etoro") setChartSymbol("ETORO:BTCUSD");
+    else setChartSymbol("BINANCE:BTCUSDT");
+  };
+
+  // Trading BOT state (persisted)
+  const [botActivatedAt, setBotActivatedAt] = useState<number | null>(() => {
+    try {
+      const v = localStorage.getItem("tsia_bot_activated_at");
+      return v ? parseInt(v, 10) : null;
+    } catch { return null; }
+  });
+  const [ukNow, setUkNow] = useState(() => new Date());
+  const botActive = botActivatedAt !== null && (Date.now() - botActivatedAt) < 12 * 3600 * 1000;
+  const botMinsRemaining = botActivatedAt ? Math.max(0, Math.floor((botActivatedAt + 12 * 3600000 - Date.now()) / 60000)) : 0;
+  const botHoursLeft = Math.floor(botMinsRemaining / 60);
+  const botMinsLeft = botMinsRemaining % 60;
+
+  // Activate bot
+  const activateBot = () => {
+    const now = Date.now();
+    setBotActivatedAt(now);
+    try { localStorage.setItem("tsia_bot_activated_at", String(now)); } catch {}
+    toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It will auto-deactivate in 12 hours.", className: "border-green-500" });
+  };
+  const deactivateBot = () => {
+    setBotActivatedAt(null);
+    try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
+  };
+
+  // Auto-deactivate bot + 30-min warning clock
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      setUkNow(now);
+      // Auto-off after 12 h
+      if (botActivatedAt && (Date.now() - botActivatedAt) >= 12 * 3600 * 1000) {
+        setBotActivatedAt(null);
+        try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
+        toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours. Reactivate at 1:00 PM tomorrow.", variant: "destructive" });
+      }
+      // 30-min pre-1PM UK warning
+      const ukHour = parseInt(now.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
+      const ukMinute = now.getMinutes();
+      if (ukHour === 12 && ukMinute === 30 && !botActive) {
+        if (Notification.permission === "granted") {
+          new Notification("TSIA Trade Market", { body: "30 minutes until 1:00 PM — Time to activate your Trading Bot!", icon: "/favicon.ico" });
+        }
+        toast({ title: "⏰ Bot Reminder", description: "It's 12:30 PM — activate your Trading Bot in 30 minutes at 1:00 PM (GMT)!", className: "border-amber-500" });
+      }
+    }, 30000); // every 30 seconds
+    return () => clearInterval(interval);
+  }, [botActivatedAt, botActive]);
+
+  // Request notification permission when entering trade section
+  useEffect(() => {
+    if (activeSection === "trade" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, [activeSection]);
 
   // Welcome wallet walkthrough
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
@@ -446,16 +529,97 @@ export default function AffiliateDashboard() {
                         TSIA's Global Trade Market targets a <strong className="text-white">100% total return on investment</strong> through consistent 2% daily capital market trading — powered by advanced arithmetic algorithms and an AI-driven BOT. At the end of your investment cycle, your capital will have grown to double what you deposited.
                       </p>
                     </div>
-                    <div className="bg-amber-600 text-white p-4 flex items-start gap-3">
-                      <Bot className="w-5 h-5 shrink-0 mt-0.5 text-amber-200" />
-                      <div>
-                        <p className="font-bold text-sm">Important: Manual BOT Activation Required</p>
-                        <p className="text-amber-100 text-xs mt-1 leading-relaxed">
-                          You must <strong className="text-white">manually activate the Trading BOT every working day at 1:00 PM</strong> for it to execute trades for that day. If the BOT is not activated by 1PM on a working day, no trades will run for that day. Activate it from the Trade Market section when you are ready.
-                        </p>
-                      </div>
-                    </div>
                   </div>
+                </motion.div>
+
+                {/* ===== TRADING BOT ACTIVATION PANEL ===== */}
+                <motion.div variants={itemVariants}>
+                  {(() => {
+                    const ukHour = parseInt(ukNow.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
+                    const ukMin  = ukNow.getMinutes();
+                    const isOnepm = ukHour === 13;
+                    const isWarning = ukHour === 12 && ukMin >= 30;
+                    return (
+                      <div className={`rounded-2xl overflow-hidden shadow-xl border-2 ${botActive ? "border-green-500" : isOnepm ? "border-amber-400" : "border-slate-200 dark:border-slate-700"}`}>
+                        {/* Header */}
+                        <div className={`p-5 ${botActive ? "bg-gradient-to-r from-green-700 to-emerald-600" : isOnepm ? "bg-gradient-to-r from-amber-600 to-orange-500" : "bg-gradient-to-r from-slate-800 to-slate-700"} text-white`}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${botActive ? "bg-green-500" : isOnepm ? "bg-amber-500" : "bg-slate-600"}`}>
+                                <Bot className="w-5 h-5 text-white" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-lg leading-tight">AI Trading Bot</p>
+                                <p className="text-xs opacity-80">Activates daily at 1:00 PM (GMT) · Auto-off after 12 hours</p>
+                              </div>
+                            </div>
+                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${botActive ? "bg-green-500/30 text-green-100" : "bg-white/10 text-white/70"}`}>
+                              <span className={`w-2 h-2 rounded-full ${botActive ? "bg-green-300 animate-pulse" : "bg-white/40"}`} />
+                              {botActive ? "ACTIVE" : "OFFLINE"}
+                            </div>
+                          </div>
+                          {botActive ? (
+                            <div className="bg-white/10 rounded-xl p-3 flex items-center gap-3">
+                              <Timer className="w-5 h-5 text-green-200 shrink-0" />
+                              <div>
+                                <p className="text-sm font-semibold">Bot is running — auto-off in {botHoursLeft}h {botMinsLeft}m</p>
+                                <p className="text-xs text-green-200 mt-0.5">Executing 2% daily trades using arithmetic algorithm strategy</p>
+                              </div>
+                            </div>
+                          ) : isWarning ? (
+                            <div className="bg-amber-500/30 rounded-xl p-3 flex items-center gap-3 animate-pulse">
+                              <Bell className="w-5 h-5 text-amber-200 shrink-0" />
+                              <div>
+                                <p className="text-sm font-semibold">30-minute reminder — it's nearly 1:00 PM!</p>
+                                <p className="text-xs text-amber-200 mt-0.5">Come back at exactly 1:00 PM GMT to activate your bot and start today's trades.</p>
+                              </div>
+                            </div>
+                          ) : isOnepm ? (
+                            <div className="bg-white/15 rounded-xl p-3 flex items-center gap-3">
+                              <Bell className="w-5 h-5 text-amber-200 shrink-0 animate-bounce" />
+                              <div>
+                                <p className="text-sm font-semibold">It's 1:00 PM — activate your bot now!</p>
+                                <p className="text-xs text-amber-200 mt-0.5">The bot window is open. Tap "Activate Bot" to start today's trading session.</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="bg-white/10 rounded-xl p-3">
+                              <p className="text-sm text-white/80">UK time: <strong className="text-white">{ukNow.toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}</strong> — Come back at <strong className="text-white">1:00 PM GMT</strong> to activate the bot.</p>
+                            </div>
+                          )}
+                        </div>
+                        {/* Action footer */}
+                        <div className="bg-card p-4 flex items-center gap-3">
+                          {botActive ? (
+                            <>
+                              <div className="flex-1">
+                                <p className="text-xs text-muted-foreground">Bot activated · auto-deactivates at <strong>{new Date((botActivatedAt ?? 0) + 12 * 3600000).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}</strong> GMT</p>
+                              </div>
+                              <Button size="sm" variant="outline" onClick={deactivateBot} data-testid="button-bot-deactivate" className="border-red-300 text-red-600 hover:bg-red-50">
+                                <Power className="w-3.5 h-3.5 mr-1" /> Turn Off
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex-1">
+                                <p className="text-xs text-muted-foreground">
+                                  {isOnepm ? "The activation window is open right now." : "Activate every working day at exactly 1:00 PM GMT."}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={activateBot}
+                                data-testid="button-bot-activate"
+                                className={`${isOnepm ? "bg-amber-500 hover:bg-amber-600" : "bg-tsia-green hover:bg-tsia-green/90"} text-white font-bold`}
+                              >
+                                <Power className="w-3.5 h-3.5 mr-1.5" /> Activate Bot
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </motion.div>
 
                 {/* Balance + actions */}
@@ -463,8 +627,13 @@ export default function AffiliateDashboard() {
                   <div className="grid sm:grid-cols-2 gap-4">
                     <Card className="shadow-md border-0 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-blue-900/20 dark:to-slate-800/50 border border-blue-200 dark:border-blue-800">
                       <CardContent className="pt-6">
-                        <p className="text-sm text-muted-foreground mb-1">Trade Wallet Balance</p>
-                        <p className="text-5xl font-bold text-blue-700 dark:text-blue-400 mb-6">${tradeBalance.toFixed(2)}</p>
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-sm text-muted-foreground">Trade Wallet Balance</p>
+                          <button onClick={toggleTradeBalanceHidden} data-testid="button-toggle-trade-balance" className="text-muted-foreground hover:text-foreground transition-colors">
+                            {tradeBalanceHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <p className="text-5xl font-bold text-blue-700 dark:text-blue-400 mb-6">{tradeBalanceHidden ? "••••••" : `$${tradeBalance.toFixed(2)}`}</p>
                         <div className="grid grid-cols-2 gap-2">
                           <Button className="h-10 bg-green-600 hover:bg-green-700 text-white" onClick={() => setDepositOpen(true)} data-testid="button-trade-deposit">
                             <ArrowDownLeft className="w-4 h-4 mr-1" /> Deposit
@@ -524,44 +693,27 @@ export default function AffiliateDashboard() {
                   </div>
                 </motion.div>
 
-                {/* Broker Selection */}
+                {/* Broker Selection — dropdown */}
                 <motion.div variants={itemVariants}>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-semibold text-muted-foreground">Select your broker</p>
                     {selectedBroker && (
                       <Badge className="bg-tsia-green/10 text-tsia-green border-tsia-green/30">
-                        Active: {selectedBroker.name}
+                        <CheckCircle2 className="w-3 h-3 mr-1" /> {selectedBroker.name}
                       </Badge>
                     )}
                   </div>
-                  <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    {TRADE_BROKERS.map((broker) => {
-                      const isSelected = selectedBroker?.id === broker.id;
-                      return (
-                        <button key={broker.id} onClick={() => { setSelectedBroker(broker); if (broker.id === "binance") setChartSymbol("BINANCE:BTCUSDT"); else if (broker.id === "bybit") setChartSymbol("BYBIT:BTCUSDT"); else if (broker.id === "exness") setChartSymbol("FX:EURUSD"); else if (broker.id === "etoro") setChartSymbol("ETORO:BTCUSD"); else setChartSymbol("BINANCE:BTCUSDT"); }}
-                          data-testid={`button-broker-${broker.id}`}
-                          className={`text-left p-4 rounded-xl border transition-all ${isSelected ? "border-tsia-green bg-tsia-green/10 shadow-md" : "border-border hover:border-tsia-green/40 bg-card"}`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-bold text-sm">{broker.name}</span>
-                            {isSelected && <CheckCircle2 className="w-4 h-4 text-tsia-green" />}
-                          </div>
-                          <div className="flex gap-1.5 mb-2">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <div key={i} className={`h-1 flex-1 rounded-full ${i < broker.rating ? "bg-tsia-gold" : "bg-muted"}`} />
-                            ))}
-                          </div>
-                          <p className="text-xs text-muted-foreground mb-1">{broker.specialty}</p>
-                          <p className="text-xs text-muted-foreground">Min: ${broker.minDeposit} · Fee: {broker.fee}%</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {selectedBroker && (
-                    <div className="mt-3 bg-muted/50 rounded-xl p-4 border">
-                      <p className="font-semibold text-sm mb-1">{selectedBroker.name}</p>
-                      <p className="text-xs text-muted-foreground">{selectedBroker.description}</p>
-                    </div>
-                  )}
+                  <select
+                    data-testid="select-broker"
+                    value={selectedBrokerId}
+                    onChange={e => handleBrokerChange(e.target.value)}
+                    className="w-full h-11 rounded-xl border border-border bg-card px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-tsia-green/40 appearance-none cursor-pointer"
+                  >
+                    <option value="" disabled>— Choose a broker —</option>
+                    {TRADE_BROKERS.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
                 </motion.div>
 
                 {/* Live TradingView Chart */}
@@ -585,7 +737,7 @@ export default function AffiliateDashboard() {
                   <div className="rounded-2xl overflow-hidden border border-border shadow-md" style={{ height: 420 }}>
                     <iframe
                       key={chartSymbol}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_trade&symbol=${encodeURIComponent(chartSymbol)}&interval=60&hidesidetoolbar=0&hidetooltip=0&theme=dark&style=1&locale=en&toolbar_bg=%23131722&enable_publishing=false&withdateranges=1&showpopupbutton=0&no_referral_id=1&timezone=Africa%2FLagos`}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_trade&symbol=${encodeURIComponent(chartSymbol)}&interval=60&hidesidetoolbar=0&hidetooltip=0&theme=dark&style=1&locale=en&toolbar_bg=%23131722&enable_publishing=false&withdateranges=1&showpopupbutton=0&no_referral_id=1&timezone=Europe%2FLondon`}
                       width="100%"
                       height="420"
                       frameBorder="0"

@@ -100,7 +100,7 @@ export default function AboutUs() {
                 { title: "NIN identity check", desc: "National Identification Number verification confirms the identity of every applicant before processing." },
                 { title: "Admin review — 24–48hr SLA", desc: "Every application undergoes manual review by our trained verification team within 24 to 48 working hours." },
                 { title: "Digital wallet security", desc: "Funds are secured in individual digital wallets with full transaction history and 7.5% VAT compliance on withdrawals." },
-                { title: "NDPR compliant", desc: "TSIA operates in full compliance with the Nigeria Data Protection Regulation (NDPR), safeguarding all student and affiliate data." },
+                { title: "NDPR & UK GDPR compliant", desc: "TSIA operates in full compliance with NDPR and UK GDPR frameworks, safeguarding all student and affiliate data across jurisdictions." },
                 { title: "Quarterly reserve fund reporting", desc: "Our 20% Reserve Fund is reported quarterly to all stakeholders, providing full visibility into the safety net protecting the ecosystem." },
               ].map((item, i) => (
                 <motion.div key={i} initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.07 }}
@@ -154,11 +154,11 @@ export default function AboutUs() {
           <div className="container mx-auto px-4 max-w-4xl text-center">
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
               <h2 className="text-2xl font-bold mb-3 text-white">Regulatory &amp; legal governance</h2>
-              <p className="text-slate-400 mb-8 max-w-2xl mx-auto">TSIA operates under established Nigerian corporate law and international financial compliance frameworks.</p>
+              <p className="text-slate-400 mb-8 max-w-2xl mx-auto">TSIA operates under UK and international financial compliance frameworks, with its parent entity SMAKEMGGOLD Ltd registered under Nigerian corporate law.</p>
               <div className="grid sm:grid-cols-3 gap-6 text-sm">
                 {[
                   { label: "Parent company", value: "SMAKEMGGOLD Ltd", sub: "RC: 1359954 · Est. 2016" },
-                  { label: "Data compliance", value: "NDPR Compliant", sub: "Nigeria Data Protection Regulation" },
+                  { label: "Data compliance", value: "NDPR & UK GDPR", sub: "Dual jurisdiction compliance" },
                   { label: "International partners", value: "UK & Turkey", sub: "$150M strategic fund" },
                 ].map((g, i) => (
                   <div key={i} className="bg-slate-900 rounded-xl p-5 border border-slate-800">

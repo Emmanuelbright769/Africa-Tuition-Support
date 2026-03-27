@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import FinancialHub from "./FinancialHub";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
+import EcommerceSection from "./EcommerceSection";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,8 @@ import {
   Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight,
   LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X,
   LayoutDashboard, Star, History, ChevronRight, Car, Globe, Loader2,
-  AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode
+  AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
+  ShoppingCart
 } from "lucide-react";
 import { calculateLoanMonthly, ECOMMERCE } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
@@ -25,17 +27,18 @@ import { Logo } from "@/components/ui/Logo";
 
 const BALANCE_HIDDEN_KEY = "tsia_balance_hidden";
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund";
+type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
-  { id: "overview",     label: "Overview",             icon: LayoutDashboard },
-  { id: "fintech",      label: "Fintech Hub",           icon: CreditCard },
-  { id: "wallet",       label: "Digital Wallet",        icon: Wallet },
+  { id: "overview",     label: "Overview",              icon: LayoutDashboard },
+  { id: "fintech",      label: "Fintech Hub",            icon: CreditCard },
+  { id: "wallet",       label: "Digital Wallet",         icon: Wallet },
+  { id: "ecommerce",    label: "E-Commerce",             icon: ShoppingCart },
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
-  { id: "plans",        label: "Sponsorship Plans",     icon: Star },
-  { id: "activity",     label: "Activity",              icon: History },
-  { id: "loan",         label: "Student loan",          icon: Banknote },
-  { id: "tour_africa",  label: "Tour Africa",           icon: Car },
+  { id: "plans",        label: "Sponsorship Plans",      icon: Star },
+  { id: "activity",     label: "Activity",               icon: History },
+  { id: "loan",         label: "Student loan",           icon: Banknote },
+  { id: "tour_africa",  label: "Tour Africa",            icon: Car },
 ];
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
@@ -619,6 +622,13 @@ export default function StudentDashboard() {
                   </Card>
                 </motion.div>
               </>
+            )}
+
+            {/* ── E-COMMERCE ── */}
+            {activeSection === "ecommerce" && (
+              <motion.div variants={itemVariants}>
+                <EcommerceSection />
+              </motion.div>
             )}
 
             {/* ── STRATEGIC RESERVE FUND ── */}

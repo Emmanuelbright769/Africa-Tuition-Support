@@ -623,7 +623,7 @@ export default function StudentDashboard() {
             {activeSection === "fintech" && (
               <motion.div variants={itemVariants}>
                 <div className="mb-5">
-                  <h2 className="text-2xl font-bold">Fintech Hub</h2>
+                  <h2 className="text-2xl font-bold">Hello, {user?.firstName} 👋</h2>
                   <p className="text-muted-foreground text-sm">Send money, pay bills &amp; manage transfers</p>
                 </div>
                 <FinancialHub />

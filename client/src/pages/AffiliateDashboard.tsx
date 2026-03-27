@@ -25,6 +25,7 @@ import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
+import EcommerceSection from "./EcommerceSection";
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
@@ -43,7 +44,7 @@ const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "wallet",     label: "Wallet",                icon: Wallet },
   { id: "trade",      label: "Trade Market",           icon: Globe },
   { id: "trust_fund", label: "Affiliate Trust Fund",   icon: Crown },
-  { id: "ecommerce",  label: "E-Commerce",             icon: ShoppingCart, badge: "Coming Soon" },
+  { id: "ecommerce",  label: "E-Commerce",             icon: ShoppingCart },
   { id: "tenancy",    label: "Tenancy Business",        icon: Home },
   { id: "loan",       label: "Business Loan",           icon: Banknote },
   { id: "referrals",  label: "Referrals",              icon: Users },
@@ -1003,39 +1004,9 @@ export default function AffiliateDashboard() {
 
             {/* ── E-COMMERCE ── */}
             {activeSection === "ecommerce" && (
-              <>
-                <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">E-Commerce Marketplace</h2>
-                  <p className="text-muted-foreground text-sm mb-6">Browse and purchase products at exclusive affiliate rates.</p>
-                </motion.div>
-                <motion.div variants={itemVariants}>
-                  <Card className="shadow-md border-2 border-dashed border-muted-foreground/20">
-                    <CardContent className="pt-12 pb-14 text-center">
-                      <div className="w-24 h-24 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <ShoppingCart className="w-12 h-12 text-muted-foreground/40" />
-                      </div>
-                      <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-sm px-4 py-1.5 mb-4">Coming Soon</Badge>
-                      <h3 className="text-2xl font-bold mb-3">Launching Soon</h3>
-                      <p className="text-muted-foreground max-w-md mx-auto leading-relaxed mb-8">
-                        Shop a curated marketplace of products at special affiliate rates — from educational materials to everyday essentials. Built for TSIA affiliate members.
-                      </p>
-                      <div className="grid sm:grid-cols-3 gap-4 max-w-lg mx-auto text-sm">
-                        {[
-                          { label: "Exclusive Deals", desc: "Affiliate-only pricing", icon: Tag },
-                          { label: "Wide Selection", desc: "Curated product catalog", icon: ShoppingBag },
-                          { label: "Fast Delivery", desc: "Nationwide shipping", icon: CheckCircle2 },
-                        ].map(f => (
-                          <div key={f.label} className="bg-muted/50 rounded-xl p-4 border">
-                            <f.icon className="w-5 h-5 text-primary mx-auto mb-2" />
-                            <p className="font-semibold mb-1">{f.label}</p>
-                            <p className="text-xs text-muted-foreground">{f.desc}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </>
+              <motion.div variants={itemVariants}>
+                <EcommerceSection />
+              </motion.div>
             )}
 
             {/* ── LOAN ── */}

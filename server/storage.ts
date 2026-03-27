@@ -1,10 +1,11 @@
-import { eq, desc, and, gt, count, sql } from "drizzle-orm";
+import { eq, desc, and, gt, count, sql, ne, like, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
   leadershipInquiries, otpCodes, fileUploads, coAffiliates,
   tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
   landlordProperties, tenancyLeases, tenancyPayments, loans,
+  products, orders, walletDeposits,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -20,7 +21,10 @@ import {
   type LandlordProperty, type InsertLandlordProperty,
   type TenancyLease, type InsertTenancyLease,
   type Loan, type InsertLoan,
-  TRADE_MARKET,
+  type Product, type InsertProduct,
+  type Order, type InsertOrder,
+  type WalletDeposit, type InsertWalletDeposit,
+  TRADE_MARKET, ECOMMERCE,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -88,6 +92,22 @@ export interface IStorage {
   getLandlordProperty(id: number): Promise<LandlordProperty | undefined>;
   createTenancyLease(data: InsertTenancyLease): Promise<TenancyLease>;
   getTenancyLeasesByTenant(tenantId: number): Promise<(TenancyLease & { property: LandlordProperty })[]>;
+
+  // E-Commerce
+  createProduct(data: InsertProduct): Promise<Product>;
+  getProducts(opts?: { category?: string; search?: string; sellerId?: number; status?: string }): Promise<(Product & { sellerName: string })[]>;
+  getProductById(id: number): Promise<(Product & { sellerName: string }) | undefined>;
+  updateProduct(id: number, data: Partial<Product>): Promise<Product>;
+  createOrder(data: InsertOrder): Promise<Order>;
+  getOrdersByBuyer(buyerId: number): Promise<(Order & { product: Product; sellerName: string })[]>;
+  getOrdersBySeller(sellerId: number): Promise<(Order & { product: Product; buyerName: string })[]>;
+  updateOrderStatus(id: number, status: string): Promise<Order>;
+
+  // Wallet Deposits (student/user funding)
+  createWalletDeposit(data: InsertWalletDeposit): Promise<WalletDeposit>;
+  getWalletDepositsByUser(userId: number): Promise<WalletDeposit[]>;
+  getPendingWalletDeposits(): Promise<(WalletDeposit & { user: User })[]>;
+  updateWalletDeposit(id: number, data: Partial<WalletDeposit>): Promise<WalletDeposit>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -372,6 +392,104 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tenancyLeases.tenantId, tenantId))
       .orderBy(desc(tenancyLeases.createdAt));
     return rows.map(r => ({ ...(r as any).tenancyLeases, property: (r as any).landlordProperties }));
+  }
+
+  // ─── E-Commerce ─────────────────────────────────────────────────────────────
+  async createProduct(data: InsertProduct): Promise<Product> {
+    const [p] = await db.insert(products).values(data).returning();
+    return p;
+  }
+
+  async getProducts(opts?: { category?: string; search?: string; sellerId?: number; status?: string }): Promise<(Product & { sellerName: string })[]> {
+    let query = db.select({
+      id: products.id, sellerId: products.sellerId, title: products.title, description: products.description,
+      price: products.price, category: products.category, condition: products.condition, images: products.images,
+      stock: products.stock, location: products.location, status: products.status, viewCount: products.viewCount, createdAt: products.createdAt,
+      firstName: users.firstName, lastName: users.lastName,
+    }).from(products).innerJoin(users, eq(products.sellerId, users.id)).$dynamic();
+
+    const conditions: any[] = [];
+    if (opts?.category) conditions.push(eq(products.category, opts.category));
+    if (opts?.sellerId) conditions.push(eq(products.sellerId, opts.sellerId));
+    if (opts?.status) conditions.push(eq(products.status, opts.status as any));
+    else if (!opts?.sellerId) conditions.push(eq(products.status, "active"));
+    if (opts?.search) conditions.push(or(like(products.title, `%${opts.search}%`), like(products.description, `%${opts.search}%`)));
+    if (conditions.length) query = query.where(and(...conditions));
+
+    const rows = await query.orderBy(desc(products.createdAt));
+    return rows.map(r => ({ ...r, sellerName: `${r.firstName} ${r.lastName}` })) as any[];
+  }
+
+  async getProductById(id: number): Promise<(Product & { sellerName: string }) | undefined> {
+    const [row] = await db.select({
+      id: products.id, sellerId: products.sellerId, title: products.title, description: products.description,
+      price: products.price, category: products.category, condition: products.condition, images: products.images,
+      stock: products.stock, location: products.location, status: products.status, viewCount: products.viewCount, createdAt: products.createdAt,
+      firstName: users.firstName, lastName: users.lastName,
+    }).from(products).innerJoin(users, eq(products.sellerId, users.id)).where(eq(products.id, id));
+    if (!row) return undefined;
+    await db.update(products).set({ viewCount: (row.viewCount ?? 0) + 1 }).where(eq(products.id, id));
+    return { ...row, sellerName: `${row.firstName} ${row.lastName}` } as any;
+  }
+
+  async updateProduct(id: number, data: Partial<Product>): Promise<Product> {
+    const [p] = await db.update(products).set(data as any).where(eq(products.id, id)).returning();
+    return p;
+  }
+
+  async createOrder(data: InsertOrder): Promise<Order> {
+    const [o] = await db.insert(orders).values(data).returning();
+    return o;
+  }
+
+  async getOrdersByBuyer(buyerId: number): Promise<(Order & { product: Product; sellerName: string })[]> {
+    const rows = await db.select().from(orders)
+      .innerJoin(products, eq(orders.productId, products.id))
+      .innerJoin(users, eq(orders.sellerId, users.id))
+      .where(eq(orders.buyerId, buyerId))
+      .orderBy(desc(orders.createdAt));
+    return rows.map(r => ({ ...(r as any).orders, product: (r as any).products, sellerName: `${(r as any).users.firstName} ${(r as any).users.lastName}` })) as any[];
+  }
+
+  async getOrdersBySeller(sellerId: number): Promise<(Order & { product: Product; buyerName: string })[]> {
+    const buyerAlias = users;
+    const rows = await db.select({
+      ...orders, productTitle: products.title, productPrice: products.price,
+      buyerFirst: buyerAlias.firstName, buyerLast: buyerAlias.lastName,
+    }).from(orders)
+      .innerJoin(products, eq(orders.productId, products.id))
+      .innerJoin(buyerAlias, eq(orders.buyerId, buyerAlias.id))
+      .where(eq(orders.sellerId, sellerId))
+      .orderBy(desc(orders.createdAt));
+    return rows.map(r => ({ ...r, product: { title: r.productTitle, price: r.productPrice } as any, buyerName: `${r.buyerFirst} ${r.buyerLast}` })) as any[];
+  }
+
+  async updateOrderStatus(id: number, status: string): Promise<Order> {
+    const [o] = await db.update(orders).set({ status: status as any, updatedAt: new Date() }).where(eq(orders.id, id)).returning();
+    return o;
+  }
+
+  // ─── Wallet Deposits ─────────────────────────────────────────────────────────
+  async createWalletDeposit(data: InsertWalletDeposit): Promise<WalletDeposit> {
+    const [d] = await db.insert(walletDeposits).values(data).returning();
+    return d;
+  }
+
+  async getWalletDepositsByUser(userId: number): Promise<WalletDeposit[]> {
+    return db.select().from(walletDeposits).where(eq(walletDeposits.userId, userId)).orderBy(desc(walletDeposits.createdAt));
+  }
+
+  async getPendingWalletDeposits(): Promise<(WalletDeposit & { user: User })[]> {
+    const rows = await db.select().from(walletDeposits)
+      .innerJoin(users, eq(walletDeposits.userId, users.id))
+      .where(eq(walletDeposits.status, "pending"))
+      .orderBy(desc(walletDeposits.createdAt));
+    return rows.map(r => ({ ...(r as any).wallet_deposits, user: (r as any).users })) as any[];
+  }
+
+  async updateWalletDeposit(id: number, data: Partial<WalletDeposit>): Promise<WalletDeposit> {
+    const [d] = await db.update(walletDeposits).set(data as any).where(eq(walletDeposits.id, id)).returning();
+    return d;
   }
 }
 

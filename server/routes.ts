@@ -5,7 +5,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly } from "@shared/schema";
 
 const PgSession = pgSession(session);
 
@@ -1141,6 +1141,156 @@ export async function registerRoutes(
     try {
       const leases = await storage.getTenancyLeasesByTenant(userId);
       res.json(leases);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── WALLET DEPOSIT (for students & all users to fund main wallet) ───────────
+  app.post("/api/wallet/deposit", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { amountUsd, txHash, walletType } = req.body;
+    const amount = parseFloat(amountUsd);
+    if (!amount || amount < ECOMMERCE.MIN_DEPOSIT) return res.status(400).json({ message: `Minimum deposit is $${ECOMMERCE.MIN_DEPOSIT}` });
+    if (!txHash || txHash.trim().length < 10) return res.status(400).json({ message: "Valid transaction hash is required" });
+    try {
+      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "pending" });
+      res.json({ deposit, message: "Deposit submitted. Your wallet will be credited after confirmation (within 30 minutes)." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/wallet/deposits", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const deposits = await storage.getWalletDepositsByUser(userId);
+      res.json(deposits);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: confirm wallet deposit
+  app.post("/api/admin/wallet-deposit/:id/confirm", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (user?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const deposit = await storage.updateWalletDeposit(parseInt(req.params.id), { status: "completed" });
+      // Credit user wallet
+      const wallet = await storage.getOrCreateWallet(deposit.userId);
+      const newBalance = (parseFloat(wallet.balance) + parseFloat(deposit.amountUsd)).toFixed(2);
+      await storage.updateWalletBalance(deposit.userId, newBalance);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── E-COMMERCE PRODUCTS ────────────────────────────────────────────────────
+  app.get("/api/products", async (req, res) => {
+    try {
+      const { category, search } = req.query as any;
+      const prods = await storage.getProducts({ category, search });
+      res.json(prods);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/products/my", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const prods = await storage.getProducts({ sellerId: userId });
+      res.json(prods);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/products/:id", async (req, res) => {
+    try {
+      const prod = await storage.getProductById(parseInt(req.params.id));
+      if (!prod) return res.status(404).json({ message: "Product not found" });
+      res.json(prod);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/products", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { title, description, price, category, condition, images, stock, location } = req.body;
+    if (!title || !description || !price) return res.status(400).json({ message: "Title, description and price are required" });
+    const priceNum = parseFloat(price);
+    if (priceNum < ECOMMERCE.MIN_PRICE || priceNum > ECOMMERCE.MAX_PRICE) return res.status(400).json({ message: `Price must be $${ECOMMERCE.MIN_PRICE}–$${ECOMMERCE.MAX_PRICE}` });
+    try {
+      const prod = await storage.createProduct({ sellerId: userId, title, description, price: priceNum.toFixed(2), category: category || "other", condition: condition || "new", images: images || [], stock: parseInt(stock) || 1, location: location || "London, UK", status: "active" });
+      res.json(prod);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/products/:id", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const prod = await storage.getProductById(parseInt(req.params.id));
+      if (!prod || prod.sellerId !== userId) return res.status(403).json({ message: "Not your product" });
+      const updated = await storage.updateProduct(parseInt(req.params.id), req.body);
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── E-COMMERCE ORDERS ──────────────────────────────────────────────────────
+  app.post("/api/orders", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { productId, quantity = 1, deliveryAddress, note } = req.body;
+    if (!productId) return res.status(400).json({ message: "Product ID is required" });
+    try {
+      const prod = await storage.getProductById(parseInt(productId));
+      if (!prod) return res.status(404).json({ message: "Product not found" });
+      if (prod.status !== "active") return res.status(400).json({ message: "Product is not available" });
+      if (prod.sellerId === userId) return res.status(400).json({ message: "You cannot buy your own product" });
+      if (prod.stock < quantity) return res.status(400).json({ message: "Insufficient stock" });
+
+      const qty = parseInt(quantity);
+      const unitPrice = parseFloat(prod.price);
+      const totalAmount = unitPrice * qty;
+      const commissionAmount = +(totalAmount * ECOMMERCE.COMMISSION_RATE).toFixed(2);
+      const sellerReceives = +(totalAmount - commissionAmount).toFixed(2);
+
+      // Deduct from buyer wallet
+      const buyerWallet = await storage.getOrCreateWallet(userId);
+      if (parseFloat(buyerWallet.balance) < totalAmount) return res.status(400).json({ message: `Insufficient wallet balance. Need $${totalAmount.toFixed(2)}` });
+      await storage.updateWalletBalance(userId, (parseFloat(buyerWallet.balance) - totalAmount).toFixed(2));
+
+      // Credit seller wallet (minus commission)
+      const sellerWallet = await storage.getOrCreateWallet(prod.sellerId);
+      await storage.updateWalletBalance(prod.sellerId, (parseFloat(sellerWallet.balance) + sellerReceives).toFixed(2));
+
+      // Update stock
+      const newStock = prod.stock - qty;
+      await storage.updateProduct(prod.id, { stock: newStock, ...(newStock === 0 ? { status: "sold" } : {}) });
+
+      // Create order record
+      const order = await storage.createOrder({ buyerId: userId, sellerId: prod.sellerId, productId: prod.id, quantity: qty, unitPrice: unitPrice.toFixed(2), totalAmount: totalAmount.toFixed(2), commissionRate: ECOMMERCE.COMMISSION_RATE.toFixed(4), commissionAmount: commissionAmount.toFixed(2), sellerReceives: sellerReceives.toFixed(2), status: "confirmed", deliveryAddress: deliveryAddress || null, note: note || null });
+
+      res.json({ order, message: `Order placed! $${totalAmount.toFixed(2)} deducted. TSIA commission: $${commissionAmount.toFixed(2)} (${(ECOMMERCE.COMMISSION_RATE * 100)}%).` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/orders/purchases", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try { res.json(await storage.getOrdersByBuyer(userId)); } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/orders/sales", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try { res.json(await storage.getOrdersBySeller(userId)); } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/orders/:id/status", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { status } = req.body;
+    try {
+      const order = await storage.updateOrderStatus(parseInt(req.params.id), status);
+      res.json(order);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

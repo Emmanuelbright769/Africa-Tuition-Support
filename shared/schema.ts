@@ -436,6 +436,100 @@ export function calculateLoanMonthly(principalUsd: number, annualRatePercent: nu
   return { totalInterest, totalPayable, monthly };
 }
 
+// ─── ECOMMERCE ───────────────────────────────────────────────────────────────
+export const productStatusEnum = pgEnum("product_status", ["active", "sold", "paused"]);
+export const orderStatusEnum   = pgEnum("order_status", ["pending", "confirmed", "shipped", "delivered", "cancelled"]);
+
+export const products = pgTable("products", {
+  id:          integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  sellerId:    integer("seller_id").notNull().references(() => users.id),
+  title:       text("title").notNull(),
+  description: text("description").notNull(),
+  price:       decimal("price", { precision: 10, scale: 2 }).notNull(),
+  category:    text("category").notNull().default("other"),
+  condition:   text("condition").notNull().default("new"),
+  images:      text("images").array(),
+  stock:       integer("stock").notNull().default(1),
+  location:    text("location").notNull().default("London, UK"),
+  status:      productStatusEnum("status").notNull().default("active"),
+  viewCount:   integer("view_count").notNull().default(0),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+});
+
+export const orders = pgTable("orders", {
+  id:               integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  buyerId:          integer("buyer_id").notNull().references(() => users.id),
+  sellerId:         integer("seller_id").notNull().references(() => users.id),
+  productId:        integer("product_id").notNull().references(() => products.id),
+  quantity:         integer("quantity").notNull().default(1),
+  unitPrice:        decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  totalAmount:      decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  commissionRate:   decimal("commission_rate", { precision: 5, scale: 4 }).notNull().default("0.0500"),
+  commissionAmount: decimal("commission_amount", { precision: 10, scale: 2 }).notNull(),
+  sellerReceives:   decimal("seller_receives", { precision: 10, scale: 2 }).notNull(),
+  status:           orderStatusEnum("status").notNull().default("pending"),
+  deliveryAddress:  text("delivery_address"),
+  note:             text("note"),
+  createdAt:        timestamp("created_at").defaultNow().notNull(),
+  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Student / user wallet deposit requests (for funding main wallet via USDT)
+export const walletDeposits = pgTable("wallet_deposits", {
+  id:         integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:     integer("user_id").notNull().references(() => users.id),
+  amountUsd:  decimal("amount_usd", { precision: 10, scale: 2 }).notNull(),
+  txHash:     text("tx_hash"),
+  walletType: text("wallet_type").notNull().default("trc20"),
+  status:     text("status").notNull().default("pending"),
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertProductSchema = createInsertSchema(products).omit({ id: true, createdAt: true, viewCount: true });
+export type InsertProduct = z.infer<typeof insertProductSchema>;
+export type Product = typeof products.$inferSelect;
+
+export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOrder = z.infer<typeof insertOrderSchema>;
+export type Order = typeof orders.$inferSelect;
+
+export const insertWalletDepositSchema = createInsertSchema(walletDeposits).omit({ id: true, createdAt: true });
+export type InsertWalletDeposit = z.infer<typeof insertWalletDepositSchema>;
+export type WalletDeposit = typeof walletDeposits.$inferSelect;
+
+export const ECOMMERCE = {
+  COMMISSION_RATE: 0.05,  // 5% platform commission on every sale
+  MIN_PRICE: 0.50,
+  MAX_PRICE: 10000,
+  MAX_IMAGES: 5,
+  CATEGORIES: ["electronics", "fashion", "books", "food", "health", "home", "sports", "services", "other"] as const,
+  CATEGORY_LABELS: {
+    electronics: "Electronics & Tech",
+    fashion:     "Fashion & Clothing",
+    books:       "Books & Education",
+    food:        "Food & Beverages",
+    health:      "Health & Beauty",
+    home:        "Home & Living",
+    sports:      "Sports & Outdoors",
+    services:    "Services",
+    other:       "Other",
+  } as Record<string, string>,
+  CATEGORY_ICONS: {
+    electronics: "💻",
+    fashion:     "👗",
+    books:       "📚",
+    food:        "🍔",
+    health:      "💊",
+    home:        "🏡",
+    sports:      "⚽",
+    services:    "🛠️",
+    other:       "📦",
+  } as Record<string, string>,
+  TSIA_RECEIVING_TRC20: "TRXTSIAWalletAddressHere",
+  TSIA_RECEIVING_BEP20: "0xTSIAWalletAddressHere",
+  MIN_DEPOSIT: 3,
+} as const;
+
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [
   { id: "binance", name: "Binance", specialty: "Crypto & Futures", rating: 4.9, minDeposit: 10, fee: "0.1%", description: "World's largest crypto exchange with deep liquidity." },

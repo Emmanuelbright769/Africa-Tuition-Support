@@ -520,7 +520,7 @@ export default function FinancialHub() {
                 type="tel" maxLength={10} placeholder="Enter 10-digit account number"
                 value={acctNumber} onChange={e => setAcctNumber(e.target.value.replace(/\D/g,"").slice(0,10))}
                 disabled={!selectedBank}
-                className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-xl font-mono tracking-[0.2em] focus:outline-none focus:border-tsia-green disabled:opacity-40 bg-background transition-colors"
+                className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-sm font-mono tracking-[0.2em] focus:outline-none focus:border-tsia-green disabled:opacity-40 bg-background transition-colors"
                 data-testid="input-acct-number"
               />
             </div>

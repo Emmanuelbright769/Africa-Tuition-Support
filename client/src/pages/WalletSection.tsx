@@ -130,9 +130,8 @@ export default function WalletSection() {
     onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
 
-  const vatAmt   = parseFloat(withdrawAmount || "0") * 0.075;
-  const youGet   = parseFloat(withdrawAmount || "0") * 0.925;
-  const ngnEqv   = (parseFloat(fundAmount || "0") * USD_TO_NGN).toLocaleString("en-NG");
+  const vatAmt = parseFloat(withdrawAmount || "0") * 0.075;
+  const youGet = parseFloat(withdrawAmount || "0") * 0.925;
 
   const sentTransfers     = (transfers as TransferRecord[]).filter(t => t.senderId === user?.id);
   const receivedTransfers = (transfers as TransferRecord[]).filter(t => t.recipientId === user?.id);
@@ -351,12 +350,6 @@ export default function WalletSection() {
                 <Input id="fund-amount" type="number" min={1} step={0.01} placeholder="e.g. 10.00"
                   value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                   className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
-                {parseFloat(fundAmount) > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-                    <span>≈ ₦{ngnEqv}</span>
-                    <span className="text-muted-foreground/60">at ₦{USD_TO_NGN}/USD</span>
-                  </p>
-                )}
               </div>
 
               <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">

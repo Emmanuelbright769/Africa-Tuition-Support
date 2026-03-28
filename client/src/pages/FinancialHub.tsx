@@ -1,45 +1,91 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowUpRight, ArrowDownLeft, RefreshCw, Receipt, Wifi, Smartphone,
-  Eye, EyeOff, ChevronRight, ArrowLeft, Send,
-  Bell, CreditCard, History, TrendingUp, TrendingDown, Loader2,
-  CheckCircle2, X, Zap, Building, User, Search,
-  Plus, Phone, Wallet, Gamepad2, Delete, Copy
+  ArrowUpRight, ArrowDownLeft, RefreshCw, Receipt, Wifi, Eye, EyeOff,
+  ChevronRight, ArrowLeft, Send, Bell, TrendingUp, TrendingDown,
+  Loader2, CheckCircle2, X, Zap, Phone, Wallet, Gamepad2, Delete,
+  Copy, Search, ChevronDown, AlertCircle, Users, Building2
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount";
+type SendMode = "bank" | "tsia";
+type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount";
 type WalletData = { id: number; userId: number; balance: string };
 type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
+type Bank = { code: string; name: string };
 
-// ─── TSIA Account Number helper ───────────────────────────────────────────────
-const toAccountNumber = (userId: number) => String(userId).padStart(10, "0");
-
-// ─── Services ─────────────────────────────────────────────────────────────────
+// ─── Services ──────────────────────────────────────────────────────────────────
 const SERVICES = [
-  { id: "electricity", label: "Electricity", icon: Zap,        color: "from-yellow-400 to-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20" },
-  { id: "internet",    label: "Internet",    icon: Wifi,        color: "from-blue-400 to-indigo-500",   bg: "bg-blue-50 dark:bg-blue-900/20" },
-  { id: "airtime",     label: "Airtime",     icon: Phone,       color: "from-emerald-400 to-teal-500",  bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-  { id: "education",   label: "Education",   icon: Building,    color: "from-pink-400 to-rose-500",     bg: "bg-pink-50 dark:bg-pink-900/20" },
-  { id: "betting",     label: "Betting",     icon: Gamepad2,    color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+  { id: "electricity", label: "Electricity", icon: Zap,      color: "from-yellow-400 to-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20" },
+  { id: "internet",    label: "Internet",    icon: Wifi,      color: "from-blue-400 to-indigo-500",   bg: "bg-blue-50 dark:bg-blue-900/20" },
+  { id: "airtime",     label: "Airtime",     icon: Phone,     color: "from-emerald-400 to-teal-500",  bg: "bg-emerald-50 dark:bg-emerald-900/20" },
+  { id: "betting",     label: "Betting",     icon: Gamepad2,  color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
 ];
 
-const AIRTIME_NETWORKS = [
+// ─── Nigerian Networks ────────────────────────────────────────────────────────
+const NETWORKS = [
   { id: "mtn",     label: "MTN",     color: "bg-yellow-400",  text: "text-yellow-900" },
   { id: "airtel",  label: "Airtel",  color: "bg-red-500",     text: "text-white" },
   { id: "glo",     label: "Glo",     color: "bg-green-600",   text: "text-white" },
   { id: "9mobile", label: "9mobile", color: "bg-emerald-700", text: "text-white" },
 ];
 
+// ─── Data Plans per network ───────────────────────────────────────────────────
+const DATA_PLANS: Record<string, { id: string; label: string; validity: string; price: number }[]> = {
+  mtn: [
+    { id: "mtn_500mb", label: "500MB",  validity: "1 day",   price: 0.50 },
+    { id: "mtn_1gb",   label: "1GB",    validity: "30 days", price: 1.00 },
+    { id: "mtn_2gb",   label: "2GB",    validity: "30 days", price: 2.00 },
+    { id: "mtn_5gb",   label: "5GB",    validity: "30 days", price: 4.50 },
+    { id: "mtn_10gb",  label: "10GB",   validity: "30 days", price: 8.00 },
+    { id: "mtn_20gb",  label: "20GB",   validity: "30 days", price: 14.00 },
+  ],
+  airtel: [
+    { id: "airtel_500mb", label: "500MB",  validity: "1 day",   price: 0.50 },
+    { id: "airtel_1gb",   label: "1.5GB",  validity: "30 days", price: 1.00 },
+    { id: "airtel_2gb",   label: "3GB",    validity: "30 days", price: 2.00 },
+    { id: "airtel_5gb",   label: "6GB",    validity: "30 days", price: 4.50 },
+    { id: "airtel_10gb",  label: "10GB",   validity: "30 days", price: 8.00 },
+    { id: "airtel_15gb",  label: "15GB",   validity: "30 days", price: 12.00 },
+  ],
+  glo: [
+    { id: "glo_1gb",   label: "1GB",    validity: "30 days", price: 0.70 },
+    { id: "glo_2gb",   label: "2.5GB",  validity: "30 days", price: 1.50 },
+    { id: "glo_5gb",   label: "5GB",    validity: "30 days", price: 3.50 },
+    { id: "glo_10gb",  label: "10GB",   validity: "30 days", price: 7.00 },
+    { id: "glo_15gb",  label: "15GB",   validity: "30 days", price: 10.00 },
+  ],
+  "9mobile": [
+    { id: "9m_500mb", label: "500MB",  validity: "30 days", price: 0.50 },
+    { id: "9m_1gb",   label: "1GB",    validity: "30 days", price: 1.00 },
+    { id: "9m_2gb",   label: "2GB",    validity: "30 days", price: 1.80 },
+    { id: "9m_5gb",   label: "5GB",    validity: "30 days", price: 4.00 },
+    { id: "9m_10gb",  label: "10GB",   validity: "30 days", price: 7.50 },
+  ],
+};
+
+// ─── Electricity Discos ───────────────────────────────────────────────────────
+const DISCOS = [
+  { id: "EKEDC",  label: "Eko Electric",       area: "Lagos South" },
+  { id: "IKEDC",  label: "Ikeja Electric",      area: "Lagos North" },
+  { id: "AEDC",   label: "Abuja Electric",      area: "FCT & environs" },
+  { id: "KEDCO",  label: "Kano Electric",       area: "Kano, Jigawa, Katsina" },
+  { id: "PHEDC",  label: "Port Harcourt Elec.", area: "Rivers, Bayelsa" },
+  { id: "IBEDC",  label: "Ibadan Electric",     area: "Oyo, Ogun, Osun, Kwara" },
+  { id: "JEDC",   label: "Jos Electric",        area: "Plateau, Nassarawa, Benue" },
+  { id: "BEDC",   label: "Benin Electric",      area: "Edo, Delta, Ekiti, Ondo" },
+  { id: "EEDC",   label: "Enugu Electric",      area: "Enugu, Anambra, Imo, Ebonyi, Abia" },
+  { id: "YEDC",   label: "Yola Electric",       area: "Adamawa, Taraba" },
+  { id: "KAEDCO", label: "Kaduna Electric",     area: "Kaduna, Kebbi, Sokoto, Zamfara" },
+];
+
+// ─── Betting Platforms ────────────────────────────────────────────────────────
 const BETTING_PLATFORMS = [
   { id: "bet9ja",    label: "Bet9ja",    color: "bg-green-800",  text: "text-white" },
   { id: "sportybet", label: "SportyBet", color: "bg-blue-700",   text: "text-white" },
@@ -48,9 +94,9 @@ const BETTING_PLATFORMS = [
 ];
 
 const AVATAR_COLORS = ["bg-rose-500","bg-purple-500","bg-teal-500","bg-amber-500","bg-blue-500","bg-pink-500"];
+const fmt = (v: string | number) => { const n = parseFloat(String(v) || "0"); return isNaN(n) ? "0.00" : n.toFixed(2); };
 
 // ─── Numpad ────────────────────────────────────────────────────────────────────
-const NUMPAD_KEYS = ["1","2","3","4","5","6","7","8","9",".","0","⌫"];
 function Numpad({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const handle = (k: string) => {
     if (k === "⌫") { onChange(value.slice(0, -1) || "0"); return; }
@@ -61,125 +107,27 @@ function Numpad({ value, onChange }: { value: string; onChange: (v: string) => v
   };
   return (
     <div className="grid grid-cols-3 gap-2">
-      {NUMPAD_KEYS.map(k => (
-        <button key={k} onClick={() => handle(k)}
-          className={`h-14 rounded-2xl font-bold text-xl transition-all active:scale-95 ${
-            k === "⌫" ? "bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100" :
-            "bg-muted/60 hover:bg-muted text-foreground"
-          }`}
+      {["1","2","3","4","5","6","7","8","9",".","0","⌫"].map((k, i) => (
+        <button key={i} onClick={() => handle(k)}
+          className={`h-14 rounded-2xl font-bold text-xl transition-all active:scale-95 ${k === "⌫" ? "bg-red-50 dark:bg-red-900/20 text-red-500" : "bg-muted/60 hover:bg-muted text-foreground"}`}
         >{k === "⌫" ? <Delete className="w-5 h-5 mx-auto" /> : k}</button>
       ))}
     </div>
   );
 }
 
-// ─── Account Number Input ─────────────────────────────────────────────────────
-function AcctNumpad({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const handle = (k: string) => {
-    if (k === "⌫") { onChange(value.slice(0, -1)); return; }
-    if (value.length >= 10) return;
-    onChange(value + k);
-  };
+// ─── Back Header ──────────────────────────────────────────────────────────────
+function BackHeader({ onBack, title, sub }: { onBack: () => void; title: string; sub?: string }) {
   return (
-    <div className="grid grid-cols-3 gap-2">
-      {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((k, i) => (
-        <button key={i} onClick={() => k && handle(k)} disabled={!k}
-          className={`h-14 rounded-2xl font-bold text-xl transition-all active:scale-95 ${
-            !k ? "opacity-0 pointer-events-none" :
-            k === "⌫" ? "bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100" :
-            "bg-muted/60 hover:bg-muted text-foreground"
-          }`}
-        >{k === "⌫" ? <Delete className="w-5 h-5 mx-auto" /> : k}</button>
-      ))}
-    </div>
-  );
-}
-
-// ─── Balance Card ──────────────────────────────────────────────────────────────
-function BalanceCard({ balance, totalIn, totalOut, hidden, onToggle, onAddMoney, accountNumber }: {
-  balance: number; totalIn: number; totalOut: number; hidden: boolean;
-  onToggle: () => void; onAddMoney: () => void; accountNumber: string;
-}) {
-  const { toast } = useToast();
-  const copyAcct = () => {
-    navigator.clipboard.writeText(accountNumber);
-    toast({ title: "Copied!", description: "Account number copied to clipboard." });
-  };
-  return (
-    <div className="relative rounded-3xl overflow-hidden mb-6">
-      <div className="bg-gradient-to-br from-[#1a5c38] via-[#1e6b42] to-[#0e3d25] p-6 pr-20">
-        <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/5" />
-        <div className="absolute top-4 right-16 w-20 h-20 rounded-full bg-white/5" />
-        <div className="absolute -bottom-6 left-24 w-28 h-28 rounded-full bg-white/5" />
-
-        <div className="relative z-10">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-white/60 text-[10px] font-medium mb-0.5 uppercase tracking-widest">TSIA Bank • Total Balance</p>
-              <div className="flex items-end gap-2">
-                <p className="text-4xl font-black text-white tracking-tight">
-                  {hidden ? "••••••" : `$${balance.toFixed(2)}`}
-                </p>
-                <button onClick={onToggle} className="mb-1 text-white/60 hover:text-white transition-colors" data-testid="btn-toggle-balance">
-                  {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-white" />
-            </div>
-          </div>
-
-          {/* Account number */}
-          <button onClick={copyAcct} className="flex items-center gap-2 mb-4 group">
-            <p className="text-white/50 text-xs font-mono tracking-widest">
-              {accountNumber.slice(0,4)} {accountNumber.slice(4,7)} {accountNumber.slice(7)}
-            </p>
-            <Copy className="w-3 h-3 text-white/40 group-hover:text-white/70 transition-colors" />
-          </button>
-
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
-                <TrendingDown className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <p className="text-white/60 text-[10px]">Income</p>
-                <p className="text-white font-bold text-sm">{hidden ? "••••" : `$${totalIn.toFixed(2)}`}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <p className="text-white/60 text-[10px]">Expense</p>
-                <p className="text-white font-bold text-sm">{hidden ? "••••" : `$${totalOut.toFixed(2)}`}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <button onClick={onAddMoney}
-        className="absolute right-0 top-0 h-full w-16 flex flex-col items-center justify-center gap-2 border-l-2 border-dashed border-white/30 bg-white/10 hover:bg-white/20 transition-colors"
-        data-testid="btn-add-money"
-      >
-        <Plus className="w-5 h-5 text-white" />
-        <p className="text-white text-[9px] font-bold tracking-wider" style={{ writingMode: "vertical-rl" }}>ADD MONEY</p>
+    <div className="flex items-center gap-3 mb-5">
+      <button onClick={onBack} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center hover:bg-muted/80 active:scale-95 transition-all">
+        <ArrowLeft className="w-4 h-4" />
       </button>
-    </div>
-  );
-}
-
-// ─── Quick Action Button ───────────────────────────────────────────────────────
-function QuickAction({ icon: Icon, label, onClick, color }: { icon: any; label: string; onClick: () => void; color: string }) {
-  return (
-    <button onClick={onClick} className="flex flex-col items-center gap-2 group" data-testid={`btn-quick-${label.toLowerCase().replace(/\s/g,"-")}`}>
-      <div className={`w-14 h-14 rounded-2xl ${color} flex items-center justify-center shadow-md group-hover:scale-105 transition-transform group-active:scale-95`}>
-        <Icon className="w-6 h-6 text-white" />
+      <div>
+        <h2 className="font-bold text-lg leading-tight">{title}</h2>
+        {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
       </div>
-      <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-    </button>
+    </div>
   );
 }
 
@@ -188,80 +136,119 @@ export default function FinancialHub() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  // Per-user balance hidden preference
-  const hiddenKey = user?.id ? `tsia_balance_hidden_${user.id}` : "tsia_balance_hidden";
+  // Per-user balance hidden pref
+  const hiddenKey = `tsia_balance_hidden_${user?.id ?? "guest"}`;
   const [balanceHidden, setBalanceHidden] = useState<boolean>(() => {
     try { return localStorage.getItem(hiddenKey) === "true"; } catch { return false; }
   });
-
-  const toggleHidden = () => {
-    setBalanceHidden(prev => {
-      const next = !prev;
-      try { localStorage.setItem(hiddenKey, String(next)); } catch {}
-      return next;
-    });
-  };
-
-  // Sync key when user loads
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(hiddenKey);
-      setBalanceHidden(stored === "true");
-    } catch {}
+    try { setBalanceHidden(localStorage.getItem(hiddenKey) === "true"); } catch {}
   }, [hiddenKey]);
+  const toggleHidden = () => setBalanceHidden(prev => {
+    const next = !prev;
+    try { localStorage.setItem(hiddenKey, String(next)); } catch {}
+    return next;
+  });
 
-  // ── Views & State ──────────────────────────────────────────────────────────
+  // ── View state ────────────────────────────────────────────────────────────
   const [view, setView]       = useState<View>("home");
   const [amount, setAmount]   = useState("0");
   const [note, setNote]       = useState("");
   const [activeTab, setActiveTab] = useState<"transfers" | "bills">("transfers");
 
-  // Send-money state
-  const [acctInput, setAcctInput]         = useState("");  // 10-digit TSIA acct number
-  const [verifying, setVerifying]         = useState(false);
-  const [verifiedUser, setVerifiedUser]   = useState<{ id: number; name: string; acct: string } | null>(null);
-  const [sendStep, setSendStep]           = useState<"acct" | "amount">("acct");
+  // ── Send-to-bank state ────────────────────────────────────────────────────
+  const [sendMode, setSendMode]         = useState<SendMode>("bank");
+  const [bankSearch, setBankSearch]     = useState("");
+  const [bankDropOpen, setBankDropOpen] = useState(false);
+  const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
+  const [acctNumber, setAcctNumber]     = useState("");
+  const [resolving, setResolving]       = useState(false);
+  const [resolvedName, setResolvedName] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const [resolveWarning, setResolveWarning] = useState(false);
 
-  // Bill state
+  // ── Send-to-TSIA state ────────────────────────────────────────────────────
+  const [tsiaEmail, setTsiaEmail]         = useState("");
+  const [tsiaLooking, setTsiaLooking]     = useState(false);
+  const [tsiaUser, setTsiaUser]           = useState<{ id: number; firstName: string; lastName: string; email: string } | null>(null);
+
+  // ── Bill state ────────────────────────────────────────────────────────────
   const [selectedService, setSelectedService] = useState<typeof SERVICES[0] | null>(null);
-  const [billRef, setBillRef]                  = useState("");  // phone / acct / user-id etc
-  const [selectedNetwork, setSelectedNetwork]  = useState<string | null>(null);
-  const [selectedPlatform, setSelectedPlatform]= useState<string | null>(null);
-  const [billStep, setBillStep]                = useState<"details" | "amount">("details");
+  const [billStep, setBillStep]               = useState<"details" | "amount">("details");
+  const [billRef, setBillRef]                 = useState("");
+  // Airtime
+  const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
+  // Internet
+  const [selectedISP, setSelectedISP]         = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan]       = useState<typeof DATA_PLANS["mtn"][0] | null>(null);
+  // Electricity
+  const [selectedDisco, setSelectedDisco]     = useState<typeof DISCOS[0] | null>(null);
+  const [meterType, setMeterType]             = useState<"prepaid" | "postpaid" | null>(null);
+  const [discoSearch, setDiscoSearch]         = useState("");
+  // Betting
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
 
-  // ── Queries ────────────────────────────────────────────────────────────────
-  const { data: wallet }          = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
-  const { data: txHistory = [] }  = useQuery<any[]>({ queryKey: ["/api/transactions"] });
-  const { data: transfers = [] }  = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"] });
-  const { data: bills = [] }      = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
+  // ── Queries ───────────────────────────────────────────────────────────────
+  const { data: wallet }         = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
+  const { data: txHistory = [] } = useQuery<any[]>({ queryKey: ["/api/transactions"] });
+  const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"] });
+  const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
+  const { data: banks = [] }     = useQuery<Bank[]>({ queryKey: ["/api/wallet/banks"] });
 
   const balance  = parseFloat(wallet?.balance ?? "0");
   const totalIn  = (txHistory as any[]).filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
   const totalOut = Math.abs((txHistory as any[]).filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + parseFloat(t.amount), 0));
-  const accountNumber = user?.id ? toAccountNumber(user.id) : "0000000000";
 
   const recentRecipients = Array.from(
     new Map((transfers as TransferRecord[]).map(t => [t.recipientId, t])).values()
   ).slice(0, 5);
 
-  // ── Auto-verify account as digits typed ───────────────────────────────────
-  useEffect(() => {
-    if (acctInput.length !== 10) { setVerifiedUser(null); return; }
-    let cancelled = false;
-    setVerifying(true);
-    apiRequest("POST", "/api/wallet/verify-account", { accountNumber: acctInput })
-      .then(r => r.json())
-      .then(d => { if (!cancelled) { if (d.id) setVerifiedUser({ id: d.id, name: `${d.firstName} ${d.lastName}`, acct: acctInput }); else setVerifiedUser(null); } })
-      .catch(() => { if (!cancelled) setVerifiedUser(null); })
-      .finally(() => { if (!cancelled) setVerifying(false); });
-    return () => { cancelled = true; };
-  }, [acctInput]);
+  const filteredBanks = (banks as Bank[]).filter(b => b.name.toLowerCase().includes(bankSearch.toLowerCase()));
+  const filteredDiscos = DISCOS.filter(d => d.label.toLowerCase().includes(discoSearch.toLowerCase()) || d.area.toLowerCase().includes(discoSearch.toLowerCase()));
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
-  const sendMutation = useMutation({
+  // ── Auto-resolve bank account ────────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedBank || acctNumber.length !== 10) {
+      setResolvedName(null); setResolveError(null); setResolveWarning(false); return;
+    }
+    let cancelled = false;
+    setResolving(true);
+    setResolvedName(null); setResolveError(null); setResolveWarning(false);
+    apiRequest("POST", "/api/wallet/resolve-bank", { accountNumber: acctNumber, bankCode: selectedBank.code })
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        if (d.unverified) { setResolveWarning(true); setResolvedName("Unverified — proceed with caution"); }
+        else if (d.accountName) setResolvedName(d.accountName);
+        else setResolveError(d.message || "Account not found");
+      })
+      .catch(() => { if (!cancelled) setResolveError("Verification failed"); })
+      .finally(() => { if (!cancelled) setResolving(false); });
+    return () => { cancelled = true; };
+  }, [selectedBank, acctNumber]);
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+  const sendBankMutation = useMutation({
     mutationFn: async () => {
-      if (!verifiedUser) throw new Error("No recipient selected");
-      const res = await apiRequest("POST", "/api/wallet/send", { recipientId: verifiedUser.id, amount: parseFloat(amount), note });
+      // For external bank sends, we deduct from wallet and record as a bill
+      const ref = `${selectedBank?.name} • ${acctNumber} • ${resolvedName}`;
+      const res = await apiRequest("POST", "/api/wallet/bill", { service: "bank_transfer", amount: parseFloat(amount), note: ref });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Transfer initiated!", description: `$${fmt(amount)} sent to ${resolvedName} (${selectedBank?.name}).`, className: "border-tsia-green" });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/bills"] });
+      setView("home"); resetSend();
+    },
+    onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
+  });
+
+  const sendTsiaMutation = useMutation({
+    mutationFn: async () => {
+      if (!tsiaUser) throw new Error("No recipient selected");
+      const res = await apiRequest("POST", "/api/wallet/send", { recipientId: tsiaUser.id, amount: parseFloat(amount), note });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
@@ -277,11 +264,11 @@ export default function FinancialHub() {
   const billMutation = useMutation({
     mutationFn: async () => {
       if (!selectedService) throw new Error("No service selected");
-      const ref = selectedService.id === "airtime"
-        ? `${selectedNetwork}:${billRef}`
-        : selectedService.id === "betting"
-        ? `${selectedPlatform}:${billRef}`
-        : billRef;
+      let ref = billRef;
+      if (selectedService.id === "airtime") ref = `${selectedNetwork}:${billRef}`;
+      if (selectedService.id === "internet") ref = `${selectedISP}:${selectedPlan?.label}:${billRef}`;
+      if (selectedService.id === "electricity") ref = `${selectedDisco?.id}:${meterType}:${billRef}`;
+      if (selectedService.id === "betting") ref = `${selectedPlatform}:${billRef}`;
       const res = await apiRequest("POST", "/api/wallet/bill", { service: selectedService.id, amount: parseFloat(amount), note: ref });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
@@ -295,52 +282,103 @@ export default function FinancialHub() {
     onError: (e: any) => toast({ title: "Payment failed", description: e.message, variant: "destructive" }),
   });
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const resetSend = () => { setAmount("0"); setNote(""); setAcctInput(""); setVerifiedUser(null); setSendStep("acct"); };
-  const resetBill = () => { setAmount("0"); setBillRef(""); setSelectedService(null); setSelectedNetwork(null); setSelectedPlatform(null); setBillStep("details"); };
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const resetSend = () => {
+    setAmount("0"); setNote(""); setSendMode("bank"); setBankSearch(""); setSelectedBank(null);
+    setAcctNumber(""); setResolvedName(null); setResolveError(null); setResolveWarning(false);
+    setTsiaEmail(""); setTsiaUser(null);
+  };
+  const resetBill = () => {
+    setAmount("0"); setBillRef(""); setSelectedService(null); setBillStep("details");
+    setSelectedNetwork(null); setSelectedISP(null); setSelectedPlan(null);
+    setSelectedDisco(null); setMeterType(null); setSelectedPlatform(null);
+  };
 
-  const fmt = (v: string) => { const n = parseFloat(v || "0"); return isNaN(n) ? "0.00" : n.toFixed(2); };
+  const lookupTsia = async () => {
+    if (!tsiaEmail.trim()) return;
+    setTsiaLooking(true); setTsiaUser(null);
+    try {
+      const res = await apiRequest("POST", "/api/wallet/lookup-email", { email: tsiaEmail.trim() });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      setTsiaUser(d);
+    } catch (e: any) { toast({ title: "Not found", description: e.message, variant: "destructive" }); }
+    finally { setTsiaLooking(false); }
+  };
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════
   // HOME VIEW
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════
   if (view === "home") return (
     <div className="space-y-6">
-      <BalanceCard
-        balance={balance} totalIn={totalIn} totalOut={totalOut}
-        hidden={balanceHidden} onToggle={toggleHidden}
-        onAddMoney={() => toast({ title: "How to add money", description: "Go to Digital Wallet → Deposit to fund via USDT." })}
-        accountNumber={accountNumber}
-      />
+      {/* Greeting — only on home */}
+      <div>
+        <h2 className="text-2xl font-bold">Hello, {user?.firstName} 👋</h2>
+        <p className="text-muted-foreground text-sm">Send money, pay bills &amp; manage transfers</p>
+      </div>
+
+      {/* Balance Card */}
+      <div className="relative rounded-3xl overflow-hidden">
+        <div className="bg-gradient-to-br from-[#1a5c38] via-[#1e6b42] to-[#0e3d25] p-6 pr-20">
+          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/5" />
+          <div className="absolute top-4 right-16 w-20 h-20 rounded-full bg-white/5" />
+          <div className="absolute -bottom-6 left-24 w-28 h-28 rounded-full bg-white/5" />
+          <div className="relative z-10">
+            <p className="text-white/60 text-[10px] font-medium mb-0.5 uppercase tracking-widest">TSIA Bank • Wallet Balance</p>
+            <div className="flex items-end gap-2 mb-3">
+              <p className="text-4xl font-black text-white tracking-tight">{balanceHidden ? "••••••" : `$${balance.toFixed(2)}`}</p>
+              <button onClick={toggleHidden} className="mb-1 text-white/60 hover:text-white transition-colors" data-testid="btn-toggle-balance">
+                {balanceHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="flex gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center"><TrendingDown className="w-4 h-4 text-white" /></div>
+                <div><p className="text-white/60 text-[10px]">Income</p><p className="text-white font-bold text-sm">{balanceHidden ? "••••" : `$${totalIn.toFixed(2)}`}</p></div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center"><TrendingUp className="w-4 h-4 text-white" /></div>
+                <div><p className="text-white/60 text-[10px]">Expense</p><p className="text-white font-bold text-sm">{balanceHidden ? "••••" : `$${totalOut.toFixed(2)}`}</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button onClick={() => toast({ title: "Add money", description: "Go to Digital Wallet → Deposit to fund via USDT." })}
+          className="absolute right-0 top-0 h-full w-16 flex flex-col items-center justify-center gap-2 border-l-2 border-dashed border-white/30 bg-white/10 hover:bg-white/20 transition-colors"
+          data-testid="btn-add-money">
+          <span className="text-white text-2xl font-black">+</span>
+          <p className="text-white text-[9px] font-bold tracking-wider" style={{ writingMode: "vertical-rl" }}>ADD MONEY</p>
+        </button>
+      </div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-4 gap-2">
-        <QuickAction icon={Send}      label="Send"     onClick={() => { resetSend(); setView("send"); }}     color="bg-tsia-green" />
-        <QuickAction icon={RefreshCw} label="Transfer" onClick={() => { resetSend(); setView("send"); }}     color="bg-blue-500" />
-        <QuickAction icon={Bell}      label="Request"  onClick={() => setView("request")}                    color="bg-violet-500" />
-        <QuickAction icon={Receipt}   label="Pay Bill" onClick={() => { resetBill(); setView("pay-bill"); }} color="bg-amber-500" />
+        {[
+          { icon: Send,      label: "Send",     color: "bg-tsia-green", action: () => { resetSend(); setView("send"); } },
+          { icon: RefreshCw, label: "Transfer", color: "bg-blue-500",   action: () => { resetSend(); setView("send"); } },
+          { icon: Bell,      label: "Request",  color: "bg-violet-500", action: () => setView("request") },
+          { icon: Receipt,   label: "Pay Bill", color: "bg-amber-500",  action: () => { resetBill(); setView("pay-bill"); } },
+        ].map(({ icon: Icon, label, color, action }) => (
+          <button key={label} onClick={action} className="flex flex-col items-center gap-2 group" data-testid={`btn-quick-${label.toLowerCase().replace(" ","-")}`}>
+            <div className={`w-14 h-14 rounded-2xl ${color} flex items-center justify-center shadow-md group-hover:scale-105 transition-transform group-active:scale-95`}>
+              <Icon className="w-6 h-6 text-white" />
+            </div>
+            <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+          </button>
+        ))}
       </div>
 
       {/* Recent Recipients */}
       {recentRecipients.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-sm">Recent Recipients</h3>
+            <h3 className="font-bold text-sm">Recent</h3>
             <button className="text-xs text-tsia-green font-semibold flex items-center gap-0.5">View all <ChevronRight className="w-3 h-3" /></button>
           </div>
           <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
             {recentRecipients.map((t, i) => (
-              <button key={t.recipientId}
-                onClick={() => {
-                  resetSend();
-                  const name = t.recipientName ?? "User";
-                  setVerifiedUser({ id: t.recipientId, name, acct: toAccountNumber(t.recipientId) });
-                  setAcctInput(toAccountNumber(t.recipientId));
-                  setSendStep("amount");
-                  setView("send");
-                }}
-                className="flex flex-col items-center gap-1.5 shrink-0"
-              >
+              <button key={t.recipientId} onClick={() => { resetSend(); setSendMode("tsia"); setTsiaUser({ id: t.recipientId, firstName: t.recipientName?.split(" ")[0] || "User", lastName: t.recipientName?.split(" ")[1] || "", email: "" }); setView("tsia-amount"); }}
+                className="flex flex-col items-center gap-1.5 shrink-0">
                 <div className={`w-14 h-14 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold text-xl ring-2 ring-offset-2 ring-tsia-green/30`}>
                   {(t.recipientName ?? "?")[0].toUpperCase()}
                 </div>
@@ -354,17 +392,14 @@ export default function FinancialHub() {
       {/* Services */}
       <div>
         <h3 className="font-bold text-sm mb-3">Quick Services</h3>
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-4 gap-3">
           {SERVICES.map(svc => (
-            <button key={svc.id}
-              onClick={() => { resetBill(); setSelectedService(svc); setView("service"); }}
-              className={`flex flex-col items-center gap-2 p-2.5 rounded-2xl ${svc.bg} hover:shadow-md transition-shadow`}
-              data-testid={`btn-service-${svc.id}`}
-            >
-              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}>
-                <svc.icon className="w-4 h-4 text-white" />
+            <button key={svc.id} onClick={() => { resetBill(); setSelectedService(svc); setView("service"); }}
+              className={`flex flex-col items-center gap-2 p-3 rounded-2xl ${svc.bg} hover:shadow-md transition-shadow`} data-testid={`btn-service-${svc.id}`}>
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}>
+                <svc.icon className="w-5 h-5 text-white" />
               </div>
-              <span className="text-[10px] font-semibold text-foreground leading-none">{svc.label}</span>
+              <span className="text-[11px] font-semibold text-foreground">{svc.label}</span>
             </button>
           ))}
         </div>
@@ -406,13 +441,14 @@ export default function FinancialHub() {
               ? <EmptyState icon={Receipt} msg="No bill payments yet" />
               : (bills as BillRecord[]).slice(0, 8).map(b => {
                   const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
+                  const isBankTransfer = b.service === "bank_transfer";
                   return (
                     <div key={b.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}>
-                        <svc.icon className="w-5 h-5 text-white" />
+                      <div className={`w-10 h-10 rounded-xl ${isBankTransfer ? "bg-blue-100 dark:bg-blue-900/30" : `bg-gradient-to-br ${svc.color}`} flex items-center justify-center`}>
+                        {isBankTransfer ? <Building2 className="w-5 h-5 text-blue-600" /> : <svc.icon className="w-5 h-5 text-white" />}
                       </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-sm capitalize">{svc.label}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm capitalize">{isBankTransfer ? "Bank Transfer" : svc.label}</p>
                         <p className="text-xs text-muted-foreground truncate">{b.reference}</p>
                       </div>
                       <div className="text-right">
@@ -428,149 +464,195 @@ export default function FinancialHub() {
     </div>
   );
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SEND MONEY — STEP 1: Account Number
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (view === "send" && sendStep === "acct") return (
+  // ═════════════════════════════════════════════════════════════════════════
+  // SEND MONEY — Bank or TSIA selector
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "send") return (
     <AnimatePresence mode="wait">
-      <motion.div key="send-acct" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} className="space-y-5">
-        <div className="flex items-center gap-3">
-          <button onClick={() => { setView("home"); resetSend(); }} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center" data-testid="btn-back-send">
-            <ArrowLeft className="w-4 h-4" />
+      <motion.div key="send" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }}>
+        <BackHeader onBack={() => { setView("home"); resetSend(); }} title="Send Money" />
+
+        {/* Mode tabs */}
+        <div className="flex bg-muted/40 rounded-2xl p-1 mb-5">
+          <button onClick={() => setSendMode("bank")} className={`flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all ${sendMode === "bank" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
+            <Building2 className="w-4 h-4" /> Bank Account
           </button>
-          <div>
-            <h2 className="font-bold text-lg">Send Money</h2>
-            <p className="text-xs text-muted-foreground">Enter TSIA account number</p>
-          </div>
+          <button onClick={() => setSendMode("tsia")} className={`flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all ${sendMode === "tsia" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
+            <Users className="w-4 h-4" /> TSIA Member
+          </button>
         </div>
 
-        {/* Acct number display */}
-        <div className="bg-card border-2 border-muted rounded-3xl p-5 text-center">
-          <p className="text-xs text-muted-foreground mb-2 uppercase tracking-widest font-semibold">Account Number</p>
-          <p className="text-3xl font-black tracking-[0.25em] font-mono min-h-[44px]">
-            {acctInput.padEnd(10, "·").replace(/(.{4})(.{3})(.{3})/, "$1 $2 $3")}
-          </p>
-          {/* Verification indicator */}
-          <div className="mt-3 h-6 flex items-center justify-center">
-            {verifying && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-            {!verifying && verifiedUser && (
-              <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-full px-3 py-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green" />
-                <span className="text-xs font-bold text-tsia-green">{verifiedUser.name}</span>
+        {sendMode === "bank" ? (
+          <div className="space-y-4">
+            {/* Bank picker */}
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Select Bank</label>
+              <div className="relative">
+                <button onClick={() => setBankDropOpen(o => !o)}
+                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border-2 transition-colors ${selectedBank ? "border-tsia-green bg-card" : "border-border bg-muted/30"}`}>
+                  <span className={selectedBank ? "font-semibold text-foreground" : "text-muted-foreground text-sm"}>{selectedBank?.name || "Choose bank"}</span>
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                </button>
+                {bankDropOpen && (
+                  <div className="absolute z-50 top-full mt-1 w-full bg-card border rounded-2xl shadow-xl overflow-hidden">
+                    <div className="p-2 border-b">
+                      <div className="flex items-center gap-2 px-2">
+                        <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <input autoFocus placeholder="Search bank..." value={bankSearch} onChange={e => setBankSearch(e.target.value)}
+                          className="flex-1 bg-transparent text-sm focus:outline-none py-1" />
+                      </div>
+                    </div>
+                    <div className="max-h-52 overflow-y-auto">
+                      {filteredBanks.map(b => (
+                        <button key={b.code} onClick={() => { setSelectedBank(b); setBankDropOpen(false); setBankSearch(""); setAcctNumber(""); setResolvedName(null); }}
+                          className="w-full text-left px-4 py-3 text-sm hover:bg-muted/50 transition-colors font-medium">{b.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Account number */}
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Account Number</label>
+              <input
+                type="tel" maxLength={10} placeholder="Enter 10-digit account number"
+                value={acctNumber} onChange={e => setAcctNumber(e.target.value.replace(/\D/g,"").slice(0,10))}
+                disabled={!selectedBank}
+                className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-xl font-mono tracking-[0.2em] focus:outline-none focus:border-tsia-green disabled:opacity-40 bg-background transition-colors"
+                data-testid="input-acct-number"
+              />
+            </div>
+
+            {/* Resolve result */}
+            <div className="min-h-[44px] flex items-center justify-center">
+              {resolving && (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Verifying account...
+                </div>
+              )}
+              {!resolving && resolvedName && !resolveError && (
+                <div className={`w-full flex items-center gap-2 px-4 py-3 rounded-2xl border ${resolveWarning ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300" : "bg-green-50 dark:bg-green-900/20 border-tsia-green/30"}`}>
+                  {resolveWarning
+                    ? <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                    : <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0" />}
+                  <span className={`font-bold text-sm ${resolveWarning ? "text-amber-700" : "text-tsia-green"}`}>{resolvedName}</span>
+                </div>
+              )}
+              {!resolving && resolveError && (
+                <div className="w-full flex items-center gap-2 px-4 py-3 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200">
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                  <span className="text-sm text-red-600 font-medium">{resolveError}</span>
+                </div>
+              )}
+            </div>
+
+            <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
+              disabled={!selectedBank || acctNumber.length !== 10 || !!resolveError || resolving}
+              onClick={() => { setAmount("0"); setView("send-amount"); }}
+              data-testid="btn-continue-bank"
+            >Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
+          </div>
+        ) : (
+          /* TSIA Member */
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Email Address</label>
+              <div className="flex gap-2">
+                <input placeholder="member@email.com" value={tsiaEmail} onChange={e => setTsiaEmail(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && lookupTsia()}
+                  className="flex-1 border-2 border-border rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-tsia-green bg-background"
+                  data-testid="input-tsia-email" />
+                <button onClick={lookupTsia} disabled={tsiaLooking || !tsiaEmail.trim()}
+                  className="w-12 h-12 bg-tsia-green text-white rounded-2xl flex items-center justify-center disabled:opacity-40 mt-0.5">
+                  {tsiaLooking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {tsiaUser && (
+              <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4">
+                <div className="w-12 h-12 rounded-full bg-tsia-green flex items-center justify-center text-white text-xl font-black">
+                  {tsiaUser.firstName[0].toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold">{tsiaUser.firstName} {tsiaUser.lastName}</p>
+                  <p className="text-xs text-muted-foreground">{tsiaUser.email}</p>
+                </div>
+                <CheckCircle2 className="w-5 h-5 text-tsia-green" />
               </div>
             )}
-            {!verifying && !verifiedUser && acctInput.length === 10 && (
-              <p className="text-xs text-red-500 font-semibold">Account not found</p>
+
+            {/* Recent TSIA recipients */}
+            {recentRecipients.length > 0 && !tsiaUser && (
+              <div>
+                <p className="text-xs text-muted-foreground font-semibold mb-2 uppercase tracking-wide">Recent</p>
+                <div className="space-y-2">
+                  {recentRecipients.slice(0, 3).map((t, i) => (
+                    <button key={t.recipientId} onClick={() => { setTsiaUser({ id: t.recipientId, firstName: t.recipientName?.split(" ")[0] || "User", lastName: t.recipientName?.split(" ")[1] || "", email: "" }); }}
+                      className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:border-tsia-green/40 transition-colors">
+                      <div className={`w-10 h-10 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold shrink-0`}>
+                        {(t.recipientName ?? "?")[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="font-semibold text-sm">{t.recipientName}</p>
+                        <p className="text-xs text-muted-foreground">TSIA member</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
-          </div>
-        </div>
 
-        {/* Account numpad */}
-        <AcctNumpad value={acctInput} onChange={setAcctInput} />
-
-        {/* Recent recipients */}
-        {recentRecipients.length > 0 && (
-          <div>
-            <p className="text-xs text-muted-foreground font-semibold mb-2 uppercase tracking-wide">Recent</p>
-            <div className="space-y-2">
-              {recentRecipients.slice(0, 3).map((t, i) => (
-                <button key={t.recipientId}
-                  onClick={() => {
-                    const acct = toAccountNumber(t.recipientId);
-                    setAcctInput(acct);
-                    const name = t.recipientName ?? "User";
-                    setVerifiedUser({ id: t.recipientId, name, acct });
-                    setSendStep("amount");
-                  }}
-                  className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:border-tsia-green/40 transition-colors"
-                >
-                  <div className={`w-10 h-10 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold shrink-0`}>
-                    {(t.recipientName ?? "?")[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-semibold text-sm">{t.recipientName}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{toAccountNumber(t.recipientId)}</p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                </button>
-              ))}
-            </div>
+            <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
+              disabled={!tsiaUser} onClick={() => { setAmount("0"); setView("tsia-amount"); }}
+              data-testid="btn-continue-tsia"
+            >Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
           </div>
         )}
-
-        <Button
-          className="w-full h-12 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl"
-          disabled={!verifiedUser}
-          onClick={() => setSendStep("amount")}
-          data-testid="btn-next-amount"
-        >
-          Continue <ChevronRight className="w-4 h-4 ml-1" />
-        </Button>
       </motion.div>
     </AnimatePresence>
   );
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SEND MONEY — STEP 2: Amount & Confirm
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (view === "send" && sendStep === "amount" && verifiedUser) return (
+  // ═════════════════════════════════════════════════════════════════════════
+  // SEND TO BANK — Amount screen
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "send-amount") return (
     <AnimatePresence mode="wait">
-      <motion.div key="send-amount" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} className="space-y-5">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setSendStep("acct")} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
+      <motion.div key="send-amount" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+        <BackHeader onBack={() => setView("send")} title="Enter Amount" sub={`To ${resolvedName ?? acctNumber} • ${selectedBank?.name}`} />
+
+        <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-2xl px-4 py-3">
           <div>
-            <h2 className="font-bold text-lg">Enter Amount</h2>
-            <p className="text-xs text-muted-foreground">Available: ${balance.toFixed(2)}</p>
+            <p className="text-xs text-muted-foreground">Recipient</p>
+            <p className="font-bold text-sm">{resolvedName ?? "Unverified"}</p>
+            <p className="text-xs text-muted-foreground font-mono">{acctNumber} • {selectedBank?.name}</p>
           </div>
+          {resolveWarning
+            ? <AlertCircle className="w-5 h-5 text-amber-500" />
+            : <CheckCircle2 className="w-5 h-5 text-tsia-green" />}
         </div>
 
-        {/* Recipient confirmed banner */}
-        <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4">
-          <div className="w-12 h-12 rounded-full bg-tsia-green flex items-center justify-center text-white text-xl font-black">
-            {verifiedUser.name[0].toUpperCase()}
-          </div>
-          <div className="flex-1">
-            <p className="font-bold text-sm">{verifiedUser.name}</p>
-            <p className="text-xs text-muted-foreground font-mono">{verifiedUser.acct.slice(0,4)} {verifiedUser.acct.slice(4,7)} {verifiedUser.acct.slice(7)}</p>
-          </div>
-          <div className="flex items-center gap-1 text-tsia-green">
-            <CheckCircle2 className="w-4 h-4" />
-            <span className="text-xs font-bold">Verified</span>
-          </div>
-        </div>
-
-        {/* Big amount */}
         <div className="text-center py-2">
-          <div className="text-5xl font-black tracking-tight">${fmt(amount)}</div>
-          {parseFloat(amount) > balance && (
-            <p className="text-xs text-red-500 mt-1 font-semibold">Exceeds your balance of ${balance.toFixed(2)}</p>
-          )}
+          <div className="text-5xl font-black">${fmt(amount)}</div>
+          <p className="text-xs text-muted-foreground mt-1">Available: ${balance.toFixed(2)}</p>
+          {parseFloat(amount) > balance && <p className="text-xs text-red-500 font-semibold mt-1">Exceeds your balance</p>}
         </div>
 
-        {/* Note */}
-        <input
-          placeholder="What's this for? (optional)"
-          value={note}
-          onChange={e => setNote(e.target.value)}
+        <input placeholder="Narration (optional)" value={note} onChange={e => setNote(e.target.value)}
           className="w-full text-center text-sm border border-border rounded-2xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
-          data-testid="input-send-note"
-        />
+          data-testid="input-narration" />
 
         <Numpad value={amount} onChange={setAmount} />
 
         <div className="flex gap-3">
-          <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
-            <X className="w-5 h-5 text-muted-foreground" />
-          </button>
-          <Button
-            className="flex-1 h-12 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base"
-            onClick={() => sendMutation.mutate()}
-            disabled={sendMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-            data-testid="btn-confirm-send"
-          >
-            {sendMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
+          <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+          <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
+            disabled={sendBankMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+            onClick={() => sendBankMutation.mutate()} data-testid="btn-send-bank">
+            {sendBankMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Send ${fmt(amount)}
           </Button>
         </div>
@@ -578,67 +660,88 @@ export default function FinancialHub() {
     </AnimatePresence>
   );
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // REQUEST MONEY
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (view === "request") return (
+  // ═════════════════════════════════════════════════════════════════════════
+  // SEND TO TSIA — Amount screen
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "tsia-amount" && tsiaUser) return (
     <AnimatePresence mode="wait">
-      <motion.div key="request" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} className="space-y-5">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setView("home")} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <h2 className="font-bold text-lg">Request Money</h2>
-        </div>
+      <motion.div key="tsia-amount" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+        <BackHeader onBack={() => setView("send")} title="Enter Amount" sub="Transfer to TSIA member" />
 
-        <div className="bg-card border rounded-2xl p-4 space-y-3">
-          <Label>Request from (account number or email)</Label>
-          <input
-            placeholder="Account number or email"
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            className="w-full border border-border rounded-xl px-4 py-3 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-violet-400/40"
-            data-testid="input-request-from"
-          />
+        <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4">
+          <div className="w-12 h-12 rounded-full bg-tsia-green flex items-center justify-center text-white text-xl font-black">
+            {tsiaUser.firstName[0].toUpperCase()}
+          </div>
+          <div className="flex-1">
+            <p className="font-bold">{tsiaUser.firstName} {tsiaUser.lastName}</p>
+            {tsiaUser.email && <p className="text-xs text-muted-foreground">{tsiaUser.email}</p>}
+          </div>
+          <div className="flex items-center gap-1 text-tsia-green"><CheckCircle2 className="w-4 h-4" /><span className="text-xs font-bold">TSIA</span></div>
         </div>
 
         <div className="text-center py-2">
           <div className="text-5xl font-black">${fmt(amount)}</div>
-          <p className="text-xs text-muted-foreground mt-1">Amount to request</p>
+          <p className="text-xs text-muted-foreground mt-1">Available: ${balance.toFixed(2)}</p>
+          {parseFloat(amount) > balance && <p className="text-xs text-red-500 font-semibold mt-1">Exceeds your balance</p>}
         </div>
+
+        <input placeholder="What's this for? (optional)" value={note} onChange={e => setNote(e.target.value)}
+          className="w-full text-center text-sm border border-border rounded-2xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
+          data-testid="input-tsia-note" />
 
         <Numpad value={amount} onChange={setAmount} />
 
-        <Button className="w-full h-12 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-2xl"
-          onClick={() => { toast({ title: "Request sent!", description: `Request for $${fmt(amount)} sent.` }); setView("home"); setAmount("0"); setNote(""); }}
-          disabled={!note || parseFloat(amount) <= 0}
-          data-testid="btn-send-request"
-        >
+        <div className="flex gap-3">
+          <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+          <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
+            disabled={sendTsiaMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+            onClick={() => sendTsiaMutation.mutate()} data-testid="btn-send-tsia">
+            {sendTsiaMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
+            Send ${fmt(amount)}
+          </Button>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // REQUEST MONEY
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "request") return (
+    <AnimatePresence mode="wait">
+      <motion.div key="request" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+        <BackHeader onBack={() => setView("home")} title="Request Money" />
+        <div>
+          <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Request from (email)</label>
+          <input placeholder="member@email.com" value={note} onChange={e => setNote(e.target.value)}
+            className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-violet-400 bg-background"
+            data-testid="input-request-from" />
+        </div>
+        <div className="text-center py-2">
+          <div className="text-5xl font-black">${fmt(amount)}</div>
+          <p className="text-xs text-muted-foreground mt-1">Amount to request</p>
+        </div>
+        <Numpad value={amount} onChange={setAmount} />
+        <Button className="w-full h-12 bg-violet-600 text-white font-bold rounded-2xl"
+          onClick={() => { toast({ title: "Request sent!", description: `Request for $${fmt(amount)} sent to ${note}` }); setView("home"); setAmount("0"); setNote(""); }}
+          disabled={!note || parseFloat(amount) <= 0} data-testid="btn-send-request">
           <Bell className="w-5 h-5 mr-2" /> Send Request
         </Button>
       </motion.div>
     </AnimatePresence>
   );
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════
   // PAY BILL — Service picker
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════
   if (view === "pay-bill") return (
     <AnimatePresence mode="wait">
-      <motion.div key="pay-bill" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} className="space-y-5">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setView("home")} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <h2 className="font-bold text-lg">Pay a Bill</h2>
-        </div>
+      <motion.div key="pay-bill" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+        <BackHeader onBack={() => setView("home")} title="Pay a Bill" />
         <div className="grid grid-cols-2 gap-3">
           {SERVICES.map(svc => (
-            <button key={svc.id}
-              onClick={() => { setSelectedService(svc); setBillStep("details"); setView("service"); }}
-              className={`flex items-center gap-3 p-4 rounded-2xl ${svc.bg} border hover:shadow-md transition-shadow`}
-              data-testid={`btn-bill-${svc.id}`}
-            >
+            <button key={svc.id} onClick={() => { setSelectedService(svc); setBillStep("details"); setView("service"); }}
+              className={`flex items-center gap-3 p-4 rounded-2xl ${svc.bg} border hover:shadow-md transition-shadow`} data-testid={`btn-bill-${svc.id}`}>
               <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center shrink-0`}>
                 <svc.icon className="w-5 h-5 text-white" />
               </div>
@@ -650,255 +753,282 @@ export default function FinancialHub() {
     </AnimatePresence>
   );
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SERVICE FLOW (Airtime / Betting / Others)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════
+  // SERVICE FLOWS
+  // ═════════════════════════════════════════════════════════════════════════
   if (view === "service" && selectedService) {
-    // ── AIRTIME ──
+
+    // ── ELECTRICITY ──────────────────────────────────────────────────────
+    if (selectedService.id === "electricity") return (
+      <AnimatePresence mode="wait">
+        <motion.div key="electricity" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Electricity" sub={billStep === "details" ? "Select provider & meter" : "Enter amount"} />
+
+          {billStep === "details" ? (<>
+            {/* Disco search + pick */}
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Electricity Provider (DisCo)</label>
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input placeholder="Search by state or DisCo name..." value={discoSearch} onChange={e => setDiscoSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-3 border-2 border-border rounded-2xl text-sm focus:outline-none focus:border-tsia-green bg-background" />
+              </div>
+              <div className="space-y-2 max-h-52 overflow-y-auto">
+                {filteredDiscos.map(d => (
+                  <button key={d.id} onClick={() => setSelectedDisco(d)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border-2 transition-all ${selectedDisco?.id === d.id ? "border-tsia-green bg-green-50 dark:bg-green-900/20" : "border-border bg-card hover:border-tsia-green/40"}`}>
+                    <div className="text-left">
+                      <p className="font-semibold text-sm">{d.label}</p>
+                      <p className="text-xs text-muted-foreground">{d.area}</p>
+                    </div>
+                    {selectedDisco?.id === d.id && <CheckCircle2 className="w-5 h-5 text-tsia-green" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {selectedDisco && (<>
+              {/* Meter type */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Meter Type</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["prepaid","postpaid"] as const).map(t => (
+                    <button key={t} onClick={() => setMeterType(t)}
+                      className={`py-3.5 rounded-2xl font-bold text-sm border-2 transition-all capitalize ${meterType === t ? "border-tsia-green bg-green-50 dark:bg-green-900/20 text-tsia-green" : "border-border bg-muted/30 text-foreground"}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {meterType && (
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Meter Number</label>
+                  <input type="tel" placeholder="Enter meter number" value={billRef} onChange={e => setBillRef(e.target.value.replace(/\D/g,""))}
+                    className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-xl font-mono tracking-widest focus:outline-none focus:border-tsia-green bg-background"
+                    data-testid="input-meter" />
+                </div>
+              )}
+            </>)}
+
+            <Button className="w-full h-12 bg-amber-500 text-white font-bold rounded-2xl"
+              disabled={!selectedDisco || !meterType || billRef.length < 6}
+              onClick={() => setBillStep("amount")}>
+              Continue <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </>) : (<>
+            <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-300 rounded-2xl px-4 py-3">
+              <div><p className="text-xs text-muted-foreground">Meter</p><p className="font-bold text-sm font-mono">{billRef}</p></div>
+              <div className="text-right"><p className="text-xs text-muted-foreground">{selectedDisco?.label}</p><p className="text-xs text-muted-foreground capitalize">{meterType}</p></div>
+            </div>
+
+            <div className="text-center py-1"><div className="text-5xl font-black">${fmt(amount)}</div><p className="text-xs text-muted-foreground mt-1">Balance: ${balance.toFixed(2)}</p></div>
+
+            <div className="grid grid-cols-4 gap-2">
+              {["5","10","20","50"].map(v => (
+                <button key={v} onClick={() => setAmount(v)}
+                  className={`py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${amount === v ? "border-amber-500 bg-amber-500/10 text-amber-600" : "border-border bg-muted/40 text-muted-foreground"}`}>
+                  ${v}
+                </button>
+              ))}
+            </div>
+
+            <Numpad value={amount} onChange={setAmount} />
+            <div className="flex gap-3">
+              <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+              <Button className="flex-1 h-12 bg-amber-500 text-white font-bold rounded-2xl"
+                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                onClick={() => billMutation.mutate()} data-testid="btn-confirm-electricity">
+                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Zap className="w-5 h-5 mr-2" />}
+                Pay ${fmt(amount)}
+              </Button>
+            </div>
+          </>)}
+        </motion.div>
+      </AnimatePresence>
+    );
+
+    // ── INTERNET ────────────────────────────────────────────────────────
+    if (selectedService.id === "internet") return (
+      <AnimatePresence mode="wait">
+        <motion.div key="internet" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Data" sub={billStep === "details" ? "Select network & plan" : "Confirm purchase"} />
+
+          {billStep === "details" ? (<>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Network</label>
+              <div className="grid grid-cols-4 gap-2">
+                {NETWORKS.map(n => (
+                  <button key={n.id} onClick={() => { setSelectedISP(n.id); setSelectedPlan(null); }}
+                    className={`py-3 rounded-2xl font-bold text-sm transition-all ${n.color} ${n.text} ${selectedISP === n.id ? "ring-2 ring-offset-2 ring-tsia-green scale-105" : "opacity-70 hover:opacity-90"}`}
+                    data-testid={`btn-network-${n.id}`}>{n.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {selectedISP && (
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Select Data Plan</label>
+                <div className="space-y-2">
+                  {DATA_PLANS[selectedISP]?.map(plan => (
+                    <button key={plan.id} onClick={() => setSelectedPlan(plan)}
+                      className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border-2 transition-all ${selectedPlan?.id === plan.id ? "border-tsia-green bg-green-50 dark:bg-green-900/20" : "border-border bg-card hover:border-tsia-green/40"}`}>
+                      <div className="text-left">
+                        <p className="font-bold">{plan.label}</p>
+                        <p className="text-xs text-muted-foreground">{plan.validity}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-tsia-green">${plan.price.toFixed(2)}</span>
+                        {selectedPlan?.id === plan.id && <CheckCircle2 className="w-4 h-4 text-tsia-green" />}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedPlan && (
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Phone Number</label>
+                <input type="tel" placeholder="e.g. 08012345678" value={billRef}
+                  onChange={e => setBillRef(e.target.value.replace(/\D/g,"").slice(0,11))}
+                  className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-xl font-mono tracking-widest focus:outline-none focus:border-tsia-green bg-background"
+                  data-testid="input-data-phone" />
+              </div>
+            )}
+
+            <Button className="w-full h-12 bg-blue-600 text-white font-bold rounded-2xl"
+              disabled={!selectedPlan || billRef.length < 10}
+              onClick={() => { setAmount(String(selectedPlan!.price)); setBillStep("amount"); }}>
+              Continue <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </>) : (<>
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-3xl p-5 text-center">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedISP?.toUpperCase()} Data</p>
+              <p className="text-4xl font-black text-blue-700">{selectedPlan?.label}</p>
+              <p className="text-sm text-muted-foreground mt-1">{selectedPlan?.validity} validity</p>
+              <p className="text-2xl font-black text-tsia-green mt-2">${fmt(amount)}</p>
+              <p className="text-xs text-muted-foreground mt-1 font-mono">{billRef}</p>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+              <Button className="flex-1 h-12 bg-blue-600 text-white font-bold rounded-2xl"
+                disabled={billMutation.isPending || parseFloat(amount) > balance}
+                onClick={() => billMutation.mutate()} data-testid="btn-confirm-data">
+                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Wifi className="w-5 h-5 mr-2" />}
+                Buy Data ${fmt(amount)}
+              </Button>
+            </div>
+            {parseFloat(amount) > balance && <p className="text-xs text-center text-red-500">Insufficient balance</p>}
+          </>)}
+        </motion.div>
+      </AnimatePresence>
+    );
+
+    // ── AIRTIME ─────────────────────────────────────────────────────────
     if (selectedService.id === "airtime") return (
       <AnimatePresence mode="wait">
-        <motion.div key="airtime" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} className="space-y-5">
-          <div className="flex items-center gap-3">
-            <button onClick={() => { billStep === "amount" ? setBillStep("details") : setView("pay-bill"); }} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center">
-              <ArrowLeft className="w-4 h-4" />
-            </button>
+        <motion.div key="airtime" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Airtime" sub={billStep === "details" ? "Select network & phone" : "Enter amount"} />
+
+          {billStep === "details" ? (<>
             <div>
-              <h2 className="font-bold text-lg">Buy Airtime</h2>
-              <p className="text-xs text-muted-foreground">{billStep === "details" ? "Select network & phone number" : "Enter amount"}</p>
-            </div>
-          </div>
-
-          {billStep === "details" ? (
-            <>
-              {/* Network selection */}
-              <div className="space-y-2">
-                <Label className="text-xs uppercase tracking-wide font-bold text-muted-foreground">Select Network</Label>
-                <div className="grid grid-cols-4 gap-2">
-                  {AIRTIME_NETWORKS.map(n => (
-                    <button key={n.id}
-                      onClick={() => setSelectedNetwork(n.id)}
-                      className={`py-3 rounded-2xl font-bold text-sm transition-all ${n.color} ${n.text} ${selectedNetwork === n.id ? "ring-2 ring-offset-2 ring-tsia-green scale-105" : "opacity-70 hover:opacity-90"}`}
-                      data-testid={`btn-network-${n.id}`}
-                    >{n.label}</button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Phone number */}
-              <div className="space-y-2">
-                <Label className="text-xs uppercase tracking-wide font-bold text-muted-foreground">Phone Number</Label>
-                <input
-                  type="tel"
-                  placeholder="e.g. 08012345678"
-                  value={billRef}
-                  onChange={e => setBillRef(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                  className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-lg font-mono tracking-widest focus:outline-none focus:border-tsia-green bg-background"
-                  data-testid="input-phone"
-                />
-              </div>
-
-              <Button
-                className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
-                disabled={!selectedNetwork || billRef.length < 10}
-                onClick={() => setBillStep("amount")}
-              >Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
-            </>
-          ) : (
-            <>
-              {/* Summary strip */}
-              <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20 border border-tsia-green/30 rounded-2xl px-4 py-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Phone</p>
-                  <p className="font-bold text-sm font-mono">{billRef}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Network</p>
-                  <p className="font-bold text-sm uppercase">{selectedNetwork}</p>
-                </div>
-              </div>
-
-              <div className="text-center py-1">
-                <div className="text-5xl font-black">${fmt(amount)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Balance: ${balance.toFixed(2)}</p>
-              </div>
-
-              {/* Preset amounts */}
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Select Network</label>
               <div className="grid grid-cols-4 gap-2">
-                {["1","2","5","10"].map(v => (
-                  <button key={v} onClick={() => setAmount(v)}
-                    className={`py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${amount === v ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border bg-muted/40 text-muted-foreground"}`}
-                  >${v}</button>
+                {NETWORKS.map(n => (
+                  <button key={n.id} onClick={() => setSelectedNetwork(n.id)}
+                    className={`py-3 rounded-2xl font-bold text-sm transition-all ${n.color} ${n.text} ${selectedNetwork === n.id ? "ring-2 ring-offset-2 ring-tsia-green scale-105" : "opacity-70 hover:opacity-90"}`}
+                    data-testid={`btn-airtime-${n.id}`}>{n.label}</button>
                 ))}
               </div>
-
-              <Numpad value={amount} onChange={setAmount} />
-
-              <div className="flex gap-3">
-                <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
-                  <X className="w-5 h-5 text-muted-foreground" />
-                </button>
-                <Button
-                  className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-                  disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-                  onClick={() => billMutation.mutate()}
-                  data-testid="btn-confirm-airtime"
-                >
-                  {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Phone className="w-5 h-5 mr-2" />}
-                  Buy ${fmt(amount)} Airtime
-                </Button>
-              </div>
-            </>
-          )}
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Phone Number</label>
+              <input type="tel" placeholder="e.g. 08012345678" value={billRef} onChange={e => setBillRef(e.target.value.replace(/\D/g,"").slice(0,11))}
+                className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-xl font-mono tracking-widest focus:outline-none focus:border-tsia-green bg-background"
+                data-testid="input-airtime-phone" />
+            </div>
+            <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
+              disabled={!selectedNetwork || billRef.length < 10}
+              onClick={() => setBillStep("amount")}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
+          </>) : (<>
+            <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20 border border-tsia-green/30 rounded-2xl px-4 py-3">
+              <div><p className="text-xs text-muted-foreground">Phone</p><p className="font-bold font-mono">{billRef}</p></div>
+              <div className="text-right"><p className="text-xs text-muted-foreground">Network</p><p className="font-bold uppercase">{selectedNetwork}</p></div>
+            </div>
+            <div className="text-center py-1"><div className="text-5xl font-black">${fmt(amount)}</div><p className="text-xs text-muted-foreground mt-1">Balance: ${balance.toFixed(2)}</p></div>
+            <div className="grid grid-cols-4 gap-2">
+              {["1","2","5","10"].map(v => (
+                <button key={v} onClick={() => setAmount(v)}
+                  className={`py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${amount === v ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border bg-muted/40 text-muted-foreground"}`}>${v}</button>
+              ))}
+            </div>
+            <Numpad value={amount} onChange={setAmount} />
+            <div className="flex gap-3">
+              <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+              <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
+                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                onClick={() => billMutation.mutate()} data-testid="btn-confirm-airtime">
+                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Phone className="w-5 h-5 mr-2" />}
+                Buy ${fmt(amount)} Airtime
+              </Button>
+            </div>
+          </>)}
         </motion.div>
       </AnimatePresence>
     );
 
-    // ── BETTING ──
+    // ── BETTING ──────────────────────────────────────────────────────────
     if (selectedService.id === "betting") return (
       <AnimatePresence mode="wait">
-        <motion.div key="betting" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} className="space-y-5">
-          <div className="flex items-center gap-3">
-            <button onClick={() => { billStep === "amount" ? setBillStep("details") : setView("pay-bill"); }} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center">
-              <ArrowLeft className="w-4 h-4" />
-            </button>
+        <motion.div key="betting" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Fund Betting Wallet" sub={billStep === "details" ? "Select platform & ID" : "Enter amount"} />
+
+          {billStep === "details" ? (<>
             <div>
-              <h2 className="font-bold text-lg">Fund Betting Wallet</h2>
-              <p className="text-xs text-muted-foreground">{billStep === "details" ? "Select platform & enter user ID" : "Enter amount to fund"}</p>
-            </div>
-          </div>
-
-          {billStep === "details" ? (
-            <>
-              <div className="space-y-2">
-                <Label className="text-xs uppercase tracking-wide font-bold text-muted-foreground">Select Platform</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {BETTING_PLATFORMS.map(p => (
-                    <button key={p.id}
-                      onClick={() => setSelectedPlatform(p.id)}
-                      className={`py-3.5 rounded-2xl font-bold text-sm transition-all ${p.color} ${p.text} ${selectedPlatform === p.id ? "ring-2 ring-offset-2 ring-tsia-green scale-105" : "opacity-70 hover:opacity-90"}`}
-                      data-testid={`btn-platform-${p.id}`}
-                    >{p.label}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs uppercase tracking-wide font-bold text-muted-foreground">Betting User ID / Username</Label>
-                <input
-                  placeholder="Enter your betting ID"
-                  value={billRef}
-                  onChange={e => setBillRef(e.target.value)}
-                  className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-base focus:outline-none focus:border-tsia-green bg-background"
-                  data-testid="input-betting-id"
-                />
-              </div>
-
-              <Button
-                className="w-full h-12 bg-violet-600 text-white font-bold rounded-2xl"
-                disabled={!selectedPlatform || !billRef.trim()}
-                onClick={() => setBillStep("amount")}
-              >Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center justify-between bg-violet-50 dark:bg-violet-900/20 border border-violet-300 rounded-2xl px-4 py-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">User ID</p>
-                  <p className="font-bold text-sm">{billRef}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Platform</p>
-                  <p className="font-bold text-sm capitalize">{selectedPlatform}</p>
-                </div>
-              </div>
-
-              <div className="text-center py-1">
-                <div className="text-5xl font-black">${fmt(amount)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Balance: ${balance.toFixed(2)}</p>
-              </div>
-
-              <div className="grid grid-cols-4 gap-2">
-                {["5","10","20","50"].map(v => (
-                  <button key={v} onClick={() => setAmount(v)}
-                    className={`py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${amount === v ? "border-violet-500 bg-violet-500/10 text-violet-600" : "border-border bg-muted/40 text-muted-foreground"}`}
-                  >${v}</button>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Platform</label>
+              <div className="grid grid-cols-2 gap-2">
+                {BETTING_PLATFORMS.map(p => (
+                  <button key={p.id} onClick={() => setSelectedPlatform(p.id)}
+                    className={`py-3.5 rounded-2xl font-bold text-sm transition-all ${p.color} ${p.text} ${selectedPlatform === p.id ? "ring-2 ring-offset-2 ring-tsia-green scale-105" : "opacity-70 hover:opacity-90"}`}
+                    data-testid={`btn-betting-${p.id}`}>{p.label}</button>
                 ))}
               </div>
-
-              <Numpad value={amount} onChange={setAmount} />
-
-              <div className="flex gap-3">
-                <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
-                  <X className="w-5 h-5 text-muted-foreground" />
-                </button>
-                <Button
-                  className="flex-1 h-12 bg-violet-600 text-white font-bold rounded-2xl"
-                  disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-                  onClick={() => billMutation.mutate()}
-                  data-testid="btn-confirm-betting"
-                >
-                  {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Gamepad2 className="w-5 h-5 mr-2" />}
-                  Fund ${fmt(amount)}
-                </Button>
-              </div>
-            </>
-          )}
-        </motion.div>
-      </AnimatePresence>
-    );
-
-    // ── GENERIC SERVICE (Electricity / Internet / Education) ──
-    return (
-      <AnimatePresence mode="wait">
-        <motion.div key="service-generic" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} className="space-y-5">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setView("pay-bill")} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center">
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <h2 className="font-bold text-lg">Pay {selectedService.label}</h2>
-          </div>
-
-          <div className="text-center">
-            <div className={`w-20 h-20 rounded-3xl bg-gradient-to-br ${selectedService.color} flex items-center justify-center mx-auto mb-3 shadow-lg`}>
-              <selectedService.icon className="w-10 h-10 text-white" />
             </div>
-            <p className="font-bold">{selectedService.label} Payment</p>
-            <p className="text-xs text-muted-foreground">Wallet balance: ${balance.toFixed(2)}</p>
-          </div>
-
-          <input
-            placeholder={
-              selectedService.id === "electricity" ? "Meter number" :
-              selectedService.id === "internet" ? "Customer ID / Account number" :
-              "Reference number"
-            }
-            value={billRef}
-            onChange={e => setBillRef(e.target.value)}
-            className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-base focus:outline-none focus:border-tsia-green bg-background text-center"
-            data-testid="input-bill-ref"
-          />
-
-          <div className="text-center py-1">
-            <div className="text-5xl font-black">${fmt(amount)}</div>
-          </div>
-
-          <Numpad value={amount} onChange={setAmount} />
-
-          <div className="flex gap-3">
-            <button onClick={() => { setView("pay-bill"); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
-              <X className="w-5 h-5 text-muted-foreground" />
-            </button>
-            <Button
-              className="flex-1 h-12 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-2xl"
-              onClick={() => billMutation.mutate()}
-              disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance || !billRef.trim()}
-              data-testid="btn-confirm-bill"
-            >
-              {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Receipt className="w-5 h-5 mr-2" />}
-              Pay ${fmt(amount)}
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Betting User ID</label>
+              <input placeholder="Your betting platform ID" value={billRef} onChange={e => setBillRef(e.target.value)}
+                className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-base focus:outline-none focus:border-violet-500 bg-background"
+                data-testid="input-betting-id" />
+            </div>
+            <Button className="w-full h-12 bg-violet-600 text-white font-bold rounded-2xl"
+              disabled={!selectedPlatform || !billRef.trim()} onClick={() => setBillStep("amount")}>
+              Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
-          </div>
-          {parseFloat(amount) > balance && <p className="text-xs text-center text-red-500">Insufficient balance</p>}
+          </>) : (<>
+            <div className="flex items-center justify-between bg-violet-50 dark:bg-violet-900/20 border border-violet-300 rounded-2xl px-4 py-3">
+              <div><p className="text-xs text-muted-foreground">User ID</p><p className="font-bold">{billRef}</p></div>
+              <div className="text-right"><p className="text-xs text-muted-foreground">Platform</p><p className="font-bold capitalize">{selectedPlatform}</p></div>
+            </div>
+            <div className="text-center py-1"><div className="text-5xl font-black">${fmt(amount)}</div><p className="text-xs text-muted-foreground mt-1">Balance: ${balance.toFixed(2)}</p></div>
+            <div className="grid grid-cols-4 gap-2">
+              {["5","10","20","50"].map(v => (
+                <button key={v} onClick={() => setAmount(v)}
+                  className={`py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${amount === v ? "border-violet-500 bg-violet-500/10 text-violet-600" : "border-border bg-muted/40 text-muted-foreground"}`}>${v}</button>
+              ))}
+            </div>
+            <Numpad value={amount} onChange={setAmount} />
+            <div className="flex gap-3">
+              <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+              <Button className="flex-1 h-12 bg-violet-600 text-white font-bold rounded-2xl"
+                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                onClick={() => billMutation.mutate()} data-testid="btn-confirm-betting">
+                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Gamepad2 className="w-5 h-5 mr-2" />}
+                Fund ${fmt(amount)}
+              </Button>
+            </div>
+          </>)}
         </motion.div>
       </AnimatePresence>
     );

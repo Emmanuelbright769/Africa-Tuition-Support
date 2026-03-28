@@ -1184,8 +1184,84 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ─── FINTECH: P2P TRANSFERS ─────────────────────────────────────────────────
-  // Lookup user by email or affiliate code
+  // ─── FINTECH: BANKS, RESOLUTION & P2P ───────────────────────────────────────
+  // Nigerian banks list
+  app.get("/api/wallet/banks", (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    res.json([
+      { code: "044", name: "Access Bank" },
+      { code: "035A", name: "ALAT by Wema" },
+      { code: "401", name: "ASO Savings and Loans" },
+      { code: "023", name: "Citibank Nigeria" },
+      { code: "063", name: "Diamond Bank" },
+      { code: "050", name: "EcoBank Nigeria" },
+      { code: "562", name: "Ekondo Microfinance Bank" },
+      { code: "084", name: "Enterprise Bank" },
+      { code: "070", name: "Fidelity Bank" },
+      { code: "011", name: "First Bank of Nigeria" },
+      { code: "214", name: "First City Monument Bank" },
+      { code: "058", name: "Guaranty Trust Bank" },
+      { code: "030", name: "Heritage Bank" },
+      { code: "301", name: "Jaiz Bank" },
+      { code: "082", name: "Keystone Bank" },
+      { code: "526", name: "Kuda Bank" },
+      { code: "090405", name: "Moniepoint Microfinance Bank" },
+      { code: "014", name: "Mainstreet Bank" },
+      { code: "076", name: "Polaris Bank" },
+      { code: "101", name: "ProvidusBank" },
+      { code: "221", name: "Stanbic IBTC Bank" },
+      { code: "068", name: "Standard Chartered Bank" },
+      { code: "232", name: "Sterling Bank" },
+      { code: "100", name: "Suntrust Bank" },
+      { code: "032", name: "Union Bank of Nigeria" },
+      { code: "033", name: "United Bank For Africa" },
+      { code: "215", name: "Unity Bank" },
+      { code: "035", name: "Wema Bank" },
+      { code: "057", name: "Zenith Bank" },
+      { code: "090110", name: "VFD Microfinance Bank" },
+      { code: "000026", name: "Taj Bank" },
+      { code: "000031", name: "PalmPay" },
+      { code: "000014", name: "Opay (OPay Digital)" },
+      { code: "000019", name: "Flutterwave" },
+    ]);
+  });
+
+  // Resolve Nigerian bank account name via Paystack
+  app.post("/api/wallet/resolve-bank", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { accountNumber, bankCode } = req.body;
+    if (!accountNumber || !bankCode) return res.status(400).json({ message: "Account number and bank code required" });
+    if (!/^\d{10}$/.test(accountNumber)) return res.status(400).json({ message: "Account number must be 10 digits" });
+    const key = process.env.PAYSTACK_SECRET_KEY;
+    if (!key) {
+      // Gracefully return unverified so UI can still proceed
+      return res.status(422).json({ message: "Bank verification service unavailable — please confirm account details manually", unverified: true });
+    }
+    try {
+      const url = `https://api.paystack.co/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`;
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+      const data = await response.json() as any;
+      if (!data.status) return res.status(404).json({ message: data.message || "Account not found" });
+      res.json({ accountName: data.data.account_name, accountNumber: data.data.account_number });
+    } catch (e: any) { res.status(500).json({ message: "Could not reach verification service" }); }
+  });
+
+  // Lookup TSIA member by email
+  app.post("/api/wallet/lookup-email", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+    try {
+      const user = await storage.getUserByEmail(email.trim().toLowerCase());
+      if (!user) return res.status(404).json({ message: "No TSIA member found with that email" });
+      if (user.id === userId) return res.status(400).json({ message: "You cannot send money to yourself" });
+      res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/wallet/lookup-user", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });

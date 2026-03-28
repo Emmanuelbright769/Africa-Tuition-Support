@@ -1034,10 +1034,6 @@ export default function AffiliateDashboard() {
             {/* ── FINTECH HUB ── */}
             {activeSection === "fintech" && (
               <motion.div variants={itemVariants}>
-                <div className="mb-5">
-                  <h2 className="text-2xl font-bold">Hello, {user?.firstName} 👋</h2>
-                  <p className="text-muted-foreground text-sm">Send money, pay bills &amp; manage transfers</p>
-                </div>
                 <FinancialHub />
               </motion.div>
             )}

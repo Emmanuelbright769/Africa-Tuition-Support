@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import FinancialHub from "./FinancialHub";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
+import WalletSection from "./WalletSection";
 import { useLocation, useSearch, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,7 @@ type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "t
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
   { id: "fintech",      label: "Fintech Hub",             icon: CreditCard },
-  { id: "wallet",       label: "Wallet",                 icon: Wallet },
+  { id: "wallet",       label: "Personal Wallet",         icon: Wallet },
   { id: "reserve_fund", label: "Strategic Reserve Fund",  icon: Shield },
   { id: "trade",        label: "Trade Market",            icon: Globe },
   { id: "trust_fund",   label: "Affiliate Trust Fund",    icon: Crown },
@@ -704,157 +705,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── WALLET ── */}
-            {activeSection === "wallet" && (
-              <>
-                <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Trade Wallet</h2>
-                  <p className="text-muted-foreground text-sm">Manage your deposits, withdrawals, and connected exchange wallets.</p>
-                </motion.div>
-
-                {/* Balance hero */}
-                <motion.div variants={itemVariants}>
-                  <Card className="shadow-lg border-0 bg-gradient-to-br from-blue-600 to-blue-800 text-white overflow-hidden">
-                    <CardContent className="pt-8 pb-6">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-blue-200 text-sm font-medium">Available Balance</p>
-                        <button onClick={toggleTradeBalanceHidden} data-testid="button-toggle-trade-balance" className="text-blue-200 hover:text-white transition-colors p-1">
-                          {tradeBalanceHidden ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                        </button>
-                      </div>
-                      <p className="text-5xl font-bold mb-6 tracking-tight">{tradeBalanceHidden ? "••••••" : `$${tradeBalance.toFixed(2)}`}</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Button className="h-12 bg-white text-blue-700 font-bold hover:bg-blue-50" onClick={() => setDepositOpen(true)} data-testid="button-wallet-deposit">
-                          <ArrowDownLeft className="w-4 h-4 mr-2" /> Deposit
-                        </Button>
-                        <Button variant="outline" className="h-12 border-white/40 text-white hover:bg-white/10" onClick={() => setWithdrawOpen(true)} data-testid="button-wallet-withdraw">
-                          <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                {/* Connected wallets */}
-                <motion.div variants={itemVariants}>
-                  <Card className="shadow-md border-0">
-                    <CardContent className="pt-6 space-y-3">
-                      <p className="text-sm font-semibold mb-3">Connected exchange wallets</p>
-                      <div className="flex items-center justify-between text-sm py-2 border-b">
-                        <span className="text-muted-foreground">TRC20 (USDT)</span>
-                        <span className="font-mono text-xs truncate max-w-[180px]">{tradeWallet?.trc20Address || <span className="italic text-muted-foreground">Not connected</span>}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm py-2">
-                        <span className="text-muted-foreground">BEP20 (USDT)</span>
-                        <span className="font-mono text-xs truncate max-w-[180px]">{tradeWallet?.bep20Address || <span className="italic text-muted-foreground">Not connected</span>}</span>
-                      </div>
-                      <Button size="sm" variant="outline" className="w-full mt-1" onClick={() => { setTrc20Input(tradeWallet?.trc20Address || ""); setBep20Input(tradeWallet?.bep20Address || ""); setConnectOpen(true); }} data-testid="button-connect-wallet">
-                        <Zap className="w-3.5 h-3.5 mr-2" /> {tradeWallet?.trc20Address || tradeWallet?.bep20Address ? "Update" : "Connect"} Exchange Wallet
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                {/* Fee structure */}
-                <motion.div variants={itemVariants}>
-                  <p className="text-sm font-semibold text-muted-foreground mb-3">Fee structure</p>
-                  <div className="grid sm:grid-cols-3 gap-3">
-                    {[
-                      { label: "On Deposit", desc: "75% to you", sub: "20% Reserve Fund · 5% Affiliate Pool", color: "text-green-600 dark:text-green-400", bg: "bg-green-50 dark:bg-green-900/20", border: "border-green-200 dark:border-green-800", icon: ArrowDownLeft },
-                      { label: "Exchange Withdrawal", desc: "5% fee", sub: "+ 5% Affiliate Pool", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-900/20", border: "border-blue-200 dark:border-blue-800", icon: ArrowUpRight },
-                      { label: "Bank Withdrawal", desc: "8% fee", sub: "+ 5% Affiliate Pool", color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-900/20", border: "border-purple-200 dark:border-purple-800", icon: Banknote },
-                    ].map((f, i) => (
-                      <div key={i} className={`rounded-xl p-4 border ${f.bg} ${f.border}`}>
-                        <f.icon className={`w-5 h-5 mb-2 ${f.color}`} />
-                        <p className="text-xs font-semibold text-muted-foreground mb-1">{f.label}</p>
-                        <p className={`text-xl font-bold ${f.color}`}>{f.desc}</p>
-                        <p className="text-xs text-muted-foreground">{f.sub}</p>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-
-                {/* Reserve fund notice */}
-                <motion.div variants={itemVariants}>
-                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-start gap-3">
-                    <Shield className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm">20% Reserve Fund</p>
-                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">Every deposit allocates 20% to TSIA's Reserve Fund — a safety net protecting investors and ensuring platform sustainability. Reported quarterly.</p>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* How to deposit */}
-                <motion.div variants={itemVariants}>
-                  <Card className="shadow-md border-0">
-                    <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Wallet className="w-5 h-5 text-primary" /> How to Deposit</CardTitle></CardHeader>
-                    <CardContent className="space-y-3 text-sm">
-                      <p className="text-muted-foreground">Send USDT to TSIA's wallet address for your network, then click <strong>Deposit</strong> and enter the amount and transaction hash.</p>
-                      <div className="grid sm:grid-cols-2 gap-3">
-                        <div className="bg-muted/50 rounded-xl p-4 border">
-                          <p className="text-xs font-bold text-muted-foreground mb-2">TRC20 (TRON Network)</p>
-                          <p className="font-mono text-xs break-all mb-2">{TRADE_MARKET.TSIA_RECEIVING_TRC20}</p>
-                          <Button size="sm" variant="ghost" className="w-full h-7 text-xs" onClick={() => { navigator.clipboard.writeText(TRADE_MARKET.TSIA_RECEIVING_TRC20); toast({ title: "TRC20 address copied" }); }}>
-                            <Copy className="w-3 h-3 mr-1" /> Copy
-                          </Button>
-                        </div>
-                        <div className="bg-muted/50 rounded-xl p-4 border">
-                          <p className="text-xs font-bold text-muted-foreground mb-2">BEP20 (BSC Network)</p>
-                          <p className="font-mono text-xs break-all mb-2">{TRADE_MARKET.TSIA_RECEIVING_BEP20}</p>
-                          <Button size="sm" variant="ghost" className="w-full h-7 text-xs" onClick={() => { navigator.clipboard.writeText(TRADE_MARKET.TSIA_RECEIVING_BEP20); toast({ title: "BEP20 address copied" }); }}>
-                            <Copy className="w-3 h-3 mr-1" /> Copy
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                {/* Transaction history */}
-                <motion.div variants={itemVariants}>
-                  <Card className="shadow-md border-0">
-                    <CardHeader>
-                      <button onClick={() => setShowTxHistory(v => !v)} className="flex items-center justify-between w-full text-left">
-                        <CardTitle className="text-base">Transaction History ({(tradeTxs as any[]).length})</CardTitle>
-                        {showTxHistory ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                      </button>
-                    </CardHeader>
-                    {showTxHistory && (
-                      <CardContent className="pt-0">
-                        {(tradeTxs as any[]).length === 0 ? (
-                          <p className="text-sm text-muted-foreground text-center py-6">No transactions yet.</p>
-                        ) : (tradeTxs as any[]).slice(0, 20).map((tx: any) => {
-                          const TxIcon = txTypeIcon[tx.type] || ArrowUpRight;
-                          const isDeposit = tx.type === "deposit";
-                          return (
-                            <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border text-sm mb-2" data-testid={`row-wallet-tx-${tx.id}`}>
-                              <div className="flex items-center gap-3">
-                                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isDeposit ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-                                  <TxIcon className={`w-4 h-4 ${isDeposit ? 'text-green-600' : 'text-red-500'}`} />
-                                </div>
-                                <div>
-                                  <p className="font-medium">{txTypeLabel[tx.type]}</p>
-                                  <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <p className={`font-semibold ${isDeposit ? 'text-green-600' : 'text-red-500'}`}>{isDeposit ? '+' : '-'}${parseFloat(tx.amountUsd).toFixed(2)}</p>
-                                <Badge variant="outline" className="text-[10px]">{tx.status}</Badge>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </CardContent>
-                    )}
-                  </Card>
-                </motion.div>
-
-                {/* ── Live Reserve Fund Mini-Widget ── */}
-                <motion.div variants={itemVariants}>
-                  <ReserveFundWidget onNavigate={() => setActiveSection("reserve_fund")} />
-                </motion.div>
-              </>
-            )}
+            {activeSection === "wallet" && <WalletSection />}
 
             {/* ── TRUST FUND ── */}
             {activeSection === "trust_fund" && (

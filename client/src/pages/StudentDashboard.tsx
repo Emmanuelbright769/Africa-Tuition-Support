@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import FinancialHub from "./FinancialHub";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
+import WalletSection from "./WalletSection";
 import EcommerceSection from "./EcommerceSection";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -16,7 +17,7 @@ import {
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
   ShoppingCart
 } from "lucide-react";
-import { calculateLoanMonthly, ECOMMERCE } from "@shared/schema";
+import { calculateLoanMonthly } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -25,14 +26,13 @@ import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 
-const BALANCE_HIDDEN_KEY = "tsia_balance_hidden";
 
 type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",              icon: LayoutDashboard },
   { id: "fintech",      label: "Fintech Hub",            icon: CreditCard },
-  { id: "wallet",       label: "Digital Wallet",         icon: Wallet },
+  { id: "wallet",       label: "Personal Wallet",         icon: Wallet },
   { id: "ecommerce",    label: "E-Commerce",             icon: ShoppingCart },
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
   { id: "plans",        label: "Sponsorship Plans",      icon: Star },
@@ -52,44 +52,13 @@ export default function StudentDashboard() {
 
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const [balanceHidden, setBalanceHidden] = useState<boolean>(() => {
-    try { return localStorage.getItem(BALANCE_HIDDEN_KEY) === "true"; } catch { return false; }
-  });
-
-  const toggleBalance = () => {
-    setBalanceHidden(prev => {
-      const next = !prev;
-      try { localStorage.setItem(BALANCE_HIDDEN_KEY, String(next)); } catch {}
-      return next;
-    });
-  };
-
   const [loanAmount, setLoanAmount] = useState("");
   const [loanTerm, setLoanTerm] = useState(12);
   const [loanPurpose, setLoanPurpose] = useState("");
 
-  // Deposit state
-  const [depositOpen, setDepositOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState("");
-  const [depositTxHash, setDepositTxHash] = useState("");
-  const [depositWalletType, setDepositWalletType] = useState<"trc20" | "bep20">("trc20");
-  const [copiedAddr, setCopiedAddr] = useState<"trc20"|"bep20"|null>(null);
-
-  const copyAddr = (type: "trc20"|"bep20") => {
-    const addr = type === "trc20" ? ECOMMERCE.TSIA_RECEIVING_TRC20 : ECOMMERCE.TSIA_RECEIVING_BEP20;
-    navigator.clipboard.writeText(addr).then(() => {
-      setCopiedAddr(type);
-      setTimeout(() => setCopiedAddr(null), 2000);
-    });
-  };
-
   const { data: verification } = useQuery({ queryKey: ["/api/verification/status"] });
-  const { data: walletData }   = useQuery({ queryKey: ["/api/wallet"] });
   const { data: transactions } = useQuery({ queryKey: ["/api/transactions"] });
   const { data: plan }         = useQuery({ queryKey: ["/api/sponsorship/plan"] });
-  const { data: depositHistory = [] } = useQuery<any[]>({ queryKey: ["/api/wallet/deposits"], enabled: activeSection === "wallet" });
   const { data: loanLimit, refetch: refetchLoanLimit } = useQuery<any>({ queryKey: ["/api/loans/limit"] });
   const { data: myLoans = [], refetch: refetchMyLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"] });
 
@@ -119,35 +88,6 @@ export default function StudentDashboard() {
     },
   });
 
-  const withdrawMutation = useMutation({
-    mutationFn: async (amount: string) => {
-      const res = await apiRequest("POST", "/api/wallet/withdraw", { amount, bankAccount: "local" });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      setWithdrawOpen(false);
-      setWithdrawAmount("");
-      toast({ title: "Withdrawal Processed", description: "Your funds have been sent to your bank account." });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const depositMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/wallet/deposit", { amountUsd: parseFloat(depositAmount), txHash: depositTxHash, walletType: depositWalletType });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wallet/deposits"] });
-      setDepositOpen(false);
-      setDepositAmount(""); setDepositTxHash("");
-      toast({ title: "Deposit submitted!", description: data.message, className: "border-green-500" });
-    },
-    onError: (err: any) => toast({ title: "Deposit failed", description: err.message, variant: "destructive" }),
-  });
 
   const handleLogout = async () => { await logout(); setLocation("/"); };
 
@@ -168,7 +108,6 @@ export default function StudentDashboard() {
     return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
 
-  const balance          = parseFloat(walletData?.balance || "0");
   const tier             = verification?.tier || "none";
   const tierLabel        = tier.charAt(0).toUpperCase() + tier.slice(1);
   const waecPct          = verification?.waecPercentage ? parseFloat(verification.waecPercentage) : null;
@@ -383,149 +322,7 @@ export default function StudentDashboard() {
             )}
 
             {/* ── WALLET ── */}
-            {activeSection === "wallet" && (
-              <>
-                <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Digital Wallet</h2>
-                  <p className="text-muted-foreground text-sm mb-6">Fund your account, shop the marketplace, and withdraw earnings.</p>
-                </motion.div>
-                <motion.div variants={itemVariants}>
-                  <Card className="shadow-md border-0">
-                    <CardContent className="pt-8 pb-8">
-                      <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-6 mb-6">
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-sm text-muted-foreground font-medium">Available balance</span>
-                            <button onClick={toggleBalance} className="p-1 rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" data-testid="button-toggle-balance" title={balanceHidden ? "Show balance" : "Hide balance"}>
-                              {balanceHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                          </div>
-                          <div className="text-5xl font-bold tracking-tight" data-testid="text-wallet-balance">
-                            {balanceHidden ? <span className="tracking-[0.3em] text-muted-foreground select-none">••••••</span> : `$${balance.toFixed(2)}`}
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-2">USD balance · 7.5% VAT on withdrawals</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button onClick={() => setDepositOpen(true)} className="h-11 px-5 bg-tsia-green hover:bg-tsia-green/90 text-white font-semibold" data-testid="button-deposit">
-                            <ArrowDownLeft className="w-4 h-4 mr-2" /> Deposit
-                          </Button>
-                          <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
-                            <DialogTrigger asChild>
-                              <Button className="h-11 px-5 bg-blue-600 hover:bg-blue-700 font-semibold" disabled={balance <= 0} data-testid="button-withdraw">
-                                Withdraw <ArrowUpRight className="w-4 h-4 ml-2" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Withdraw Funds</DialogTitle>
-                                <DialogDescription>A 7.5% VAT will be deducted from your withdrawal.</DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                  <Label>Amount (USD)</Label>
-                                  <Input type="number" placeholder="0.00" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} data-testid="input-withdraw-amount" />
-                                </div>
-                                {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
-                                  <div className="bg-muted rounded-xl p-4 border space-y-2 text-sm">
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Withdrawal</span><span className="font-medium">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
-                                    <div className="flex justify-between text-destructive"><span>VAT (7.5%)</span><span>-${(parseFloat(withdrawAmount) * 0.075).toFixed(2)}</span></div>
-                                    <div className="flex justify-between font-bold border-t pt-2"><span>You Receive</span><span>${(parseFloat(withdrawAmount) * 0.925).toFixed(2)}</span></div>
-                                  </div>
-                                )}
-                              </div>
-                              <DialogFooter>
-                                <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
-                                <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => withdrawMutation.mutate(withdrawAmount)} disabled={withdrawMutation.isPending} data-testid="button-confirm-withdraw">
-                                  {withdrawMutation.isPending ? "Processing..." : "Confirm Withdrawal"}
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                      </div>
-                      <div className="bg-amber-50/50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
-                        <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
-                        <p>A mandatory <strong>7.5% VAT</strong> is applied to all withdrawals as required by UK tax regulations. Deposits are via USDT (TRC20 / BEP20) and credited within 30 minutes.</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                {/* Deposit dialog */}
-                <Dialog open={depositOpen} onOpenChange={setDepositOpen}>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2"><ArrowDownLeft className="w-5 h-5 text-tsia-green" /> Fund Your Wallet</DialogTitle>
-                      <DialogDescription>Send USDT to the address below, then submit your transaction hash. Minimum deposit: ${ECOMMERCE.MIN_DEPOSIT}.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-5 py-2">
-                      {/* Network selector */}
-                      <div className="grid grid-cols-2 gap-2">
-                        {(["trc20", "bep20"] as const).map(net => (
-                          <button key={net} onClick={() => setDepositWalletType(net)} data-testid={`button-network-${net}`}
-                            className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all ${depositWalletType === net ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border hover:border-tsia-green/40"}`}>
-                            {net === "trc20" ? "🔴 TRC20 (TRON)" : "🟡 BEP20 (BSC)"}
-                          </button>
-                        ))}
-                      </div>
-                      {/* Address */}
-                      <div>
-                        <Label className="text-xs text-muted-foreground mb-1.5 block">TSIA receiving address ({depositWalletType.toUpperCase()} · USDT)</Label>
-                        <div className="flex items-center gap-2 bg-muted/60 rounded-xl border p-3">
-                          <code className="text-xs flex-1 break-all select-all font-mono text-foreground">
-                            {depositWalletType === "trc20" ? ECOMMERCE.TSIA_RECEIVING_TRC20 : ECOMMERCE.TSIA_RECEIVING_BEP20}
-                          </code>
-                          <button onClick={() => copyAddr(depositWalletType)} data-testid="button-copy-address" className="shrink-0 p-1.5 rounded-lg hover:bg-muted transition-colors">
-                            {copiedAddr === depositWalletType ? <CheckCircle2 className="w-4 h-4 text-tsia-green" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
-                          </button>
-                        </div>
-                        <p className="text-[11px] text-amber-600 mt-1.5 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Only send USDT on the selected network. Wrong network = lost funds.</p>
-                      </div>
-                      {/* Amount */}
-                      <div>
-                        <Label htmlFor="dep-amount">Amount you are sending (USD)</Label>
-                        <Input id="dep-amount" type="number" placeholder={`Minimum $${ECOMMERCE.MIN_DEPOSIT}`} min={ECOMMERCE.MIN_DEPOSIT} step={0.01} value={depositAmount} onChange={e => setDepositAmount(e.target.value)} data-testid="input-deposit-amount" className="mt-1" />
-                      </div>
-                      {/* TX Hash */}
-                      <div>
-                        <Label htmlFor="dep-txhash">Transaction hash / TXID</Label>
-                        <Input id="dep-txhash" placeholder="Paste your transaction ID here..." value={depositTxHash} onChange={e => setDepositTxHash(e.target.value)} data-testid="input-deposit-txhash" className="mt-1 font-mono text-xs" />
-                        <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange transaction history after sending.</p>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setDepositOpen(false)}>Cancel</Button>
-                      <Button onClick={() => depositMutation.mutate()} disabled={depositMutation.isPending || !depositAmount || !depositTxHash || parseFloat(depositAmount) < ECOMMERCE.MIN_DEPOSIT} data-testid="button-confirm-deposit" className="bg-tsia-green hover:bg-tsia-green/90 text-white">
-                        {depositMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />} Submit Deposit
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-
-                {/* Deposit history */}
-                {(depositHistory as any[]).length > 0 && (
-                  <motion.div variants={itemVariants}>
-                    <h3 className="font-semibold mb-3 text-sm text-muted-foreground mt-6">Deposit history</h3>
-                    <div className="space-y-2">
-                      {(depositHistory as any[]).map((d: any) => (
-                        <div key={d.id} data-testid={`row-deposit-${d.id}`} className="flex items-center justify-between bg-card border rounded-xl px-4 py-3 text-sm">
-                          <div>
-                            <p className="font-semibold">${parseFloat(d.amountUsd).toFixed(2)} <span className="font-normal text-muted-foreground text-xs">via {d.walletType?.toUpperCase()}</span></p>
-                            <p className="text-xs text-muted-foreground font-mono truncate max-w-[180px]">{d.txHash}</p>
-                          </div>
-                          <div className="text-right">
-                            <Badge className={d.status === "completed" ? "bg-green-100 text-green-700" : d.status === "pending" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}>
-                              {d.status}
-                            </Badge>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">{new Date(d.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </>
-            )}
+            {activeSection === "wallet" && <WalletSection />}
 
             {/* ── PLANS ── */}
             {activeSection === "plans" && (

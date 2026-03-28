@@ -1162,6 +1162,69 @@ export async function registerRoutes(
   });
 
   // ─── WALLET DEPOSIT (for students & all users to fund main wallet) ───────────
+  // ── Paystack: initialize payment ──────────────────────────────────────────
+  app.post("/api/wallet/paystack/initialize", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { amountUsd } = req.body;
+    const amount = parseFloat(amountUsd);
+    if (!amount || amount < 1) return res.status(400).json({ message: "Minimum funding amount is $1" });
+    const key = process.env.PAYSTACK_SECRET_KEY;
+    if (!key) return res.status(500).json({ message: "Payment service not configured" });
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const USD_TO_KOBO = 160000; // 1 USD = 1600 NGN = 160000 kobo
+      const amountKobo = Math.round(amount * USD_TO_KOBO);
+      const reference = `TSIA-${userId}-${Date.now()}`;
+      const response = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: user.email,
+          amount: amountKobo,
+          currency: "NGN",
+          reference,
+          metadata: { userId, amountUsd: amount.toFixed(2), custom_fields: [{ display_name: "Purpose", variable_name: "purpose", value: "TSIA Wallet Funding" }] },
+          channels: ["card", "bank", "ussd", "bank_transfer", "mobile_money"],
+        }),
+      });
+      const data = await response.json() as any;
+      if (!data.status) return res.status(400).json({ message: data.message || "Could not initialize payment" });
+      // Store pending deposit record
+      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "paystack", status: "pending" });
+      res.json({ authorization_url: data.data.authorization_url, reference: data.data.reference, access_code: data.data.access_code });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Paystack: verify & credit wallet ─────────────────────────────────────
+  app.post("/api/wallet/paystack/verify", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { reference } = req.body;
+    if (!reference) return res.status(400).json({ message: "Reference is required" });
+    const key = process.env.PAYSTACK_SECRET_KEY;
+    if (!key) return res.status(500).json({ message: "Payment service not configured" });
+    try {
+      // Check not already credited
+      const deposits = await storage.getWalletDepositsByUser(userId);
+      const existing = deposits.find((d: any) => d.txHash === reference);
+      if (existing && existing.status === "completed") return res.status(400).json({ message: "This payment has already been credited to your wallet" });
+      const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      const data = await response.json() as any;
+      if (!data.status || data.data?.status !== "success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment." });
+      const amountUsd = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / 160000).toFixed(2));
+      // Credit wallet
+      await storage.updateWalletBalance(userId, amountUsd.toFixed(2));
+      // Mark deposit as completed
+      if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
+      res.json({ message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Legacy crypto deposit (kept for admin history)
   app.post("/api/wallet/deposit", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });

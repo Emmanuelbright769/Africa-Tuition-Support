@@ -335,12 +335,36 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    Array.from(e.target.files || []).slice(0, ECOMMERCE.MAX_IMAGES - images.length).forEach(f => {
+  const compressImage = (file: File): Promise<string> =>
+    new Promise(resolve => {
       const reader = new FileReader();
-      reader.onload = ev => setImages(prev => [...prev, ev.target?.result as string].slice(0, ECOMMERCE.MAX_IMAGES));
-      reader.readAsDataURL(f);
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 900;
+          let { width, height } = img;
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+            else { width = Math.round(width * MAX / height); height = MAX; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width; canvas.height = height;
+          canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.75));
+        };
+        img.src = ev.target?.result as string;
+      };
+      reader.readAsDataURL(file);
     });
+
+  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).slice(0, ECOMMERCE.MAX_IMAGES - images.length);
+    files.forEach(f => {
+      compressImage(f).then(dataUrl =>
+        setImages(prev => [...prev, dataUrl].slice(0, ECOMMERCE.MAX_IMAGES))
+      );
+    });
+    e.target.value = "";
   };
 
   const commission = parseFloat(form.price || "0") * ECOMMERCE.COMMISSION_RATE;

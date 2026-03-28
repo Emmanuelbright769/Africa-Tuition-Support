@@ -1199,6 +1199,22 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Verify account by 10-digit TSIA account number (userId padded to 10)
+  app.post("/api/wallet/verify-account", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { accountNumber } = req.body;
+    if (!accountNumber || !/^\d{10}$/.test(accountNumber)) return res.status(400).json({ message: "Enter a valid 10-digit account number" });
+    try {
+      const targetId = parseInt(accountNumber, 10);
+      if (isNaN(targetId)) return res.status(404).json({ message: "Account not found" });
+      if (targetId === userId) return res.status(400).json({ message: "You cannot send money to yourself" });
+      const user = await storage.getUser(targetId);
+      if (!user) return res.status(404).json({ message: "Account not found" });
+      res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, accountNumber });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Send money wallet-to-wallet
   app.post("/api/wallet/send", async (req, res) => {
     const userId = (req.session as any)?.userId;

@@ -9,6 +9,10 @@ import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY
 
 const PgSession = pgSession(session);
 
+// In-memory cache for Paystack bank account resolutions
+// key: `${bankCode}:${accountNumber}` → accountName
+const bankResolveCache = new Map<string, string>();
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -1297,18 +1301,45 @@ export async function registerRoutes(
     const { accountNumber, bankCode } = req.body;
     if (!accountNumber || !bankCode) return res.status(400).json({ message: "Account number and bank code required" });
     if (!/^\d{10}$/.test(accountNumber)) return res.status(400).json({ message: "Account number must be 10 digits" });
+
+    // ── 1. Serve from cache if available (saves Paystack quota) ──────────
+    const cacheKey = `${bankCode}:${accountNumber}`;
+    const cached = bankResolveCache.get(cacheKey);
+    if (cached) return res.json({ accountName: cached, accountNumber, fromCache: true });
+
     const key = process.env.PAYSTACK_SECRET_KEY;
     if (!key) {
-      // Gracefully return unverified so UI can still proceed
-      return res.status(422).json({ message: "Bank verification service unavailable — please confirm account details manually", unverified: true });
+      return res.json({ message: "Cannot auto-verify right now — please confirm account details before sending", unverified: true });
     }
+
     try {
       const url = `https://api.paystack.co/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`;
       const response = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
       const data = await response.json() as any;
-      if (!data.status) return res.status(404).json({ message: data.message || "Account not found" });
-      res.json({ accountName: data.data.account_name, accountNumber: data.data.account_number });
-    } catch (e: any) { res.status(500).json({ message: "Could not reach verification service" }); }
+
+      // ── 2. Paystack API-level failure ────────────────────────────────
+      if (!data.status) {
+        const msg: string = (data.message || "").toLowerCase();
+        const isRateLimit = msg.includes("daily limit") || msg.includes("test mode") || msg.includes("upgrade to live");
+        const isNotFound  = msg.includes("could not resolve") || msg.includes("not found") || response.status === 422;
+
+        if (isRateLimit) {
+          // Treat as unverified warning — user can still proceed
+          return res.json({ message: "Auto-verification unavailable right now. Please double-check the account details before sending.", unverified: true });
+        }
+        if (isNotFound) {
+          return res.json({ accountNotFound: true, message: "Account not found. Check the account number and bank." });
+        }
+        return res.json({ message: data.message || "Could not verify account", unverified: true });
+      }
+
+      // ── 3. Success — cache and return ────────────────────────────────
+      const accountName: string = data.data.account_name;
+      bankResolveCache.set(cacheKey, accountName);
+      res.json({ accountName, accountNumber: data.data.account_number });
+    } catch (e: any) {
+      res.json({ message: "Verification service unreachable — please confirm account details before sending.", unverified: true });
+    }
   });
 
   // Lookup TSIA member by email

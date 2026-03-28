@@ -218,11 +218,18 @@ export default function FinancialHub() {
       .then(r => r.json())
       .then(d => {
         if (cancelled) return;
-        if (d.unverified) { setResolveWarning(true); setResolvedName("Unverified — proceed with caution"); }
-        else if (d.accountName) setResolvedName(d.accountName);
-        else setResolveError(d.message || "Account not found");
+        if (d.accountName) {
+          setResolvedName(d.accountName);
+        } else if (d.unverified) {
+          setResolveWarning(true);
+          setResolvedName(d.message || "Could not verify — double-check before sending");
+        } else if (d.accountNotFound) {
+          setResolveError(d.message || "Account not found. Check the number and bank.");
+        } else {
+          setResolveError(d.message || "Could not verify account");
+        }
       })
-      .catch(() => { if (!cancelled) setResolveError("Verification failed"); })
+      .catch(() => { if (!cancelled) { setResolveWarning(true); setResolvedName("Could not verify — double-check details before sending"); } })
       .finally(() => { if (!cancelled) setResolving(false); });
     return () => { cancelled = true; };
   }, [selectedBank, acctNumber]);

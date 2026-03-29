@@ -296,7 +296,19 @@ export default function StudentDashboard() {
                         <h3 className="text-3xl font-bold mb-1 tracking-tight" data-testid="text-tier">{tierLabel} Tier</h3>
                         {waecPct !== null && <p className="text-lg font-semibold text-primary mb-2">{waecPct}% Score</p>}
                         <p className="text-sm text-muted-foreground mb-3">{tier !== "none" ? "Based on your WAEC results" : "Complete onboarding to set tier"}</p>
-                        {payoutMax > 0 && <Badge variant="secondary" className="px-4 py-1.5 text-sm font-semibold">Payout: ${payoutMin} – ${payoutMax}</Badge>}
+                        {payoutMax > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <Badge variant="secondary" className="px-4 py-1.5 text-sm font-semibold">Payout: ${payoutMin} – ${payoutMax}</Badge>
+                            <button
+                              onClick={() => navigate("plans")}
+                              data-testid="button-accept-offer"
+                              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-tsia-green hover:bg-tsia-green/90 text-white text-xs font-bold shadow-md shadow-tsia-green/30 transition-all hover:scale-105 active:scale-95"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Accept Offer &amp; Deposit
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

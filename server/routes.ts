@@ -968,6 +968,46 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Called by the frontend when the bot session completes (12h elapsed) — credits 2% of balance
+  app.post("/api/trade/bot/complete", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const wallet = await storage.getOrCreateTradeWallet(userId);
+      const balance = parseFloat(wallet.tradeBalance);
+      if (balance <= 0) return res.status(400).json({ message: "No balance to earn from." });
+      const earning = parseFloat((balance * 0.02).toFixed(6)); // 2% daily return
+      if (earning <= 0) return res.status(400).json({ message: "Earning too small." });
+      await storage.createTradeTransaction({
+        userId,
+        type: "bot_earning",
+        walletType: null,
+        amountUsd: earning.toFixed(6),
+        feeUsd: "0.000000",
+        reserveFundDeduction: "0.000000",
+        affiliateShareDeduction: "0.000000",
+        netAmount: earning.toFixed(6),
+        txHash: null,
+        status: "completed",
+        note: `Bot session completed — 2% return on $${balance.toFixed(2)}`,
+      });
+      const updatedWallet = await storage.creditBotEarnings(userId, earning.toFixed(6));
+      await storage.createNotification({
+        userId,
+        type: "trade",
+        title: "Bot Session Complete — Earnings Credited",
+        message: `Your 12-hour bot session has ended. $${earning.toFixed(2)} (2% daily return) has been added to your Trade Wallet.`,
+        data: { earning, newBalance: updatedWallet.tradeBalance },
+        isRead: false,
+      });
+      res.json({
+        earning: earning.toFixed(6),
+        newBalance: updatedWallet.tradeBalance,
+        totalBotEarnings: updatedWallet.totalBotEarnings,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/trade/transactions", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

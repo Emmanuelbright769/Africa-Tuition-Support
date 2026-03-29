@@ -136,12 +136,35 @@ export default function AffiliateDashboard() {
     const now = Date.now();
     setBotActivatedAt(now);
     try { localStorage.setItem("tsia_bot_activated_at", String(now)); } catch {}
-    toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It will auto-deactivate in 12 hours.", className: "border-green-500" });
+    toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It will auto-deactivate in 12 hours and credit your 2% earnings.", className: "border-green-500" });
   };
-  const deactivateBot = () => {
+
+  // Complete a bot session — credits 2% to wallet, then clears state
+  const completeBotSession = async (isAutoOff: boolean) => {
     setBotActivatedAt(null);
     try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
+    try {
+      const r = await apiRequest("POST", "/api/trade/bot/complete");
+      if (r.ok) {
+        const data = await r.json();
+        queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/trade/transactions"] });
+        toast({
+          title: isAutoOff ? "Bot Session Complete — Earnings Credited!" : "Bot Stopped",
+          description: isAutoOff
+            ? `$${parseFloat(data.earning).toFixed(2)} (2% return) has been added to your Trade Wallet.`
+            : `Session ended. Your updated balance is $${parseFloat(data.newBalance).toFixed(2)}.`,
+          className: "border-tsia-green",
+        });
+      } else {
+        if (isAutoOff) toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours.", variant: "destructive" });
+      }
+    } catch {
+      if (isAutoOff) toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours.", variant: "destructive" });
+    }
   };
+
+  const deactivateBot = () => completeBotSession(false);
 
   // Auto-deactivate bot + 30-min warning clock
   useEffect(() => {
@@ -150,9 +173,7 @@ export default function AffiliateDashboard() {
       setUkNow(now);
       // Auto-off after 12 h
       if (botActivatedAt && (Date.now() - botActivatedAt) >= 12 * 3600 * 1000) {
-        setBotActivatedAt(null);
-        try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
-        toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours. The activation window reopens at 1:00 PM GMT.", variant: "destructive" });
+        completeBotSession(true);
       }
       // 30-min pre-1PM UK warning
       const ukHour = parseInt(now.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
@@ -329,8 +350,8 @@ export default function AffiliateDashboard() {
   const copyLink = () => { navigator.clipboard.writeText(referralLink); toast({ title: "Copied!", description: "Referral link copied." }); };
   const handleLogout = async () => { await logout(); setLocation("/"); };
 
-  const txTypeLabel: Record<string, string> = { deposit: "Deposit", withdraw_exchange: "Withdraw → Exchange", withdraw_bank: "Withdraw → Bank" };
-  const txTypeIcon: Record<string, any> = { deposit: ArrowDownLeft, withdraw_exchange: ArrowUpRight, withdraw_bank: ArrowUpRight };
+  const txTypeLabel: Record<string, string> = { deposit: "Deposit", withdraw_exchange: "Withdraw → Exchange", withdraw_bank: "Withdraw → Bank", bot_earning: "Bot Earnings" };
+  const txTypeIcon: Record<string, any> = { deposit: ArrowDownLeft, withdraw_exchange: ArrowUpRight, withdraw_bank: ArrowUpRight, bot_earning: TrendingUp };
 
   const navigate = (s: Section) => {
     if (s === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
@@ -666,16 +687,39 @@ export default function AffiliateDashboard() {
                   })()}
                 </motion.div>
 
-                {/* Quick wallet summary + link */}
+                {/* Trade wallet balance + bot earnings — always visible */}
                 <motion.div variants={itemVariants}>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Trade Wallet Balance</p>
-                      <p className="text-3xl font-bold text-blue-700 dark:text-blue-300">{tradeBalanceHidden ? "••••••" : `$${tradeBalance.toFixed(2)}`}</p>
+                  <div className="rounded-2xl border overflow-hidden shadow-sm">
+                    {/* Balance row */}
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-0.5">Trade Wallet Balance</p>
+                        <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                          {tradeBalanceHidden ? "••••••" : `$${tradeBalance.toFixed(2)}`}
+                        </p>
+                      </div>
+                      <Button size="sm" onClick={() => navigate("wallet")} data-testid="button-goto-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
+                        <Wallet className="w-3.5 h-3.5 mr-1.5" /> Open Wallet
+                      </Button>
                     </div>
-                    <Button size="sm" onClick={() => navigate("wallet")} data-testid="button-goto-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
-                      <Wallet className="w-3.5 h-3.5 mr-1.5" /> Open Wallet
-                    </Button>
+                    {/* Earnings row — always visible */}
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                          <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground leading-none mb-0.5">Total Bot Earnings</p>
+                          <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300" data-testid="text-total-bot-earnings">
+                            {tradeBalanceHidden ? "••••••" : `$${parseFloat(tradeWallet?.totalBotEarnings ?? "0").toFixed(2)}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Daily target</p>
+                        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">+2% / session</p>
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
 

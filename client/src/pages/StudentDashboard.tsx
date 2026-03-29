@@ -3,6 +3,7 @@ import FinancialHub from "./FinancialHub";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import WalletSection from "./WalletSection";
 import EcommerceSection from "./EcommerceSection";
+import ForumSection from "./ForumSection";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
   LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X,
   LayoutDashboard, Star, History, ChevronRight, Car, Globe, Loader2,
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
-  ShoppingCart
+  ShoppingCart, MessageSquareText
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
@@ -29,7 +30,7 @@ import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce";
+type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",              icon: LayoutDashboard },
@@ -40,6 +41,7 @@ const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "plans",        label: "Sponsorship Plans",      icon: Star },
   { id: "activity",     label: "Activity",               icon: History },
   { id: "loan",         label: "Student loan",           icon: Banknote },
+  { id: "forum",        label: "Community Forum",        icon: MessageSquareText },
   { id: "tour_africa",  label: "Tour Africa",            icon: Car },
 ];
 
@@ -440,6 +442,13 @@ export default function StudentDashboard() {
             {activeSection === "ecommerce" && (
               <motion.div variants={itemVariants}>
                 <EcommerceSection />
+              </motion.div>
+            )}
+
+            {/* ── COMMUNITY FORUM ── */}
+            {activeSection === "forum" && (
+              <motion.div variants={itemVariants}>
+                <ForumSection userSection="student" />
               </motion.div>
             )}
 

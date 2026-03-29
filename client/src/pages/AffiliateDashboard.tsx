@@ -15,7 +15,7 @@ import {
   Banknote, Clock, Crown, Sparkles, CheckCircle2, AlertCircle, Loader2,
   Target, BarChart3, Infinity, Star, Wallet, ArrowUpRight, ArrowDownLeft,
   ShoppingBag, ChevronDown, ChevronUp, Shield, Zap, Globe,
-  Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag,
+  Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag, MessageSquareText,
   Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink,
   Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
   Eye, EyeOff, Bell, Power, Timer, CreditCard
@@ -31,6 +31,7 @@ import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
 import EcommerceSection from "./EcommerceSection";
+import ForumSection from "./ForumSection";
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
@@ -42,7 +43,7 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech" | "reserve_fund";
+type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
@@ -55,6 +56,7 @@ const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "tenancy",      label: "Tenancy Business",         icon: Home },
   { id: "loan",         label: "Business Loan",            icon: Banknote },
   { id: "referrals",    label: "Referrals",               icon: Users },
+  { id: "forum",        label: "Community Forum",         icon: MessageSquareText },
   { id: "tour_africa",  label: "Tour Africa",             icon: Car },
 ];
 
@@ -888,6 +890,13 @@ export default function AffiliateDashboard() {
             {activeSection === "ecommerce" && (
               <motion.div variants={itemVariants}>
                 <EcommerceSection />
+              </motion.div>
+            )}
+
+            {/* ── COMMUNITY FORUM ── */}
+            {activeSection === "forum" && (
+              <motion.div variants={itemVariants}>
+                <ForumSection userSection="affiliate" />
               </motion.div>
             )}
 

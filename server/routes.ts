@@ -1840,5 +1840,214 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Call Sessions (WebRTC signaling) ─────────────────────────────────────
+  // POST /api/calls/initiate  — caller creates a session
+  app.post("/api/calls/initiate", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const { calleeId, productId, chatId } = req.body;
+      if (!calleeId) return res.status(400).json({ error: "calleeId required" });
+      // End any existing active calls for this user
+      await storage.endStaleCalls(userId);
+      const session = await storage.createCallSession({
+        callerId: userId,
+        calleeId: Number(calleeId),
+        productId: productId ? Number(productId) : undefined,
+        chatId: chatId ? Number(chatId) : undefined,
+        status: "ringing",
+        callerSdp: null,
+        calleeSdp: null,
+        callerIce: [],
+        calleeIce: [],
+      });
+      res.json(session);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/calls/incoming  — callee polls for ringing calls
+  app.get("/api/calls/incoming", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const session = await storage.getIncomingCall(userId);
+      res.json(session ?? null);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/calls/:id  — poll for SDP / ICE / status
+  app.get("/api/calls/:id", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const s = await storage.getCallSession(Number(req.params.id));
+      if (!s) return res.status(404).json({ error: "Call not found" });
+      if (s.callerId !== userId && s.calleeId !== userId) return res.status(403).json({ error: "Forbidden" });
+      res.json(s);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/calls/:id  — update SDP / status
+  app.patch("/api/calls/:id", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const s = await storage.getCallSession(Number(req.params.id));
+      if (!s) return res.status(404).json({ error: "Call not found" });
+      if (s.callerId !== userId && s.calleeId !== userId) return res.status(403).json({ error: "Forbidden" });
+      const allowed = ["callerSdp","calleeSdp","status"] as const;
+      const patch: any = {};
+      for (const key of allowed) if (req.body[key] !== undefined) patch[key] = req.body[key];
+      const updated = await storage.updateCallSession(Number(req.params.id), patch);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/calls/:id/ice  — append ICE candidates
+  app.post("/api/calls/:id/ice", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const s = await storage.getCallSession(Number(req.params.id));
+      if (!s) return res.status(404).json({ error: "Call not found" });
+      const { candidates, side } = req.body;
+      if (!Array.isArray(candidates)) return res.status(400).json({ error: "candidates must be array" });
+      const field = side === "caller" ? "callerIce" : "calleeIce";
+      const existing: any[] = (s as any)[field] ?? [];
+      const updated = await storage.updateCallSession(Number(req.params.id), {
+        [field]: [...existing, ...candidates],
+      } as any);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /api/calls/:id  — end / reject call
+  app.delete("/api/calls/:id", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const s = await storage.getCallSession(Number(req.params.id));
+      if (!s) return res.status(404).json({ error: "Call not found" });
+      const reason = req.body?.reason;
+      const newStatus = reason === "reject" ? "rejected" : "ended";
+      const updated = await storage.updateCallSession(Number(req.params.id), { status: newStatus as any });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Forum ────────────────────────────────────────────────────────────────
+  // GET /api/forum/topics  — list topics (filtered by section)
+  app.get("/api/forum/topics", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const section = (req.query.section as string) ?? "both";
+      const search = req.query.search as string | undefined;
+      const topics = await storage.getForumTopics(section, search);
+      res.json(topics);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/forum/topics  — create topic
+  app.post("/api/forum/topics", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const { title, body, section, tags } = req.body;
+      if (!title?.trim() || !body?.trim()) return res.status(400).json({ error: "title and body required" });
+      const topic = await storage.createForumTopic({
+        title: title.trim(),
+        body: body.trim(),
+        authorId: userId,
+        section: (section ?? "both") as any,
+        tags: Array.isArray(tags) ? tags : [],
+      });
+      res.json(topic);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/forum/topics/:id  — single topic
+  app.get("/api/forum/topics/:id", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const topic = await storage.getForumTopic(Number(req.params.id));
+      if (!topic) return res.status(404).json({ error: "Topic not found" });
+      res.json(topic);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/forum/topics/:id/like
+  app.post("/api/forum/topics/:id/like", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      await storage.likeForumTopic(Number(req.params.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/forum/topics/:id/posts  — replies
+  app.get("/api/forum/topics/:id/posts", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const posts = await storage.getForumPosts(Number(req.params.id));
+      res.json(posts);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/forum/topics/:id/posts  — reply
+  app.post("/api/forum/topics/:id/posts", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const { content } = req.body;
+      if (!content?.trim()) return res.status(400).json({ error: "content required" });
+      const post = await storage.createForumPost({
+        topicId: Number(req.params.id),
+        content: content.trim(),
+        authorId: userId,
+      });
+      res.json(post);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/forum/posts/:id/like
+  app.post("/api/forum/posts/:id/like", async (req, res) => {
+    const userId = (req as any).session?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      await storage.likeForumPost(Number(req.params.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }

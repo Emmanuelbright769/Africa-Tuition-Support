@@ -581,6 +581,61 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 
+// ─── CALL SESSIONS (WebRTC signaling via polling) ─────────────────────────────
+export const callStatusEnum = pgEnum("call_status", ["ringing","active","ended","rejected"]);
+
+export const callSessions = pgTable("call_sessions", {
+  id:          integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  callerId:    integer("caller_id").notNull().references(() => users.id),
+  calleeId:    integer("callee_id").notNull().references(() => users.id),
+  productId:   integer("product_id").references(() => products.id),
+  chatId:      integer("chat_id"),
+  status:      callStatusEnum("status").notNull().default("ringing"),
+  callerSdp:   text("caller_sdp"),
+  calleeSdp:   text("callee_sdp"),
+  callerIce:   jsonb("caller_ice").default([]),
+  calleeIce:   jsonb("callee_ice").default([]),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+  updatedAt:   timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type CallSession = typeof callSessions.$inferSelect;
+export const insertCallSessionSchema = createInsertSchema(callSessions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCallSession = z.infer<typeof insertCallSessionSchema>;
+
+// ─── FORUM ────────────────────────────────────────────────────────────────────
+export const forumSectionEnum = pgEnum("forum_section", ["student","affiliate","both"]);
+
+export const forumTopics = pgTable("forum_topics", {
+  id:          integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  title:       text("title").notNull(),
+  body:        text("body").notNull(),
+  authorId:    integer("author_id").notNull().references(() => users.id),
+  section:     forumSectionEnum("section").notNull().default("both"),
+  tags:        text("tags").array().default([]),
+  replyCount:  integer("reply_count").notNull().default(0),
+  likeCount:   integer("like_count").notNull().default(0),
+  isPinned:    boolean("is_pinned").notNull().default(false),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+});
+
+export const forumPosts = pgTable("forum_posts", {
+  id:         integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  topicId:    integer("topic_id").notNull().references(() => forumTopics.id),
+  content:    text("content").notNull(),
+  authorId:   integer("author_id").notNull().references(() => users.id),
+  likeCount:  integer("like_count").notNull().default(0),
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
+});
+
+export type ForumTopic = typeof forumTopics.$inferSelect;
+export const insertForumTopicSchema = createInsertSchema(forumTopics).omit({ id: true, replyCount: true, likeCount: true, isPinned: true, createdAt: true });
+export type InsertForumTopic = z.infer<typeof insertForumTopicSchema>;
+
+export type ForumPost = typeof forumPosts.$inferSelect;
+export const insertForumPostSchema = createInsertSchema(forumPosts).omit({ id: true, likeCount: true, createdAt: true });
+export type InsertForumPost = z.infer<typeof insertForumPostSchema>;
+
 // ─── ECOMMERCE CHAT ───────────────────────────────────────────────────────────
 export const ecommerceChats = pgTable("ecommerce_chats", {
   id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),

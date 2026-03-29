@@ -10,6 +10,13 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - **Routing**: wouter (frontend), Express (backend)
 - **File Uploads**: multer (memory storage → base64 in DB)
 
+## Recent Updates (Session 5)
+- **Full-screen NotificationBell**: Slides in from right covering full viewport; grouped by Today/Yesterday/date; mark-all-read + clear-all; animated unread badge; 30s polling
+- **Full-screen E-Commerce Chat**: `EcommerceChatDrawer` and `ProductChatModal` both now render as full-screen overlays (fixed inset-0); chat inbox as separate full-screen list; voice call button in every chat header
+- **WebRTC Voice Calls in E-Commerce**: `CallPanel` component uses browser WebRTC with STUN servers; SDP and ICE exchanged via 2-second polling against `/api/calls/*` routes; `IncomingCallBanner` slide-in for callee; mute/unmute; hangup; `call_sessions` DB table; routes: POST /api/calls/initiate, GET /api/calls/incoming, GET/PATCH/DELETE /api/calls/:id, POST /api/calls/:id/ice
+- **Community Forum**: Full CRUD forum system; `ForumSection.tsx` shows topic list, tag filters, search, topic detail with replies, like topics/posts, new-topic modal; pinned topics; `forum_topics` + `forum_posts` DB tables; routes: GET/POST /api/forum/topics, GET/POST /api/forum/topics/:id/posts, POST /api/forum/topics/:id/like, POST /api/forum/posts/:id/like
+- **Forum in both dashboards**: "Community Forum" nav item added to StudentDashboard and AffiliateDashboard; passes `userSection="student"` or `userSection="affiliate"` to filter relevant topics
+
 ## Recent Updates (Session 4)
 - **Login redesign**: Always shows Student/Affiliate role selector as Step 0; one email can hold both account types; role is chosen first before email entry
 - **Live Notification System**: `NotificationBell` component in both dashboards; polls every 30s; supports types: bot_reminder, chat_message, order_update, wallet_credit, loan_update, verification_update, referral, trade_deposit, system; auto-creates bot reminders at 12:28–12:35 PM and 1:00–1:05 PM UK time for affiliates; notifications fired on: new chat message, order placed/sold, wallet deposit confirmed, verification approved/rejected, referral signup

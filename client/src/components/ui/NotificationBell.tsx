@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, BotMessageSquare, MessageSquare, Wallet, TrendingUp, FileCheck, Users, ShoppingBag, Package, Info, Trash2, CheckCheck, X } from "lucide-react";
+import { Bell, BotMessageSquare, MessageSquare, Wallet, TrendingUp, FileCheck, Users, Package, Info, Trash2, CheckCheck, X, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
@@ -13,54 +12,43 @@ type NotifType =
   | "loan_update"  | "verification_update" | "referral" | "trade_deposit" | "system";
 
 interface Notification {
-  id: number;
-  userId: number;
-  type: NotifType;
-  title: string;
-  message: string;
-  data: any;
-  isRead: boolean;
-  createdAt: string;
+  id: number; userId: number; type: NotifType;
+  title: string; message: string; data: any;
+  isRead: boolean; createdAt: string;
 }
+interface NotifResponse { notifications: Notification[]; unreadCount: number; }
 
-interface NotifResponse {
-  notifications: Notification[];
-  unreadCount: number;
-}
-
-const TYPE_META: Record<NotifType, { icon: any; color: string; bg: string }> = {
-  bot_reminder:        { icon: BotMessageSquare, color: "text-amber-600",  bg: "bg-amber-100 dark:bg-amber-900/30" },
-  chat_message:        { icon: MessageSquare,    color: "text-blue-600",   bg: "bg-blue-100 dark:bg-blue-900/30" },
-  order_update:        { icon: Package,          color: "text-purple-600", bg: "bg-purple-100 dark:bg-purple-900/30" },
-  wallet_credit:       { icon: Wallet,           color: "text-green-600",  bg: "bg-green-100 dark:bg-green-900/30" },
-  loan_update:         { icon: FileCheck,        color: "text-teal-600",   bg: "bg-teal-100 dark:bg-teal-900/30" },
-  verification_update: { icon: FileCheck,        color: "text-tsia-green", bg: "bg-green-100 dark:bg-green-900/30" },
-  referral:            { icon: Users,            color: "text-pink-600",   bg: "bg-pink-100 dark:bg-pink-900/30" },
-  trade_deposit:       { icon: TrendingUp,       color: "text-indigo-600", bg: "bg-indigo-100 dark:bg-indigo-900/30" },
-  system:              { icon: Info,             color: "text-slate-600",  bg: "bg-slate-100 dark:bg-slate-800" },
+const TYPE_META: Record<NotifType, { icon: any; color: string; bg: string; accent: string }> = {
+  bot_reminder:        { icon: BotMessageSquare, color: "text-amber-600",  bg: "bg-amber-100 dark:bg-amber-900/40",   accent: "border-l-amber-400" },
+  chat_message:        { icon: MessageSquare,    color: "text-blue-600",   bg: "bg-blue-100 dark:bg-blue-900/40",     accent: "border-l-blue-400" },
+  order_update:        { icon: Package,          color: "text-purple-600", bg: "bg-purple-100 dark:bg-purple-900/40", accent: "border-l-purple-400" },
+  wallet_credit:       { icon: Wallet,           color: "text-green-600",  bg: "bg-green-100 dark:bg-green-900/40",   accent: "border-l-green-500" },
+  loan_update:         { icon: FileCheck,        color: "text-teal-600",   bg: "bg-teal-100 dark:bg-teal-900/40",     accent: "border-l-teal-400" },
+  verification_update: { icon: FileCheck,        color: "text-tsia-green", bg: "bg-green-100 dark:bg-green-900/40",   accent: "border-l-tsia-green" },
+  referral:            { icon: Users,            color: "text-pink-600",   bg: "bg-pink-100 dark:bg-pink-900/40",     accent: "border-l-pink-400" },
+  trade_deposit:       { icon: TrendingUp,       color: "text-indigo-600", bg: "bg-indigo-100 dark:bg-indigo-900/40", accent: "border-l-indigo-400" },
+  system:              { icon: Info,             color: "text-slate-500",  bg: "bg-slate-100 dark:bg-slate-800",      accent: "border-l-slate-400" },
 };
 
-function NotifItem({ n, onRead }: { n: Notification; onRead?: () => void }) {
+function NotifItem({ n }: { n: Notification }) {
   const meta = TYPE_META[n.type] ?? TYPE_META.system;
   const Icon = meta.icon;
   return (
-    <div
-      className={cn(
-        "flex gap-3 px-4 py-3 hover:bg-muted/50 transition-colors cursor-default",
-        !n.isRead && "bg-primary/5"
-      )}
-      onClick={onRead}
-    >
-      <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5", meta.bg)}>
-        <Icon className={cn("w-4 h-4", meta.color)} />
+    <div className={cn(
+      "flex gap-4 px-5 py-4 border-l-4 transition-colors",
+      meta.accent,
+      !n.isRead ? "bg-primary/5" : "bg-transparent"
+    )}>
+      <div className={cn("w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", meta.bg)}>
+        <Icon className={cn("w-5 h-5", meta.color)} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <p className={cn("text-sm font-semibold leading-snug", !n.isRead && "text-foreground")}>{n.title}</p>
-          {!n.isRead && <span className="w-2 h-2 rounded-full bg-tsia-green shrink-0 mt-1.5" />}
+          <p className={cn("text-sm font-bold leading-snug", !n.isRead ? "text-foreground" : "text-muted-foreground")}>{n.title}</p>
+          {!n.isRead && <span className="w-2.5 h-2.5 rounded-full bg-tsia-green shrink-0 mt-1" />}
         </div>
-        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">{n.message}</p>
-        <p className="text-[10px] text-muted-foreground/70 mt-1">
+        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{n.message}</p>
+        <p className="text-xs text-muted-foreground/60 mt-1.5">
           {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
         </p>
       </div>
@@ -70,7 +58,6 @@ function NotifItem({ n, onRead }: { n: Notification; onRead?: () => void }) {
 
 export function NotificationBell({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
   const { data } = useQuery<NotifResponse>({
@@ -86,123 +73,130 @@ export function NotificationBell({ className }: { className?: string }) {
     mutationFn: () => apiRequest("PATCH", "/api/notifications/read-all").then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/notifications"] }),
   });
-
   const clearAll = useMutation({
     mutationFn: () => apiRequest("DELETE", "/api/notifications").then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/notifications"] }); setOpen(false); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/notifications"] }); },
   });
 
-  // Close on outside click
+  // Lock scroll when full-screen is open
   useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (!panelRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    if (open) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
   }, [open]);
 
-  // Mark all read when opening
   const handleOpen = () => {
-    setOpen(prev => !prev);
-    if (!open && unread > 0) {
-      setTimeout(() => markRead.mutate(), 800);
-    }
+    setOpen(true);
+    if (unread > 0) setTimeout(() => markRead.mutate(), 600);
   };
 
+  // Group by date
+  const grouped: { label: string; items: Notification[] }[] = [];
+  notifications.forEach(n => {
+    const d = new Date(n.createdAt);
+    const today = new Date();
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const label =
+      d.toDateString() === today.toDateString() ? "Today" :
+      d.toDateString() === yesterday.toDateString() ? "Yesterday" :
+      d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    const g = grouped.find(g => g.label === label);
+    if (g) g.items.push(n); else grouped.push({ label, items: [n] });
+  });
+
   return (
-    <div className={cn("relative", className)} ref={panelRef}>
+    <>
       {/* Bell button */}
       <button
         onClick={handleOpen}
         data-testid="button-notification-bell"
-        className="relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-colors"
+        className={cn("relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-colors", className)}
         aria-label="Notifications"
       >
         <Bell className="w-5 h-5 text-muted-foreground" />
         <AnimatePresence>
           {unread > 0 && (
-            <motion.span
-              key="badge"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0 }}
+            <motion.span key="badge" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
               className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold shadow-md"
-              data-testid="badge-unread-count"
-            >
+              data-testid="badge-unread-count">
               {unread > 99 ? "99+" : unread}
             </motion.span>
           )}
         </AnimatePresence>
       </button>
 
-      {/* Dropdown panel */}
+      {/* ── Full-screen overlay ── */}
       <AnimatePresence>
         {open && (
           <motion.div
-            key="panel"
-            initial={{ opacity: 0, y: -8, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.97 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 top-12 w-[360px] max-w-[calc(100vw-24px)] bg-card border border-border rounded-2xl shadow-2xl overflow-hidden z-50"
-            data-testid="panel-notifications"
+            key="notif-fullscreen"
+            initial={{ opacity: 0, x: "100%" }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: "100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 280 }}
+            className="fixed inset-0 z-[9999] bg-background flex flex-col"
+            data-testid="panel-notifications-fullscreen"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+            {/* Top bar */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card shrink-0 safe-area-top">
+              <button onClick={() => setOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-colors">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
               <div className="flex items-center gap-2">
-                <Bell className="w-4 h-4 text-tsia-green" />
-                <span className="font-semibold text-sm text-foreground">Notifications</span>
+                <Bell className="w-5 h-5 text-tsia-green" />
+                <span className="font-bold text-base">Notifications</span>
                 {unread > 0 && (
-                  <Badge variant="default" className="bg-red-500 hover:bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full h-auto">
+                  <Badge className="bg-red-500 hover:bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full h-auto">
                     {unread} new
                   </Badge>
                 )}
               </div>
               <div className="flex items-center gap-1">
                 {unread > 0 && (
-                  <button
-                    onClick={() => markRead.mutate()}
-                    className="text-xs text-muted-foreground hover:text-tsia-green flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-muted transition-colors"
-                    title="Mark all read"
-                  >
-                    <CheckCheck className="w-3.5 h-3.5" /> Mark read
+                  <button onClick={() => markRead.mutate()}
+                    className="flex items-center gap-1 text-xs text-tsia-green font-semibold px-3 py-1.5 rounded-xl hover:bg-muted transition-colors"
+                    title="Mark all read">
+                    <CheckCheck className="w-3.5 h-3.5" /> Read all
                   </button>
                 )}
                 {notifications.length > 0 && (
-                  <button
-                    onClick={() => clearAll.mutate()}
-                    className="text-xs text-muted-foreground hover:text-red-500 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-muted transition-colors"
-                    title="Clear all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
+                  <button onClick={() => clearAll.mutate()}
+                    className="flex items-center gap-1 text-xs text-red-500 font-semibold px-3 py-1.5 rounded-xl hover:bg-muted transition-colors"
+                    title="Clear all">
+                    <Trash2 className="w-3.5 h-3.5" /> Clear
                   </button>
                 )}
-                <button onClick={() => setOpen(false)} className="p-1 rounded-lg hover:bg-muted transition-colors ml-1">
-                  <X className="w-4 h-4 text-muted-foreground" />
-                </button>
               </div>
             </div>
 
-            {/* Notification list */}
-            <div className="overflow-y-auto max-h-[420px] scrollbar-none divide-y divide-border/50">
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto scrollbar-none">
               {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                  <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
-                    <Bell className="w-7 h-7 text-muted-foreground/40" />
+                <div className="flex flex-col items-center justify-center h-full text-center px-8">
+                  <div className="w-20 h-20 rounded-3xl bg-muted flex items-center justify-center mb-5">
+                    <Bell className="w-10 h-10 text-muted-foreground/30" />
                   </div>
-                  <p className="text-sm font-medium text-muted-foreground">All caught up</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">New activity will appear here</p>
+                  <p className="font-bold text-lg text-muted-foreground">All caught up!</p>
+                  <p className="text-sm text-muted-foreground/60 mt-2 leading-relaxed">
+                    Activity across your wallet, trades, orders, chats and referrals will show up here.
+                  </p>
                 </div>
               ) : (
-                notifications.map(n => (
-                  <NotifItem key={n.id} n={n} />
-                ))
+                <div className="divide-y divide-border/40">
+                  {grouped.map(group => (
+                    <div key={group.label}>
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-5 py-3 bg-muted/30 sticky top-0 z-10">
+                        {group.label}
+                      </p>
+                      {group.items.map(n => <NotifItem key={n.id} n={n} />)}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }

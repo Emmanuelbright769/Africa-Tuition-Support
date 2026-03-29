@@ -7,7 +7,7 @@ import {
   landlordProperties, tenancyLeases, tenancyPayments, loans,
   products, orders, walletDeposits, walletTransfers, billPayments,
   ecommerceChats, ecommerceChatMessages,
-  notifications,
+  notifications, callSessions, forumTopics, forumPosts,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -30,6 +30,9 @@ import {
   type EcommerceChat, type InsertEcommerceChat,
   type EcommerceChatMessage, type InsertEcommerceChatMessage,
   type Notification, type InsertNotification,
+  type CallSession, type InsertCallSession,
+  type ForumTopic, type InsertForumTopic,
+  type ForumPost, type InsertForumPost,
   TRADE_MARKET, ECOMMERCE,
 } from "@shared/schema";
 
@@ -124,6 +127,22 @@ export interface IStorage {
   markAllNotificationsRead(userId: number): Promise<void>;
   clearNotifications(userId: number): Promise<void>;
   hasBotReminderToday(userId: number, reminderType: string): Promise<boolean>;
+
+  // Calls
+  createCallSession(data: InsertCallSession): Promise<CallSession>;
+  getCallSession(id: number): Promise<CallSession | undefined>;
+  updateCallSession(id: number, patch: Partial<CallSession>): Promise<CallSession>;
+  getIncomingCall(calleeId: number): Promise<CallSession | undefined>;
+  endStaleCalls(userId: number): Promise<void>;
+
+  // Forum
+  getForumTopics(section: string, search?: string): Promise<(ForumTopic & { authorName: string })[]>;
+  getForumTopic(id: number): Promise<(ForumTopic & { authorName: string }) | undefined>;
+  createForumTopic(data: InsertForumTopic): Promise<ForumTopic>;
+  getForumPosts(topicId: number): Promise<(ForumPost & { authorName: string })[]>;
+  createForumPost(data: InsertForumPost): Promise<ForumPost>;
+  likeForumTopic(id: number): Promise<void>;
+  likeForumPost(id: number): Promise<void>;
 
   // Wallet Deposits (student/user funding)
   createWalletDeposit(data: InsertWalletDeposit): Promise<WalletDeposit>;
@@ -610,6 +629,122 @@ export class DatabaseStorage implements IStorage {
         )
       ).limit(1);
     return rows.length > 0;
+  }
+
+  // ─── Call Sessions ───────────────────────────────────────────────────────────
+  async createCallSession(data: InsertCallSession): Promise<CallSession> {
+    const [s] = await db.insert(callSessions).values({ ...data, updatedAt: new Date() }).returning();
+    return s;
+  }
+
+  async getCallSession(id: number): Promise<CallSession | undefined> {
+    const [s] = await db.select().from(callSessions).where(eq(callSessions.id, id)).limit(1);
+    return s;
+  }
+
+  async updateCallSession(id: number, patch: Partial<CallSession>): Promise<CallSession> {
+    const [s] = await db.update(callSessions)
+      .set({ ...patch, updatedAt: new Date() } as any)
+      .where(eq(callSessions.id, id))
+      .returning();
+    return s;
+  }
+
+  async getIncomingCall(calleeId: number): Promise<CallSession | undefined> {
+    const [s] = await db.select().from(callSessions)
+      .where(and(eq(callSessions.calleeId, calleeId), eq(callSessions.status, "ringing")))
+      .orderBy(desc(callSessions.createdAt))
+      .limit(1);
+    return s;
+  }
+
+  async endStaleCalls(userId: number): Promise<void> {
+    await db.update(callSessions)
+      .set({ status: "ended", updatedAt: new Date() } as any)
+      .where(
+        and(
+          or(eq(callSessions.callerId, userId), eq(callSessions.calleeId, userId)),
+          or(eq(callSessions.status, "ringing"), eq(callSessions.status, "active"))
+        )
+      );
+  }
+
+  // ─── Forum ───────────────────────────────────────────────────────────────────
+  async getForumTopics(section: string, search?: string): Promise<(ForumTopic & { authorName: string })[]> {
+    const rows = await db.select({
+      id: forumTopics.id, title: forumTopics.title, body: forumTopics.body,
+      authorId: forumTopics.authorId, section: forumTopics.section, tags: forumTopics.tags,
+      replyCount: forumTopics.replyCount, likeCount: forumTopics.likeCount,
+      isPinned: forumTopics.isPinned, createdAt: forumTopics.createdAt,
+      firstName: users.firstName, lastName: users.lastName,
+    })
+      .from(forumTopics)
+      .innerJoin(users, eq(forumTopics.authorId, users.id))
+      .where(
+        section === "both"
+          ? undefined
+          : or(eq(forumTopics.section, section as any), eq(forumTopics.section, "both"))
+      )
+      .orderBy(desc(forumTopics.isPinned), desc(forumTopics.createdAt))
+      .limit(100);
+
+    return rows
+      .filter(r => !search || r.title.toLowerCase().includes(search.toLowerCase()))
+      .map(r => ({ ...r, authorName: `${r.firstName} ${r.lastName}` }));
+  }
+
+  async getForumTopic(id: number): Promise<(ForumTopic & { authorName: string }) | undefined> {
+    const [r] = await db.select({
+      id: forumTopics.id, title: forumTopics.title, body: forumTopics.body,
+      authorId: forumTopics.authorId, section: forumTopics.section, tags: forumTopics.tags,
+      replyCount: forumTopics.replyCount, likeCount: forumTopics.likeCount,
+      isPinned: forumTopics.isPinned, createdAt: forumTopics.createdAt,
+      firstName: users.firstName, lastName: users.lastName,
+    })
+      .from(forumTopics)
+      .innerJoin(users, eq(forumTopics.authorId, users.id))
+      .where(eq(forumTopics.id, id))
+      .limit(1);
+    if (!r) return undefined;
+    return { ...r, authorName: `${r.firstName} ${r.lastName}` };
+  }
+
+  async createForumTopic(data: InsertForumTopic): Promise<ForumTopic> {
+    const [t] = await db.insert(forumTopics).values(data).returning();
+    return t;
+  }
+
+  async getForumPosts(topicId: number): Promise<(ForumPost & { authorName: string })[]> {
+    const rows = await db.select({
+      id: forumPosts.id, topicId: forumPosts.topicId, content: forumPosts.content,
+      authorId: forumPosts.authorId, likeCount: forumPosts.likeCount, createdAt: forumPosts.createdAt,
+      firstName: users.firstName, lastName: users.lastName,
+    })
+      .from(forumPosts)
+      .innerJoin(users, eq(forumPosts.authorId, users.id))
+      .where(eq(forumPosts.topicId, topicId))
+      .orderBy(forumPosts.createdAt);
+    return rows.map(r => ({ ...r, authorName: `${r.firstName} ${r.lastName}` }));
+  }
+
+  async createForumPost(data: InsertForumPost): Promise<ForumPost> {
+    const [p] = await db.insert(forumPosts).values(data).returning();
+    await db.update(forumTopics)
+      .set({ replyCount: sql`${forumTopics.replyCount} + 1` })
+      .where(eq(forumTopics.id, data.topicId));
+    return p;
+  }
+
+  async likeForumTopic(id: number): Promise<void> {
+    await db.update(forumTopics)
+      .set({ likeCount: sql`${forumTopics.likeCount} + 1` })
+      .where(eq(forumTopics.id, id));
+  }
+
+  async likeForumPost(id: number): Promise<void> {
+    await db.update(forumPosts)
+      .set({ likeCount: sql`${forumPosts.likeCount} + 1` })
+      .where(eq(forumPosts.id, id));
   }
 
   // ─── Wallet Deposits ─────────────────────────────────────────────────────────

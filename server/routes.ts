@@ -1607,5 +1607,60 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── E-COMMERCE CHAT ─────────────────────────────────────────────────────────
+  // Get all chats for the current user
+  app.get("/api/chats", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const chats = await storage.getUserChats(userId);
+      res.json(chats);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Get or create a chat for a specific product
+  app.post("/api/chats", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { productId } = req.body;
+    if (!productId) return res.status(400).json({ message: "productId required" });
+    try {
+      const product = await storage.getProductById(parseInt(productId));
+      if (!product) return res.status(404).json({ message: "Product not found" });
+      if (product.sellerId === userId) return res.status(400).json({ message: "You cannot chat with yourself" });
+      const chat = await storage.getOrCreateChat(parseInt(productId), userId, product.sellerId);
+      res.json(chat);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Get messages for a chat
+  app.get("/api/chats/:chatId/messages", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const messages = await storage.getChatMessages(parseInt(req.params.chatId));
+      res.json(messages);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Send a message — server-side censorship as defence-in-depth
+  app.post("/api/chats/:chatId/messages", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { content } = req.body;
+    if (!content?.trim()) return res.status(400).json({ message: "Message cannot be empty" });
+    try {
+      const { censorOffPlatform } = await import("@shared/schema");
+      const { censored, flagged } = censorOffPlatform(content.trim());
+      const msg = await storage.createChatMessage({
+        chatId: parseInt(req.params.chatId),
+        senderId: userId,
+        content: censored,
+        isFlagged: flagged,
+      });
+      res.json(msg);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   return httpServer;
 }

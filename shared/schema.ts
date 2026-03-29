@@ -560,6 +560,69 @@ export const insertBillPaymentSchema = createInsertSchema(billPayments).omit({ i
 export type InsertBillPayment = z.infer<typeof insertBillPaymentSchema>;
 export type BillPayment = typeof billPayments.$inferSelect;
 
+// ─── ECOMMERCE CHAT ───────────────────────────────────────────────────────────
+export const ecommerceChats = pgTable("ecommerce_chats", {
+  id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  productId: integer("product_id").notNull().references(() => products.id),
+  buyerId:   integer("buyer_id").notNull().references(() => users.id),
+  sellerId:  integer("seller_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const ecommerceChatMessages = pgTable("ecommerce_chat_messages", {
+  id:         integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  chatId:     integer("chat_id").notNull().references(() => ecommerceChats.id),
+  senderId:   integer("sender_id").notNull().references(() => users.id),
+  content:    text("content").notNull(),
+  isFlagged:  boolean("is_flagged").notNull().default(false),
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertEcommerceChatSchema = createInsertSchema(ecommerceChats).omit({ id: true, createdAt: true });
+export type InsertEcommerceChat = z.infer<typeof insertEcommerceChatSchema>;
+export type EcommerceChat = typeof ecommerceChats.$inferSelect;
+
+export const insertEcommerceChatMessageSchema = createInsertSchema(ecommerceChatMessages).omit({ id: true, createdAt: true });
+export type InsertEcommerceChatMessage = z.infer<typeof insertEcommerceChatMessageSchema>;
+export type EcommerceChatMessage = typeof ecommerceChatMessages.$inferSelect;
+
+// Patterns that must be censored in chat to keep all activity on-platform
+export const OFFPLATFORM_PATTERNS: { pattern: RegExp; label: string }[] = [
+  { pattern: /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/gi, label: "email address" },
+  { pattern: /https?:\/\/[^\s]+/gi, label: "external link" },
+  { pattern: /wa\.me\/[^\s]*/gi, label: "WhatsApp link" },
+  { pattern: /\b(whatsapp|wts)\b/gi, label: "WhatsApp" },
+  { pattern: /\b(telegram|tg)\b/gi, label: "Telegram" },
+  { pattern: /\b(instagram|insta)\b/gi, label: "Instagram" },
+  { pattern: /\b(facebook|fb\.com)\b/gi, label: "Facebook" },
+  { pattern: /\b(twitter|x\.com)\b/gi, label: "Twitter/X" },
+  { pattern: /\b(snapchat|snap)\b/gi, label: "Snapchat" },
+  { pattern: /\b(tiktok)\b/gi, label: "TikTok" },
+  { pattern: /\b(signal|wechat|kik|viber|skype|discord)\b/gi, label: "messaging app" },
+  { pattern: /\b(paypal|venmo|cashapp|cash\s*app|zelle)\b/gi, label: "external payment" },
+  { pattern: /\b(bank\s*transfer|wire\s*transfer)\b/gi, label: "bank transfer" },
+  { pattern: /\b(my\s+(number|phone|cell|mobile)\s+is)\b/gi, label: "phone number" },
+  { pattern: /\b(call\s+me|text\s+me|add\s+me\s+on|find\s+me\s+on|reach\s+me\s+(on|at|via)|contact\s+me\s+(on|at|via|outside|directly))\b/gi, label: "external contact" },
+  { pattern: /(?<![a-zA-Z0-9])@[a-zA-Z0-9_.]{3,30}\b/g, label: "social handle" },
+  { pattern: /\b\+?(?:\d[\s.\-()\u00AD]?){8,}[\d]\b/g, label: "phone number" },
+];
+
+export function censorOffPlatform(text: string): { censored: string; flagged: boolean; labels: string[] } {
+  let censored = text;
+  let flagged = false;
+  const labels: string[] = [];
+  for (const { pattern, label } of OFFPLATFORM_PATTERNS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(text)) {
+      flagged = true;
+      if (!labels.includes(label)) labels.push(label);
+    }
+    pattern.lastIndex = 0;
+    censored = censored.replace(pattern, "[REMOVED]");
+  }
+  return { censored, flagged, labels };
+}
+
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [
   { id: "binance", name: "Binance", specialty: "Crypto & Futures", rating: 4.9, minDeposit: 10, fee: "0.1%", description: "World's largest crypto exchange with deep liquidity." },

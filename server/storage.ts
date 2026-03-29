@@ -6,6 +6,7 @@ import {
   tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
   landlordProperties, tenancyLeases, tenancyPayments, loans,
   products, orders, walletDeposits, walletTransfers, billPayments,
+  ecommerceChats, ecommerceChatMessages,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -25,6 +26,8 @@ import {
   type Order, type InsertOrder,
   type WalletDeposit, type InsertWalletDeposit,
   type WalletTransfer, type BillPayment,
+  type EcommerceChat, type InsertEcommerceChat,
+  type EcommerceChatMessage, type InsertEcommerceChatMessage,
   TRADE_MARKET, ECOMMERCE,
 } from "@shared/schema";
 
@@ -105,6 +108,12 @@ export interface IStorage {
   getOrdersByBuyer(buyerId: number): Promise<(Order & { product: Product; sellerName: string })[]>;
   getOrdersBySeller(sellerId: number): Promise<(Order & { product: Product; buyerName: string })[]>;
   updateOrderStatus(id: number, status: string): Promise<Order>;
+
+  // E-Commerce Chat
+  getOrCreateChat(productId: number, buyerId: number, sellerId: number): Promise<EcommerceChat>;
+  getChatMessages(chatId: number): Promise<(EcommerceChatMessage & { senderName: string })[]>;
+  createChatMessage(data: InsertEcommerceChatMessage): Promise<EcommerceChatMessage>;
+  getUserChats(userId: number): Promise<(EcommerceChat & { productTitle: string; otherPersonName: string; lastMessage?: string; unread: number })[]>;
 
   // Wallet Deposits (student/user funding)
   createWalletDeposit(data: InsertWalletDeposit): Promise<WalletDeposit>;
@@ -488,6 +497,61 @@ export class DatabaseStorage implements IStorage {
   async updateOrderStatus(id: number, status: string): Promise<Order> {
     const [o] = await db.update(orders).set({ status: status as any, updatedAt: new Date() }).where(eq(orders.id, id)).returning();
     return o;
+  }
+
+  // ─── E-Commerce Chat ──────────────────────────────────────────────────────────
+  async getOrCreateChat(productId: number, buyerId: number, sellerId: number): Promise<EcommerceChat> {
+    const existing = await db.select().from(ecommerceChats)
+      .where(and(eq(ecommerceChats.productId, productId), eq(ecommerceChats.buyerId, buyerId)))
+      .limit(1);
+    if (existing.length > 0) return existing[0];
+    const [chat] = await db.insert(ecommerceChats).values({ productId, buyerId, sellerId }).returning();
+    return chat;
+  }
+
+  async getChatMessages(chatId: number): Promise<(EcommerceChatMessage & { senderName: string })[]> {
+    const rows = await db.select({
+      id: ecommerceChatMessages.id,
+      chatId: ecommerceChatMessages.chatId,
+      senderId: ecommerceChatMessages.senderId,
+      content: ecommerceChatMessages.content,
+      isFlagged: ecommerceChatMessages.isFlagged,
+      createdAt: ecommerceChatMessages.createdAt,
+      senderFirst: users.firstName,
+      senderLast: users.lastName,
+    }).from(ecommerceChatMessages)
+      .innerJoin(users, eq(ecommerceChatMessages.senderId, users.id))
+      .where(eq(ecommerceChatMessages.chatId, chatId))
+      .orderBy(ecommerceChatMessages.createdAt);
+    return rows.map(r => ({ ...r, senderName: `${r.senderFirst} ${r.senderLast}` }));
+  }
+
+  async createChatMessage(data: InsertEcommerceChatMessage): Promise<EcommerceChatMessage> {
+    const [msg] = await db.insert(ecommerceChatMessages).values(data).returning();
+    return msg;
+  }
+
+  async getUserChats(userId: number): Promise<(EcommerceChat & { productTitle: string; otherPersonName: string; lastMessage?: string; unread: number })[]> {
+    const chats = await db.select().from(ecommerceChats)
+      .where(or(eq(ecommerceChats.buyerId, userId), eq(ecommerceChats.sellerId, userId)))
+      .orderBy(desc(ecommerceChats.createdAt));
+
+    const result = await Promise.all(chats.map(async (chat) => {
+      const [prod] = await db.select({ title: products.title }).from(products).where(eq(products.id, chat.productId)).limit(1);
+      const otherUserId = chat.buyerId === userId ? chat.sellerId : chat.buyerId;
+      const [otherUser] = await db.select({ firstName: users.firstName, lastName: users.lastName }).from(users).where(eq(users.id, otherUserId)).limit(1);
+      const msgs = await db.select({ content: ecommerceChatMessages.content, createdAt: ecommerceChatMessages.createdAt })
+        .from(ecommerceChatMessages).where(eq(ecommerceChatMessages.chatId, chat.id))
+        .orderBy(desc(ecommerceChatMessages.createdAt)).limit(1);
+      return {
+        ...chat,
+        productTitle: prod?.title ?? "Unknown product",
+        otherPersonName: otherUser ? `${otherUser.firstName} ${otherUser.lastName}` : "Unknown",
+        lastMessage: msgs[0]?.content,
+        unread: 0, // simplified — no read-tracking in v1
+      };
+    }));
+    return result;
   }
 
   // ─── Wallet Deposits ─────────────────────────────────────────────────────────

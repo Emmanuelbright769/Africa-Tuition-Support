@@ -13,10 +13,11 @@ import {
   Search, ShoppingBag, Package, Star, MapPin, Plus, Eye, ShoppingCart,
   Tag, Truck, CheckCircle2, X, Camera, TrendingUp, Loader2, Heart,
   Filter, ChevronRight, BadgePercent, Bell, Zap, ArrowRight, Flame,
-  Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check
+  Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, MessageCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ECOMMERCE } from "@shared/schema";
+import { EcommerceChatDrawer, ProductChatModal } from "./EcommerceChatPanel";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Product = {
@@ -516,7 +517,7 @@ function BuyModal({ product, open, onClose, walletBalance }: { product: Product 
 }
 
 // ─── Product Detail Modal ──────────────────────────────────────────────────
-function ProductDetailModal({ product, open, onClose, onBuy }: { product: Product | null; open: boolean; onClose: () => void; onBuy: () => void }) {
+function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }: { product: Product | null; open: boolean; onClose: () => void; onBuy: () => void; onChat?: () => void; isSeller?: boolean }) {
   const [imgIdx, setImgIdx] = useState(0);
   if (!product) return null;
   const imgs = product.images?.length ? product.images : [];
@@ -579,10 +580,15 @@ function ProductDetailModal({ product, open, onClose, onBuy }: { product: Produc
             <span className="text-amber-700 dark:text-amber-300 flex items-center gap-1"><Truck className="w-3.5 h-3.5" />Free shipping</span>
           </div>
         </div>
-        <div className="px-5 pb-5">
+        <div className="px-5 pb-5 flex flex-col gap-3">
           <Button onClick={onBuy} disabled={product.stock === 0} className="w-full h-13 py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base" data-testid={`btn-detail-buy-${product.id}`}>
             <ShoppingCart className="w-5 h-5 mr-2" /> Buy Now — ${parseFloat(product.price).toFixed(2)}
           </Button>
+          {!isSeller && onChat && (
+            <Button variant="outline" onClick={onChat} className="w-full rounded-2xl font-semibold h-11" data-testid={`btn-detail-chat-${product.id}`}>
+              <MessageCircle className="w-4 h-4 mr-2" /> Chat with Seller
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -613,6 +619,9 @@ export default function EcommerceSection() {
   const [filterMaxPrice, setFilterMaxPrice] = useState("");
   const [filterCondition, setFilterCondition] = useState<""|"new"|"used"|"refurbished">("");
   const [filterViewMode, setFilterViewMode] = useState<"grid"|"list">("grid");
+  const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
+  const [chatProduct, setChatProduct] = useState<Product | null>(null);
+  const [chatProductOpen, setChatProductOpen] = useState(false);
 
   const { data: wallet } = useQuery<any>({ queryKey: ["/api/wallet"] });
   const walletBalance = parseFloat(wallet?.balance ?? "0");
@@ -684,6 +693,10 @@ export default function EcommerceSection() {
           <h1 className="text-2xl font-black tracking-tight">Welcome 👋</h1>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setChatDrawerOpen(true)} data-testid="btn-messages"
+            className="relative w-10 h-10 bg-card rounded-full border flex items-center justify-center shadow-sm hover:shadow transition-shadow">
+            <MessageCircle className="w-5 h-5" />
+          </button>
           <button onClick={() => { setTab("purchases"); }} data-testid="btn-cart" className="relative w-10 h-10 bg-card rounded-full border flex items-center justify-center shadow-sm hover:shadow transition-shadow">
             <ShoppingCart className="w-5 h-5" />
             {(cartItems as Order[]).length > 0 && (
@@ -986,8 +999,27 @@ export default function EcommerceSection() {
 
       {/* Modals */}
       <ListProductModal open={listOpen} onClose={() => setListOpen(false)} />
-      <ProductDetailModal product={selectedProduct} open={detailOpen} onClose={() => setDetailOpen(false)} onBuy={() => { setDetailOpen(false); setBuyProduct(selectedProduct); setBuyOpen(true); }} />
+      <ProductDetailModal
+        product={selectedProduct}
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        onBuy={() => { setDetailOpen(false); setBuyProduct(selectedProduct); setBuyOpen(true); }}
+        isSeller={selectedProduct?.sellerId === user?.id}
+        onChat={() => { setDetailOpen(false); setChatProduct(selectedProduct); setChatProductOpen(true); }}
+      />
       <BuyModal product={buyProduct} open={buyOpen} onClose={() => setBuyOpen(false)} walletBalance={walletBalance} />
+
+      {/* Chat components */}
+      <EcommerceChatDrawer open={chatDrawerOpen} onClose={() => setChatDrawerOpen(false)} />
+      {chatProduct && (
+        <ProductChatModal
+          productId={chatProduct.id}
+          productTitle={chatProduct.title}
+          sellerName={chatProduct.sellerName}
+          open={chatProductOpen}
+          onClose={() => { setChatProductOpen(false); setChatProduct(null); }}
+        />
+      )}
 
       {/* ── Categories Grid Modal ──────────────────────────────────────── */}
       <Dialog open={showCategoriesModal} onOpenChange={setShowCategoriesModal}>

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, boolean, timestamp, pgEnum, jsonb, serial, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, boolean, timestamp, pgEnum, jsonb, serial, numeric, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -17,7 +17,7 @@ export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
-  email: text("email").notNull().unique(),
+  email: text("email").notNull(),
   phone: text("phone").notNull(),
   password: text("password").notNull().default("otp-only"),
   country: text("country").notNull().default("ng"),
@@ -25,7 +25,9 @@ export const users = pgTable("users", {
   affiliateCode: text("affiliate_code").unique(),
   referredBy: text("referred_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  emailRoleUnique: uniqueIndex("users_email_role_unique").on(table.email, table.role),
+}));
 
 export const otpCodes = pgTable("otp_codes", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),

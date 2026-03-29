@@ -27,6 +27,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
+import { LearnMore } from "@/components/ui/LearnMore";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
 import EcommerceSection from "./EcommerceSection";
 
@@ -532,9 +533,11 @@ export default function AffiliateDashboard() {
                           <p className="text-green-200 text-sm mt-0.5">Trades profit & loss on capital markets using arithmetic algorithms with the power of a BOT (AI)</p>
                         </div>
                       </div>
-                      <p className="text-green-100 text-sm leading-relaxed">
-                        TSIA's Global Trade Market targets a <strong className="text-white">100% total return on investment</strong> through consistent 2% daily capital market trading — powered by advanced arithmetic algorithms and an AI-driven BOT. At the end of your investment cycle, your capital will have grown to double what you deposited.
-                      </p>
+                      <LearnMore label="Learn more" dark className="mt-1">
+                        <p className="text-green-100 text-sm leading-relaxed">
+                          TSIA's Global Trade Market targets a <strong className="text-white">100% total return on investment</strong> through consistent 2% daily capital market trading — powered by advanced arithmetic algorithms and an AI-driven BOT. At the end of your investment cycle, your capital will have grown to double what you deposited.
+                        </p>
+                      </LearnMore>
                     </div>
                   </div>
                 </motion.div>
@@ -812,13 +815,19 @@ export default function AffiliateDashboard() {
                 {/* How it works */}
                 <motion.div variants={itemVariants}>
                   <Card className="shadow-md border-0">
-                    <CardContent className="pt-6 space-y-4">
-                      <h4 className="font-bold flex items-center gap-2"><BarChart3 className="w-4 h-4 text-primary" /> How Profit Sharing Works</h4>
-                      <p className="text-sm text-muted-foreground">TSIA allocates <strong className="text-foreground">5%</strong> of all profits across up to 1,000,000 Co-Affiliates for life.</p>
-                      <div className="bg-card rounded-xl p-4 border font-mono text-xs space-y-1">
-                        <div className="text-primary font-bold">Your Share = 0.000005 × (your amount ÷ 100)</div>
-                        <div>$100 → <strong>0.0005%</strong> · $300 → <strong>0.0015%</strong> · $500 → <strong>0.0025%</strong> · $10,000 → <strong>0.05%</strong></div>
+                    <CardContent className="pt-6 space-y-3">
+                      <div className="flex items-center gap-2 font-bold">
+                        <BarChart3 className="w-4 h-4 text-primary" /> How Profit Sharing Works
                       </div>
+                      <LearnMore label="See how your share is calculated">
+                        <div className="space-y-3 pt-1">
+                          <p className="text-sm text-muted-foreground">TSIA allocates <strong className="text-foreground">5%</strong> of all profits across up to 1,000,000 Co-Affiliates for life.</p>
+                          <div className="bg-card rounded-xl p-4 border font-mono text-xs space-y-1">
+                            <div className="text-primary font-bold">Your Share = 0.000005 × (your amount ÷ 100)</div>
+                            <div>$100 → <strong>0.0005%</strong> · $300 → <strong>0.0015%</strong> · $500 → <strong>0.0025%</strong> · $10,000 → <strong>0.05%</strong></div>
+                          </div>
+                        </div>
+                      </LearnMore>
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -894,7 +903,9 @@ export default function AffiliateDashboard() {
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Business loan</h2>
-                  <p className="text-muted-foreground text-sm mb-6">Access flexible financing based on your referral activity and trade balance.</p>
+                  <LearnMore label="Learn more about eligibility" className="mt-1 mb-5">
+                    <p className="text-muted-foreground text-sm">Access flexible financing based on your referral activity and trade balance.</p>
+                  </LearnMore>
                 </motion.div>
 
                 {/* Eligibility / limit card */}
@@ -1078,7 +1089,9 @@ export default function AffiliateDashboard() {
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Tenancy business</h2>
-                  <p className="text-muted-foreground text-sm mb-6">List your properties or browse available rentals — TSIA pays landlords upfront while tenants pay in instalments.</p>
+                  <LearnMore label="How tenancy works" className="mt-1 mb-5">
+                    <p className="text-muted-foreground text-sm">List your properties or browse available rentals — TSIA pays landlords upfront while tenants pay in instalments.</p>
+                  </LearnMore>
                 </motion.div>
 
                 {/* Quick stats */}

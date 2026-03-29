@@ -25,6 +25,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
+import { LearnMore } from "@/components/ui/LearnMore";
 
 
 type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce";
@@ -453,7 +454,9 @@ export default function StudentDashboard() {
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Student loan programme</h2>
-                  <p className="text-muted-foreground text-sm mb-6">Low-interest education financing exclusively for verified TSIA students.</p>
+                  <LearnMore label="Learn more about this programme" className="mt-1 mb-5">
+                    <p className="text-muted-foreground text-sm">Low-interest education financing exclusively for verified TSIA students.</p>
+                  </LearnMore>
                 </motion.div>
 
                 {/* Eligibility / stats */}
@@ -607,21 +610,23 @@ export default function StudentDashboard() {
 
                 {/* Feature highlights */}
                 <motion.div variants={itemVariants}>
-                  <div className="grid sm:grid-cols-3 gap-4 text-sm">
-                    {[
-                      { label: "Low interest", desc: "10% flat annual rate for students", icon: TrendingDown },
-                      { label: "No collateral", desc: "Identity-based underwriting via TSIA enrollment", icon: Shield },
-                      { label: "Quick review", desc: "Decisions within 24–48 hours", icon: Zap },
-                    ].map(f => (
-                      <div key={f.label} className="bg-muted/50 rounded-xl p-4 border flex items-start gap-3">
-                        <f.icon className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="font-semibold">{f.label}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{f.desc}</p>
+                  <LearnMore label="How this loan works">
+                    <div className="grid sm:grid-cols-3 gap-4 text-sm">
+                      {[
+                        { label: "Low interest", desc: "10% flat annual rate for students", icon: TrendingDown },
+                        { label: "No collateral", desc: "Identity-based underwriting via TSIA enrollment", icon: Shield },
+                        { label: "Quick review", desc: "Decisions within 24–48 hours", icon: Zap },
+                      ].map(f => (
+                        <div key={f.label} className="bg-muted/50 rounded-xl p-4 border flex items-start gap-3">
+                          <f.icon className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-semibold">{f.label}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{f.desc}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  </LearnMore>
                 </motion.div>
               </>
             )}

@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
+import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 
 
 type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum";
@@ -166,6 +167,7 @@ export default function StudentDashboard() {
               ))}
             </div>
             <span className="text-sm font-medium hidden sm:block text-muted-foreground">Hi, {user.firstName}</span>
+            <DashboardSwitcher />
             <NotificationBell />
             <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-logout">
               <LogOut className="w-4 h-4 sm:mr-1" /><span className="hidden sm:inline">Logout</span>

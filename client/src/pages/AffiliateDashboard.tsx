@@ -29,6 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
+import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
 import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
@@ -368,6 +369,7 @@ export default function AffiliateDashboard() {
                 </button>
               ))}
             </div>
+            <DashboardSwitcher />
             <NotificationBell />
             <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-aff-logout">
               <LogOut className="w-4 h-4 sm:mr-1" /><span className="hidden sm:inline">Logout</span>

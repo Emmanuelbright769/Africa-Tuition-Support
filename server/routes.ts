@@ -85,36 +85,49 @@ export async function registerRoutes(
       }
 
       // ── Signup flow ────────────────────────────────────────────────────
-      let user = await storage.getUserByEmailAndRole(email, role === "affiliate" ? "affiliate" : "student");
-
-      if (!user) {
-        const userRole = role === "affiliate" ? "affiliate" : "student";
-        user = await storage.createUser({
-          firstName, lastName, email, phone: phone || "",
-          password: "otp-only", country: country || "ng", role: userRole,
-          referredBy: referralCode || null,
-        });
-        const affCode = generateAffiliateCode(firstName, user.id);
-        await storage.updateUserAffiliateCode(user.id, affCode);
-        user = await storage.getUser(user.id);
-
-        // Notify the affiliate who referred this person
-        if (referralCode) {
-          try {
-            const referrer = await storage.getUserByAffiliateCode(referralCode);
-            if (referrer) {
-              await storage.createNotification({
-                userId: referrer.id,
-                type: "referral",
-                title: "New Referral",
-                message: `${firstName} ${lastName} signed up using your referral link as a ${userRole}.`,
-                data: { newUserId: user!.id, role: userRole },
-                isRead: false,
-              });
-            }
-          } catch { /* non-critical */ }
+      // Helper: create a user for a specific role if they don't exist yet
+      const createRoleAccount = async (targetRole: "student" | "affiliate") => {
+        let u = await storage.getUserByEmailAndRole(email, targetRole);
+        if (!u) {
+          u = await storage.createUser({
+            firstName, lastName, email, phone: phone || "",
+            password: "otp-only", country: country || "ng", role: targetRole,
+            referredBy: referralCode || null,
+          });
+          const affCode = generateAffiliateCode(firstName, u.id);
+          await storage.updateUserAffiliateCode(u.id, affCode);
+          u = await storage.getUser(u.id);
+          // Notify referrer
+          if (referralCode) {
+            try {
+              const referrer = await storage.getUserByAffiliateCode(referralCode);
+              if (referrer) {
+                await storage.createNotification({
+                  userId: referrer.id, type: "referral", title: "New Referral",
+                  message: `${firstName} ${lastName} signed up using your referral link as a ${targetRole}.`,
+                  data: { newUserId: u!.id, role: targetRole }, isRead: false,
+                });
+              }
+            } catch { /* non-critical */ }
+          }
         }
+        return u;
+      };
+
+      // "both" — create student + affiliate accounts with one OTP
+      if (role === "both") {
+        const studentUser  = await createRoleAccount("student");
+        const affiliateUser = await createRoleAccount("affiliate");
+        const code = generateOtp();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        await storage.createOtp({ email, code, expiresAt, used: false });
+        console.log(`[OTP] Dual-account code for ${email}: ${code}`);
+        return res.json({ message: "OTP sent to your email", otpSent: true, bothCreated: true, hint: code });
       }
+
+      // Single-role signup
+      const targetRole = role === "affiliate" ? "affiliate" : "student";
+      const user = await createRoleAccount(targetRole);
 
       const code = generateOtp();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -174,6 +187,50 @@ export async function registerRoutes(
   app.post("/api/auth/logout", (req, res) => {
     req.session.destroy(() => {});
     res.json({ ok: true });
+  });
+
+  // GET /api/auth/linked-roles — returns all roles this email has accounts for
+  app.get("/api/auth/linked-roles", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      const allAccounts = await storage.getUsersByEmail(user.email);
+      res.json({ roles: allAccounts.map(u => u.role), currentRole: user.role });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/auth/switch-role — switch to another role for the same email
+  app.post("/api/auth/switch-role", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const { targetRole } = req.body;
+      if (!targetRole) return res.status(400).json({ error: "targetRole is required" });
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) return res.status(404).json({ error: "User not found" });
+      if (currentUser.role === targetRole) return res.json({
+        id: currentUser.id, firstName: currentUser.firstName, lastName: currentUser.lastName,
+        email: currentUser.email, role: currentUser.role, affiliateCode: currentUser.affiliateCode,
+      });
+      const targetUser = await storage.getUserByEmailAndRole(currentUser.email, targetRole);
+      if (!targetUser) {
+        return res.status(404).json({ error: `No ${targetRole} account found for this email. Please sign up for a ${targetRole} account first.` });
+      }
+      (req.session as any).userId = targetUser.id;
+      req.session.save((err) => {
+        if (err) return res.status(500).json({ error: "Session save failed" });
+        res.json({
+          id: targetUser.id, firstName: targetUser.firstName, lastName: targetUser.lastName,
+          email: targetUser.email, role: targetUser.role, affiliateCode: targetUser.affiliateCode,
+        });
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.post("/api/auth/login", async (req, res) => {

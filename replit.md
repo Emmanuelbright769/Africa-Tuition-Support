@@ -10,6 +10,12 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - **Routing**: wouter (frontend), Express (backend)
 - **File Uploads**: multer (memory storage → base64 in DB)
 
+## Recent Updates (Session 6)
+- **Unified Signup with role picker**: `/signup` now has Step 0 = role selector (Student / Affiliate / Both); "Both" creates a student + affiliate account in one OTP flow; `/affiliate-signup` redirects to `/signup?role=affiliate`
+- **Dual-account creation**: Server `request-otp` handles `role: "both"` — creates student AND affiliate user records, sends single OTP; after OTP verification, logs into student role with affiliate accessible via switcher
+- **Dashboard Switcher** (`DashboardSwitcher.tsx`): In both dashboards' headers — shows "Switch to Business/Student" button when user has both account types; calls `POST /api/auth/switch-role` which updates the session to the other role and redirects; shows "Add Business/Student account" link when user has only one role
+- **New auth endpoints**: `GET /api/auth/linked-roles` returns all roles for current email; `POST /api/auth/switch-role { targetRole }` updates session to that role's user record
+
 ## Recent Updates (Session 5)
 - **Full-screen NotificationBell**: Slides in from right covering full viewport; grouped by Today/Yesterday/date; mark-all-read + clear-all; animated unread badge; 30s polling
 - **Full-screen E-Commerce Chat**: `EcommerceChatDrawer` and `ProductChatModal` both now render as full-screen overlays (fixed inset-0); chat inbox as separate full-screen list; voice call button in every chat header

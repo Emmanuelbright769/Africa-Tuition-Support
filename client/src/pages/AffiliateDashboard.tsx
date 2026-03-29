@@ -28,6 +28,7 @@ import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 import { LearnMore } from "@/components/ui/LearnMore";
+import { NotificationBell } from "@/components/ui/NotificationBell";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
 import EcommerceSection from "./EcommerceSection";
 
@@ -365,6 +366,7 @@ export default function AffiliateDashboard() {
                 </button>
               ))}
             </div>
+            <NotificationBell />
             <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-aff-logout">
               <LogOut className="w-4 h-4 sm:mr-1" /><span className="hidden sm:inline">Logout</span>
             </Button>
@@ -600,7 +602,18 @@ export default function AffiliateDashboard() {
                         </div>
                         {/* Action footer */}
                         <div className="bg-card p-4 flex items-center gap-3">
-                          {botActive ? (
+                          {tradeBalance < TRADE_MARKET.MIN_DEPOSIT ? (
+                            // No investment plan — block the bot entirely
+                            <div className="flex-1 flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
+                                <Power className="w-4 h-4 text-orange-500" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-orange-600 dark:text-orange-400">Investment plan required</p>
+                                <p className="text-xs text-muted-foreground">Deposit at least <strong className="text-foreground">${TRADE_MARKET.MIN_DEPOSIT}</strong> into your Trade Wallet to activate the bot. Go to <strong>Deposit</strong> below.</p>
+                              </div>
+                            </div>
+                          ) : botActive ? (
                             <>
                               <div className="flex-1">
                                 <p className="text-xs text-muted-foreground">Bot activated · auto-deactivates at <strong>{new Date((botActivatedAt ?? 0) + 12 * 3600000).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}</strong> GMT</p>

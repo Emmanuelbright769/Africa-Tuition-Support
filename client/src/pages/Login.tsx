@@ -4,51 +4,69 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight } from "lucide-react";
+import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 
-// step 1 = enter email · step "pick" = choose account · step 2 = enter OTP
-type Step = 1 | "pick" | 2;
+// step 0 = pick role  ·  step 1 = enter email  ·  step 2 = enter OTP
+type Step = 0 | 1 | 2;
 
-const ROLE_META: Record<string, { label: string; desc: string; icon: any; color: string }> = {
-  student:   { label: "Student Account",   desc: "Access your student dashboard, wallet & sponsorship plans", icon: GraduationCap, color: "border-tsia-green bg-green-50 dark:bg-green-900/20 text-tsia-green" },
-  affiliate: { label: "Affiliate Account", desc: "Access the business dashboard, trade market & affiliate tools", icon: Briefcase,     color: "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600" },
+const ROLE_META = {
+  student:   {
+    label: "Student Login",
+    sub: "Student dashboard, wallet & sponsorship",
+    icon: GraduationCap,
+    border: "border-tsia-green",
+    activeBg: "bg-tsia-green",
+    pill: "bg-green-100 text-tsia-green dark:bg-green-900/30",
+    activeCard: "border-2 border-tsia-green bg-green-50/60 dark:bg-green-900/20 shadow-lg shadow-tsia-green/10",
+    inactiveCard: "border-2 border-border bg-card hover:border-tsia-green/40 hover:shadow-md",
+  },
+  affiliate: {
+    label: "Affiliate Login",
+    sub: "Business dashboard, trade market & tools",
+    icon: Briefcase,
+    border: "border-blue-500",
+    activeBg: "bg-blue-600",
+    pill: "bg-blue-100 text-blue-700 dark:bg-blue-900/30",
+    activeCard: "border-2 border-blue-500 bg-blue-50/60 dark:bg-blue-900/20 shadow-lg shadow-blue-500/10",
+    inactiveCard: "border-2 border-border bg-card hover:border-blue-400/40 hover:shadow-md",
+  },
 };
 
 export default function Login() {
   const [, setLocation] = useLocation();
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>(0);
   const [loading, setLoading] = useState(false);
+  const [loginRole, setLoginRole] = useState<"student" | "affiliate" | "">("");
   const [email, setEmail] = useState("");
   const [otpHint, setOtpHint] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
-  const [availableRoles, setAvailableRoles] = useState<string[]>([]);
-  const [loginRole, setLoginRole] = useState<string>("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { requestOtp, verifyOtp } = useAuth();
   const { toast } = useToast();
 
-  // ── Step 1: request OTP (or detect dual accounts) ─────────────────────
+  // ── Step 0 → 1: pick a role ────────────────────────────────────────────
+  const handlePickRole = (role: "student" | "affiliate") => {
+    setLoginRole(role);
+    setStep(1);
+  };
+
+  // ── Step 1: request OTP ────────────────────────────────────────────────
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!loginRole) return;
     setLoading(true);
     try {
-      const result = await requestOtp({ email });
-
-      if (result.multipleRoles && result.roles && result.roles.length > 1) {
-        // Dual-account email — show role picker
-        setAvailableRoles(result.roles);
-        setStep("pick");
-        return;
-      }
-
+      const result = await requestOtp({ email, loginRole });
       if (result.otpSent) {
         setOtpHint(result.hint || "");
         setStep(2);
         toast({ title: "OTP Sent", description: "Check your email for the 6-digit code." });
+      } else {
+        toast({ title: "Error", description: result.error || "Could not send OTP.", variant: "destructive" });
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -57,25 +75,7 @@ export default function Login() {
     }
   };
 
-  // ── Step "pick": user selected a role — now send OTP for that account ──
-  const handleRolePick = async (role: string) => {
-    setLoginRole(role);
-    setLoading(true);
-    try {
-      const result = await requestOtp({ email, loginRole: role });
-      if (result.otpSent) {
-        setOtpHint(result.hint || "");
-        setStep(2);
-        toast({ title: "OTP Sent", description: "Check your email for the 6-digit code." });
-      }
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── OTP digit input handling ────────────────────────────────────────────
+  // ── OTP digit helpers ──────────────────────────────────────────────────
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) value = value.slice(-1);
     if (value && !/^\d$/.test(value)) return;
@@ -91,7 +91,7 @@ export default function Login() {
     }
   };
 
-  // ── Step 2: verify OTP ──────────────────────────────────────────────────
+  // ── Step 2: verify OTP ─────────────────────────────────────────────────
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = otpDigits.join("");
@@ -112,7 +112,7 @@ export default function Login() {
   const handleResend = async () => {
     setLoading(true);
     try {
-      const result = await requestOtp({ email, ...(loginRole ? { loginRole } : {}) });
+      const result = await requestOtp({ email, loginRole: loginRole || undefined });
       setOtpHint(result.hint || "");
       setOtpDigits(["", "", "", "", "", ""]);
       toast({ title: "OTP Resent", description: "A new code has been sent." });
@@ -123,12 +123,21 @@ export default function Login() {
     }
   };
 
+  const resetToRole = () => {
+    setStep(0);
+    setLoginRole("");
+    setEmail("");
+    setOtpDigits(["", "", "", "", "", ""]);
+    setOtpHint("");
+  };
+
   const resetToEmail = () => {
     setStep(1);
     setOtpDigits(["", "", "", "", "", ""]);
-    setLoginRole("");
-    setAvailableRoles([]);
+    setOtpHint("");
   };
+
+  const roleMeta = loginRole ? ROLE_META[loginRole] : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans overflow-hidden">
@@ -138,18 +147,66 @@ export default function Login() {
         </Link>
       </motion.div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md relative">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative px-4 sm:px-0">
         <AnimatePresence mode="wait">
-          <motion.div key={step} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }}>
+          <motion.div key={step} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
             <Card className="shadow-xl border-0 overflow-hidden relative">
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-tsia-green to-tsia-gold" />
 
-              {/* ── Step 1: Enter email ──────────────────────────────── */}
-              {step === 1 && (
+              {/* ── Step 0: Always-visible role selector ────────────── */}
+              {step === 0 && (
+                <>
+                  <CardHeader className="space-y-2 pt-8 pb-4">
+                    <CardTitle className="text-2xl text-center font-bold">Welcome to TSIA</CardTitle>
+                    <CardDescription className="text-center text-base">Select how you'd like to sign in</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pb-8 space-y-4">
+                    <p className="text-xs text-center text-muted-foreground mb-2">
+                      One email can hold both a Student and an Affiliate account
+                    </p>
+                    {(["student", "affiliate"] as const).map(role => {
+                      const m = ROLE_META[role];
+                      const Icon = m.icon;
+                      return (
+                        <button
+                          key={role}
+                          onClick={() => handlePickRole(role)}
+                          data-testid={`button-role-${role}`}
+                          className={`w-full flex items-center gap-4 p-5 rounded-2xl transition-all text-left group ${m.inactiveCard}`}
+                        >
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${m.pill}`}>
+                            <Icon className="w-6 h-6" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-base text-foreground">{m.label}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{m.sub}</p>
+                          </div>
+                          <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                        </button>
+                      );
+                    })}
+                  </CardContent>
+                  <CardFooter className="flex justify-center border-t py-6 bg-muted/30">
+                    <p className="text-sm text-muted-foreground">
+                      Don't have an account?{" "}
+                      <Link href="/signup"><span className="font-semibold text-primary hover:text-primary/80 cursor-pointer transition-colors">Apply now</span></Link>
+                    </p>
+                  </CardFooter>
+                </>
+              )}
+
+              {/* ── Step 1: Enter email ─────────────────────────────── */}
+              {step === 1 && roleMeta && (
                 <>
                   <CardHeader className="space-y-2 pt-8">
-                    <CardTitle className="text-2xl text-center font-bold">Welcome back</CardTitle>
-                    <CardDescription className="text-center text-base">Enter your email to receive a one-time login code</CardDescription>
+                    <div className="flex justify-center mb-2">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${roleMeta.pill}`}>
+                        {loginRole === "student" ? <GraduationCap className="w-3.5 h-3.5" /> : <Briefcase className="w-3.5 h-3.5" />}
+                        {roleMeta.label}
+                      </span>
+                    </div>
+                    <CardTitle className="text-2xl text-center font-bold">Enter your email</CardTitle>
+                    <CardDescription className="text-center text-base">We'll send a one-time code to sign you in</CardDescription>
                   </CardHeader>
                   <CardContent className="pb-8">
                     <form onSubmit={handleRequestOtp} className="space-y-6">
@@ -157,12 +214,34 @@ export default function Login() {
                         <Label htmlFor="email">Email address</Label>
                         <div className="relative">
                           <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                          <Input id="email" type="email" placeholder="you@example.com" required className="h-12 pl-10 bg-muted/30" value={email} onChange={e => setEmail(e.target.value)} data-testid="input-login-email" />
+                          <Input
+                            id="email"
+                            type="email"
+                            placeholder="you@example.com"
+                            required
+                            className="h-12 pl-10 bg-muted/30"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                            data-testid="input-login-email"
+                          />
                         </div>
                       </div>
-                      <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md" disabled={loading} data-testid="button-request-otp">
-                        {loading ? "Checking..." : "Continue"}
+                      <Button
+                        type="submit"
+                        className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md"
+                        disabled={loading}
+                        data-testid="button-request-otp"
+                      >
+                        {loading ? "Sending code..." : "Send Login Code"}
                       </Button>
+                      <button
+                        type="button"
+                        onClick={resetToRole}
+                        className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                        data-testid="button-back-to-role"
+                      >
+                        <ArrowLeft className="w-4 h-4" /> Choose a different account type
+                      </button>
                     </form>
                   </CardContent>
                   <CardFooter className="flex justify-center border-t py-6 bg-muted/30">
@@ -174,49 +253,16 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── Step "pick": dual-account role selector ──────────── */}
-              {step === "pick" && (
+              {/* ── Step 2: Enter OTP ───────────────────────────────── */}
+              {step === 2 && roleMeta && (
                 <>
                   <CardHeader className="space-y-2 pt-8">
-                    <CardTitle className="text-2xl text-center font-bold">Choose an Account</CardTitle>
-                    <CardDescription className="text-center text-base">
-                      We found multiple accounts linked to <strong className="text-foreground">{email}</strong>. Which one would you like to sign in to?
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="pb-8 space-y-3">
-                    {availableRoles.map(role => {
-                      const meta = ROLE_META[role] ?? { label: role, desc: "", icon: Briefcase, color: "border-border" };
-                      const Icon = meta.icon;
-                      return (
-                        <button
-                          key={role}
-                          onClick={() => handleRolePick(role)}
-                          disabled={loading}
-                          data-testid={`button-pick-role-${role}`}
-                          className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all hover:shadow-md disabled:opacity-50 ${meta.color}`}
-                        >
-                          <div className="w-12 h-12 rounded-xl bg-white/70 dark:bg-black/20 flex items-center justify-center shrink-0">
-                            <Icon className="w-6 h-6" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-sm">{meta.label}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{meta.desc}</p>
-                          </div>
-                          <ChevronRight className="w-5 h-5 shrink-0 text-muted-foreground" />
-                        </button>
-                      );
-                    })}
-                    <button type="button" className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors pt-1" onClick={resetToEmail}>
-                      ← Use a different email
-                    </button>
-                  </CardContent>
-                </>
-              )}
-
-              {/* ── Step 2: Enter OTP ────────────────────────────────── */}
-              {step === 2 && (
-                <>
-                  <CardHeader className="space-y-2 pt-8">
+                    <div className="flex justify-center mb-2">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${roleMeta.pill}`}>
+                        {loginRole === "student" ? <GraduationCap className="w-3.5 h-3.5" /> : <Briefcase className="w-3.5 h-3.5" />}
+                        {roleMeta.label}
+                      </span>
+                    </div>
                     <CardTitle className="text-2xl text-center font-bold">Enter Your Code</CardTitle>
                     <CardDescription className="text-center text-base">We sent a 6-digit code to your email</CardDescription>
                   </CardHeader>
@@ -227,13 +273,6 @@ export default function Login() {
                           <KeyRound className="w-4 h-4" />
                           <span>Code sent to <strong className="text-foreground">{email}</strong></span>
                         </div>
-                        {loginRole && (
-                          <div className="flex items-center justify-center gap-1.5 text-xs font-semibold">
-                            {loginRole === "student"
-                              ? <><GraduationCap className="w-3.5 h-3.5 text-tsia-green" /><span className="text-tsia-green">Student Account</span></>
-                              : <><Briefcase className="w-3.5 h-3.5 text-blue-600" /><span className="text-blue-600">Affiliate Account</span></>}
-                          </div>
-                        )}
                         {otpHint && (
                           <div className="text-center p-3 bg-primary/10 rounded-lg border border-primary/20">
                             <span className="text-xs text-muted-foreground">Demo OTP: </span>
@@ -255,14 +294,28 @@ export default function Login() {
                           ))}
                         </div>
                       </div>
-                      <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md" disabled={loading || otpDigits.join("").length !== 6} data-testid="button-verify-otp">
+                      <Button
+                        type="submit"
+                        className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md"
+                        disabled={loading || otpDigits.join("").length !== 6}
+                        data-testid="button-verify-otp"
+                      >
                         {loading ? "Verifying..." : "Verify & Access Portal"}
                       </Button>
                       <div className="flex items-center justify-between text-sm">
-                        <button type="button" className="text-muted-foreground hover:text-foreground transition-colors" onClick={resetToEmail}>
-                          Change email
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                          onClick={resetToEmail}
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" /> Change email
                         </button>
-                        <button type="button" className="text-primary font-medium hover:underline" onClick={handleResend} disabled={loading}>
+                        <button
+                          type="button"
+                          className="text-primary font-medium hover:underline"
+                          onClick={handleResend}
+                          disabled={loading}
+                        >
                           Resend code
                         </button>
                       </div>

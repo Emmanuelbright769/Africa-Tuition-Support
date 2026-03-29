@@ -10,6 +10,12 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - **Routing**: wouter (frontend), Express (backend)
 - **File Uploads**: multer (memory storage → base64 in DB)
 
+## Recent Updates (Session 4)
+- **Login redesign**: Always shows Student/Affiliate role selector as Step 0; one email can hold both account types; role is chosen first before email entry
+- **Live Notification System**: `NotificationBell` component in both dashboards; polls every 30s; supports types: bot_reminder, chat_message, order_update, wallet_credit, loan_update, verification_update, referral, trade_deposit, system; auto-creates bot reminders at 12:28–12:35 PM and 1:00–1:05 PM UK time for affiliates; notifications fired on: new chat message, order placed/sold, wallet deposit confirmed, verification approved/rejected, referral signup
+- **Trade bot enforcement**: Bot cannot be turned on/off unless tradeBalance ≥ $10 (TRADE_MARKET.MIN_DEPOSIT); shows clear "Investment plan required" message with deposit CTA
+- **`notifications` DB table**: Created with `notification_type` enum; indexes on (user_id, is_read); storage methods: createNotification, getNotifications, markAllNotificationsRead, clearNotifications, hasBotReminderToday; API routes: GET/PATCH/DELETE/POST /api/notifications
+
 ## Key Features
 - Public landing page with auto-sliding carousel (6s interval)
 - Responsive hamburger navigation for mobile + desktop

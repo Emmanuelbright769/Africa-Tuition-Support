@@ -97,6 +97,23 @@ export async function registerRoutes(
         const affCode = generateAffiliateCode(firstName, user.id);
         await storage.updateUserAffiliateCode(user.id, affCode);
         user = await storage.getUser(user.id);
+
+        // Notify the affiliate who referred this person
+        if (referralCode) {
+          try {
+            const referrer = await storage.getUserByAffiliateCode(referralCode);
+            if (referrer) {
+              await storage.createNotification({
+                userId: referrer.id,
+                type: "referral",
+                title: "New Referral",
+                message: `${firstName} ${lastName} signed up using your referral link as a ${userRole}.`,
+                data: { newUserId: user!.id, role: userRole },
+                isRead: false,
+              });
+            }
+          } catch { /* non-critical */ }
+        }
       }
 
       const code = generateOtp();
@@ -970,6 +987,19 @@ export async function registerRoutes(
       const vId = parseInt(req.params.verificationId);
       const status = approve ? "verified" : "rejected";
       const updated = await storage.updateVerification(vId, { status });
+      // Notify student
+      try {
+        await storage.createNotification({
+          userId: updated.userId,
+          type: "verification_update",
+          title: approve ? "Verification Approved" : "Verification Update",
+          message: approve
+            ? "Congratulations! Your identity has been verified. You now have full access to all TSIA features."
+            : "Your verification was not approved. Please contact support or resubmit your documents.",
+          data: { verificationId: vId, status },
+          isRead: false,
+        });
+      } catch { /* non-critical */ }
       res.json(updated);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -1492,6 +1522,17 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(deposit.userId);
       const newBalance = (parseFloat(wallet.balance) + parseFloat(deposit.amountUsd)).toFixed(2);
       await storage.updateWalletBalance(deposit.userId, newBalance);
+      // Notify user
+      try {
+        await storage.createNotification({
+          userId: deposit.userId,
+          type: "wallet_credit",
+          title: "Wallet Credited",
+          message: `$${parseFloat(deposit.amountUsd).toFixed(2)} has been confirmed and credited to your TSIA Personal Wallet.`,
+          data: { depositId: deposit.id, amount: deposit.amountUsd },
+          isRead: false,
+        });
+      } catch { /* non-critical */ }
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1581,6 +1622,28 @@ export async function registerRoutes(
       // Create order record
       const order = await storage.createOrder({ buyerId: userId, sellerId: prod.sellerId, productId: prod.id, quantity: qty, unitPrice: unitPrice.toFixed(2), totalAmount: totalAmount.toFixed(2), commissionRate: ECOMMERCE.COMMISSION_RATE.toFixed(4), commissionAmount: commissionAmount.toFixed(2), sellerReceives: sellerReceives.toFixed(2), status: "confirmed", deliveryAddress: deliveryAddress || null, note: note || null });
 
+      // Notify buyer and seller
+      try {
+        await Promise.all([
+          storage.createNotification({
+            userId,
+            type: "order_update",
+            title: "Order Confirmed",
+            message: `Your order for "${prod.title}" (x${qty}) has been confirmed. $${totalAmount.toFixed(2)} deducted from your wallet.`,
+            data: { orderId: order.id, productId: prod.id },
+            isRead: false,
+          }),
+          storage.createNotification({
+            userId: prod.sellerId,
+            type: "order_update",
+            title: "New Sale",
+            message: `Your listing "${prod.title}" was purchased (x${qty}). You received $${sellerReceives.toFixed(2)} in your wallet.`,
+            data: { orderId: order.id, productId: prod.id },
+            isRead: false,
+          }),
+        ]);
+      } catch { /* non-critical */ }
+
       res.json({ order, message: `Order placed! $${totalAmount.toFixed(2)} deducted. TSIA commission: $${commissionAmount.toFixed(2)} (${(ECOMMERCE.COMMISSION_RATE * 100)}%).` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1658,8 +1721,123 @@ export async function registerRoutes(
         content: censored,
         isFlagged: flagged,
       });
+
+      // Notify the other party in the chat
+      try {
+        const chats = await storage.getUserChats(userId);
+        const chat = chats.find(c => c.id === parseInt(req.params.chatId));
+        if (chat) {
+          const recipientId = chat.buyerId === userId ? chat.sellerId : chat.buyerId;
+          const sender = await storage.getUser(userId);
+          const senderName = sender ? `${sender.firstName} ${sender.lastName}` : "Someone";
+          await storage.createNotification({
+            userId: recipientId,
+            type: "chat_message",
+            title: "New Message",
+            message: `${senderName} sent you a message about "${chat.productTitle || "a product"}".`,
+            data: { chatId: chat.id, productId: chat.productId },
+            isRead: false,
+          });
+        }
+      } catch { /* non-critical — don't fail the message send */ }
+
       res.json(msg);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
+  // GET /api/notifications — returns notifications for the logged-in user.
+  // Also auto-inserts bot reminder notifications based on current UK time.
+  app.get("/api/notifications", async (req, res) => {
+    if (!(req as any).session?.userId) return res.status(401).json({ error: "Not authenticated" });
+    const userId = (req as any).session.userId;
+    const userRole = (req as any).session.role;
+
+    // Auto-generate bot reminder for affiliates based on UK time
+    if (userRole === "affiliate") {
+      const now = new Date();
+      const ukHour   = parseInt(now.toLocaleString("en-US", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
+      const ukMinute = now.getMinutes();
+
+      const is1230 = ukHour === 12 && ukMinute >= 28 && ukMinute <= 35;
+      const is1pm  = ukHour === 13 && ukMinute <= 5;
+
+      if (is1230) {
+        const already = await storage.hasBotReminderToday(userId, "30-Minute Bot Reminder");
+        if (!already) {
+          await storage.createNotification({
+            userId,
+            type: "bot_reminder",
+            title: "30-Minute Bot Reminder",
+            message: "It's nearly 1:00 PM GMT! Come back in 30 minutes to activate your AI Trading Bot and start today's trading session.",
+            data: { ukHour, ukMinute },
+            isRead: false,
+          });
+        }
+      }
+      if (is1pm) {
+        const already = await storage.hasBotReminderToday(userId, "Bot Activation Window Open");
+        if (!already) {
+          await storage.createNotification({
+            userId,
+            type: "bot_reminder",
+            title: "Bot Activation Window Open",
+            message: "It's 1:00 PM GMT! Your AI Trading Bot activation window is now open. Go to Trade Market → activate your bot to start today's 2% trades.",
+            data: { ukHour, ukMinute },
+            isRead: false,
+          });
+        }
+      }
+    }
+
+    try {
+      const notifs = await storage.getNotifications(userId);
+      const unreadCount = notifs.filter(n => !n.isRead).length;
+      res.json({ notifications: notifs, unreadCount });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/notifications/read-all — mark all as read
+  app.patch("/api/notifications/read-all", async (req, res) => {
+    if (!(req as any).session?.userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      await storage.markAllNotificationsRead((req as any).session.userId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /api/notifications — clear all notifications
+  app.delete("/api/notifications", async (req, res) => {
+    if (!(req as any).session?.userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      await storage.clearNotifications((req as any).session.userId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/notifications — create a notification (internal / admin use)
+  app.post("/api/notifications", async (req, res) => {
+    if (!(req as any).session?.userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const { type, title, message, data } = req.body;
+      const notif = await storage.createNotification({
+        userId: (req as any).session.userId,
+        type: type || "system",
+        title,
+        message,
+        data: data ?? null,
+        isRead: false,
+      });
+      res.json(notif);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   return httpServer;

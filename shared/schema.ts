@@ -560,6 +560,27 @@ export const insertBillPaymentSchema = createInsertSchema(billPayments).omit({ i
 export type InsertBillPayment = z.infer<typeof insertBillPaymentSchema>;
 export type BillPayment = typeof billPayments.$inferSelect;
 
+// ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "bot_reminder", "chat_message", "order_update", "wallet_credit",
+  "loan_update", "verification_update", "referral", "trade_deposit", "system"
+]);
+
+export const notifications = pgTable("notifications", {
+  id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:    integer("user_id").notNull().references(() => users.id),
+  type:      notificationTypeEnum("type").notNull(),
+  title:     text("title").notNull(),
+  message:   text("message").notNull(),
+  data:      jsonb("data"),
+  isRead:    boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;
+
 // ─── ECOMMERCE CHAT ───────────────────────────────────────────────────────────
 export const ecommerceChats = pgTable("ecommerce_chats", {
   id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),

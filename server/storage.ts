@@ -1,4 +1,4 @@
-import { eq, desc, and, gt, count, sql, ne, like, or } from "drizzle-orm";
+import { eq, desc, and, gt, gte, lte, count, sql, ne, like, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
@@ -7,6 +7,7 @@ import {
   landlordProperties, tenancyLeases, tenancyPayments, loans,
   products, orders, walletDeposits, walletTransfers, billPayments,
   ecommerceChats, ecommerceChatMessages,
+  notifications,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -28,6 +29,7 @@ import {
   type WalletTransfer, type BillPayment,
   type EcommerceChat, type InsertEcommerceChat,
   type EcommerceChatMessage, type InsertEcommerceChatMessage,
+  type Notification, type InsertNotification,
   TRADE_MARKET, ECOMMERCE,
 } from "@shared/schema";
 
@@ -40,6 +42,7 @@ export interface IStorage {
   getAllStudents(): Promise<User[]>;
   updateUserAffiliateCode(userId: number, code: string): Promise<void>;
   getReferralsByCode(affiliateCode: string): Promise<User[]>;
+  getUserByAffiliateCode(affiliateCode: string): Promise<User | undefined>;
 
   createOtp(otp: InsertOtp): Promise<OtpCode>;
   getValidOtp(email: string, code: string): Promise<OtpCode | undefined>;
@@ -115,6 +118,13 @@ export interface IStorage {
   createChatMessage(data: InsertEcommerceChatMessage): Promise<EcommerceChatMessage>;
   getUserChats(userId: number): Promise<(EcommerceChat & { productTitle: string; otherPersonName: string; lastMessage?: string; unread: number })[]>;
 
+  // Notifications
+  createNotification(data: InsertNotification): Promise<Notification>;
+  getNotifications(userId: number): Promise<Notification[]>;
+  markAllNotificationsRead(userId: number): Promise<void>;
+  clearNotifications(userId: number): Promise<void>;
+  hasBotReminderToday(userId: number, reminderType: string): Promise<boolean>;
+
   // Wallet Deposits (student/user funding)
   createWalletDeposit(data: InsertWalletDeposit): Promise<WalletDeposit>;
   getWalletDepositsByUser(userId: number): Promise<WalletDeposit[]>;
@@ -168,6 +178,11 @@ export class DatabaseStorage implements IStorage {
   async getReferralsByCode(affiliateCode: string): Promise<User[]> {
     if (!affiliateCode) return [];
     return db.select().from(users).where(eq(users.referredBy, affiliateCode)).orderBy(desc(users.createdAt));
+  }
+
+  async getUserByAffiliateCode(affiliateCode: string): Promise<User | undefined> {
+    const [u] = await db.select().from(users).where(eq(users.affiliateCode, affiliateCode)).limit(1);
+    return u;
   }
 
   async createOtp(otp: InsertOtp): Promise<OtpCode> {
@@ -552,6 +567,49 @@ export class DatabaseStorage implements IStorage {
       };
     }));
     return result;
+  }
+
+  // ─── Notifications ───────────────────────────────────────────────────────────
+  async createNotification(data: InsertNotification): Promise<Notification> {
+    const [n] = await db.insert(notifications).values(data).returning();
+    return n;
+  }
+
+  async getNotifications(userId: number): Promise<Notification[]> {
+    return db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(60);
+  }
+
+  async markAllNotificationsRead(userId: number): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.userId, userId));
+  }
+
+  async clearNotifications(userId: number): Promise<void> {
+    await db.delete(notifications).where(eq(notifications.userId, userId));
+  }
+
+  async hasBotReminderToday(userId: number, reminderType: string): Promise<boolean> {
+    // Check if a bot_reminder of this type was created today (UK time)
+    const now = new Date();
+    const ukDateStr = now.toLocaleDateString("en-GB", { timeZone: "Europe/London" }); // dd/mm/yyyy
+    const [day, month, year] = ukDateStr.split("/");
+    const startOfUkDay = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+    const endOfUkDay   = new Date(`${year}-${month}-${day}T23:59:59.999Z`);
+    const rows = await db.select({ id: notifications.id }).from(notifications)
+      .where(
+        and(
+          eq(notifications.userId, userId),
+          eq(notifications.type, "bot_reminder"),
+          eq(notifications.title, reminderType),
+          gte(notifications.createdAt, startOfUkDay),
+          lte(notifications.createdAt, endOfUkDay),
+        )
+      ).limit(1);
+    return rows.length > 0;
   }
 
   // ─── Wallet Deposits ─────────────────────────────────────────────────────────

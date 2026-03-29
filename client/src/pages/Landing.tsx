@@ -4,7 +4,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
-import { CheckCircle2, ShieldCheck, Wallet, Trophy, ArrowRight, Users, Share2, DollarSign, GraduationCap, Lock, Mail, Phone, MapPin, Globe, Sparkles, Building2, Home, Clock } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Wallet, Trophy, ArrowRight, Users, Share2, DollarSign, GraduationCap, Lock, Mail, Phone, MapPin, Globe, Sparkles, Building2, Home, Clock, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Logo, logoBadgeColor } from "@/components/ui/Logo";
 
@@ -40,6 +40,10 @@ const slides = [
 
 export default function Landing() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [openHowSteps, setOpenHowSteps] = useState<Set<number>>(new Set());
+  const [openAffSteps, setOpenAffSteps] = useState<Set<number>>(new Set());
+  const toggleHow = (i: number) => setOpenHowSteps(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; });
+  const toggleAff = (i: number) => setOpenAffSteps(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; });
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -122,20 +126,39 @@ export default function Landing() {
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">A transparent, merit-based system designed to support dedicated students across Africa.</p>
             </motion.div>
 
-            <div className="grid md:grid-cols-3 gap-12 max-w-5xl mx-auto">
+            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
               {[
                 { icon: ShieldCheck, title: "1. Verify Identity", desc: "Register with your NIN, complete biometric face verification, and upload your government-issued ID.", color: "text-tsia-green", bg: "bg-tsia-green/10" },
-                { icon: Trophy, title: "2. WAEC Validation", desc: "Submit your WAEC grades verified via the WAEC API. 75%+ = Platinum ($225-$230), 60-74% = Gold ($160-$180), 50-59% = Silver ($110-$130).", color: "text-amber-600", bg: "bg-amber-100 dark:bg-amber-900/30" },
-                { icon: Wallet, title: "3. Get Funded", desc: "Pay a $3 verification fee, choose your plan, and funds arrive in your digital wallet within 24-48 hours.", color: "text-blue-600", bg: "bg-blue-100 dark:bg-blue-900/30" }
+                { icon: Trophy, title: "2. WAEC Validation", desc: "Submit your WAEC grades verified via the WAEC API. 75%+ = Platinum ($225–$230), 60–74% = Gold ($160–$180), 50–59% = Silver ($110–$130).", color: "text-amber-600", bg: "bg-amber-100 dark:bg-amber-900/30" },
+                { icon: Wallet, title: "3. Get Funded", desc: "Pay a $3 verification fee, choose your plan, and funds arrive in your digital wallet within 24–48 hours.", color: "text-blue-600", bg: "bg-blue-100 dark:bg-blue-900/30" }
               ].map((s, i) => (
                 <motion.div key={i} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.2 }}
-                  className="relative flex flex-col items-center text-center space-y-4 p-6 rounded-2xl hover:bg-accent/50 transition-colors"
+                  className="relative flex flex-col items-center text-center p-6 rounded-2xl border border-border bg-card hover:bg-accent/40 transition-colors"
                 >
-                  <div className={`w-20 h-20 rounded-2xl ${s.bg} ${s.color} flex items-center justify-center mb-2`}>
-                    <s.icon className="w-10 h-10" />
+                  <div className={`w-16 h-16 rounded-2xl ${s.bg} ${s.color} flex items-center justify-center mb-3`}>
+                    <s.icon className="w-8 h-8" />
                   </div>
-                  <h3 className="text-xl font-semibold">{s.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed">{s.desc}</p>
+                  <h3 className="text-lg font-semibold mb-1">{s.title}</h3>
+                  <button
+                    onClick={() => toggleHow(i)}
+                    className={`flex items-center gap-1 text-xs font-medium mt-1 transition-colors ${openHowSteps.has(i) ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {openHowSteps.has(i) ? "Hide details" : "Show details"}
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openHowSteps.has(i) ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {openHowSteps.has(i) && (
+                      <motion.p
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="text-muted-foreground text-sm leading-relaxed mt-3 overflow-hidden"
+                      >
+                        {s.desc}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               ))}
             </div>
@@ -153,21 +176,44 @@ export default function Landing() {
               <p className="text-xl text-slate-300 max-w-2xl mx-auto">Turn your network into income. Refer students to TSIA and earn commission on every verified referral.</p>
             </motion.div>
 
-            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-16">
+            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-16">
               {[
                 { icon: Share2, title: "Share Your Code", desc: "Get your unique referral code when you sign up. Share it on social media, WhatsApp, or directly with friends.", amount: "Step 1" },
                 { icon: Users, title: "Friends Sign Up", desc: "When someone uses your code to register and complete their verification, they are linked to your account.", amount: "Step 2" },
                 { icon: DollarSign, title: "Earn Commission", desc: "For every verified referral, you earn a commission paid directly into your TSIA digital wallet.", amount: "Step 3" },
               ].map((item, i) => (
                 <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.15 }}
-                  className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all hover:border-tsia-gold/30 group"
+                  className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all hover:border-tsia-gold/30 group"
                 >
-                  <div className="w-14 h-14 bg-tsia-gold/20 rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                    <item.icon className="w-7 h-7 text-tsia-gold" />
+                  <div className="flex items-center gap-4 mb-2">
+                    <div className="w-12 h-12 bg-tsia-gold/20 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                      <item.icon className="w-6 h-6 text-tsia-gold" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold text-tsia-gold uppercase tracking-widest">{item.amount}</div>
+                      <h3 className="text-base font-bold text-white leading-tight">{item.title}</h3>
+                    </div>
                   </div>
-                  <div className="text-xs font-bold text-tsia-gold uppercase tracking-widest mb-2">{item.amount}</div>
-                  <h3 className="text-xl font-bold mb-3">{item.title}</h3>
-                  <p className="text-slate-400 leading-relaxed">{item.desc}</p>
+                  <button
+                    onClick={() => toggleAff(i)}
+                    className={`flex items-center gap-1 text-xs font-medium mt-2 transition-colors ${openAffSteps.has(i) ? 'text-tsia-gold' : 'text-slate-400 hover:text-tsia-gold'}`}
+                  >
+                    {openAffSteps.has(i) ? "Hide details" : "Show details"}
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openAffSteps.has(i) ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {openAffSteps.has(i) && (
+                      <motion.p
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="text-slate-400 text-sm leading-relaxed mt-3 overflow-hidden"
+                      >
+                        {item.desc}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               ))}
             </div>

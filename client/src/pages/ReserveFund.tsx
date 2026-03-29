@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, TrendingUp, Zap, Globe, Lock, RefreshCw, Info, ChevronRight } from "lucide-react";
+import { Shield, TrendingUp, Zap, Globe, Lock, RefreshCw, Info, ChevronRight, ChevronDown } from "lucide-react";
 
 type FundData = {
   totalBalance: string;
@@ -95,6 +95,9 @@ export function ReserveFundWidget({ onNavigate }: { onNavigate: () => void }) {
 export default function ReserveFund() {
   const [lastTick, setLastTick] = useState(Date.now());
   const [secondsAgo, setSecondsAgo] = useState(0);
+  const [openFundItems, setOpenFundItems] = useState<Set<string>>(new Set());
+  const [allocOpen, setAllocOpen] = useState(false);
+  const toggleFundItem = (key: string) => setOpenFundItems(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s; });
 
   // Poll every 5 seconds
   const { data, isLoading } = useQuery<FundData>({
@@ -193,55 +196,90 @@ export default function ReserveFund() {
       </div>
 
       {/* ── How it works ─────────────────────────────────────────────── */}
-      <div className="bg-card border rounded-2xl p-5 space-y-4">
-        <h3 className="font-bold text-base flex items-center gap-2">
+      <div className="bg-card border rounded-2xl p-5 space-y-2">
+        <h3 className="font-bold text-base flex items-center gap-2 mb-3">
           <Info className="w-4 h-4 text-tsia-green" /> How This Fund Works
         </h3>
-        <div className="space-y-3">
-          {[
-            { icon: Globe,    color: "bg-blue-500",    title: "Every Trade Deposit",         desc: "When any member deposits into the Global Trade Market, 20% is automatically ring-fenced." },
-            { icon: Shield,   color: "bg-tsia-green",  title: "Ring-fenced & Protected",     desc: "The reserve is locked — it cannot be withdrawn by individual members. It belongs to TSIA." },
-            { icon: TrendingUp, color: "bg-amber-500", title: "Strategic Development",       desc: "Funds back TSIA's $150M UK/Turkey partner fund and drive long-term operational growth." },
-            { icon: Lock,     color: "bg-violet-500",  title: "Transparent & Auditable",    desc: "Every contribution is logged on-chain and reconciled against TSIA's compliance framework." },
-          ].map(item => (
-            <div key={item.title} className="flex items-start gap-3">
-              <div className={`w-9 h-9 rounded-xl ${item.color} flex items-center justify-center shrink-0 mt-0.5`}>
-                <item.icon className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <p className="font-semibold text-sm">{item.title}</p>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{item.desc}</p>
-              </div>
+        {[
+          { icon: Globe,      color: "bg-blue-500",   title: "Every Trade Deposit",      desc: "When any member deposits into the Global Trade Market, 20% is automatically ring-fenced." },
+          { icon: Shield,     color: "bg-tsia-green", title: "Ring-fenced & Protected",  desc: "The reserve is locked — it cannot be withdrawn by individual members. It belongs to TSIA." },
+          { icon: TrendingUp, color: "bg-amber-500",  title: "Strategic Development",    desc: "Funds back TSIA's $150M UK/Turkey partner fund and drive long-term operational growth." },
+          { icon: Lock,       color: "bg-violet-500", title: "Transparent & Auditable",  desc: "Every contribution is logged on-chain and reconciled against TSIA's compliance framework." },
+        ].map(item => {
+          const isOpen = openFundItems.has(item.title);
+          return (
+            <div key={item.title} className="rounded-xl border border-border overflow-hidden">
+              <button
+                onClick={() => toggleFundItem(item.title)}
+                className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left"
+              >
+                <div className={`w-9 h-9 rounded-xl ${item.color} flex items-center justify-center shrink-0`}>
+                  <item.icon className="w-4 h-4 text-white" />
+                </div>
+                <span className="font-semibold text-sm flex-1">{item.title}</span>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+              </button>
+              <AnimatePresence>
+                {isOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22 }}
+                    className="overflow-hidden"
+                  >
+                    <p className="text-xs text-muted-foreground px-4 pb-3 leading-relaxed">{item.desc}</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
       {/* ── Allocation breakdown ─────────────────────────────────────── */}
-      <div className="bg-card border rounded-2xl p-5">
-        <h3 className="font-bold text-base mb-4">Deposit Allocation Breakdown</h3>
-        <div className="space-y-3">
-          {[
-            { label: "Your Trade Wallet",        pct: 75, color: "bg-tsia-green",   text: "text-tsia-green" },
-            { label: "Strategic Reserve Fund",   pct: 20, color: "bg-amber-500",    text: "text-amber-500" },
-            { label: "Affiliate Pool",           pct: 5,  color: "bg-violet-500",   text: "text-violet-500" },
-          ].map(row => (
-            <div key={row.label}>
-              <div className="flex justify-between mb-1">
-                <span className="text-sm font-medium">{row.label}</span>
-                <span className={`text-sm font-bold ${row.text}`}>{row.pct}%</span>
+      <div className="bg-card border rounded-2xl overflow-hidden">
+        <button
+          onClick={() => setAllocOpen(v => !v)}
+          className="w-full flex items-center justify-between p-5 hover:bg-muted/40 transition-colors text-left"
+        >
+          <h3 className="font-bold text-base">Deposit Allocation Breakdown</h3>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${allocOpen ? 'rotate-180' : ''}`} />
+        </button>
+        <AnimatePresence>
+          {allocOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="overflow-hidden"
+            >
+              <div className="px-5 pb-5 space-y-3">
+                {[
+                  { label: "Your Trade Wallet",       pct: 75, color: "bg-tsia-green",  text: "text-tsia-green" },
+                  { label: "Strategic Reserve Fund",  pct: 20, color: "bg-amber-500",   text: "text-amber-500" },
+                  { label: "Affiliate Pool",          pct: 5,  color: "bg-violet-500",  text: "text-violet-500" },
+                ].map(row => (
+                  <div key={row.label}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium">{row.label}</span>
+                      <span className={`text-sm font-bold ${row.text}`}>{row.pct}%</span>
+                    </div>
+                    <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+                      <motion.div
+                        className={`h-full ${row.color} rounded-full`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${row.pct}%` }}
+                        transition={{ duration: 1, delay: 0.2, ease: "easeOut" }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                <motion.div
-                  className={`h-full ${row.color} rounded-full`}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${row.pct}%` }}
-                  transition={{ duration: 1, delay: 0.2, ease: "easeOut" }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ── Key stats ────────────────────────────────────────────────── */}

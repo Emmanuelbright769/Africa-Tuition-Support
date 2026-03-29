@@ -54,11 +54,11 @@ const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "trade",        label: "Trade Market",            icon: Globe },
   { id: "trust_fund",   label: "Affiliate Trust Fund",    icon: Crown },
   { id: "ecommerce",    label: "E-Commerce",              icon: ShoppingCart },
+  { id: "tour_africa",  label: "Tour Africa",             icon: Car },
   { id: "tenancy",      label: "Tenancy Business",         icon: Home },
   { id: "loan",         label: "Business Loan",            icon: Banknote },
-  { id: "referrals",    label: "Referrals",               icon: Users },
   { id: "forum",        label: "Community Forum",         icon: MessageSquareText },
-  { id: "tour_africa",  label: "Tour Africa",             icon: Car },
+  { id: "referrals",    label: "Referrals",               icon: Users },
 ];
 
 export default function AffiliateDashboard() {

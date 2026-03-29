@@ -635,6 +635,16 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
+      // Check for existing plan and 365-day lock
+      const existing = await storage.getSponsorshipPlanByUser(userId);
+      if (existing) {
+        const planAge = Math.floor((Date.now() - new Date(existing.createdAt).getTime()) / 86400000);
+        const daysLeft = Math.max(0, 365 - planAge);
+        if (daysLeft > 0) {
+          return res.status(400).json({ message: `Your current plan is locked for ${daysLeft} more day(s). You can change it after 365 days.`, daysLeft });
+        }
+      }
+
       const { planYears } = req.body;
       const planMap: Record<number, { cost: string; payout: string }> = {
         1: { cost: "35.00", payout: "230.00" },
@@ -2157,6 +2167,78 @@ export async function registerRoutes(
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── TOUR AFRICA BOOKINGS ──────────────────────────────────────────────────
+  const TOUR_COMMISSION_RATE = 0.05; // 5% TSIA commission on all tour bookings
+
+  // POST /api/tour/book
+  app.post("/api/tour/book", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { type, details, amount } = req.body;
+      if (!["hotel", "car_hire", "flight"].includes(type)) {
+        return res.status(400).json({ message: "Invalid booking type. Must be hotel, car_hire, or flight." });
+      }
+      const totalAmount = parseFloat(amount);
+      if (isNaN(totalAmount) || totalAmount <= 0) {
+        return res.status(400).json({ message: "Invalid amount." });
+      }
+
+      // Check wallet balance
+      const wallet = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(wallet.balance || "0");
+      if (balance < totalAmount) {
+        return res.status(400).json({ message: `Insufficient wallet balance. You have $${balance.toFixed(2)} but need $${totalAmount.toFixed(2)}.` });
+      }
+
+      const commission = parseFloat((totalAmount * TOUR_COMMISSION_RATE).toFixed(2));
+      const reference = `TOUR-${type.toUpperCase()}-${Date.now()}`;
+
+      // Deduct from wallet (negative amount)
+      await storage.updateWalletBalance(userId, (-totalAmount).toFixed(6));
+
+      const booking = await storage.createTourBooking({
+        userId,
+        type,
+        details,
+        totalAmount: totalAmount.toFixed(2),
+        commissionAmount: commission.toFixed(2),
+        currency: "USD",
+        status: "confirmed",
+        reference,
+      });
+
+      // Credit TSIA reserve (5% commission)
+      await storage.addToReserveFund(commission.toFixed(6));
+
+      await storage.createNotification({
+        userId,
+        type: "wallet",
+        title: `${type === "hotel" ? "Hotel" : type === "car_hire" ? "Car Hire" : "Flight"} Booking Confirmed`,
+        message: `Your booking is confirmed. $${totalAmount.toFixed(2)} charged, ref: ${reference}.`,
+        data: { booking: booking.id, type, totalAmount, commission },
+        isRead: false,
+      });
+
+      res.json({ ...booking, message: "Booking confirmed!" });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET /api/tour/bookings
+  app.get("/api/tour/bookings", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const bookings = await storage.getTourBookingsByUser(userId);
+      res.json(bookings);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
     }
   });
 

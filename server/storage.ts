@@ -33,6 +33,8 @@ import {
   type CallSession, type InsertCallSession,
   type ForumTopic, type InsertForumTopic,
   type ForumPost, type InsertForumPost,
+  tourBookings,
+  type TourBooking, type InsertTourBooking,
   TRADE_MARKET, ECOMMERCE,
 } from "@shared/schema";
 
@@ -158,6 +160,10 @@ export interface IStorage {
   // Fintech: Bill Payments
   createBillPayment(data: { userId: number; service: string; amount: number; reference: string }): Promise<BillPayment>;
   getBillPaymentsByUser(userId: number): Promise<BillPayment[]>;
+
+  // Tour Africa Bookings
+  createTourBooking(data: InsertTourBooking): Promise<TourBooking>;
+  getTourBookingsByUser(userId: number): Promise<TourBooking[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -826,6 +832,19 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(billPayments)
       .where(eq(billPayments.userId, userId))
       .orderBy(desc(billPayments.createdAt))
+      .limit(50);
+  }
+
+  // ─── Tour Africa Bookings ─────────────────────────────────────────────────
+  async createTourBooking(data: InsertTourBooking): Promise<TourBooking> {
+    const [booking] = await db.insert(tourBookings).values(data).returning();
+    return booking;
+  }
+
+  async getTourBookingsByUser(userId: number): Promise<TourBooking[]> {
+    return db.select().from(tourBookings)
+      .where(eq(tourBookings.userId, userId))
+      .orderBy(desc(tourBookings.createdAt))
       .limit(50);
   }
 }

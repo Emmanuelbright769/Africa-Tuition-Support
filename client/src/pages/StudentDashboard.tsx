@@ -38,12 +38,12 @@ const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "fintech",      label: "Fintech Hub",            icon: CreditCard },
   { id: "wallet",       label: "Personal Wallet",         icon: Wallet },
   { id: "ecommerce",    label: "E-Commerce",             icon: ShoppingCart },
+  { id: "tour_africa",  label: "Tour Africa",            icon: Car },
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
   { id: "plans",        label: "Sponsorship Plans",      icon: Star },
   { id: "activity",     label: "Activity",               icon: History },
   { id: "loan",         label: "Student loan",           icon: Banknote },
   { id: "forum",        label: "Community Forum",        icon: MessageSquareText },
-  { id: "tour_africa",  label: "Tour Africa",            icon: Car },
 ];
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
@@ -118,9 +118,6 @@ export default function StudentDashboard() {
   const waecPct          = verification?.waecPercentage ? parseFloat(verification.waecPercentage) : null;
   const payoutMin        = verification?.payoutMin ? parseFloat(verification.payoutMin) : 0;
   const payoutMax        = verification?.payoutMax ? parseFloat(verification.payoutMax) : 0;
-  const commitmentStart  = verification?.commitmentStartDate ? new Date(verification.commitmentStartDate) : null;
-  const daysElapsed      = commitmentStart ? Math.floor((Date.now() - commitmentStart.getTime()) / 86400000) : 0;
-  const countdown        = Math.max(0, 30 - daysElapsed);
   const isVerified       = verification?.status === "verified";
   const isPending        = verification?.status === "pending";
   const feePaid          = verification?.portalFeePaid;
@@ -272,11 +269,29 @@ export default function StudentDashboard() {
                     </div>
                     {feePaid && (
                       <div className="bg-white/10 border border-white/20 px-8 py-4 rounded-xl text-center backdrop-blur-md shrink-0">
-                        <div className="text-xs font-semibold text-slate-300 mb-2">Commitment window</div>
-                        <div className="text-4xl font-bold font-mono flex items-center justify-center gap-2">
-                          <Clock className="w-7 h-7 text-tsia-gold" />
-                          {countdown} <span className="text-lg font-normal text-slate-400 font-sans">days left</span>
-                        </div>
+                        {plan ? (() => {
+                          const planAge = Math.floor((Date.now() - new Date(plan.createdAt).getTime()) / 86400000);
+                          const planDaysLeft = Math.max(0, 365 - planAge);
+                          return planDaysLeft > 0 ? (
+                            <>
+                              <div className="text-xs font-semibold text-slate-300 mb-2">Plan change in</div>
+                              <div className="text-4xl font-bold font-mono flex items-center justify-center gap-2">
+                                <Clock className="w-7 h-7 text-tsia-gold" />
+                                {planDaysLeft} <span className="text-lg font-normal text-slate-400 font-sans">days</span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-xs font-semibold text-slate-300 mb-2">Plan change</div>
+                              <div className="text-2xl font-bold text-tsia-gold">Available now!</div>
+                            </>
+                          );
+                        })() : (
+                          <>
+                            <div className="text-xs font-semibold text-slate-300 mb-2">Plan status</div>
+                            <div className="text-2xl font-bold text-tsia-gold">{isVerified ? "Select now!" : "Pending"}</div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -348,9 +363,21 @@ export default function StudentDashboard() {
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Sponsorship Plans</h2>
-                  <p className="text-muted-foreground text-sm mb-6">
-                    {plan ? `You are on the ${plan.planYears}-year plan.` : countdown > 0 && feePaid ? "Plans unlock after your 30-day commitment window." : isVerified ? "Select a plan to begin receiving funding." : "Complete verification to unlock plans."}
-                  </p>
+                  {(() => {
+                    const planAge = plan?.createdAt ? Math.floor((Date.now() - new Date(plan.createdAt).getTime()) / 86400000) : 0;
+                    const planDaysLeft = plan ? Math.max(0, 365 - planAge) : 0;
+                    return (
+                      <p className="text-muted-foreground text-sm mb-6">
+                        {plan && planDaysLeft > 0
+                          ? `Active ${plan.planYears}-year plan. You can switch plans in ${planDaysLeft} day(s).`
+                          : plan && planDaysLeft === 0
+                          ? `Your ${plan.planYears}-year plan has completed 365 days. You may select a new plan.`
+                          : isVerified
+                          ? "Your account is verified — select a plan immediately to begin receiving funding."
+                          : "Complete verification to unlock plans."}
+                      </p>
+                    );
+                  })()}
                 </motion.div>
                 <motion.div variants={itemVariants}>
                   <div className="grid sm:grid-cols-3 gap-5">
@@ -360,7 +387,9 @@ export default function StudentDashboard() {
                       { years: 3, price: 50, payout: 690, coverage: "~92%" },
                     ].map(p => {
                       const isActive = plan?.planYears === p.years;
-                      const canSelect = isVerified && !plan && countdown === 0;
+                      const planAge = plan?.createdAt ? Math.floor((Date.now() - new Date(plan.createdAt).getTime()) / 86400000) : 0;
+                      const planDaysLeft = plan ? Math.max(0, 365 - planAge) : 0;
+                      const canSelect = isVerified && (!plan || planDaysLeft === 0) && !isActive;
                       return (
                         <div key={p.years} className={`relative rounded-2xl p-6 transition-all ${isActive ? 'border-2 border-primary bg-primary/5 shadow-lg' : p.popular ? 'border-2 border-primary/30' : 'border'}`}>
                           {p.popular && !isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Recommended</div>}
@@ -382,7 +411,7 @@ export default function StudentDashboard() {
                             onClick={() => selectPlanMutation.mutate(p.years)}
                             data-testid={`button-plan-${p.years}`}
                           >
-                            {isActive ? 'Active ✓' : canSelect ? 'Select plan' : 'Locked'}
+                            {isActive ? 'Active ✓' : !isVerified ? 'Verify first' : plan && planDaysLeft > 0 ? `Locked (${planDaysLeft}d)` : 'Select plan'}
                           </Button>
                         </div>
                       );

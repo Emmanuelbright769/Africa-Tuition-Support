@@ -157,6 +157,26 @@ export const affiliateTradeShares = pgTable("affiliate_trade_shares", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const tourBookingTypeEnum = pgEnum("tour_booking_type", ["hotel", "car_hire", "flight"]);
+export const tourBookingStatusEnum = pgEnum("tour_booking_status", ["pending", "confirmed", "cancelled"]);
+
+export const tourBookings = pgTable("tour_bookings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  type: tourBookingTypeEnum("type").notNull(),
+  details: jsonb("details").notNull(),
+  totalAmount: decimal("total_amount", { precision: 16, scale: 2 }).notNull(),
+  commissionAmount: decimal("commission_amount", { precision: 16, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("USD"),
+  status: tourBookingStatusEnum("status").notNull().default("pending"),
+  reference: text("reference").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTourBookingSchema = createInsertSchema(tourBookings).omit({ id: true, createdAt: true });
+export type InsertTourBooking = z.infer<typeof insertTourBookingSchema>;
+export type TourBooking = typeof tourBookings.$inferSelect;
+
 export const leadershipInquiries = pgTable("leadership_inquiries", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   firstName: text("first_name").notNull(),

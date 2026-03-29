@@ -152,7 +152,7 @@ export default function AffiliateDashboard() {
       if (botActivatedAt && (Date.now() - botActivatedAt) >= 12 * 3600 * 1000) {
         setBotActivatedAt(null);
         try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
-        toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours. Reactivate at 1:00 PM tomorrow.", variant: "destructive" });
+        toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours. The activation window reopens at 1:00 PM GMT.", variant: "destructive" });
       }
       // 30-min pre-1PM UK warning
       const ukHour = parseInt(now.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
@@ -161,7 +161,7 @@ export default function AffiliateDashboard() {
         if (Notification.permission === "granted") {
           new Notification("TSIA Trade Market", { body: "30 minutes until 1:00 PM — Time to activate your Trading Bot!", icon: "/favicon.ico" });
         }
-        toast({ title: "⏰ Bot Reminder", description: "It's 12:30 PM — activate your Trading Bot in 30 minutes at 1:00 PM (GMT)!", className: "border-amber-500" });
+        toast({ title: "⏰ Bot Reminder", description: "It's 12:30 PM — the activation window opens in 30 minutes at 1:00 PM GMT and stays open for 12 hours!", className: "border-amber-500" });
       }
     }, 30000); // every 30 seconds
     return () => clearInterval(interval);
@@ -553,25 +553,34 @@ export default function AffiliateDashboard() {
                   {(() => {
                     const ukHour = parseInt(ukNow.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
                     const ukMin  = ukNow.getMinutes();
-                    const isOnepm = ukHour === 13;
+                    // Window is open from 1PM GMT until 1AM GMT (12 hours)
+                    const isActivationWindow = ukHour >= 13 || ukHour < 1;
                     const isWarning = ukHour === 12 && ukMin >= 30;
+                    // How many minutes until the window opens (only relevant when window is closed)
+                    const minsUntilOpen = isActivationWindow ? 0 : (() => {
+                      const nowMins = ukHour * 60 + ukMin;
+                      const openMins = 13 * 60;
+                      return nowMins < openMins ? openMins - nowMins : (24 * 60 - nowMins + openMins);
+                    })();
+                    const hoursUntilOpen = Math.floor(minsUntilOpen / 60);
+                    const minsUntilOpenRem = minsUntilOpen % 60;
                     return (
-                      <div className={`rounded-2xl overflow-hidden shadow-xl border-2 ${botActive ? "border-green-500" : isOnepm ? "border-amber-400" : "border-slate-200 dark:border-slate-700"}`}>
+                      <div className={`rounded-2xl overflow-hidden shadow-xl border-2 ${botActive ? "border-green-500" : isActivationWindow ? "border-amber-400" : "border-slate-200 dark:border-slate-700"}`}>
                         {/* Header */}
-                        <div className={`p-5 ${botActive ? "bg-gradient-to-r from-green-700 to-emerald-600" : isOnepm ? "bg-gradient-to-r from-amber-600 to-orange-500" : "bg-gradient-to-r from-slate-800 to-slate-700"} text-white`}>
+                        <div className={`p-5 ${botActive ? "bg-gradient-to-r from-green-700 to-emerald-600" : isActivationWindow ? "bg-gradient-to-r from-amber-600 to-orange-500" : "bg-gradient-to-r from-slate-800 to-slate-700"} text-white`}>
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${botActive ? "bg-green-500" : isOnepm ? "bg-amber-500" : "bg-slate-600"}`}>
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${botActive ? "bg-green-500" : isActivationWindow ? "bg-amber-500" : "bg-slate-600"}`}>
                                 <Bot className="w-5 h-5 text-white" />
                               </div>
                               <div>
                                 <p className="font-bold text-lg leading-tight">AI Trading Bot</p>
-                                <p className="text-xs opacity-80">Activates daily at 1:00 PM (GMT) · Auto-off after 12 hours</p>
+                                <p className="text-xs opacity-80">Window opens 1:00 PM GMT · Runs for 12 hours · Auto-off at 1:00 AM</p>
                               </div>
                             </div>
-                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${botActive ? "bg-green-500/30 text-green-100" : "bg-white/10 text-white/70"}`}>
-                              <span className={`w-2 h-2 rounded-full ${botActive ? "bg-green-300 animate-pulse" : "bg-white/40"}`} />
-                              {botActive ? "ACTIVE" : "OFFLINE"}
+                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${botActive ? "bg-green-500/30 text-green-100" : isActivationWindow ? "bg-amber-500/30 text-amber-100" : "bg-white/10 text-white/70"}`}>
+                              <span className={`w-2 h-2 rounded-full ${botActive ? "bg-green-300 animate-pulse" : isActivationWindow ? "bg-amber-300 animate-pulse" : "bg-white/40"}`} />
+                              {botActive ? "ACTIVE" : isActivationWindow ? "WINDOW OPEN" : "OFFLINE"}
                             </div>
                           </div>
                           {botActive ? (
@@ -587,20 +596,25 @@ export default function AffiliateDashboard() {
                               <Bell className="w-5 h-5 text-amber-200 shrink-0" />
                               <div>
                                 <p className="text-sm font-semibold">30-minute reminder — it's nearly 1:00 PM!</p>
-                                <p className="text-xs text-amber-200 mt-0.5">Come back at exactly 1:00 PM GMT to activate your bot and start today's trades.</p>
+                                <p className="text-xs text-amber-200 mt-0.5">The activation window opens at 1:00 PM GMT and stays open for 12 hours.</p>
                               </div>
                             </div>
-                          ) : isOnepm ? (
+                          ) : isActivationWindow ? (
                             <div className="bg-white/15 rounded-xl p-3 flex items-center gap-3">
                               <Bell className="w-5 h-5 text-amber-200 shrink-0 animate-bounce" />
                               <div>
-                                <p className="text-sm font-semibold">It's 1:00 PM — activate your bot now!</p>
-                                <p className="text-xs text-amber-200 mt-0.5">The bot window is open. Tap "Activate Bot" to start today's trading session.</p>
+                                <p className="text-sm font-semibold">Activation window is open — tap to start!</p>
+                                <p className="text-xs text-amber-200 mt-0.5">
+                                  Window closes at <strong className="text-white">1:00 AM GMT</strong>. Bot runs for 12 hours from activation.
+                                </p>
                               </div>
                             </div>
                           ) : (
                             <div className="bg-white/10 rounded-xl p-3">
-                              <p className="text-sm text-white/80">UK time: <strong className="text-white">{ukNow.toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}</strong> — Come back at <strong className="text-white">1:00 PM GMT</strong> to activate the bot.</p>
+                              <p className="text-sm text-white/80">
+                                UK time: <strong className="text-white">{ukNow.toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}</strong>
+                                {" · "} Window opens in <strong className="text-white">{hoursUntilOpen > 0 ? `${hoursUntilOpen}h ` : ""}{minsUntilOpenRem}m</strong> at <strong className="text-white">1:00 PM GMT</strong>.
+                              </p>
                             </div>
                           )}
                         </div>
@@ -630,17 +644,19 @@ export default function AffiliateDashboard() {
                             <>
                               <div className="flex-1">
                                 <p className="text-xs text-muted-foreground">
-                                  {isOnepm ? "The activation window is open right now." : "Activate every working day at exactly 1:00 PM GMT."}
+                                  {isActivationWindow
+                                    ? "Window open now — activates for 12 hours from the moment you tap."
+                                    : `Opens at 1:00 PM GMT${hoursUntilOpen > 0 ? ` (in ${hoursUntilOpen}h ${minsUntilOpenRem}m)` : ""}.`}
                                 </p>
                               </div>
                               <Button
                                 size="sm"
                                 onClick={activateBot}
-                                disabled={!isOnepm}
+                                disabled={!isActivationWindow}
                                 data-testid="button-bot-activate"
-                                className={`${isOnepm ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-muted text-muted-foreground cursor-not-allowed"} font-bold`}
+                                className={`${isActivationWindow ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-muted text-muted-foreground cursor-not-allowed"} font-bold`}
                               >
-                                <Power className="w-3.5 h-3.5 mr-1.5" /> {isOnepm ? "Activate Bot" : "Available at 1:00 PM"}
+                                <Power className="w-3.5 h-3.5 mr-1.5" /> {isActivationWindow ? "Activate Bot" : "Opens at 1:00 PM"}
                               </Button>
                             </>
                           )}

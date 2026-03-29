@@ -19,8 +19,8 @@ type AuthUser = {
 type AuthContextType = {
   user: AuthUser | null | undefined;
   isLoading: boolean;
-  requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string }) => Promise<{ otpSent: boolean; hint?: string; isNewUser?: boolean }>;
-  verifyOtp: (email: string, code: string) => Promise<AuthUser>;
+  requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string; loginRole?: string }) => Promise<{ otpSent?: boolean; hint?: string; isNewUser?: boolean; multipleRoles?: boolean; roles?: string[] }>;
+  verifyOtp: (email: string, code: string, loginRole?: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 };
 
@@ -82,13 +82,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  const requestOtp = async (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string }) => {
+  const requestOtp = async (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string; loginRole?: string }) => {
     const res = await apiRequest("POST", "/api/auth/request-otp", data);
     return res.json();
   };
 
-  const verifyOtp = async (email: string, code: string): Promise<AuthUser> => {
-    const res = await apiRequest("POST", "/api/auth/verify-otp", { email, code });
+  const verifyOtp = async (email: string, code: string, loginRole?: string): Promise<AuthUser> => {
+    const res = await apiRequest("POST", "/api/auth/verify-otp", { email, code, ...(loginRole ? { loginRole } : {}) });
     const userData = await res.json();
     queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "/api/auth/me" });
     queryClient.setQueryData(["/api/auth/me"], userData);

@@ -45,13 +45,49 @@ export async function registerRoutes(
 
   app.post("/api/auth/request-otp", async (req, res) => {
     try {
-      const { email, firstName, lastName, phone, country, referralCode, role } = req.body;
+      const { email, firstName, lastName, phone, country, referralCode, role, loginRole } = req.body;
       if (!email) return res.status(400).json({ message: "Email is required" });
 
-      let user = await storage.getUserByEmail(email);
       const isSignup = !!firstName;
 
-      if (!user && isSignup) {
+      // ── Login flow (not signup) ────────────────────────────────────────
+      if (!isSignup) {
+        const allAccounts = await storage.getUsersByEmail(email);
+
+        if (allAccounts.length === 0) {
+          return res.status(404).json({ message: "No account found with this email. Please sign up first." });
+        }
+
+        // Dual-account email detected — ask the user which one they want
+        if (allAccounts.length > 1 && !loginRole) {
+          return res.json({
+            multipleRoles: true,
+            roles: allAccounts.map(u => u.role),
+            message: "Multiple accounts found. Please choose which account to sign in to.",
+          });
+        }
+
+        // Role specified (or single account) — verify that account exists
+        const targetUser = loginRole
+          ? await storage.getUserByEmailAndRole(email, loginRole)
+          : allAccounts[0];
+
+        if (!targetUser) {
+          return res.status(404).json({ message: `No ${loginRole} account found with this email.` });
+        }
+
+        const code = generateOtp();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        await storage.createOtp({ email, code, expiresAt, used: false });
+        console.log(`[OTP] Code for ${email} (${targetUser.role}): ${code}`);
+
+        return res.json({ message: "OTP sent to your email", otpSent: true, hint: code });
+      }
+
+      // ── Signup flow ────────────────────────────────────────────────────
+      let user = await storage.getUserByEmailAndRole(email, role === "affiliate" ? "affiliate" : "student");
+
+      if (!user) {
         const userRole = role === "affiliate" ? "affiliate" : "student";
         user = await storage.createUser({
           firstName, lastName, email, phone: phone || "",
@@ -63,20 +99,15 @@ export async function registerRoutes(
         user = await storage.getUser(user.id);
       }
 
-      if (!user) {
-        return res.status(404).json({ message: "No account found with this email. Please sign up first." });
-      }
-
       const code = generateOtp();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
       await storage.createOtp({ email, code, expiresAt, used: false });
-
       console.log(`[OTP] Code for ${email}: ${code}`);
 
       res.json({
         message: "OTP sent to your email",
         otpSent: true,
-        isNewUser: isSignup && !await storage.getVerificationByUser(user!.id),
+        isNewUser: !await storage.getVerificationByUser(user!.id),
         hint: code,
       });
     } catch (e: any) {
@@ -86,7 +117,7 @@ export async function registerRoutes(
 
   app.post("/api/auth/verify-otp", async (req, res) => {
     try {
-      const { email, code } = req.body;
+      const { email, code, loginRole } = req.body;
       if (!email || !code) return res.status(400).json({ message: "Email and OTP code are required" });
 
       const otp = await storage.getValidOtp(email, code);
@@ -94,7 +125,10 @@ export async function registerRoutes(
 
       await storage.markOtpUsed(otp.id);
 
-      const user = await storage.getUserByEmail(email);
+      // Find the correct user — prefer role-specific lookup to handle dual accounts
+      const user = loginRole
+        ? await storage.getUserByEmailAndRole(email, loginRole)
+        : await storage.getUserByEmail(email);
       if (!user) return res.status(404).json({ message: "User not found" });
 
       (req.session as any).userId = user.id;

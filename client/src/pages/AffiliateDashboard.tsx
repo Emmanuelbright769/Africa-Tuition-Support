@@ -849,39 +849,43 @@ export default function AffiliateDashboard() {
                   </Card>
                 </motion.div>
 
-                {/* Price table */}
+                {/* Price table — collapsed behind Learn More */}
                 <motion.div variants={itemVariants}>
-                  <Card className="shadow-md border-0 overflow-hidden">
-                    <CardHeader className="bg-muted/50 pb-3"><CardTitle className="text-sm">Price Schedule (every 150,000 enrollments)</CardTitle></CardHeader>
-                    <CardContent className="p-0">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead><tr className="border-b bg-muted/30">
-                            <th className="text-left px-4 py-2 font-semibold">Enrollment Band</th>
-                            <th className="text-center px-4 py-2">Starter ($100)</th>
-                            <th className="text-center px-4 py-2">Growth ($300)</th>
-                            <th className="text-center px-4 py-2">Elite ($500+)</th>
-                          </tr></thead>
-                          <tbody>
-                            {[0,150000,300000,450000,600000,750000,900000].map((ms, i) => {
-                              const mult = Math.pow(1.20, i);
-                              const isCur = totalEnrolled >= ms && totalEnrolled < (ms + CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
-                              const isPast = totalEnrolled >= (ms + CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
-                              return (
-                                <tr key={ms} className={`border-b ${isCur ? 'bg-tsia-gold/10 font-bold' : isPast ? 'opacity-40' : ''}`}>
-                                  <td className="px-4 py-2">
-                                    {ms === 0 ? "0 – 149,999" : `${ms.toLocaleString()} – ${(ms+149999).toLocaleString()}`}
-                                    {isCur && <span className="ml-2 text-[10px] bg-tsia-gold text-slate-900 px-1.5 py-0.5 rounded-full font-bold">NOW</span>}
-                                  </td>
-                                  <td className="px-4 py-2 text-center">${Math.round(100*mult)}</td>
-                                  <td className="px-4 py-2 text-center">${Math.round(300*mult)}</td>
-                                  <td className="px-4 py-2 text-center">${Math.round(500*mult)}+</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                  <Card className="shadow-md border-0">
+                    <CardContent className="pt-4 pb-3 px-4">
+                      <p className="text-xs text-muted-foreground mb-1">
+                        Prices increase by <strong className="text-foreground">20%</strong> every 150,000 enrollments. Current tier starts at <strong className="text-tsia-gold">$100 / $300 / $500+</strong>.
+                      </p>
+                      <LearnMore label="View price schedule">
+                        <div className="overflow-x-auto mt-1">
+                          <table className="w-full text-xs">
+                            <thead><tr className="border-b bg-muted/30">
+                              <th className="text-left px-3 py-2 font-semibold">Enrollment Band</th>
+                              <th className="text-center px-3 py-2">Starter ($100)</th>
+                              <th className="text-center px-3 py-2">Growth ($300)</th>
+                              <th className="text-center px-3 py-2">Elite ($500+)</th>
+                            </tr></thead>
+                            <tbody>
+                              {[0,150000,300000,450000,600000,750000,900000].map((ms, i) => {
+                                const mult = Math.pow(1.20, i);
+                                const isCur = totalEnrolled >= ms && totalEnrolled < (ms + CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
+                                const isPast = totalEnrolled >= (ms + CO_AFFILIATE_PROGRAM.MILESTONE_INTERVAL);
+                                return (
+                                  <tr key={ms} className={`border-b ${isCur ? 'bg-tsia-gold/10 font-bold' : isPast ? 'opacity-40' : ''}`}>
+                                    <td className="px-3 py-2">
+                                      {ms === 0 ? "0 – 149,999" : `${ms.toLocaleString()} – ${(ms+149999).toLocaleString()}`}
+                                      {isCur && <span className="ml-2 text-[10px] bg-tsia-gold text-slate-900 px-1.5 py-0.5 rounded-full font-bold">NOW</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">${Math.round(100*mult)}</td>
+                                    <td className="px-3 py-2 text-center">${Math.round(300*mult)}</td>
+                                    <td className="px-3 py-2 text-center">${Math.round(500*mult)}+</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </LearnMore>
                     </CardContent>
                   </Card>
                 </motion.div>

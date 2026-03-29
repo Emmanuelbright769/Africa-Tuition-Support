@@ -751,6 +751,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid category. Must be 100, 300, or 500 (elite)." });
       }
 
+      const reserveCut = parseFloat((amountPaid * 0.20).toFixed(2)); // 20% to reserve
       const record = await storage.createCoAffiliate({
         userId,
         investmentCategory,
@@ -759,9 +760,22 @@ export async function registerRoutes(
         status: "active",
       });
 
+      // Ring-fence 20% of trust fund investment into the strategic reserve
+      await storage.addToReserveFund(reserveCut.toFixed(6));
+
+      await storage.createNotification({
+        userId,
+        type: "wallet",
+        title: "Trust Fund Enrolment Confirmed",
+        message: `You've joined the Co-Affiliate programme. $${reserveCut.toFixed(2)} (20%) has been ring-fenced into the Strategic Reserve Fund.`,
+        data: { amountPaid, reserveCut, shareLabel: (sharePercentage * 100).toFixed(6) + "%" },
+        isRead: false,
+      });
+
       res.json({
         ...record,
         currentPrice: amountPaid,
+        reserveCut,
         shareLabel: (sharePercentage * 100).toFixed(6) + "%",
         message: "Successfully enrolled as Co-Affiliate/Initiator!",
       });

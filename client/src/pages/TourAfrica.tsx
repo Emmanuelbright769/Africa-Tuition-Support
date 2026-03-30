@@ -230,9 +230,6 @@ export default function TourAfrica() {
                           <p className="text-green-200 text-sm">Hotels · Car Hire · Flights · Dispatch · E-Taxi</p>
                         </div>
                       </div>
-                      <p className="text-green-100 max-w-xl leading-relaxed text-sm">
-                        Your all-in-one African travel platform. Book hotels, hire cars, and reserve flights across Africa — all paid directly from your TSIA Personal Wallet. 10% TSIA commission applies.
-                      </p>
                     </div>
                   </div>
                 </motion.div>

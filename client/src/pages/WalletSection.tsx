@@ -14,13 +14,12 @@ import {
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
   Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy
 } from "lucide-react";
+import { toNGN } from "@/lib/utils";
 
 type WalletData = { id: number; userId: number; balance: string };
 type DepositRecord = { id: number; amountUsd: string; txHash: string; walletType: string; status: string; createdAt: string };
 type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord    = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
-
-const USD_TO_NGN = 1600;
 
 const SERVICE_LABELS: Record<string, string> = {
   electricity: "Electricity", internet: "Internet", airtime: "Airtime",

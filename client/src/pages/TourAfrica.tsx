@@ -88,7 +88,7 @@ export default function TourAfrica() {
 
   const handleLogout = async () => { await logout(); setLocation("/"); };
   const walletBalance = parseFloat((wallet as any)?.balance || "0");
-  const COMMISSION_RATE = 0.05;
+  const COMMISSION_RATE = 0.10;
 
   // Hotel calculations
   const hotelNights = hotelForm.checkIn && hotelForm.checkOut
@@ -231,7 +231,7 @@ export default function TourAfrica() {
                         </div>
                       </div>
                       <p className="text-green-100 max-w-xl leading-relaxed text-sm">
-                        Your all-in-one African travel platform. Book hotels, hire cars, and reserve flights across Africa — all paid directly from your TSIA Personal Wallet. 5% TSIA commission applies.
+                        Your all-in-one African travel platform. Book hotels, hire cars, and reserve flights across Africa — all paid directly from your TSIA Personal Wallet. 10% TSIA commission applies.
                       </p>
                     </div>
                   </div>
@@ -280,8 +280,8 @@ export default function TourAfrica() {
                   <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 flex items-start gap-4">
                     <Tag className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm">5% TSIA Service Commission</p>
-                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">All Tour Africa bookings are paid directly from your TSIA Personal Wallet. TSIA retains 5% as a service commission. The net amount is forwarded to the service provider.</p>
+                      <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm">10% TSIA Service Commission</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">All Tour Africa bookings are paid directly from your TSIA Personal Wallet. TSIA retains 10% as a service commission. The net amount is forwarded to the service provider.</p>
                     </div>
                   </div>
                 </motion.div>
@@ -341,7 +341,7 @@ export default function TourAfrica() {
                         <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-4 space-y-2 text-sm">
                           <BookingSummaryRow label="Stay duration" value={`${hotelNights} night(s) × ${hotelForm.rooms} room(s)`} />
                           <BookingSummaryRow label="Sub-total" value={`$${hotelTotal.toFixed(2)}`} />
-                          <BookingSummaryRow label="TSIA commission (5%)" value={`$${(hotelTotal * COMMISSION_RATE).toFixed(2)}`} />
+                          <BookingSummaryRow label="TSIA commission (10%)" value={`$${(hotelTotal * COMMISSION_RATE).toFixed(2)}`} />
                           <div className="border-t pt-2 flex justify-between font-bold">
                             <span>Total charged to wallet</span>
                             <span className="text-purple-700 dark:text-purple-400">${hotelTotal.toFixed(2)}</span>
@@ -424,7 +424,7 @@ export default function TourAfrica() {
                         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 space-y-2 text-sm">
                           <BookingSummaryRow label="Rental duration" value={`${carDays} day(s) · ${carForm.carType} · ${carForm.driver === "self" ? "Self-drive" : "With Chauffeur"}`} />
                           <BookingSummaryRow label="Sub-total" value={`$${carTotal.toFixed(2)}`} />
-                          <BookingSummaryRow label="TSIA commission (5%)" value={`$${(carTotal * COMMISSION_RATE).toFixed(2)}`} />
+                          <BookingSummaryRow label="TSIA commission (10%)" value={`$${(carTotal * COMMISSION_RATE).toFixed(2)}`} />
                           <div className="border-t pt-2 flex justify-between font-bold">
                             <span>Total charged to wallet</span>
                             <span className="text-blue-700 dark:text-blue-400">${carTotal.toFixed(2)}</span>
@@ -504,7 +504,7 @@ export default function TourAfrica() {
                         <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 rounded-xl p-4 space-y-2 text-sm">
                           <BookingSummaryRow label="Route" value={`${flightForm.from} → ${flightForm.to}${flightForm.returnDate ? " (Return)" : " (One-way)"}`} />
                           <BookingSummaryRow label="Passengers × Ticket" value={`${flightForm.passengers} × $${parseFloat(flightForm.ticketPrice || "0").toFixed(2)}`} />
-                          <BookingSummaryRow label="TSIA commission (5%)" value={`$${(flightTotal * COMMISSION_RATE).toFixed(2)}`} />
+                          <BookingSummaryRow label="TSIA commission (10%)" value={`$${(flightTotal * COMMISSION_RATE).toFixed(2)}`} />
                           <div className="border-t pt-2 flex justify-between font-bold">
                             <span>Total charged to wallet</span>
                             <span className="text-sky-700 dark:text-sky-400">${flightTotal.toFixed(2)}</span>
@@ -655,7 +655,7 @@ export default function TourAfrica() {
             <BookingSummaryRow label="Guests / Rooms" value={`${hotelForm.guests} guest(s) · ${hotelForm.rooms} room(s)`} />
             <BookingSummaryRow label="Duration" value={`${hotelNights} night(s) × $${hotelForm.pricePerNight}`} />
             <div className="border-t pt-2">
-              <BookingSummaryRow label="TSIA commission (5%)" value={`$${(hotelTotal * COMMISSION_RATE).toFixed(2)}`} />
+              <BookingSummaryRow label="TSIA commission (10%)" value={`$${(hotelTotal * COMMISSION_RATE).toFixed(2)}`} />
               <div className="flex justify-between font-bold text-base mt-1">
                 <span>Total</span><span className="text-purple-700 dark:text-purple-400">${hotelTotal.toFixed(2)}</span>
               </div>
@@ -697,7 +697,7 @@ export default function TourAfrica() {
             <BookingSummaryRow label="Vehicle" value={`${carForm.carType} · ${carForm.driver === "self" ? "Self-drive" : "With Chauffeur"}`} />
             <BookingSummaryRow label="Duration" value={`${carDays} day(s) × $${carForm.pricePerDay}`} />
             <div className="border-t pt-2">
-              <BookingSummaryRow label="TSIA commission (5%)" value={`$${(carTotal * COMMISSION_RATE).toFixed(2)}`} />
+              <BookingSummaryRow label="TSIA commission (10%)" value={`$${(carTotal * COMMISSION_RATE).toFixed(2)}`} />
               <div className="flex justify-between font-bold text-base mt-1">
                 <span>Total</span><span className="text-blue-700 dark:text-blue-400">${carTotal.toFixed(2)}</span>
               </div>
@@ -739,7 +739,7 @@ export default function TourAfrica() {
             <BookingSummaryRow label="Passengers" value={`${flightForm.passengers} × ${flightForm.class}`} />
             <BookingSummaryRow label="Ticket price" value={`$${parseFloat(flightForm.ticketPrice || "0").toFixed(2)} per person`} />
             <div className="border-t pt-2">
-              <BookingSummaryRow label="TSIA commission (5%)" value={`$${(flightTotal * COMMISSION_RATE).toFixed(2)}`} />
+              <BookingSummaryRow label="TSIA commission (10%)" value={`$${(flightTotal * COMMISSION_RATE).toFixed(2)}`} />
               <div className="flex justify-between font-bold text-base mt-1">
                 <span>Total</span><span className="text-sky-700 dark:text-sky-400">${flightTotal.toFixed(2)}</span>
               </div>

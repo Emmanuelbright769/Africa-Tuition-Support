@@ -2171,7 +2171,7 @@ export async function registerRoutes(
   });
 
   // ─── TOUR AFRICA BOOKINGS ──────────────────────────────────────────────────
-  const TOUR_COMMISSION_RATE = 0.05; // 5% TSIA commission on all tour bookings
+  const TOUR_COMMISSION_RATE = 0.10; // 10% TSIA commission on all tour bookings
 
   // POST /api/tour/book
   app.post("/api/tour/book", async (req, res) => {
@@ -2212,7 +2212,7 @@ export async function registerRoutes(
         reference,
       });
 
-      // Credit TSIA reserve (5% commission)
+      // Credit TSIA reserve (10% commission)
       await storage.addToReserveFund(commission.toFixed(6));
 
       await storage.createNotification({

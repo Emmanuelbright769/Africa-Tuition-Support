@@ -25,6 +25,11 @@ type Product = {
   price: string; category: string; condition: string; images: string[] | null;
   stock: number; location: string; status: string; viewCount: number;
   createdAt: string; sellerName: string;
+  avgRating?: number; ratingCount?: number;
+};
+type ProductRatingEntry = {
+  id: number; productId: number; userId: number; rating: number; comment: string | null;
+  userName: string; createdAt: string;
 };
 type Order = {
   id: number; buyerId: number; sellerId: number; productId: number; quantity: number;
@@ -99,14 +104,22 @@ const originalPrice = (price: string) => (parseFloat(price) * 1.28).toFixed(2);
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
-function StarRating({ rating = 4.5, count }: { rating?: number; count?: number }) {
-  const c = count ?? Math.floor(Math.random() * 80 + 5);
+function StarRating({ rating = 0, count = 0, interactive = false, onRate }: { rating?: number; count?: number; interactive?: boolean; onRate?: (r: number) => void }) {
+  const [hover, setHover] = useState(0);
+  const display = interactive ? (hover || rating) : rating;
   return (
     <div className="flex items-center gap-0.5">
       {[1,2,3,4,5].map(s => (
-        <Star key={s} className={`w-2.5 h-2.5 ${s <= Math.floor(rating) ? "text-amber-400 fill-amber-400" : "text-gray-200 fill-gray-200"}`} />
+        <Star
+          key={s}
+          className={`transition-colors ${interactive ? "w-5 h-5 cursor-pointer" : "w-2.5 h-2.5"} ${s <= Math.floor(display) ? "text-amber-400 fill-amber-400" : "text-gray-300 fill-gray-300 dark:text-gray-600 dark:fill-gray-600"}`}
+          onMouseEnter={() => interactive && setHover(s)}
+          onMouseLeave={() => interactive && setHover(0)}
+          onClick={() => interactive && onRate?.(s)}
+        />
       ))}
-      <span className="text-[10px] text-muted-foreground ml-0.5">({c})</span>
+      {!interactive && count > 0 && <span className="text-[10px] text-muted-foreground ml-0.5">({count})</span>}
+      {!interactive && count === 0 && <span className="text-[10px] text-muted-foreground ml-0.5">No ratings</span>}
     </div>
   );
 }
@@ -231,6 +244,12 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
             <span className="text-3xl">{CATEGORY_ICONS[product.category] || "📦"}</span>
           </div>
         )}
+        {/* View overlay hint */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+          <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
+            <Eye className="w-3 h-3" /> View
+          </span>
+        </div>
         {/* Wishlist */}
         <button
           onClick={e => { e.stopPropagation(); onWishlist(); }}
@@ -255,7 +274,7 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
       <div className="p-3">
         <p className="text-xs text-muted-foreground mb-0.5 truncate">{CATEGORY_LABELS[product.category]}</p>
         <h3 className="font-semibold text-[13px] leading-snug line-clamp-2 mb-1.5 min-h-[2.5rem]">{product.title}</h3>
-        <StarRating />
+        <StarRating rating={product.avgRating ?? 0} count={product.ratingCount ?? 0} />
         <div className="flex items-center justify-between mt-2">
           <div>
             <span className="text-base font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
@@ -424,7 +443,7 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
               <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1"><BadgePercent className="w-3.5 h-3.5 text-tsia-green" /> Earnings breakdown</p>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">Listing price</span><span className="font-semibold">${parseFloat(form.price || "0").toFixed(2)}</span></div>
-                <div className="flex justify-between"><span className="text-red-500">TSIA commission (5%)</span><span className="text-red-500">−${commission.toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-red-500">TSIA commission (8%)</span><span className="text-red-500">−${commission.toFixed(2)}</span></div>
                 <div className="flex justify-between border-t pt-1 mt-1"><span className="font-bold">You receive</span><span className="font-bold text-tsia-green">${youReceive.toFixed(2)}</span></div>
               </div>
             </div>
@@ -497,7 +516,7 @@ function BuyModal({ product, open, onClose, walletBalance }: { product: Product 
           <div><Label>Delivery address (optional)</Label><Input placeholder="e.g. 12 Baker Street, London" value={address} onChange={e => setAddress(e.target.value)} className="mt-1" data-testid="input-delivery-address" /></div>
           <div className="bg-muted/40 rounded-xl p-3 text-sm space-y-1">
             <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>${total.toFixed(2)}</span></div>
-            <div className="flex justify-between text-xs text-muted-foreground"><span>TSIA fee (5%)</span><span>${commission.toFixed(2)}</span></div>
+            <div className="flex justify-between text-xs text-muted-foreground"><span>TSIA fee (8%)</span><span>${commission.toFixed(2)}</span></div>
             <div className="flex justify-between font-bold border-t pt-1"><span>Total</span><span>${total.toFixed(2)}</span></div>
           </div>
           <div className={`rounded-xl p-3 text-sm flex items-center gap-2 ${canAfford ? "bg-green-50 dark:bg-green-900/20 text-green-700" : "bg-red-50 dark:bg-red-900/20 text-red-600"}`}>
@@ -518,11 +537,61 @@ function BuyModal({ product, open, onClose, walletBalance }: { product: Product 
 
 // ─── Product Detail Modal ──────────────────────────────────────────────────
 function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }: { product: Product | null; open: boolean; onClose: () => void; onBuy: () => void; onChat?: () => void; isSeller?: boolean }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [imgIdx, setImgIdx] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+  const [pendingRating, setPendingRating] = useState(0);
+
+  const { data: ratingsData, refetch: refetchRatings } = useQuery<{ ratings: ProductRatingEntry[]; summary: { avgRating: number; count: number } }>({
+    queryKey: [`/api/products/${product?.id}/ratings`],
+    queryFn: async () => {
+      const res = await fetch(`/api/products/${product!.id}/ratings`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!product?.id && open,
+  });
+
+  const { data: myRating } = useQuery<{ rating: number; comment: string | null } | null>({
+    queryKey: [`/api/products/${product?.id}/my-rating`],
+    queryFn: async () => {
+      const res = await fetch(`/api/products/${product!.id}/my-rating`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!product?.id && open,
+  });
+
+  useEffect(() => {
+    if (myRating) {
+      setPendingRating(myRating.rating);
+      setRatingComment(myRating.comment ?? "");
+    } else {
+      setPendingRating(0);
+      setRatingComment("");
+    }
+  }, [myRating]);
+
+  const rateMutation = useMutation({
+    mutationFn: async ({ rating, comment }: { rating: number; comment: string }) => {
+      const res = await apiRequest("POST", `/api/products/${product!.id}/rate`, { rating, comment });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Rating submitted!", description: "Thank you for your feedback." });
+      refetchRatings();
+      queryClient.invalidateQueries({ queryKey: [`/api/products/${product?.id}/my-rating`] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   if (!product) return null;
   const imgs = product.images?.length ? product.images : [];
   const orig = originalPrice(product.price);
   const disc = Math.round((1 - parseFloat(product.price) / parseFloat(orig)) * 100);
+  const avgRating = ratingsData?.summary?.avgRating ?? product.avgRating ?? 0;
+  const ratingCount = ratingsData?.summary?.count ?? product.ratingCount ?? 0;
+  const canRate = !isSeller;
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-0 gap-0">
@@ -565,7 +634,10 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }:
             <Badge className={product.condition === "new" ? "bg-tsia-green/10 text-tsia-green border-tsia-green/30" : "bg-muted text-muted-foreground"}>{product.condition}</Badge>
           </div>
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <StarRating />
+            <div className="flex items-center gap-1">
+              <StarRating rating={avgRating} count={ratingCount} />
+              {avgRating > 0 && <span className="text-[11px] font-semibold text-amber-500 ml-0.5">{avgRating.toFixed(1)}</span>}
+            </div>
             <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{product.location}</span>
             <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{product.viewCount}</span>
           </div>
@@ -579,6 +651,54 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }:
             <span className="text-amber-700 dark:text-amber-300 flex items-center gap-1"><Package className="w-3.5 h-3.5" />{product.stock} in stock</span>
             <span className="text-amber-700 dark:text-amber-300 flex items-center gap-1"><Truck className="w-3.5 h-3.5" />Free shipping</span>
           </div>
+
+          {/* ── Rate this product ── */}
+          {canRate && (
+            <div className="border rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-semibold">{myRating ? "Update your rating" : "Rate this product"}</p>
+              <div className="flex items-center gap-2">
+                <StarRating rating={pendingRating} interactive onRate={r => setPendingRating(r)} />
+                {pendingRating > 0 && <span className="text-sm font-bold text-amber-500">{pendingRating}/5</span>}
+              </div>
+              <Input
+                placeholder="Leave a comment (optional)"
+                value={ratingComment}
+                onChange={e => setRatingComment(e.target.value)}
+                className="rounded-xl text-sm"
+                data-testid="input-rating-comment"
+              />
+              <Button
+                onClick={() => rateMutation.mutate({ rating: pendingRating, comment: ratingComment })}
+                disabled={pendingRating === 0 || rateMutation.isPending}
+                size="sm"
+                className="bg-tsia-green text-white rounded-xl w-full"
+                data-testid="btn-submit-rating"
+              >
+                {rateMutation.isPending ? "Submitting…" : myRating ? "Update rating" : "Submit rating"}
+              </Button>
+            </div>
+          )}
+
+          {/* ── Reviews list ── */}
+          {(ratingsData?.ratings?.length ?? 0) > 0 && (
+            <div className="space-y-3">
+              <p className="text-sm font-semibold">{ratingsData!.ratings.length} Review{ratingsData!.ratings.length !== 1 ? "s" : ""}</p>
+              {ratingsData!.ratings.slice(0, 5).map(r => (
+                <div key={r.id} className="bg-muted/40 rounded-xl p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold">{r.userName}</p>
+                    <div className="flex items-center gap-0.5">
+                      {[1,2,3,4,5].map(s => (
+                        <Star key={s} className={`w-2.5 h-2.5 ${s <= r.rating ? "text-amber-400 fill-amber-400" : "text-gray-300 fill-gray-300"}`} />
+                      ))}
+                    </div>
+                  </div>
+                  {r.comment && <p className="text-xs text-muted-foreground">{r.comment}</p>}
+                  <p className="text-[10px] text-muted-foreground/60">{new Date(r.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="px-5 pb-5 flex flex-col gap-3">
           <Button onClick={onBuy} disabled={product.stock === 0} className="w-full h-13 py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base" data-testid={`btn-detail-buy-${product.id}`}>
@@ -869,7 +989,7 @@ export default function EcommerceSection() {
             <div className="text-center py-20 border-2 border-dashed rounded-2xl">
               <Tag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
               <p className="font-semibold mb-1">No listings yet</p>
-              <p className="text-muted-foreground text-sm mb-4">Start selling — TSIA only takes 5%.</p>
+              <p className="text-muted-foreground text-sm mb-4">Start selling — TSIA only takes 8%.</p>
               <Button onClick={() => setListOpen(true)} className="bg-tsia-green text-white"><Plus className="w-4 h-4 mr-1.5" /> List a Product</Button>
             </div>
           ) : (
@@ -951,7 +1071,7 @@ export default function EcommerceSection() {
                 </div>
                 <div className="text-right ml-3 shrink-0">
                   <p className="font-black text-base text-tsia-green">+${parseFloat(o.sellerReceives).toFixed(2)}</p>
-                  <p className="text-[10px] text-muted-foreground">after 5% fee</p>
+                  <p className="text-[10px] text-muted-foreground">after 8% fee</p>
                   <Badge className={`${STATUS_COLORS[o.status] || ""} text-[10px] mt-1 rounded-full`}>{o.status}</Badge>
                 </div>
               </div>
@@ -986,7 +1106,7 @@ export default function EcommerceSection() {
           {[
             { label: "Products live", value: (products as Product[]).length, icon: Package, color: "text-blue-500" },
             { label: "In wishlist", value: wishlist.size, icon: Heart, color: "text-red-500" },
-            { label: "Commission", value: "5%", icon: BadgePercent, color: "text-tsia-green" },
+            { label: "Commission", value: "8%", icon: BadgePercent, color: "text-tsia-green" },
           ].map(s => (
             <div key={s.label} className="bg-card border rounded-2xl p-3 text-center">
               <s.icon className={`w-5 h-5 ${s.color} mx-auto mb-1`} />

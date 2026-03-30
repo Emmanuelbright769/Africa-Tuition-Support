@@ -487,7 +487,7 @@ export const orders = pgTable("orders", {
   quantity:         integer("quantity").notNull().default(1),
   unitPrice:        decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalAmount:      decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  commissionRate:   decimal("commission_rate", { precision: 5, scale: 4 }).notNull().default("0.0500"),
+  commissionRate:   decimal("commission_rate", { precision: 5, scale: 4 }).notNull().default("0.0800"),
   commissionAmount: decimal("commission_amount", { precision: 10, scale: 2 }).notNull(),
   sellerReceives:   decimal("seller_receives", { precision: 10, scale: 2 }).notNull(),
   status:           orderStatusEnum("status").notNull().default("pending"),
@@ -520,8 +520,22 @@ export const insertWalletDepositSchema = createInsertSchema(walletDeposits).omit
 export type InsertWalletDeposit = z.infer<typeof insertWalletDepositSchema>;
 export type WalletDeposit = typeof walletDeposits.$inferSelect;
 
+// ─── PRODUCT RATINGS ─────────────────────────────────────────────────────────
+export const productRatings = pgTable("product_ratings", {
+  id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  productId: integer("product_id").notNull().references(() => products.id),
+  userId:    integer("user_id").notNull().references(() => users.id),
+  rating:    integer("rating").notNull(), // 1–5
+  comment:   text("comment"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [{ name: "product_ratings_product_user_unique", columns: [t.productId, t.userId] }]);
+
+export const insertProductRatingSchema = createInsertSchema(productRatings).omit({ id: true, createdAt: true });
+export type InsertProductRating = z.infer<typeof insertProductRatingSchema>;
+export type ProductRating = typeof productRatings.$inferSelect;
+
 export const ECOMMERCE = {
-  COMMISSION_RATE: 0.05,  // 5% platform commission on every sale
+  COMMISSION_RATE: 0.08,  // 8% platform commission on every sale
   MIN_PRICE: 0.50,
   MAX_PRICE: 10000,
   MAX_IMAGES: 5,

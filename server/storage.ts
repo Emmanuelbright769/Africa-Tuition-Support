@@ -6,6 +6,7 @@ import {
   tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
   landlordProperties, tenancyLeases, tenancyPayments, loans,
   products, orders, walletDeposits, walletTransfers, billPayments,
+  productRatings,
   ecommerceChats, ecommerceChatMessages,
   notifications, callSessions, forumTopics, forumPosts,
   type User, type InsertUser,
@@ -24,6 +25,7 @@ import {
   type TenancyLease, type InsertTenancyLease,
   type Loan, type InsertLoan,
   type Product, type InsertProduct,
+  type ProductRating, type InsertProductRating,
   type Order, type InsertOrder,
   type WalletDeposit, type InsertWalletDeposit,
   type WalletTransfer, type BillPayment,
@@ -113,6 +115,10 @@ export interface IStorage {
   getProducts(opts?: { category?: string; search?: string; sellerId?: number; status?: string }): Promise<(Product & { sellerName: string })[]>;
   getProductById(id: number): Promise<(Product & { sellerName: string }) | undefined>;
   updateProduct(id: number, data: Partial<Product>): Promise<Product>;
+  rateProduct(data: InsertProductRating): Promise<ProductRating>;
+  getProductRatings(productId: number): Promise<(ProductRating & { userName: string })[]>;
+  getProductRatingSummary(productId: number): Promise<{ avgRating: number; count: number }>;
+  getUserRatingForProduct(productId: number, userId: number): Promise<ProductRating | undefined>;
   createOrder(data: InsertOrder): Promise<Order>;
   getOrdersByBuyer(buyerId: number): Promise<(Order & { product: Product; sellerName: string })[]>;
   getOrdersBySeller(sellerId: number): Promise<(Order & { product: Product; buyerName: string })[]>;
@@ -550,6 +556,43 @@ export class DatabaseStorage implements IStorage {
   async updateOrderStatus(id: number, status: string): Promise<Order> {
     const [o] = await db.update(orders).set({ status: status as any, updatedAt: new Date() }).where(eq(orders.id, id)).returning();
     return o;
+  }
+
+  async rateProduct(data: InsertProductRating): Promise<ProductRating> {
+    const existing = await db.select().from(productRatings)
+      .where(and(eq(productRatings.productId, data.productId), eq(productRatings.userId, data.userId)))
+      .limit(1);
+    if (existing.length > 0) {
+      const [r] = await db.update(productRatings)
+        .set({ rating: data.rating, comment: data.comment ?? null })
+        .where(eq(productRatings.id, existing[0].id)).returning();
+      return r;
+    }
+    const [r] = await db.insert(productRatings).values(data).returning();
+    return r;
+  }
+
+  async getProductRatings(productId: number): Promise<(ProductRating & { userName: string })[]> {
+    const rows = await db.select({ ...productRatings, firstName: users.firstName, lastName: users.lastName })
+      .from(productRatings)
+      .innerJoin(users, eq(productRatings.userId, users.id))
+      .where(eq(productRatings.productId, productId))
+      .orderBy(desc(productRatings.createdAt));
+    return rows.map(r => ({ ...r, userName: `${r.firstName} ${r.lastName}` }));
+  }
+
+  async getProductRatingSummary(productId: number): Promise<{ avgRating: number; count: number }> {
+    const rows = await db.select({
+      avg: sql<string>`AVG(${productRatings.rating})::numeric(3,2)`,
+      cnt: count(productRatings.id),
+    }).from(productRatings).where(eq(productRatings.productId, productId));
+    return { avgRating: parseFloat(rows[0]?.avg ?? "0"), count: rows[0]?.cnt ?? 0 };
+  }
+
+  async getUserRatingForProduct(productId: number, userId: number): Promise<ProductRating | undefined> {
+    const [r] = await db.select().from(productRatings)
+      .where(and(eq(productRatings.productId, productId), eq(productRatings.userId, userId)));
+    return r;
   }
 
   // ─── E-Commerce Chat ──────────────────────────────────────────────────────────

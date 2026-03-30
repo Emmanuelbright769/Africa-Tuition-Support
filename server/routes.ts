@@ -1708,6 +1708,40 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── PRODUCT RATINGS ──────────────────────────────────────────────────────
+  app.get("/api/products/:id/ratings", async (req, res) => {
+    try {
+      const productId = parseInt(req.params.id);
+      const [ratings, summary] = await Promise.all([
+        storage.getProductRatings(productId),
+        storage.getProductRatingSummary(productId),
+      ]);
+      res.json({ ratings, summary });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/products/:id/rate", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const productId = parseInt(req.params.id);
+    const { rating, comment } = req.body;
+    if (!rating || rating < 1 || rating > 5) return res.status(400).json({ message: "Rating must be 1–5" });
+    try {
+      const r = await storage.rateProduct({ productId, userId, rating: parseInt(rating), comment: comment || null });
+      const summary = await storage.getProductRatingSummary(productId);
+      res.json({ rating: r, summary });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/products/:id/my-rating", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const r = await storage.getUserRatingForProduct(parseInt(req.params.id), userId);
+      res.json(r ?? null);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── E-COMMERCE ORDERS ──────────────────────────────────────────────────────
   app.post("/api/orders", async (req, res) => {
     const userId = (req.session as any)?.userId;

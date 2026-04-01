@@ -1,10 +1,10 @@
 import { useState, useRef } from "react";
-import { Link, useLocation, useSearch } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight, ArrowLeft, ShieldAlert } from "lucide-react";
+import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -38,8 +38,6 @@ const ROLE_META = {
 
 export default function Login() {
   const [, setLocation] = useLocation();
-  const search = useSearch();
-  const sessionExpired = new URLSearchParams(search).get("reason") === "inactivity";
   const [step, setStep] = useState<Step>(0);
   const [loading, setLoading] = useState(false);
   const [loginRole, setLoginRole] = useState<"student" | "affiliate" | "">("");
@@ -143,20 +141,6 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans overflow-hidden">
-      {sessionExpired && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-          className="sm:mx-auto sm:w-full sm:max-w-md mb-4 px-4 sm:px-0"
-        >
-          <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-2xl px-4 py-3">
-            <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Session expired</p>
-              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">You were signed out after 15 minutes of inactivity. Please log in again.</p>
-            </div>
-          </div>
-        </motion.div>
-      )}
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8 flex justify-center">
         <Link href="/">
           <a className="cursor-pointer"><Logo variant="badge" height={64} /></a>

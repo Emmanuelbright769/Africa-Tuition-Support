@@ -71,6 +71,7 @@ export default function AffiliateDashboard() {
 
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [quickAccessOpen, setQuickAccessOpen] = useState(false);
 
   const [subscribeOpen, setSubscribeOpen]       = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -529,24 +530,45 @@ export default function AffiliateDashboard() {
                   </Card>
                 </motion.div>
 
-                {/* Quick nav */}
-                <motion.div variants={itemVariants}>
-                  <p className="text-sm font-semibold text-muted-foreground mb-3">Quick access</p>
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {NAV_ITEMS.filter(n => n.id !== "overview").map(item => (
-                      <button key={item.id} onClick={() => navigate(item.id)}
-                        className="flex items-center gap-3 p-4 rounded-xl border bg-card hover:border-primary hover:shadow-md transition-all text-left"
-                        data-testid={`quick-nav-${item.id}`}>
-                        <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
-                          <item.icon className="w-4 h-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm">{item.label}</p>
-                          {item.badge && <p className="text-xs text-amber-600">{item.badge}</p>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                {/* Quick nav dropdown */}
+                <motion.div variants={itemVariants} className="relative">
+                  <button
+                    onClick={() => setQuickAccessOpen(o => !o)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl border bg-card hover:border-primary hover:shadow-md transition-all text-left"
+                    data-testid="button-quick-access-toggle"
+                  >
+                    <span className="text-sm font-semibold text-muted-foreground">Quick access</span>
+                    <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${quickAccessOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  <AnimatePresence>
+                    {quickAccessOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.18 }}
+                        className="absolute z-30 top-full left-0 right-0 mt-1 rounded-xl border bg-card shadow-xl overflow-hidden"
+                      >
+                        {NAV_ITEMS.filter(n => n.id !== "overview").map((item, idx, arr) => (
+                          <button
+                            key={item.id}
+                            onClick={() => { navigate(item.id); setQuickAccessOpen(false); }}
+                            className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-primary/5 transition-colors text-left ${idx < arr.length - 1 ? "border-b" : ""}`}
+                            data-testid={`quick-nav-${item.id}`}
+                          >
+                            <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
+                              <item.icon className="w-4 h-4 text-primary" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-sm">{item.label}</p>
+                              {item.badge && <p className="text-xs text-amber-600">{item.badge}</p>}
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto" />
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               </>
             )}

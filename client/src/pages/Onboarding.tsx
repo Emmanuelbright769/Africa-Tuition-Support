@@ -15,6 +15,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { Logo } from "@/components/ui/Logo";
+import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
 import { WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS } from "@shared/schema";
 
 const VALID_GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9"];
@@ -47,6 +48,9 @@ export default function Onboarding() {
   const [biometricPhase, setBiometricPhase] = useState<"ready" | "scanning" | "processing" | "complete">("ready");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Payment terms
+  const [paymentTermsAccepted, setPaymentTermsAccepted] = useState(false);
 
   // Step 3 - Wallet KYC
   const [walletNin, setWalletNin] = useState("");
@@ -581,7 +585,13 @@ export default function Onboarding() {
                           </div>
                         </div>
                       </div>
-                      <Button onClick={handlePayment} className="w-full h-14 text-lg font-semibold bg-blue-600 hover:bg-blue-700 shadow-md" disabled={isProcessing} data-testid="button-pay">
+                      <TermsCheckbox
+                        checked={paymentTermsAccepted}
+                        onCheckedChange={setPaymentTermsAccepted}
+                        context="payment"
+                        className="px-1"
+                      />
+                      <Button onClick={handlePayment} className="w-full h-14 text-lg font-semibold bg-blue-600 hover:bg-blue-700 shadow-md" disabled={isProcessing || !paymentTermsAccepted} data-testid="button-pay">
                         {isProcessing ? <span className="flex items-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Processing Payment...</span> : <><CreditCard className="w-5 h-5 mr-2" /> Pay $3.00 — Then Complete Face Scan</>}
                       </Button>
                     </motion.div>

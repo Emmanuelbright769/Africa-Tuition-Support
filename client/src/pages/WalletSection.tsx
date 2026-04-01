@@ -15,6 +15,7 @@ import {
   Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy
 } from "lucide-react";
 import { toNGN } from "@/lib/utils";
+import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
 
 type WalletData = { id: number; userId: number; balance: string };
 type DepositRecord = { id: number; amountUsd: string; txHash: string; walletType: string; status: string; createdAt: string };
@@ -53,8 +54,9 @@ export default function WalletSection() {
   const [verifyRef, setVerifyRef]       = useState("");
 
   // ── Withdraw dialog state ──────────────────────────────────────────────
-  const [withdrawOpen, setWithdrawOpen]     = useState(false);
-  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawOpen, setWithdrawOpen]         = useState(false);
+  const [withdrawAmount, setWithdrawAmount]     = useState("");
+  const [withdrawTermsAccepted, setWithdrawTermsAccepted] = useState(false);
 
   // ── History tab ────────────────────────────────────────────────────────
   const [historyTab, setHistoryTab] = useState<"deposits" | "sent" | "received" | "bills">("deposits");
@@ -183,7 +185,7 @@ export default function WalletSection() {
                   <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
                 </Button>
                 <Button
-                  onClick={() => { setWithdrawAmount(""); setWithdrawOpen(true); }}
+                  onClick={() => { setWithdrawAmount(""); setWithdrawTermsAccepted(false); setWithdrawOpen(true); }}
                   variant="outline"
                   className="h-12 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold"
                   disabled={balance <= 0}
@@ -212,13 +214,6 @@ export default function WalletSection() {
         ))}
       </motion.div>
 
-      {/* VAT notice */}
-      <motion.div variants={itemVariants}>
-        <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 text-sm text-amber-800 dark:text-amber-300">
-          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
-          <p>A mandatory <strong>7.5% VAT</strong> applies to all withdrawals per UK tax regulations. Funding is instant via card or bank transfer through Paystack.</p>
-        </div>
-      </motion.div>
 
       {/* Transaction History */}
       <motion.div variants={itemVariants}>
@@ -456,13 +451,18 @@ export default function WalletSection() {
             {parseFloat(withdrawAmount) > balance && (
               <p className="text-xs text-red-500 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Insufficient balance (have ${balance.toFixed(2)})</p>
             )}
+            <TermsCheckbox
+              checked={withdrawTermsAccepted}
+              onCheckedChange={setWithdrawTermsAccepted}
+              context="withdrawal"
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
             <Button
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
               onClick={() => withdrawMutation.mutate()}
-              disabled={withdrawMutation.isPending || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > balance}
+              disabled={withdrawMutation.isPending || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > balance || !withdrawTermsAccepted}
               data-testid="btn-confirm-withdraw"
             >
               {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}

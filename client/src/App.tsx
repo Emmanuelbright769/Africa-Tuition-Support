@@ -21,6 +21,7 @@ import AffiliateSignup from "@/pages/AffiliateSignup";
 import AffiliateDashboard from "@/pages/AffiliateDashboard";
 import TourAfrica from "@/pages/TourAfrica";
 import TenancyPage from "@/pages/TenancyPage";
+import TermsAndConditions from "@/pages/TermsAndConditions";
 import { AiAssistant } from "@/components/AiAssistant";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -62,6 +63,7 @@ function Router() {
       <Route path="/affiliate-dashboard" component={AffiliateDashboard} />
       <Route path="/tour-africa" component={TourAfrica} />
       <Route path="/tenancy" component={TenancyPage} />
+      <Route path="/terms" component={TermsAndConditions} />
       <Route component={NotFound} />
     </Switch>
   );

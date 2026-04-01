@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
 import {
   Copy, Users, Share2, LogOut, Sun, Moon, Monitor, TrendingUp, Link2,
   Banknote, Clock, Crown, Sparkles, CheckCircle2, AlertCircle, Loader2,
@@ -89,6 +90,7 @@ export default function AffiliateDashboard() {
   const [withdrawAmt, setWithdrawAmt]   = useState("");
   const [withdrawType, setWithdrawType] = useState<"withdraw_exchange"|"withdraw_bank">("withdraw_exchange");
   const [withdrawWalletType, setWithdrawWalletType] = useState<"trc20"|"bep20">("trc20");
+  const [withdrawTradeTermsAccepted, setWithdrawTradeTermsAccepted] = useState(false);
   const [trc20Input, setTrc20Input]     = useState("");
   const [bep20Input, setBep20Input]     = useState("");
   const [showTxHistory, setShowTxHistory] = useState(false);
@@ -1544,7 +1546,7 @@ export default function AffiliateDashboard() {
       </Dialog>
 
       {/* Withdraw */}
-      <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
+      <Dialog open={withdrawOpen} onOpenChange={v => { setWithdrawOpen(v); if (!v) { setWithdrawAmt(""); setWithdrawTradeTermsAccepted(false); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-blue-600" /> Withdraw from Trade Wallet</DialogTitle>
@@ -1598,11 +1600,16 @@ export default function AffiliateDashboard() {
                 })()}
               </div>
             )}
+            <TermsCheckbox
+              checked={withdrawTradeTermsAccepted}
+              onCheckedChange={setWithdrawTradeTermsAccepted}
+              context="withdrawal"
+            />
           </div>
           <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
             <Button onClick={() => withdrawMutation.mutate()}
-              disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < TRADE_MARKET.MIN_WITHDRAW || parseFloat(withdrawAmt) > tradeBalance}
+              disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < TRADE_MARKET.MIN_WITHDRAW || parseFloat(withdrawAmt) > tradeBalance || !withdrawTradeTermsAccepted}
               data-testid="button-confirm-withdraw">
               {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />} Confirm Withdrawal
             </Button>

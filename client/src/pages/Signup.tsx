@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
 import {
   KeyRound, GraduationCap, Briefcase, Sparkles, ChevronRight, ArrowLeft,
   CheckCircle2
@@ -75,6 +76,7 @@ export default function Signup() {
   const [africanCountry, setAfricanCountry] = useState("ng");
   const [diaspora, setDiaspora] = useState(false);
   const [diasporaCountry, setDiasporaCountry] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "", referralCode: "" });
   const [otpHint, setOtpHint] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
@@ -284,11 +286,18 @@ export default function Signup() {
                         <Label htmlFor="referral">Referral Code (Optional)</Label>
                         <Input id="referral" placeholder="e.g. TSIA-JOH0001" className="h-11 bg-muted/30" value={formData.referralCode} onChange={e => setFormData({ ...formData, referralCode: e.target.value })} data-testid="input-referral" />
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        By creating an account, you agree to TSIA's Terms of Service and Verification Policy.
-                        {roleChoice === "student" || roleChoice === "both" ? " A $3 portal fee is required during student onboarding." : ""}
-                      </p>
-                      <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md" disabled={loading} data-testid="button-signup">
+                      {(roleChoice === "student" || roleChoice === "both") && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+                          A one-time <strong>$3 portal fee</strong> is required during student onboarding after your WAEC details are submitted.
+                        </p>
+                      )}
+                      <TermsCheckbox
+                        checked={termsAccepted}
+                        onCheckedChange={setTermsAccepted}
+                        context="signup"
+                        className="p-3 bg-muted/30 border rounded-xl"
+                      />
+                      <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md" disabled={loading || !termsAccepted} data-testid="button-signup">
                         {loading ? "Creating account..." : roleChoice === "both" ? "Create Both Accounts" : "Continue"}
                       </Button>
                       <button type="button" onClick={() => setStep(0)} className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">

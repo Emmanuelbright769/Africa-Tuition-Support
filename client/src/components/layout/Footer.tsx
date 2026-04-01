@@ -39,9 +39,9 @@ export function Footer() {
         <div>
           <h4 className="font-semibold text-white mb-4">Legal</h4>
           <ul className="space-y-2 text-sm text-slate-400">
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">Terms of service</a></li>
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">Privacy policy</a></li>
-            <li><a href="#" className="hover:text-tsia-gold transition-colors">Verification policy</a></li>
+            <li><a href="/terms" className="hover:text-tsia-gold transition-colors">Terms &amp; Conditions</a></li>
+            <li><a href="/terms#privacy" className="hover:text-tsia-gold transition-colors">Privacy Policy</a></li>
+            <li><a href="/terms#verification" className="hover:text-tsia-gold transition-colors">Verification Policy</a></li>
           </ul>
           <div className="mt-5 inline-flex items-center gap-1.5 bg-tsia-green/10 border border-tsia-green/20 rounded-full px-3 py-1.5 text-xs font-medium text-tsia-green">
             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">

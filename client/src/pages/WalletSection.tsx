@@ -12,10 +12,16 @@ import { motion } from "framer-motion";
 import {
   Wallet, Eye, EyeOff, ArrowDownLeft, ArrowUpRight, Loader2,
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
-  Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy
+  Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy, Coins
 } from "lucide-react";
 import { toNGN } from "@/lib/utils";
 import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
+
+// ── TSIA Receiving Wallet Addresses ───────────────────────────────────────────
+const TSIA_WALLETS = {
+  trc20: "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE",
+  bep20: "0x4B0897b0513FdBeEc7C469D9aF4fA6C0752aBea7",
+};
 
 type WalletData = { id: number; userId: number; balance: string };
 type DepositRecord = { id: number; amountUsd: string; txHash: string; walletType: string; status: string; createdAt: string };
@@ -48,10 +54,15 @@ export default function WalletSection() {
 
   // ── Fund dialog state ──────────────────────────────────────────────────
   const [fundOpen, setFundOpen]         = useState(false);
+  const [fundMethod, setFundMethod]     = useState<"paystack" | "crypto">("paystack");
   const [fundAmount, setFundAmount]     = useState("");
   const [fundStep, setFundStep]         = useState<"amount" | "pending">("amount");
   const [pendingRef, setPendingRef]     = useState("");
   const [verifyRef, setVerifyRef]       = useState("");
+  // Crypto-specific
+  const [cryptoNetwork, setCryptoNetwork] = useState<"trc20" | "bep20">("trc20");
+  const [cryptoAmount, setCryptoAmount]   = useState("");
+  const [cryptoTxHash, setCryptoTxHash]   = useState("");
 
   // ── Withdraw dialog state ──────────────────────────────────────────────
   const [withdrawOpen, setWithdrawOpen]         = useState(false);
@@ -109,6 +120,27 @@ export default function WalletSection() {
       setVerifyRef("");
     },
     onError: (e: any) => toast({ title: "Verification failed", description: e.message, variant: "destructive" }),
+  });
+
+  const cryptoDepositMutation = useMutation({
+    mutationFn: async () => {
+      const amount = parseFloat(cryptoAmount);
+      if (!amount || amount < 5) throw new Error("Minimum crypto deposit is $5");
+      if (!cryptoTxHash.trim()) throw new Error("Transaction hash is required");
+      const res = await apiRequest("POST", "/api/wallet/deposit", {
+        amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: () => {
+      toast({ title: "Crypto deposit submitted ✓", description: "Your deposit is pending confirmation by TSIA (within 30 minutes).", className: "border-tsia-green" });
+      refetchDeposits();
+      setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20");
+      setFundOpen(false);
+    },
+    onError: (e: any) => toast({ title: "Submission failed", description: e.message, variant: "destructive" }),
   });
 
   const withdrawMutation = useMutation({
@@ -200,16 +232,17 @@ export default function WalletSection() {
       </motion.div>
 
       {/* Info cards */}
-      <motion.div variants={itemVariants} className="grid grid-cols-3 gap-3">
+      <motion.div variants={itemVariants} className="grid grid-cols-4 gap-2">
         {[
-          { icon: CreditCard,  label: "Card",         desc: "Visa / Mastercard", color: "text-blue-600",   bg: "bg-blue-50 dark:bg-blue-900/20" },
-          { icon: Building2,   label: "Bank Transfer", desc: "Direct bank",       color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20" },
-          { icon: Smartphone,  label: "USSD / Mobile", desc: "All networks",      color: "text-tsia-green", bg: "bg-green-50 dark:bg-green-900/20" },
+          { icon: CreditCard, label: "Card",    desc: "Visa / MC",   color: "text-blue-600",   bg: "bg-blue-50 dark:bg-blue-900/20" },
+          { icon: Building2,  label: "Bank",    desc: "Transfer",    color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20" },
+          { icon: Smartphone, label: "USSD",    desc: "All nets",    color: "text-tsia-green", bg: "bg-green-50 dark:bg-green-900/20" },
+          { icon: Coins,      label: "Crypto",  desc: "USDT",        color: "text-amber-600",  bg: "bg-amber-50 dark:bg-amber-900/20" },
         ].map(({ icon: Icon, label, desc, color, bg }) => (
-          <div key={label} className={`${bg} rounded-2xl p-3 text-center`}>
-            <Icon className={`w-5 h-5 mx-auto mb-1.5 ${color}`} />
-            <p className="text-xs font-bold">{label}</p>
-            <p className="text-[10px] text-muted-foreground">{desc}</p>
+          <div key={label} className={`${bg} rounded-2xl p-2.5 text-center`}>
+            <Icon className={`w-4 h-4 mx-auto mb-1 ${color}`} />
+            <p className="text-[11px] font-bold">{label}</p>
+            <p className="text-[9px] text-muted-foreground">{desc}</p>
           </div>
         ))}
       </motion.div>
@@ -319,98 +352,176 @@ export default function WalletSection() {
       </motion.div>
 
       {/* ── FUND WALLET DIALOG ─────────────────────────────────────────── */}
-      <Dialog open={fundOpen} onOpenChange={open => { setFundOpen(open); if (!open) { setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); } }}>
+      <Dialog open={fundOpen} onOpenChange={open => {
+        setFundOpen(open);
+        if (!open) { setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20"); }
+      }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowDownLeft className="w-5 h-5 text-tsia-green" /> Fund Your Wallet
             </DialogTitle>
-            <DialogDescription>
-              {fundStep === "amount"
-                ? "Pay securely via card, bank transfer, USSD, or mobile money."
-                : "Complete the payment in the new tab, then click Verify below."}
-            </DialogDescription>
+            <DialogDescription>Choose your preferred funding method below.</DialogDescription>
           </DialogHeader>
 
-          {fundStep === "amount" ? (
-            <div className="space-y-4 py-2">
-              {/* Payment method icons */}
-              <div className="flex gap-2 justify-center">
-                {[{ icon: CreditCard, label: "Card" }, { icon: Building2, label: "Bank" }, { icon: Smartphone, label: "USSD" }, { icon: Banknote, label: "Mobile" }].map(({ icon: Icon, label }) => (
-                  <div key={label} className="flex flex-col items-center gap-1 bg-muted/50 rounded-xl p-2.5 flex-1">
-                    <Icon className="w-5 h-5 text-tsia-green" />
-                    <span className="text-[10px] text-muted-foreground font-semibold">{label}</span>
+          {/* Method tabs */}
+          <div className="flex bg-muted/40 rounded-2xl p-1 mb-1">
+            <button onClick={() => setFundMethod("paystack")}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${fundMethod === "paystack" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
+              <CreditCard className="w-4 h-4" /> Card / Bank / USSD
+            </button>
+            <button onClick={() => setFundMethod("crypto")}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${fundMethod === "crypto" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+              data-testid="btn-fund-method-crypto">
+              <Coins className="w-4 h-4" /> USDT Crypto
+            </button>
+          </div>
+
+          {/* ── PAYSTACK TAB ── */}
+          {fundMethod === "paystack" && (
+            <>
+              {fundStep === "amount" ? (
+                <div className="space-y-4 py-2">
+                  <div className="flex gap-2 justify-center">
+                    {[{ icon: CreditCard, label: "Card" }, { icon: Building2, label: "Bank" }, { icon: Smartphone, label: "USSD" }, { icon: Banknote, label: "Mobile" }].map(({ icon: Icon, label }) => (
+                      <div key={label} className="flex flex-col items-center gap-1 bg-muted/50 rounded-xl p-2.5 flex-1">
+                        <Icon className="w-5 h-5 text-tsia-green" />
+                        <span className="text-[10px] text-muted-foreground font-semibold">{label}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-
-              <div>
-                <Label htmlFor="fund-amount">Amount (USD)</Label>
-                <Input id="fund-amount" type="number" min={1} step={0.01} placeholder="e.g. 10.00"
-                  value={fundAmount} onChange={e => setFundAmount(e.target.value)}
-                  className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
-                {parseFloat(fundAmount) > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(fundAmount))} at ₦1,600/$1</p>
-                )}
-              </div>
-
-              <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">
-                <Shield className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-blue-700 dark:text-blue-300">Payments are processed securely via Paystack. You'll be redirected to complete payment.</p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4 py-2">
-              <div className="bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4 text-center">
-                <ExternalLink className="w-8 h-8 text-tsia-green mx-auto mb-2" />
-                <p className="font-bold text-sm">Payment page opened in a new tab</p>
-                <p className="text-xs text-muted-foreground mt-1">Complete the payment there, then come back here and click <strong>Verify Payment</strong>.</p>
-              </div>
-
-              <div>
-                <Label className="text-xs text-muted-foreground">Payment Reference</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Input value={verifyRef} onChange={e => setVerifyRef(e.target.value)} placeholder="Auto-filled from payment"
-                    className="font-mono text-xs" data-testid="input-verify-ref" />
-                  <button onClick={() => { navigator.clipboard.writeText(verifyRef); toast({ title: "Copied" }); }}
-                    className="p-2 rounded-lg hover:bg-muted transition-colors shrink-0">
-                    <Copy className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <Label htmlFor="fund-amount">Amount (USD)</Label>
+                    <Input id="fund-amount" type="number" min={1} step={0.01} placeholder="e.g. 10.00"
+                      value={fundAmount} onChange={e => setFundAmount(e.target.value)}
+                      className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
+                    {parseFloat(fundAmount) > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(fundAmount))} at ₦1,600/$1</p>
+                    )}
+                  </div>
+                  <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">
+                    <Shield className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-blue-700 dark:text-blue-300">Payments processed securely via Paystack. You'll be redirected to complete payment.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 py-2">
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4 text-center">
+                    <ExternalLink className="w-8 h-8 text-tsia-green mx-auto mb-2" />
+                    <p className="font-bold text-sm">Payment page opened in a new tab</p>
+                    <p className="text-xs text-muted-foreground mt-1">Complete the payment there, then come back here and click <strong>Verify Payment</strong>.</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Payment Reference</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input value={verifyRef} onChange={e => setVerifyRef(e.target.value)} placeholder="Auto-filled from payment"
+                        className="font-mono text-xs" data-testid="input-verify-ref" />
+                      <button onClick={() => { navigator.clipboard.writeText(verifyRef); toast({ title: "Copied" }); }}
+                        className="p-2 rounded-lg hover:bg-muted transition-colors shrink-0">
+                        <Copy className="w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">Paste reference here if you closed the payment tab.</p>
+                  </div>
+                  <button onClick={() => { setPendingRef(""); setVerifyRef(""); setFundStep("amount"); }}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    ← Start a new payment
                   </button>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-1">If you already paid and closed the tab accidentally, paste the reference here.</p>
-              </div>
+              )}
 
-              <button onClick={() => { setPendingRef(""); setVerifyRef(""); setFundStep("amount"); }}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                ← Start a new payment
-              </button>
-            </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setFundOpen(false)}>Cancel</Button>
+                {fundStep === "amount" ? (
+                  <Button onClick={() => initPaystackMutation.mutate()}
+                    disabled={initPaystackMutation.isPending || !fundAmount || parseFloat(fundAmount) < 1}
+                    className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold" data-testid="btn-pay-paystack">
+                    {initPaystackMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                    Pay ${parseFloat(fundAmount || "0").toFixed(2)} via Paystack
+                  </Button>
+                ) : (
+                  <Button onClick={() => verifyMutation.mutate()}
+                    disabled={verifyMutation.isPending || !verifyRef.trim()}
+                    className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold" data-testid="btn-verify-payment">
+                    {verifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                    Verify Payment
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
           )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFundOpen(false)}>Cancel</Button>
-            {fundStep === "amount" ? (
-              <Button
-                onClick={() => initPaystackMutation.mutate()}
-                disabled={initPaystackMutation.isPending || !fundAmount || parseFloat(fundAmount) < 1}
-                className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold"
-                data-testid="btn-pay-paystack"
-              >
-                {initPaystackMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                Pay ${parseFloat(fundAmount || "0").toFixed(2)} · {toNGN(parseFloat(fundAmount || "0"))} via Paystack
-              </Button>
-            ) : (
-              <Button
-                onClick={() => verifyMutation.mutate()}
-                disabled={verifyMutation.isPending || !verifyRef.trim()}
-                className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold"
-                data-testid="btn-verify-payment"
-              >
-                {verifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                Verify Payment
-              </Button>
-            )}
-          </DialogFooter>
+          {/* ── CRYPTO TAB ── */}
+          {fundMethod === "crypto" && (
+            <>
+              <div className="space-y-4 py-2">
+                {/* Network selector */}
+                <div>
+                  <Label className="mb-2 block">Select Network</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["trc20", "bep20"] as const).map(n => (
+                      <button key={n} onClick={() => setCryptoNetwork(n)}
+                        className={`p-3 rounded-xl border-2 text-sm font-bold transition-all ${cryptoNetwork === n ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border hover:border-tsia-green/40"}`}
+                        data-testid={`btn-crypto-network-${n}`}>
+                        {n === "trc20" ? "TRC20 (TRON)" : "BEP20 (BSC)"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* TSIA receiving address */}
+                <div>
+                  <Label className="mb-1.5 block text-xs text-muted-foreground">TSIA Receiving Address ({cryptoNetwork.toUpperCase()})</Label>
+                  <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-3 py-2.5 border border-border">
+                    <p className="flex-1 font-mono text-xs break-all leading-relaxed">{TSIA_WALLETS[cryptoNetwork]}</p>
+                    <button onClick={() => { navigator.clipboard.writeText(TSIA_WALLETS[cryptoNetwork]); toast({ title: "Address copied!" }); }}
+                      className="shrink-0 p-1.5 rounded-lg hover:bg-muted transition-colors" data-testid="btn-copy-wallet-address">
+                      <Copy className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 flex items-start gap-1">
+                    <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                    Send USDT only on the selected network. Wrong network = lost funds.
+                  </p>
+                </div>
+
+                {/* Amount */}
+                <div>
+                  <Label htmlFor="crypto-amount">Amount (USD)</Label>
+                  <Input id="crypto-amount" type="number" min={5} step={0.01} placeholder="Min $5.00"
+                    value={cryptoAmount} onChange={e => setCryptoAmount(e.target.value)}
+                    className="mt-1 text-lg font-bold" data-testid="input-crypto-amount" />
+                  {parseFloat(cryptoAmount) > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(cryptoAmount))} at ₦1,600/$1</p>
+                  )}
+                </div>
+
+                {/* TxHash */}
+                <div>
+                  <Label htmlFor="crypto-txhash">Transaction Hash / ID</Label>
+                  <Input id="crypto-txhash" placeholder="Paste your transaction hash here"
+                    value={cryptoTxHash} onChange={e => setCryptoTxHash(e.target.value)}
+                    className="mt-1 font-mono text-xs" data-testid="input-crypto-txhash" />
+                  <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange/wallet after sending. Your wallet will be credited within 30 minutes after admin confirmation.</p>
+                </div>
+
+                <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">
+                  <Shield className="w-4 h-4 text-tsia-green shrink-0 mt-0.5" />
+                  <p className="text-xs text-tsia-green">Minimum deposit: <strong>$5 USDT</strong>. Accepted via BYBIT, BINANCE, Coinbase and any compatible exchange wallet.</p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setFundOpen(false)}>Cancel</Button>
+                <Button onClick={() => cryptoDepositMutation.mutate()}
+                  disabled={cryptoDepositMutation.isPending || !cryptoAmount || parseFloat(cryptoAmount) < 5 || !cryptoTxHash.trim()}
+                  className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold" data-testid="btn-submit-crypto">
+                  {cryptoDepositMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Coins className="w-4 h-4 mr-2" />}
+                  Submit Deposit
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

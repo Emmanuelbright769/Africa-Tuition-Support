@@ -7,9 +7,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   KeyRound, GraduationCap, Briefcase, Sparkles, ChevronRight, ArrowLeft,
-  CheckCircle2
+  CheckCircle2, Wallet, Zap, Info
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
@@ -80,6 +81,8 @@ export default function Signup() {
   const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "", referralCode: "" });
   const [otpHint, setOtpHint] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [pendingNav, setPendingNav] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { requestOtp, verifyOtp } = useAuth();
   const { toast } = useToast();
@@ -139,12 +142,17 @@ export default function Signup() {
     try {
       // For "both": log in as student first; user can switch to affiliate later
       const loginRole = roleChoice === "both" ? "student" : roleChoice;
-      const user = await verifyOtp(formData.email, code, loginRole);
+      const userData = await verifyOtp(formData.email, code, loginRole) as any;
       if (roleChoice === "both") {
         toast({ title: "Both accounts created!", description: "You now have a Student + Affiliate account. Use the switch button in your dashboard to toggle between them." });
       }
-      if (user.role === "affiliate") setLocation("/affiliate-dashboard");
-      else setLocation("/onboarding");
+      const dest = userData.role === "affiliate" ? "/affiliate-dashboard" : "/onboarding";
+      if (userData.isNewUser) {
+        setPendingNav(dest);
+        setWelcomeOpen(true);
+      } else {
+        setLocation(dest);
+      }
     } catch (err: any) {
       toast({ title: "Invalid Code", description: err.message, variant: "destructive" });
     } finally {
@@ -366,6 +374,55 @@ export default function Signup() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* ── Welcome / Wallet Activation Popup ── */}
+      <Dialog open={welcomeOpen} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md" onInteractOutside={e => e.preventDefault()}>
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-tsia-green to-emerald-600 flex items-center justify-center shadow-md">
+                <Wallet className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg">Welcome to TSIA! 🎉</DialogTitle>
+                <p className="text-xs text-muted-foreground">One last step to get started</p>
+              </div>
+            </div>
+            <DialogDescription className="text-sm leading-relaxed pt-2">
+              Your account is ready. To unlock all TSIA features — wallet transactions, QCE savings, loans, e-commerce and more — please <strong>fund your Personal Wallet with at least $5</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-4 flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
+                <Zap className="w-4 h-4 text-tsia-green" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Minimum Activation: $5</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Head to your Personal Wallet to make your first deposit via USDT (TRC20 or BEP20).</p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-start gap-2">
+              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 dark:text-amber-200">
+                You can withdraw your money whenever you want. A check notification and email have been sent with full details on how to get started.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white"
+              onClick={() => { setWelcomeOpen(false); if (pendingNav) setLocation(pendingNav); }}
+              data-testid="button-welcome-continue"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" /> Go to My Dashboard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

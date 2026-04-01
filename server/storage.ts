@@ -9,6 +9,7 @@ import {
   productRatings,
   ecommerceChats, ecommerceChatMessages,
   notifications, callSessions, forumTopics, forumPosts,
+  qceSavings, qceTransactions,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -37,7 +38,8 @@ import {
   type ForumPost, type InsertForumPost,
   tourBookings,
   type TourBooking, type InsertTourBooking,
-  TRADE_MARKET, ECOMMERCE,
+  type QceSavings, type QceTransaction,
+  TRADE_MARKET, ECOMMERCE, QCE, calculateQceEligibility,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -170,6 +172,14 @@ export interface IStorage {
   // Tour Africa Bookings
   createTourBooking(data: InsertTourBooking): Promise<TourBooking>;
   getTourBookingsByUser(userId: number): Promise<TourBooking[]>;
+
+  // QCE (Quick Credit Eligibility)
+  getOrCreateQceSavings(userId: number): Promise<QceSavings>;
+  updateQceSavings(userId: number, data: Partial<QceSavings>): Promise<QceSavings>;
+  contributeToQce(userId: number, amountUsd: number): Promise<{ savings: QceSavings; transaction: QceTransaction }>;
+  withdrawFromQce(userId: number, amountUsd: number): Promise<{ savings: QceSavings; transaction: QceTransaction }>;
+  getQceTransactions(userId: number): Promise<QceTransaction[]>;
+  tickQceDays(userId: number): Promise<QceSavings>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -889,6 +899,79 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tourBookings.userId, userId))
       .orderBy(desc(tourBookings.createdAt))
       .limit(50);
+  }
+
+  // ─── QCE (Quick Credit Eligibility) ───────────────────────────────────────
+  async getOrCreateQceSavings(userId: number): Promise<QceSavings> {
+    const [existing] = await db.select().from(qceSavings).where(eq(qceSavings.userId, userId));
+    if (existing) return existing;
+    const [created] = await db.insert(qceSavings).values({ userId, balance: "0.00", activated: false, daysActive: 0, creditPortalUnlocked: false, eligibilityPercent: "0.00" }).returning();
+    return created;
+  }
+
+  async updateQceSavings(userId: number, data: Partial<QceSavings>): Promise<QceSavings> {
+    const [updated] = await db.update(qceSavings).set({ ...data, updatedAt: new Date() }).where(eq(qceSavings.userId, userId)).returning();
+    return updated;
+  }
+
+  async contributeToQce(userId: number, amountUsd: number): Promise<{ savings: QceSavings; transaction: QceTransaction }> {
+    const savings = await this.getOrCreateQceSavings(userId);
+    const newBalance = (parseFloat(savings.balance) + amountUsd).toFixed(2);
+    const now = new Date();
+    const isFirstContribution = !savings.activated;
+    const updatedSavings = await this.updateQceSavings(userId, {
+      balance: newBalance,
+      activated: true,
+      activatedAt: savings.activatedAt ?? now,
+      startDate: savings.startDate ?? now,
+      lastContributionDate: now,
+      creditPortalUnlocked: true,
+      eligibilityPercent: calculateQceEligibility(savings.daysActive, parseFloat(newBalance)).toString(),
+    });
+    const [tx] = await db.insert(qceTransactions).values({
+      userId, type: "contribution", amountUsd: amountUsd.toFixed(2),
+      balanceAfter: newBalance, note: isFirstContribution ? "Initial QCE activation" : "QCE contribution",
+    }).returning();
+    return { savings: updatedSavings, transaction: tx };
+  }
+
+  async withdrawFromQce(userId: number, amountUsd: number): Promise<{ savings: QceSavings; transaction: QceTransaction }> {
+    const savings = await this.getOrCreateQceSavings(userId);
+    const currentBalance = parseFloat(savings.balance);
+    const newBalance = Math.max(currentBalance - amountUsd, 0).toFixed(2);
+    if (parseFloat(newBalance) < QCE.MIN_BALANCE && currentBalance > QCE.MIN_BALANCE) {
+      throw new Error(`A minimum balance of $${QCE.MIN_BALANCE} must remain in your QCE savings.`);
+    }
+    const updatedSavings = await this.updateQceSavings(userId, {
+      balance: newBalance,
+      eligibilityPercent: calculateQceEligibility(savings.daysActive, parseFloat(newBalance)).toString(),
+    });
+    const [tx] = await db.insert(qceTransactions).values({
+      userId, type: "withdrawal", amountUsd: amountUsd.toFixed(2),
+      balanceAfter: newBalance, note: "QCE withdrawal",
+    }).returning();
+    return { savings: updatedSavings, transaction: tx };
+  }
+
+  async getQceTransactions(userId: number): Promise<QceTransaction[]> {
+    return db.select().from(qceTransactions).where(eq(qceTransactions.userId, userId)).orderBy(desc(qceTransactions.createdAt)).limit(100);
+  }
+
+  async tickQceDays(userId: number): Promise<QceSavings> {
+    const savings = await this.getOrCreateQceSavings(userId);
+    if (!savings.activated) return savings;
+    const lastContrib = savings.lastContributionDate ? new Date(savings.lastContributionDate) : null;
+    const now = new Date();
+    const daysSinceLast = lastContrib ? Math.floor((now.getTime() - lastContrib.getTime()) / 86400000) : 0;
+    if (daysSinceLast > 0) {
+      const newDays = Math.min(savings.daysActive + daysSinceLast, QCE.PERIOD_DAYS);
+      return this.updateQceSavings(userId, {
+        daysActive: newDays,
+        lastContributionDate: now,
+        eligibilityPercent: calculateQceEligibility(newDays, parseFloat(savings.balance)).toString(),
+      });
+    }
+    return savings;
   }
 }
 

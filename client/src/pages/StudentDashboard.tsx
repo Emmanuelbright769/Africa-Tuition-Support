@@ -4,6 +4,7 @@ import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import WalletSection from "./WalletSection";
 import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
+import QCESection from "./QCESection";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import {
   LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X,
   LayoutDashboard, Star, History, ChevronRight, ChevronDown, Car, Globe, Loader2,
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
-  ShoppingCart, MessageSquareText
+  ShoppingCart, MessageSquareText, PiggyBank
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
 import { toNGN } from "@/lib/utils";
@@ -32,12 +33,13 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum";
+type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",              icon: LayoutDashboard },
   { id: "fintech",      label: "Fintech Hub",            icon: CreditCard },
   { id: "wallet",       label: "Personal Wallet",         icon: Wallet },
+  { id: "qce",          label: "QCE Savings",            icon: PiggyBank, badge: "New" },
   { id: "ecommerce",    label: "E-Commerce",             icon: ShoppingCart },
   { id: "tour_africa",  label: "Tour Africa",            icon: Car },
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
@@ -380,6 +382,9 @@ export default function StudentDashboard() {
 
             {/* ── WALLET ── */}
             {activeSection === "wallet" && <WalletSection />}
+
+            {/* ── QCE ── */}
+            {activeSection === "qce" && <QCESection />}
 
             {/* ── PLANS ── */}
             {activeSection === "plans" && (

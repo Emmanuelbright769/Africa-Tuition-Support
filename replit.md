@@ -10,6 +10,13 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - **Routing**: wouter (frontend), Express (backend)
 - **File Uploads**: multer (memory storage → base64 in DB)
 
+## Recent Updates (Session 7)
+- **QCE (Quick Credit Eligibility)**: New savings feature in both dashboards; activates with $5 min from Personal Wallet; builds credit eligibility up to 30% over 90 days via daily transactions; Credit Portal unlocks on first contribution; $2 minimum always retained; DB tables: qce_savings, qce_transactions; API routes: GET/POST /api/qce/status, /api/qce/contribute, /api/qce/withdraw, /api/qce/tick
+- **Post-signup welcome popup**: Shown on screen immediately after new user OTP verification — tells user to activate wallet with $5 minimum; in-app notification (wallet_activation type) created on signup with full details including $2 minimum balance requirement; email logged to console
+- **Notification types expanded**: Added `wallet_activation` (amber/Zap icon) and `qce_update` (green/PiggyBank icon) to NotificationBell; both handled in TYPE_META
+- **QCESection.tsx**: Standalone page component with activation CTA, balance/eligibility/days stats, 90-day progress bar, credit portal with tier milestones, contribute/withdraw dialogs, transaction history
+- **isNewUser flag**: verify-otp route now returns `isNewUser: true` when wallet balance is $0 (newly registered); Signup.tsx uses this to show popup vs. navigate directly
+
 ## Recent Updates (Session 6)
 - **Unified Signup with role picker**: `/signup` now has Step 0 = role selector (Student / Affiliate / Both); "Both" creates a student + affiliate account in one OTP flow; `/affiliate-signup` redirects to `/signup?role=affiliate`
 - **Dual-account creation**: Server `request-otp` handles `role: "both"` — creates student AND affiliate user records, sends single OTP; after OTP verification, logs into student role with affiliate accessible via switcher

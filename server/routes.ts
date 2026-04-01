@@ -5,7 +5,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE } from "@shared/schema";
 
 const PgSession = pgSession(session);
 
@@ -97,6 +97,17 @@ export async function registerRoutes(
           const affCode = generateAffiliateCode(firstName, u.id);
           await storage.updateUserAffiliateCode(u.id, affCode);
           u = await storage.getUser(u.id);
+          // Send wallet activation in-app notification to new user
+          try {
+            await storage.createNotification({
+              userId: u!.id,
+              type: "wallet_activation",
+              title: "Activate Your TSIA Wallet",
+              message: `Welcome to TSIA! To unlock all platform features — including QCE savings, loans, e-commerce and more — please fund your Personal Wallet with a minimum of $5. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your Personal Wallet section to make your first deposit.`,
+              data: { minActivation: QCE.MIN_ACTIVATION, minBalance: QCE.MIN_BALANCE },
+              isRead: false,
+            });
+          } catch { /* non-critical */ }
           // Notify referrer
           if (referralCode) {
             try {
@@ -110,6 +121,8 @@ export async function registerRoutes(
               }
             } catch { /* non-critical */ }
           }
+          // Log a simulated welcome email (no email provider configured)
+          console.log(`[EMAIL] Welcome email to ${email}: Activate your TSIA wallet with $${QCE.MIN_ACTIVATION}. Minimum $${QCE.MIN_BALANCE} balance required. You can withdraw anytime. QCE savings build your credit eligibility up to 30% over 90 days.`);
         }
         return u;
       };
@@ -163,12 +176,19 @@ export async function registerRoutes(
 
       (req.session as any).userId = user.id;
 
+      // Detect new user: wallet balance still 0 (never funded)
+      let isNewUser = false;
+      try {
+        const wallet = await storage.getOrCreateWallet(user.id);
+        isNewUser = parseFloat(wallet.balance) === 0;
+      } catch { /* non-critical */ }
+
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: "Session save failed" });
         res.json({
           id: user.id, firstName: user.firstName, lastName: user.lastName,
           email: user.email, role: user.role, phone: user.phone, country: user.country,
-          affiliateCode: user.affiliateCode,
+          affiliateCode: user.affiliateCode, isNewUser,
         });
       });
     } catch (e: any) {
@@ -2274,6 +2294,97 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  // ─── QCE (QUICK CREDIT ELIGIBILITY) ──────────────────────────────────────────
+
+  // GET /api/qce/status — get user's QCE savings record
+  app.get("/api/qce/status", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const savings = await storage.getOrCreateQceSavings(userId);
+      const transactions = await storage.getQceTransactions(userId);
+      res.json({ savings, transactions });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/qce/contribute — add funds to QCE savings from personal wallet
+  app.post("/api/qce/contribute", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { amountUsd } = req.body;
+      const amount = parseFloat(amountUsd);
+      if (!amount || amount <= 0) return res.status(400).json({ message: "Valid amount required." });
+
+      // Check personal wallet has enough
+      const wallet = await storage.getOrCreateWallet(userId);
+      const walletBal = parseFloat(wallet.balance);
+      if (walletBal < amount) return res.status(400).json({ message: `Insufficient wallet balance. You have $${walletBal.toFixed(2)}.` });
+
+      // Minimum activation check
+      const qce = await storage.getOrCreateQceSavings(userId);
+      if (!qce.activated && amount < QCE.MIN_ACTIVATION) {
+        return res.status(400).json({ message: `Initial QCE activation requires a minimum of $${QCE.MIN_ACTIVATION}.` });
+      }
+
+      // Deduct from personal wallet
+      const newWalletBal = (walletBal - amount).toFixed(2);
+      await storage.updateWalletBalance(userId, newWalletBal);
+
+      // Credit QCE savings
+      const { savings, transaction } = await storage.contributeToQce(userId, amount);
+
+      // Tick QCE days for returning users making daily contributions
+      await storage.tickQceDays(userId);
+
+      // Send notification if first activation
+      if (!qce.activated) {
+        try {
+          await storage.createNotification({
+            userId,
+            type: "qce_update",
+            title: "QCE Savings Activated!",
+            message: `Your Quick Credit Eligibility savings are now active with $${amount.toFixed(2)}. Keep contributing daily over 90 days to build up to 30% credit eligibility. Your Credit Portal is now unlocked.`,
+            data: { balance: savings.balance, daysActive: savings.daysActive },
+            isRead: false,
+          });
+        } catch { /* non-critical */ }
+      }
+
+      res.json({ savings, transaction, walletBalance: newWalletBal, message: "Contribution successful!" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/qce/withdraw — withdraw from QCE savings back to personal wallet
+  app.post("/api/qce/withdraw", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { amountUsd } = req.body;
+      const amount = parseFloat(amountUsd);
+      if (!amount || amount <= 0) return res.status(400).json({ message: "Valid amount required." });
+
+      const { savings, transaction } = await storage.withdrawFromQce(userId, amount);
+
+      // Credit personal wallet
+      const wallet = await storage.getOrCreateWallet(userId);
+      const newWalletBal = (parseFloat(wallet.balance) + amount).toFixed(2);
+      await storage.updateWalletBalance(userId, newWalletBal);
+
+      res.json({ savings, transaction, walletBalance: newWalletBal, message: "Withdrawal successful!" });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  // POST /api/qce/tick — called daily to advance active savings day count
+  app.post("/api/qce/tick", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const savings = await storage.tickQceDays(userId);
+      res.json({ savings });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   return httpServer;

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, BotMessageSquare, MessageSquare, Wallet, TrendingUp, FileCheck, Users, Package, Info, Trash2, CheckCheck, X, ArrowLeft } from "lucide-react";
+import { Bell, BotMessageSquare, MessageSquare, Wallet, TrendingUp, FileCheck, Users, Package, Info, Trash2, CheckCheck, X, ArrowLeft, PiggyBank, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,8 @@ import { formatDistanceToNow } from "date-fns";
 
 type NotifType =
   | "bot_reminder" | "chat_message" | "order_update" | "wallet_credit"
-  | "loan_update"  | "verification_update" | "referral" | "trade_deposit" | "system";
+  | "loan_update"  | "verification_update" | "referral" | "trade_deposit" | "system"
+  | "wallet_activation" | "qce_update";
 
 interface Notification {
   id: number; userId: number; type: NotifType;
@@ -28,6 +29,8 @@ const TYPE_META: Record<NotifType, { icon: any; color: string; bg: string; accen
   referral:            { icon: Users,            color: "text-pink-600",   bg: "bg-pink-100 dark:bg-pink-900/40",     accent: "border-l-pink-400" },
   trade_deposit:       { icon: TrendingUp,       color: "text-indigo-600", bg: "bg-indigo-100 dark:bg-indigo-900/40", accent: "border-l-indigo-400" },
   system:              { icon: Info,             color: "text-slate-500",  bg: "bg-slate-100 dark:bg-slate-800",      accent: "border-l-slate-400" },
+  wallet_activation:   { icon: Zap,             color: "text-amber-600",  bg: "bg-amber-100 dark:bg-amber-900/40",   accent: "border-l-amber-500" },
+  qce_update:          { icon: PiggyBank,        color: "text-tsia-green", bg: "bg-green-100 dark:bg-green-900/40",   accent: "border-l-tsia-green" },
 };
 
 function NotifItem({ n }: { n: Notification }) {

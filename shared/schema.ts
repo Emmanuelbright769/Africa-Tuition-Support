@@ -600,7 +600,8 @@ export type BillPayment = typeof billPayments.$inferSelect;
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 export const notificationTypeEnum = pgEnum("notification_type", [
   "bot_reminder", "chat_message", "order_update", "wallet_credit",
-  "loan_update", "verification_update", "referral", "trade_deposit", "system"
+  "loan_update", "verification_update", "referral", "trade_deposit", "system",
+  "wallet_activation", "qce_update"
 ]);
 
 export const notifications = pgTable("notifications", {
@@ -734,6 +735,53 @@ export function censorOffPlatform(text: string): { censored: string; flagged: bo
     censored = censored.replace(pattern, "[REMOVED]");
   }
   return { censored, flagged, labels };
+}
+
+// ─── QCE (QUICK CREDIT ELIGIBILITY) ──────────────────────────────────────────
+export const QCE = {
+  MIN_ACTIVATION: 5,      // $5 minimum to activate wallet and QCE
+  MIN_BALANCE: 2,         // $2 minimum balance must always remain
+  PERIOD_DAYS: 90,        // 90-day savings period
+  MAX_ELIGIBILITY: 30,    // Up to 30% credit eligibility
+} as const;
+
+export const qceSavings = pgTable("qce_savings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id).unique(),
+  balance: decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  activated: boolean("activated").notNull().default(false),
+  activatedAt: timestamp("activated_at"),
+  startDate: timestamp("start_date"),
+  daysActive: integer("days_active").notNull().default(0),
+  creditPortalUnlocked: boolean("credit_portal_unlocked").notNull().default(false),
+  eligibilityPercent: decimal("eligibility_percent", { precision: 5, scale: 2 }).notNull().default("0.00"),
+  lastContributionDate: timestamp("last_contribution_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const qceTransactions = pgTable("qce_transactions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  type: text("type", { enum: ["contribution", "withdrawal"] }).notNull(),
+  amountUsd: decimal("amount_usd", { precision: 10, scale: 2 }).notNull(),
+  balanceAfter: decimal("balance_after", { precision: 10, scale: 2 }).notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertQceSavingsSchema = createInsertSchema(qceSavings).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertQceSavings = z.infer<typeof insertQceSavingsSchema>;
+export type QceSavings = typeof qceSavings.$inferSelect;
+
+export const insertQceTransactionSchema = createInsertSchema(qceTransactions).omit({ id: true, createdAt: true });
+export type InsertQceTransaction = z.infer<typeof insertQceTransactionSchema>;
+export type QceTransaction = typeof qceTransactions.$inferSelect;
+
+export function calculateQceEligibility(daysActive: number, balance: number): number {
+  if (balance < QCE.MIN_BALANCE || daysActive === 0) return 0;
+  const daysPct = Math.min(daysActive / QCE.PERIOD_DAYS, 1);
+  return Math.round(daysPct * QCE.MAX_ELIGIBILITY * 100) / 100;
 }
 
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────

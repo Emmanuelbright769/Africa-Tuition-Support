@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import FinancialHub from "./FinancialHub";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import WalletSection from "./WalletSection";
+import QCESection from "./QCESection";
 import { useLocation, useSearch, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import {
   Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag, MessageSquareText,
   Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink,
   Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
-  Eye, EyeOff, Bell, Power, Timer, CreditCard
+  Eye, EyeOff, Bell, Power, Timer, CreditCard, PiggyBank
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -46,12 +47,13 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum";
+type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum" | "qce";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
   { id: "fintech",      label: "Fintech Hub",             icon: CreditCard },
   { id: "wallet",       label: "Personal Wallet",         icon: Wallet },
+  { id: "qce",          label: "QCE Savings",             icon: PiggyBank, badge: "New" },
   { id: "reserve_fund", label: "Strategic Reserve Fund",  icon: Shield },
   { id: "trade",        label: "Trade Market",            icon: Globe },
   { id: "trust_fund",   label: "Affiliate Trust Fund",    icon: Crown },
@@ -820,6 +822,9 @@ export default function AffiliateDashboard() {
 
             {/* ── WALLET ── */}
             {activeSection === "wallet" && <WalletSection />}
+
+            {/* ── QCE ── */}
+            {activeSection === "qce" && <QCESection />}
 
             {/* ── TRUST FUND ── */}
             {activeSection === "trust_fund" && (

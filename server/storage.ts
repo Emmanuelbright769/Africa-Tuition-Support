@@ -1,4 +1,4 @@
-import { eq, desc, and, gt, gte, lte, count, sql, ne, like, or } from "drizzle-orm";
+import { eq, desc, and, gt, gte, lte, count, sql, ne, like, ilike, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
@@ -48,6 +48,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUsersByEmail(email: string): Promise<User[]>;
   getUserByEmailAndRole(email: string, role: string): Promise<User | undefined>;
+  searchMembersByEmail(query: string, excludeUserId: number): Promise<{ id: number; firstName: string; lastName: string; email: string }[]>;
   getAllStudents(): Promise<User[]>;
   updateUserAffiliateCode(userId: number, code: string): Promise<void>;
   getReferralsByCode(affiliateCode: string): Promise<User[]>;
@@ -207,6 +208,21 @@ export class DatabaseStorage implements IStorage {
     const [user] = await db.select().from(users)
       .where(and(eq(users.email, email), eq(users.role, role)));
     return user;
+  }
+
+  async searchMembersByEmail(query: string, excludeUserId: number): Promise<{ id: number; firstName: string; lastName: string; email: string }[]> {
+    const rows = await db
+      .selectDistinctOn([users.email], {
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      })
+      .from(users)
+      .where(and(ilike(users.email, `%${query}%`), ne(users.id, excludeUserId)))
+      .orderBy(users.email)
+      .limit(8);
+    return rows;
   }
 
   async getAllStudents(): Promise<User[]> {

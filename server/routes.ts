@@ -1548,6 +1548,17 @@ export async function registerRoutes(
   });
 
   // Lookup TSIA member by email
+  app.get("/api/wallet/members-search", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const q = (req.query.q as string || "").trim();
+    if (q.length < 1) return res.json([]);
+    try {
+      const results = await storage.searchMembersByEmail(q, userId);
+      res.json(results);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/wallet/lookup-email", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });

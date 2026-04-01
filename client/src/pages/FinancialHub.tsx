@@ -171,6 +171,20 @@ export default function FinancialHub() {
   const [tsiaEmail, setTsiaEmail]         = useState("");
   const [tsiaLooking, setTsiaLooking]     = useState(false);
   const [tsiaUser, setTsiaUser]           = useState<{ id: number; firstName: string; lastName: string; email: string } | null>(null);
+  const [memberSuggestions, setMemberSuggestions] = useState<{ id: number; firstName: string; lastName: string; email: string }[]>([]);
+  const [showSuggestions, setShowSuggestions]     = useState(false);
+
+  // Debounced email autocomplete
+  useEffect(() => {
+    if (!tsiaEmail.trim() || tsiaUser) { setMemberSuggestions([]); setShowSuggestions(false); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiRequest("GET", `/api/wallet/members-search?q=${encodeURIComponent(tsiaEmail.trim())}`);
+        if (res.ok) { const data = await res.json(); setMemberSuggestions(data); setShowSuggestions(data.length > 0); }
+      } catch {}
+    }, 280);
+    return () => clearTimeout(t);
+  }, [tsiaEmail, tsiaUser]);
 
   // ── Bill state ────────────────────────────────────────────────────────────
   const [selectedService, setSelectedService] = useState<typeof SERVICES[0] | null>(null);
@@ -566,15 +580,52 @@ export default function FinancialHub() {
           <div className="space-y-4">
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Email Address</label>
-              <div className="flex gap-2">
-                <input placeholder="member@email.com" value={tsiaEmail} onChange={e => setTsiaEmail(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && lookupTsia()}
-                  className="flex-1 border-2 border-border rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-tsia-green bg-background"
-                  data-testid="input-tsia-email" />
-                <button onClick={lookupTsia} disabled={tsiaLooking || !tsiaEmail.trim()}
-                  className="w-12 h-12 bg-tsia-green text-white rounded-2xl flex items-center justify-center disabled:opacity-40 mt-0.5">
-                  {tsiaLooking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                </button>
+              <div className="relative">
+                <div className="flex gap-2">
+                  <input
+                    placeholder="Start typing a member's email…"
+                    value={tsiaEmail}
+                    onChange={e => { setTsiaEmail(e.target.value); setTsiaUser(null); }}
+                    onKeyDown={e => { if (e.key === "Enter") { setShowSuggestions(false); lookupTsia(); } if (e.key === "Escape") setShowSuggestions(false); }}
+                    onFocus={() => { if (memberSuggestions.length > 0) setShowSuggestions(true); }}
+                    className="flex-1 border-2 border-border rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-tsia-green bg-background"
+                    autoComplete="off"
+                    data-testid="input-tsia-email"
+                  />
+                  <button onClick={() => { setShowSuggestions(false); lookupTsia(); }} disabled={tsiaLooking || !tsiaEmail.trim()}
+                    className="w-12 h-12 bg-tsia-green text-white rounded-2xl flex items-center justify-center disabled:opacity-40 mt-0.5">
+                    {tsiaLooking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Autocomplete dropdown */}
+                {showSuggestions && memberSuggestions.length > 0 && (
+                  <div className="absolute z-50 top-full mt-1 left-0 right-12 bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
+                    {memberSuggestions.map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => {
+                          setTsiaEmail(m.email);
+                          setShowSuggestions(false);
+                          setMemberSuggestions([]);
+                          setTsiaUser(m);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/60 transition-colors text-left border-b border-border last:border-0"
+                        data-testid={`suggestion-member-${m.id}`}
+                      >
+                        <div className="w-8 h-8 rounded-full bg-tsia-green/20 text-tsia-green flex items-center justify-center text-sm font-bold shrink-0">
+                          {m.firstName[0].toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate">{m.firstName} {m.lastName}</p>
+                          <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

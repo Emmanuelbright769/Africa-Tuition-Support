@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ECOMMERCE } from "@shared/schema";
+import { toNGN } from "@/lib/utils";
 import { EcommerceChatDrawer, ProductChatModal } from "./EcommerceChatPanel";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -277,8 +278,11 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
         <StarRating rating={product.avgRating ?? 0} count={product.ratingCount ?? 0} />
         <div className="flex items-center justify-between mt-2">
           <div>
-            <span className="text-base font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
-            <span className="text-[11px] text-muted-foreground line-through ml-1">${orig}</span>
+            <div>
+              <span className="text-base font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
+              <span className="text-[11px] text-muted-foreground line-through ml-1">${orig}</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground">{toNGN(parseFloat(product.price))}</p>
           </div>
           <button
             onClick={e => { e.stopPropagation(); onBuy(); }}
@@ -323,6 +327,7 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist }: {
           <div>
             <p className="text-[13px] font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</p>
             <p className="text-[10px] text-muted-foreground line-through">${orig}</p>
+            <p className="text-[9px] text-muted-foreground">{toNGN(parseFloat(product.price))}</p>
           </div>
           <button onClick={e => { e.stopPropagation(); onBuy(); }}
             className="w-7 h-7 bg-tsia-gold rounded-full flex items-center justify-center shadow hover:scale-105 transition-transform"
@@ -442,9 +447,9 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
             <div className="bg-tsia-green/5 rounded-xl p-4 border border-tsia-green/20">
               <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1"><BadgePercent className="w-3.5 h-3.5 text-tsia-green" /> Earnings breakdown</p>
               <div className="space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Listing price</span><span className="font-semibold">${parseFloat(form.price || "0").toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Listing price</span><span className="font-semibold">${parseFloat(form.price || "0").toFixed(2)} <span className="text-xs font-normal text-muted-foreground">({toNGN(parseFloat(form.price || "0"))})</span></span></div>
                 <div className="flex justify-between"><span className="text-red-500">TSIA commission (8%)</span><span className="text-red-500">−${commission.toFixed(2)}</span></div>
-                <div className="flex justify-between border-t pt-1 mt-1"><span className="font-bold">You receive</span><span className="font-bold text-tsia-green">${youReceive.toFixed(2)}</span></div>
+                <div className="flex justify-between border-t pt-1 mt-1"><span className="font-bold">You receive</span><span className="font-bold text-tsia-green">${youReceive.toFixed(2)} <span className="text-xs font-normal text-muted-foreground">({toNGN(youReceive)})</span></span></div>
               </div>
             </div>
           )}
@@ -515,9 +520,9 @@ function BuyModal({ product, open, onClose, walletBalance }: { product: Product 
           )}
           <div><Label>Delivery address (optional)</Label><Input placeholder="e.g. 12 Baker Street, London" value={address} onChange={e => setAddress(e.target.value)} className="mt-1" data-testid="input-delivery-address" /></div>
           <div className="bg-muted/40 rounded-xl p-3 text-sm space-y-1">
-            <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>${total.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>${total.toFixed(2)} <span className="text-xs text-muted-foreground">({toNGN(total)})</span></span></div>
             <div className="flex justify-between text-xs text-muted-foreground"><span>TSIA fee (8%)</span><span>${commission.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold border-t pt-1"><span>Total</span><span>${total.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold border-t pt-1"><span>Total</span><span>${total.toFixed(2)} <span className="font-normal text-xs text-muted-foreground">({toNGN(total)})</span></span></div>
           </div>
           <div className={`rounded-xl p-3 text-sm flex items-center gap-2 ${canAfford ? "bg-green-50 dark:bg-green-900/20 text-green-700" : "bg-red-50 dark:bg-red-900/20 text-red-600"}`}>
             {canAfford ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <X className="w-4 h-4 shrink-0" />}
@@ -527,7 +532,7 @@ function BuyModal({ product, open, onClose, walletBalance }: { product: Product 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={() => buyMutation.mutate({productId: product.id, quantity: qty, deliveryAddress: address || undefined})} disabled={buyMutation.isPending || !canAfford} data-testid="button-confirm-purchase" className="flex-1 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold">
-            {buyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShoppingCart className="w-4 h-4 mr-2" />} Pay ${total.toFixed(2)}
+            {buyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShoppingCart className="w-4 h-4 mr-2" />} Pay ${total.toFixed(2)} ({toNGN(total)})
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -630,6 +635,7 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }:
             <div>
               <span className="text-3xl font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
               <span className="text-sm text-muted-foreground line-through ml-2">${orig}</span>
+              <p className="text-xs text-muted-foreground mt-0.5">{toNGN(parseFloat(product.price))}</p>
             </div>
             <Badge className={product.condition === "new" ? "bg-tsia-green/10 text-tsia-green border-tsia-green/30" : "bg-muted text-muted-foreground"}>{product.condition}</Badge>
           </div>
@@ -702,7 +708,7 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }:
         </div>
         <div className="px-5 pb-5 flex flex-col gap-3">
           <Button onClick={onBuy} disabled={product.stock === 0} className="w-full h-13 py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base" data-testid={`btn-detail-buy-${product.id}`}>
-            <ShoppingCart className="w-5 h-5 mr-2" /> Buy Now — ${parseFloat(product.price).toFixed(2)}
+            <ShoppingCart className="w-5 h-5 mr-2" /> Buy Now — ${parseFloat(product.price).toFixed(2)} ({toNGN(parseFloat(product.price))})
           </Button>
           {!isSeller && onChat && (
             <Button variant="outline" onClick={onChat} className="w-full rounded-2xl font-semibold h-11" data-testid={`btn-detail-chat-${product.id}`}>
@@ -1043,6 +1049,7 @@ export default function EcommerceSection() {
                 </div>
                 <div className="text-right ml-3 shrink-0">
                   <p className="font-black text-base">${parseFloat(o.totalAmount).toFixed(2)}</p>
+                  <p className="text-[10px] text-muted-foreground">{toNGN(parseFloat(o.totalAmount))}</p>
                   <Badge className={`${STATUS_COLORS[o.status] || ""} text-[10px] mt-1 rounded-full`}>{o.status}</Badge>
                 </div>
               </div>

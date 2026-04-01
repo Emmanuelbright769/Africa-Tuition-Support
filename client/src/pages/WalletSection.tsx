@@ -171,6 +171,7 @@ export default function WalletSection() {
               <p className="text-5xl font-black text-white tracking-tight mb-1" data-testid="text-wallet-balance">
                 {hidden ? <span className="tracking-[0.3em]">••••••</span> : `$${balance.toFixed(2)}`}
               </p>
+              {!hidden && <p className="text-white/60 text-sm font-semibold mb-1">≈ {toNGN(balance)}</p>}
               <p className="text-white/50 text-xs mb-6">Available balance · 7.5% VAT on withdrawals</p>
 
               <div className="grid grid-cols-2 gap-3">
@@ -250,6 +251,7 @@ export default function WalletSection() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
+                    <p className="text-[10px] text-tsia-green/70">{toNGN(parseFloat(d.amountUsd))}</p>
                     <p className={`text-[10px] font-semibold capitalize ${d.status === "completed" ? "text-tsia-green" : "text-amber-500"}`}>{d.status}</p>
                   </div>
                 </div>
@@ -270,6 +272,7 @@ export default function WalletSection() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-sm text-red-500">−${parseFloat(t.amount).toFixed(2)}</p>
+                    <p className="text-[10px] text-muted-foreground/70">{toNGN(parseFloat(t.amount))}</p>
                     <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                   </div>
                 </div>
@@ -290,6 +293,7 @@ export default function WalletSection() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-sm text-tsia-green">+${parseFloat(t.amount).toFixed(2)}</p>
+                    <p className="text-[10px] text-tsia-green/70">{toNGN(parseFloat(t.amount))}</p>
                     <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                   </div>
                 </div>
@@ -310,6 +314,7 @@ export default function WalletSection() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
+                    <p className="text-[10px] text-muted-foreground/70">{toNGN(parseFloat(b.amount))}</p>
                     <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                   </div>
                 </div>
@@ -349,6 +354,9 @@ export default function WalletSection() {
                 <Input id="fund-amount" type="number" min={1} step={0.01} placeholder="e.g. 10.00"
                   value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                   className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
+                {parseFloat(fundAmount) > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(fundAmount))} at ₦1,600/$1</p>
+                )}
               </div>
 
               <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">
@@ -394,7 +402,7 @@ export default function WalletSection() {
                 data-testid="btn-pay-paystack"
               >
                 {initPaystackMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                Pay ${parseFloat(fundAmount || "0").toFixed(2)} via Paystack
+                Pay ${parseFloat(fundAmount || "0").toFixed(2)} · {toNGN(parseFloat(fundAmount || "0"))} via Paystack
               </Button>
             ) : (
               <Button
@@ -426,13 +434,22 @@ export default function WalletSection() {
               <Input id="wd-amount" type="number" min={1} step={0.01} placeholder="0.00"
                 value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
                 className="mt-1 text-lg font-bold" data-testid="input-withdraw-amount" />
+              {parseFloat(withdrawAmount) > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(withdrawAmount))} at ₦1,600/$1</p>
+              )}
             </div>
 
             {parseFloat(withdrawAmount) > 0 && (
               <div className="bg-muted rounded-2xl p-4 border space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">Withdrawal</span><span className="font-medium">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
                 <div className="flex justify-between text-red-500"><span>VAT (7.5%)</span><span>−${vatAmt.toFixed(2)}</span></div>
-                <div className="flex justify-between font-bold border-t pt-2 mt-1"><span>You Receive</span><span className="text-tsia-green">${youGet.toFixed(2)}</span></div>
+                <div className="flex justify-between font-bold border-t pt-2 mt-1">
+                  <span>You Receive</span>
+                  <div className="text-right">
+                    <span className="text-tsia-green">${youGet.toFixed(2)}</span>
+                    <p className="text-[11px] text-muted-foreground font-normal">≈ {toNGN(youGet)}</p>
+                  </div>
+                </div>
               </div>
             )}
 

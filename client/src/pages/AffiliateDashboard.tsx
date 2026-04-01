@@ -31,6 +31,7 @@ import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
+import { toNGN } from "@/lib/utils";
 import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
 
@@ -704,6 +705,7 @@ export default function AffiliateDashboard() {
                         <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
                           {tradeBalanceHidden ? "••••••" : `$${tradeBalance.toFixed(2)}`}
                         </p>
+                        {!tradeBalanceHidden && <p className="text-xs text-blue-500/70">≈ {toNGN(tradeBalance)}</p>}
                       </div>
                       <Button size="sm" onClick={() => navigate("wallet")} data-testid="button-goto-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
                         <Wallet className="w-3.5 h-3.5 mr-1.5" /> Open Wallet
@@ -720,6 +722,7 @@ export default function AffiliateDashboard() {
                           <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300" data-testid="text-total-bot-earnings">
                             {tradeBalanceHidden ? "••••••" : `$${parseFloat(tradeWallet?.totalBotEarnings ?? "0").toFixed(2)}`}
                           </p>
+                          {!tradeBalanceHidden && <p className="text-[10px] text-emerald-600/70">≈ {toNGN(parseFloat(tradeWallet?.totalBotEarnings ?? "0"))}</p>}
                         </div>
                       </div>
                       <div className="text-right">
@@ -1488,6 +1491,7 @@ export default function AffiliateDashboard() {
             <div className="space-y-2">
               <Label>Amount (USD)</Label>
               <Input type="number" min={TRADE_MARKET.MIN_DEPOSIT} placeholder={`Min $${TRADE_MARKET.MIN_DEPOSIT}`} value={depositAmt} onChange={e => setDepositAmt(e.target.value)} data-testid="input-deposit-amount" />
+              {parseFloat(depositAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {toNGN(parseFloat(depositAmt))} at ₦1,600/$1</p>}
             </div>
             <div className="space-y-2">
               <Label>Transaction Hash (optional)</Label>
@@ -1496,9 +1500,9 @@ export default function AffiliateDashboard() {
             {depositAmt && parseFloat(depositAmt) >= TRADE_MARKET.MIN_DEPOSIT && (
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-3 text-xs space-y-1">
                 <p className="font-semibold text-green-800 dark:text-green-300">Allocation Preview</p>
-                <p>Credited to you: <strong>${(parseFloat(depositAmt) * 0.75).toFixed(2)}</strong> (75%)</p>
-                <p>Reserve Fund: <strong>${(parseFloat(depositAmt) * 0.20).toFixed(2)}</strong> (20%)</p>
-                <p>Affiliate Pool: <strong>${(parseFloat(depositAmt) * 0.05).toFixed(2)}</strong> (5%)</p>
+                <p>Credited to you: <strong>${(parseFloat(depositAmt) * 0.75).toFixed(2)}</strong> <span className="text-muted-foreground">(≈ {toNGN(parseFloat(depositAmt) * 0.75)})</span> (75%)</p>
+                <p>Reserve Fund: <strong>${(parseFloat(depositAmt) * 0.20).toFixed(2)}</strong> <span className="text-muted-foreground">(≈ {toNGN(parseFloat(depositAmt) * 0.20)})</span> (20%)</p>
+                <p>Affiliate Pool: <strong>${(parseFloat(depositAmt) * 0.05).toFixed(2)}</strong> <span className="text-muted-foreground">(≈ {toNGN(parseFloat(depositAmt) * 0.05)})</span> (5%)</p>
               </div>
             )}
           </div>
@@ -1516,7 +1520,7 @@ export default function AffiliateDashboard() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-blue-600" /> Withdraw from Trade Wallet</DialogTitle>
-            <DialogDescription>Balance: <strong>${tradeBalance.toFixed(2)}</strong></DialogDescription>
+            <DialogDescription>Balance: <strong>${tradeBalance.toFixed(2)}</strong> <span className="text-muted-foreground">(≈ {toNGN(tradeBalance)})</span></DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -1548,6 +1552,7 @@ export default function AffiliateDashboard() {
             <div className="space-y-2">
               <Label>Amount (USD)</Label>
               <Input type="number" min={TRADE_MARKET.MIN_WITHDRAW} max={tradeBalance} placeholder={`Min $${TRADE_MARKET.MIN_WITHDRAW}`} value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-withdraw-amount" />
+              {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {toNGN(parseFloat(withdrawAmt))} at ₦1,600/$1</p>}
             </div>
             {withdrawAmt && parseFloat(withdrawAmt) >= TRADE_MARKET.MIN_WITHDRAW && parseFloat(withdrawAmt) <= tradeBalance && (
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs space-y-1">
@@ -1560,7 +1565,7 @@ export default function AffiliateDashboard() {
                     <p className="font-semibold text-blue-800 dark:text-blue-300">Payout Preview</p>
                     <p>Platform fee ({withdrawType === "withdraw_bank" ? "8%" : "5%"}): <strong>-${fee.toFixed(2)}</strong></p>
                     <p>Affiliate Pool (5%): <strong>-${pool.toFixed(2)}</strong></p>
-                    <p className="font-bold text-blue-700 dark:text-blue-300">Net payout: ${net.toFixed(2)}</p>
+                    <p className="font-bold text-blue-700 dark:text-blue-300">Net payout: ${net.toFixed(2)} <span className="font-normal text-muted-foreground">(≈ {toNGN(net)})</span></p>
                   </>;
                 })()}
               </div>

@@ -17,7 +17,7 @@ import {
   LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X,
   LayoutDashboard, Star, History, ChevronRight, ChevronDown, Car, Globe, Loader2,
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
-  ShoppingCart, MessageSquareText, PiggyBank
+  ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
 import { toNGN } from "@/lib/utils";
@@ -33,7 +33,7 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce";
+type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response";
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",              icon: LayoutDashboard },
@@ -45,8 +45,9 @@ const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
   { id: "plans",        label: "Sponsorship Plans",      icon: Star },
   { id: "activity",     label: "Activity",               icon: History },
-  { id: "loan",         label: "Student loan",           icon: Banknote },
-  { id: "forum",        label: "Community Forum",        icon: MessageSquareText },
+  { id: "loan",               label: "Student loan",           icon: Banknote },
+  { id: "emergency_response", label: "Emergency Response",     icon: HeartPulse, badge: "Soon" },
+  { id: "forum",              label: "Community Forum",        icon: MessageSquareText },
 ];
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
@@ -501,6 +502,66 @@ export default function StudentDashboard() {
             {activeSection === "ecommerce" && (
               <motion.div variants={itemVariants}>
                 <EcommerceSection />
+              </motion.div>
+            )}
+
+            {/* ── EMERGENCY RESPONSE ── */}
+            {activeSection === "emergency_response" && (
+              <motion.div variants={itemVariants} className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
+                    <HeartPulse className="w-6 h-6 text-red-500" /> Emergency Response
+                  </h2>
+                  <p className="text-muted-foreground text-sm">Rapid care services — wherever you are in Africa.</p>
+                </div>
+
+                <div className="grid gap-4">
+                  {[
+                    {
+                      icon: Ambulance,
+                      color: "text-red-600",
+                      bg: "bg-red-50 dark:bg-red-900/20",
+                      border: "border-red-200 dark:border-red-800",
+                      title: "Ambulance Services",
+                      desc: "On-demand emergency ambulance dispatch to your location. Real-time GPS tracking, trained paramedics, and direct hospital coordination.",
+                    },
+                    {
+                      icon: Stethoscope,
+                      color: "text-blue-600",
+                      bg: "bg-blue-50 dark:bg-blue-900/20",
+                      border: "border-blue-200 dark:border-blue-800",
+                      title: "Medical Expert Home Service",
+                      desc: "Book a verified doctor or nurse to visit your home. Diagnosis, treatment, and prescription — all without leaving your door.",
+                    },
+                    {
+                      icon: HeartHandshake,
+                      color: "text-purple-600",
+                      bg: "bg-purple-50 dark:bg-purple-900/20",
+                      border: "border-purple-200 dark:border-purple-800",
+                      title: "Age to Grey Health Insurance",
+                      desc: "Lifetime health coverage designed for older Africans. Comprehensive plans covering hospitalisation, chronic illness, and preventive care.",
+                    },
+                  ].map(({ icon: Icon, color, bg, border, title, desc }) => (
+                    <div key={title} className={`${bg} border ${border} rounded-2xl p-5 flex items-start gap-4`}>
+                      <div className={`w-12 h-12 rounded-2xl ${bg} border ${border} flex items-center justify-center shrink-0`}>
+                        <Icon className={`w-6 h-6 ${color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-bold text-base">{title}</p>
+                          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 text-[10px] px-2 py-0.5">Coming Soon</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-muted/40 border border-border rounded-2xl p-4 text-center">
+                  <HeartPulse className="w-8 h-8 text-red-400 mx-auto mb-2" />
+                  <p className="font-semibold text-sm">Services launching soon</p>
+                  <p className="text-xs text-muted-foreground mt-1">Emergency Response services are in development. You will be notified as soon as they go live.</p>
+                </div>
               </motion.div>
             )}
 

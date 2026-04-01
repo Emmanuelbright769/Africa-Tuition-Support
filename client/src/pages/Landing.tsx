@@ -30,7 +30,7 @@ const slides = [
   {
     id: 3,
     title: "Earn by Referring Students",
-    subtitle: "TSIA Affiliate Program",
+    subtitle: "Affiliate Program",
     description: "Share your unique referral code with fellow students. Earn commission for every verified student you refer to the TSIA platform.",
     image: "/slide3.jpeg",
     primaryButton: { text: "Join as Affiliate", link: "/affiliate-signup" },
@@ -172,7 +172,7 @@ export default function Landing() {
               <div className="inline-flex items-center rounded-full border border-tsia-gold/30 bg-tsia-gold/10 px-4 py-1.5 text-sm font-bold text-tsia-gold mb-6">
                 <Sparkles className="w-4 h-4 mr-2" /> Earn While You Refer
               </div>
-              <h2 className="text-4xl md:text-5xl font-bold mb-4">TSIA Affiliate Program</h2>
+              <h2 className="text-4xl md:text-5xl font-bold mb-4">Affiliate Program</h2>
               <p className="text-xl text-slate-300 max-w-2xl mx-auto">Turn your network into income. Refer students to TSIA and earn commission on every verified referral.</p>
             </motion.div>
 

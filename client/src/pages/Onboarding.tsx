@@ -113,8 +113,8 @@ export default function Onboarding() {
     if (filled.length !== 3) { toast({ title: "Error", description: "Please select exactly 3 elective subjects", variant: "destructive" }); return; }
     const subjects = [...WAEC_COMPULSORY_SUBJECTS, ...filled];
     if (subjects.some(s => !grades[s])) { toast({ title: "Error", description: "Please select grades for all 5 subjects", variant: "destructive" }); return; }
-    setShowBiometric(true);
-    setBiometricPhase("ready");
+    // Go to payment step FIRST — biometric happens after payment
+    setStep(3);
   };
 
   // ── Biometric ──────────────────────────────────────────────────────
@@ -160,14 +160,14 @@ export default function Onboarding() {
       });
       const data = await res.json();
       setWaecResult(data);
-      setStep(3);
+      setStep(4); // payment already done; go straight to completion
     } catch (err: any) {
       try {
         const d = await err.json?.();
         setFailPercentage(d?.percentage || 0);
       } catch {}
       setWaecFailed(true);
-      setStep(3);
+      setStep(3); // stay on step 3 to show fail screen
     }
   };
 
@@ -224,8 +224,10 @@ export default function Onboarding() {
     setIsProcessing(true);
     try {
       await apiRequest("POST", "/api/verification/pay-fee");
-      setStep(4);
-      toast({ title: "Payment Successful", description: "Your verification fee has been processed." });
+      toast({ title: "Payment Successful", description: "Fee confirmed. Please complete the face scan to finalise your verification." });
+      // Payment succeeded — now open biometric
+      setShowBiometric(true);
+      setBiometricPhase("ready");
     } catch (err: any) {
       toast({ title: "Payment Failed", description: err.message, variant: "destructive" });
     } finally {
@@ -240,7 +242,7 @@ export default function Onboarding() {
     exit: { opacity: 0, x: -40, transition: { duration: 0.3 } },
   };
 
-  const totalSteps = 3;
+  const totalSteps = 4;
   const progressPct = waecFailed ? 100 : ((Math.min(step, totalSteps)) / totalSteps) * 100;
 
   return (
@@ -451,28 +453,22 @@ export default function Onboarding() {
                   <div className="flex gap-4 pt-2">
                     <Button variant="outline" onClick={() => setStep(1)} className="w-1/3 h-12 font-semibold">Back</Button>
                     <Button onClick={handleValidateWaec} className="w-2/3 h-12 text-base font-semibold bg-amber-600 hover:bg-amber-700 shadow-md" data-testid="button-validate-waec">
-                      <ScanFace className="w-5 h-5 mr-2" /> Validate via WAEC API
+                      <ArrowRight className="w-5 h-5 mr-2" /> Proceed to Payment
                     </Button>
                   </div>
                 </div>
               </motion.div>
             )}
 
-            {/* ── STEP 3 PASS: Congratulations + Wallet KYC ── */}
+            {/* ── STEP 3 PASS: KYC + Payment (before biometric) ── */}
             {step === 3 && !waecFailed && (
               <motion.div key="s3-pass" {...slide} className="bg-card rounded-3xl shadow-2xl border overflow-hidden">
-                <div className="bg-gradient-to-r from-green-500/10 to-tsia-gold/10 p-8 text-center">
-                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}>
-                    <PartyPopper className="w-20 h-20 text-tsia-gold mx-auto mb-4" />
-                  </motion.div>
-                  <h2 className="text-3xl font-bold mb-2">Congratulations! 🎉</h2>
-                  <p className="text-muted-foreground text-lg">Your request is accepted and pending approval.</p>
-                  {waecResult && (
-                    <div className="mt-4 inline-flex items-center gap-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-2 rounded-full text-sm font-semibold">
-                      <CheckCircle2 className="w-4 h-4" />
-                      {(waecResult.payoutRange?.label || "").charAt(0).toUpperCase() + (waecResult.payoutRange?.label || "").slice(1)} Tier — {waecResult.calculatedPercentage}% Score
-                    </div>
-                  )}
+                <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 p-8 pb-0">
+                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
+                    <CreditCard className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-3xl font-bold mb-2">Payment & KYC</h2>
+                  <p className="text-muted-foreground text-lg mb-6">Complete identity KYC and pay the one-time portal fee. Your face scan happens right after.</p>
                 </div>
 
                 <div className="p-8 space-y-6 max-h-[55vh] overflow-y-auto">
@@ -586,7 +582,7 @@ export default function Onboarding() {
                         </div>
                       </div>
                       <Button onClick={handlePayment} className="w-full h-14 text-lg font-semibold bg-blue-600 hover:bg-blue-700 shadow-md" disabled={isProcessing} data-testid="button-pay">
-                        {isProcessing ? <span className="flex items-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Processing Payment...</span> : "Pay $3.00 & Activate Wallet"}
+                        {isProcessing ? <span className="flex items-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Processing Payment...</span> : <><CreditCard className="w-5 h-5 mr-2" /> Pay $3.00 — Then Complete Face Scan</>}
                       </Button>
                     </motion.div>
                   )}
@@ -639,20 +635,26 @@ export default function Onboarding() {
 
             {/* ── STEP 4: Done ── */}
             {step === 4 && (
-              <motion.div key="s4" {...slide} className="bg-card rounded-3xl shadow-2xl border text-center p-12">
-                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}>
-                  <div className="w-24 h-24 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <CheckCircle2 className="w-14 h-14 text-green-500" />
-                  </div>
-                </motion.div>
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-                  <h2 className="text-3xl font-bold mb-3">Application Submitted! 🎉</h2>
-                  <p className="text-muted-foreground text-lg mb-2 max-w-md mx-auto">Your wallet is created and your application is pending admin approval.</p>
-                  <p className="text-sm text-muted-foreground mb-8">Our team will review within 24–48 hours. You'll be notified once approved.</p>
+              <motion.div key="s4" {...slide} className="bg-card rounded-3xl shadow-2xl border overflow-hidden text-center">
+                <div className="bg-gradient-to-r from-green-500/10 to-tsia-gold/10 p-10">
+                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}>
+                    <PartyPopper className="w-20 h-20 text-tsia-gold mx-auto mb-4" />
+                  </motion.div>
+                  <h2 className="text-3xl font-bold mb-2">Congratulations! 🎉</h2>
+                  <p className="text-muted-foreground text-lg">Your application is submitted and pending admin approval.</p>
+                  {waecResult && (
+                    <div className="mt-4 inline-flex items-center gap-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-2 rounded-full text-sm font-semibold">
+                      <CheckCircle2 className="w-4 h-4" />
+                      {(waecResult.payoutRange?.label || "").charAt(0).toUpperCase() + (waecResult.payoutRange?.label || "").slice(1)} Tier — {waecResult.calculatedPercentage}% Score
+                    </div>
+                  )}
+                </div>
+                <div className="p-8">
+                  <p className="text-sm text-muted-foreground mb-8">Our team will review within 24–48 hours. You'll receive a notification once approved and your wallet is funded.</p>
                   <Button onClick={() => setLocation("/dashboard")} className="h-12 px-8 text-base font-semibold" data-testid="button-go-dashboard">
                     Go to Dashboard <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
-                </motion.div>
+                </div>
               </motion.div>
             )}
 

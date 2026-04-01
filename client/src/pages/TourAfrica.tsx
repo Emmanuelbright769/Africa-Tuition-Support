@@ -332,6 +332,9 @@ export default function TourAfrica() {
                         <div className="space-y-2">
                           <Label>Price per Night (USD) *</Label>
                           <Input type="number" min="1" placeholder="0.00" value={hotelForm.pricePerNight} onChange={e => setHotelForm(f => ({ ...f, pricePerNight: e.target.value }))} data-testid="input-hotel-price" />
+                          {parseFloat(hotelForm.pricePerNight) > 0 && (
+                            <p className="text-xs text-muted-foreground">≈ {toNGN(parseFloat(hotelForm.pricePerNight))} per night</p>
+                          )}
                         </div>
                       </div>
 
@@ -418,6 +421,9 @@ export default function TourAfrica() {
                         <div className="space-y-2">
                           <Label>Price per Day (USD) *</Label>
                           <Input type="number" min="1" placeholder="0.00" value={carForm.pricePerDay} onChange={e => setCarForm(f => ({ ...f, pricePerDay: e.target.value }))} data-testid="input-car-price" />
+                          {parseFloat(carForm.pricePerDay) > 0 && (
+                            <p className="text-xs text-muted-foreground">≈ {toNGN(parseFloat(carForm.pricePerDay))} per day</p>
+                          )}
                         </div>
                       </div>
 
@@ -501,6 +507,9 @@ export default function TourAfrica() {
                         <div className="space-y-2">
                           <Label>Ticket Price per Person (USD) *</Label>
                           <Input type="number" min="1" placeholder="0.00" value={flightForm.ticketPrice} onChange={e => setFlightForm(f => ({ ...f, ticketPrice: e.target.value }))} data-testid="input-flight-price" />
+                          {parseFloat(flightForm.ticketPrice) > 0 && (
+                            <p className="text-xs text-muted-foreground">≈ {toNGN(parseFloat(flightForm.ticketPrice))} per person</p>
+                          )}
                         </div>
                       </div>
 

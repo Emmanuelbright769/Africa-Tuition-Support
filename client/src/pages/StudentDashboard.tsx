@@ -19,6 +19,7 @@ import {
   ShoppingCart, MessageSquareText
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
+import { toNGN } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -588,6 +589,9 @@ export default function StudentDashboard() {
                               className="w-full px-3 py-2 rounded-lg border bg-background text-sm"
                               data-testid="input-loan-amount"
                             />
+                            {parseFloat(loanAmount) > 0 && (
+                              <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(loanAmount))} at ₦1,600/$1</p>
+                            )}
                           </div>
                           <div>
                             <label className="text-sm font-medium mb-1.5 block">Repayment term</label>

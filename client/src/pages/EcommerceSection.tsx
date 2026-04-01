@@ -425,7 +425,13 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
           <div><Label>Title *</Label><Input placeholder="e.g. iPhone 14 Pro, Brand New" value={form.title} onChange={e => setForm(p => ({...p, title: e.target.value}))} className="mt-1" data-testid="input-product-title" /></div>
           <div><Label>Description *</Label><textarea rows={3} placeholder="Describe condition, features, specs..." value={form.description} onChange={e => setForm(p => ({...p, description: e.target.value}))} data-testid="input-product-description" className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none" /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>Price (USD) *</Label><Input type="number" min={ECOMMERCE.MIN_PRICE} max={ECOMMERCE.MAX_PRICE} step={0.01} placeholder="0.00" value={form.price} onChange={e => setForm(p => ({...p, price: e.target.value}))} className="mt-1" data-testid="input-product-price" /></div>
+            <div>
+              <Label>Price (USD) *</Label>
+              <Input type="number" min={ECOMMERCE.MIN_PRICE} max={ECOMMERCE.MAX_PRICE} step={0.01} placeholder="0.00" value={form.price} onChange={e => setForm(p => ({...p, price: e.target.value}))} className="mt-1" data-testid="input-product-price" />
+              {parseFloat(form.price) > 0 && (
+                <p className="text-[11px] text-muted-foreground mt-1">≈ {toNGN(parseFloat(form.price))}</p>
+              )}
+            </div>
             <div><Label>Stock qty</Label><Input type="number" min={1} value={form.stock} onChange={e => setForm(p => ({...p, stock: e.target.value}))} className="mt-1" data-testid="input-product-stock" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">

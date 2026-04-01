@@ -853,6 +853,9 @@ export default function AffiliateDashboard() {
                             <div className="mb-3">
                               <p className="text-xs text-muted-foreground mb-1">Choose your amount ($500 – $10,000)</p>
                               <Input type="number" min={500} max={10000} step={50} value={eliteCustomAmount} onChange={e => setEliteCustomAmount(e.target.value)} className="h-9 font-bold border-amber-300" disabled={isEnrolled} data-testid="input-elite-amount" />
+                              {parseFloat(eliteCustomAmount) > 0 && !isEnrolled && (
+                                <p className="text-[11px] text-muted-foreground mt-1">≈ {toNGN(parseFloat(eliteCustomAmount))}</p>
+                              )}
                             </div>
                           ) : (
                             <div className="text-3xl font-bold mb-1">${tier.currentPrice}</div>
@@ -1158,6 +1161,9 @@ export default function AffiliateDashboard() {
                               className="w-full px-3 py-2 rounded-lg border bg-background text-sm"
                               data-testid="input-loan-amount"
                             />
+                            {parseFloat(loanAmount) > 0 && (
+                              <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(loanAmount))} at ₦1,600/$1</p>
+                            )}
                           </div>
                           <div>
                             <label className="text-sm font-medium mb-1.5 block">Repayment term</label>
@@ -1617,6 +1623,9 @@ export default function AffiliateDashboard() {
               <div className="space-y-2">
                 <Label>Elite Amount ($500 – $10,000)</Label>
                 <Input type="number" min={500} max={10000} step={50} value={upgradeEliteAmt} onChange={e => setUpgradeEliteAmt(e.target.value)} data-testid="input-upgrade-elite-amount" />
+                {parseFloat(upgradeEliteAmt) > 0 && (
+                  <p className="text-[11px] text-muted-foreground">≈ {toNGN(parseFloat(upgradeEliteAmt))}</p>
+                )}
                 <p className="text-xs text-muted-foreground">New share: {(getEliteSharePercentage(upgradeEliteAmtNum) * 100).toFixed(6)}% lifetime</p>
               </div>
             )}

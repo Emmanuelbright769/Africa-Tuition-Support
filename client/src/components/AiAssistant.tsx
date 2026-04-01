@@ -48,7 +48,7 @@ const KB: { patterns: RegExp[]; response: string }[] = [
   // ─── Sponsorship tiers & payout ─────────────────────────────────────
   {
     patterns: [/tier|platinum|gold|silver|payout|sponsorship|how much|reward|grade|score|waec.*grade|academic|performance/i],
-    response: `TSIA assigns your sponsorship tier based on your **WAEC Academic Performance Matrix**:\n\n🏆 **Platinum** (75%+ average score)\n→ payout range: **$225–$230**\n\n🥇 **Gold** (60–74% average score)\n→ payout range: **$160–$180**\n\n🥈 **Silver** (50–59% average score)\n→ payout range: **$110–$130**\n\n**how scores are calculated:**\nA1=15pts, B2=13, B3=12, C4=11, C5=10, C6=9, D7=8, E8=7, F9=6\nyour 5 subject grades are averaged to produce your final percentage.\n\npayouts go directly to your TSIA digital wallet. you can withdraw or use them for fees anytime.`,
+    response: `TSIA assigns your sponsorship tier based on your **WAEC Academic Performance Matrix**:\n\n🏆 **Platinum** (75%+ average score)\n→ payout range: **$225–$230**\n\n🥇 **Gold** (60–74% average score)\n→ payout range: **$160–$180**\n\n🥈 **Silver** (50–59% average score)\n→ payout range: **$110–$130**\n\nyour As, Bs, Cs – Fs are calculated via the APM using Arithmetical Algorithms with alpha numeric points from A–Z.\n\npayouts go directly to your TSIA digital wallet. you can withdraw or use them for fees anytime.`,
   },
 
   // ─── Wallet & transactions ───────────────────────────────────────────

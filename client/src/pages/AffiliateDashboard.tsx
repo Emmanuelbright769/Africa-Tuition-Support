@@ -584,23 +584,6 @@ export default function AffiliateDashboard() {
                   <h2 className="text-2xl font-bold mb-1">Global Trade Market</h2>
                   <p className="text-muted-foreground text-sm mb-4">Invest globally — deposit & withdraw using BYBIT, BINANCE & more.</p>
 
-                  {/* ROI + BOT Info Banner */}
-                  <div className="rounded-2xl overflow-hidden shadow-lg mb-2">
-                    <div className="bg-gradient-to-r from-green-800 to-emerald-700 text-white p-5">
-                      <div className="flex items-start gap-3 mb-3">
-                        <TrendingUp className="w-6 h-6 shrink-0 mt-0.5 text-green-200" />
-                        <div>
-                          <p className="font-bold text-lg leading-tight">100% ROI @ 2% Daily</p>
-                          <p className="text-green-200 text-sm mt-0.5">Trades profit & loss on capital markets using arithmetic algorithms with the power of a BOT (AI)</p>
-                        </div>
-                      </div>
-                      <LearnMore label="Learn more" dark className="mt-1">
-                        <p className="text-green-100 text-sm leading-relaxed">
-                          TSIA's Global Trade Market targets a <strong className="text-white">100% total return on investment</strong> through consistent 2% daily capital market trading — powered by advanced arithmetic algorithms and an AI-driven BOT. At the end of your investment cycle, your capital will have grown to double what you deposited.
-                        </p>
-                      </LearnMore>
-                    </div>
-                  </div>
                 </motion.div>
 
                 {/* ===== TRADING BOT ACTIVATION PANEL ===== */}
@@ -782,40 +765,6 @@ export default function AffiliateDashboard() {
                   </select>
                 </motion.div>
 
-                {/* Live TradingView Chart */}
-                <motion.div variants={itemVariants}>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold text-muted-foreground">Live market chart</p>
-                    <div className="flex gap-2">
-                      {[
-                        { label: "BTC/USDT", symbol: "BINANCE:BTCUSDT" },
-                        { label: "ETH/USDT", symbol: "BINANCE:ETHUSD" },
-                        { label: "EUR/USD", symbol: "FX:EURUSD" },
-                      ].map(({ label, symbol }) => (
-                        <button key={symbol} onClick={() => setChartSymbol(symbol)}
-                          data-testid={`button-chart-${label.replace("/", "-")}`}
-                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${chartSymbol === symbol ? "bg-tsia-green text-white border-tsia-green" : "border-border hover:border-tsia-green/40"}`}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl overflow-hidden border border-border shadow-md" style={{ height: 420 }}>
-                    <iframe
-                      key={chartSymbol}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_trade&symbol=${encodeURIComponent(chartSymbol)}&interval=60&hidesidetoolbar=0&hidetooltip=0&theme=dark&style=1&locale=en&toolbar_bg=%23131722&enable_publishing=false&withdateranges=1&showpopupbutton=0&no_referral_id=1&timezone=Europe%2FLondon`}
-                      width="100%"
-                      height="420"
-                      frameBorder="0"
-                      allowTransparency={true}
-                      scrolling="no"
-                      allow="fullscreen"
-                      title="TradingView Live Chart"
-                      data-testid="iframe-tradingview-chart"
-                      style={{ display: "block" }}
-                    />
-                  </div>
-                </motion.div>
 
               </>
             )}
@@ -942,59 +891,7 @@ export default function AffiliateDashboard() {
                         </div>
                         <p className="text-green-100 text-xs">Active co-affiliate · Lifetime participation confirmed</p>
                       </div>
-                      <CardContent className="pt-5 space-y-4">
-                        {/* Investment breakdown */}
-                        <div className="grid grid-cols-3 gap-3 text-center">
-                          <div className="bg-muted/50 rounded-xl p-3">
-                            <p className="text-[11px] text-muted-foreground mb-1">Invested</p>
-                            <p className="text-xl font-bold text-foreground">${parseFloat(myCoAff.amountPaid).toFixed(0)}</p>
-                            <p className="text-[10px] text-muted-foreground">total paid</p>
-                          </div>
-                          <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 border border-amber-200 dark:border-amber-800">
-                            <p className="text-[11px] text-amber-700 dark:text-amber-400 mb-1">Reserve</p>
-                            <p className="text-xl font-bold text-amber-700 dark:text-amber-400">${(parseFloat(myCoAff.amountPaid) * 0.20).toFixed(0)}</p>
-                            <p className="text-[10px] text-amber-600 dark:text-amber-500">ring-fenced (20%)</p>
-                          </div>
-                          <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-3 border border-green-200 dark:border-green-800">
-                            <p className="text-[11px] text-green-700 dark:text-green-400 mb-1">Your Share</p>
-                            <p className="text-xl font-bold text-green-700 dark:text-green-400">{(parseFloat(myCoAff.sharePercentage) * 100).toFixed(6)}%</p>
-                            <p className="text-[10px] text-green-600 dark:text-green-500">of TSIA profits</p>
-                          </div>
-                        </div>
-
-                        {/* Projected earnings */}
-                        <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-4">
-                          <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
-                            <BarChart3 className="w-3.5 h-3.5 text-primary" /> Projected Annual Earnings (illustrative)
-                          </p>
-                          <div className="space-y-2">
-                            {[
-                              { label: "Conservative (5% TSIA profit = $500K)", profit: 500000 },
-                              { label: "Moderate (5% TSIA profit = $2M)", profit: 2000000 },
-                              { label: "Optimistic (5% TSIA profit = $10M)", profit: 10000000 },
-                            ].map(({ label, profit }) => {
-                              const share = parseFloat(myCoAff.sharePercentage);
-                              const earning = (share * profit).toFixed(2);
-                              return (
-                                <div key={label} className="flex justify-between items-center text-xs">
-                                  <span className="text-muted-foreground">{label}</span>
-                                  <span className="font-bold text-primary">${Number(earning).toLocaleString()}/yr</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">* Projections are illustrative only. Actual distributions depend on TSIA annual net profit. Distributions are paid in USDT.</p>
-                        </div>
-
-                        {/* Reserve receipt */}
-                        <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
-                          <Shield className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">20% Reserve Confirmed</p>
-                            <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">${(parseFloat(myCoAff.amountPaid) * 0.20).toFixed(2)} was ring-fenced into the Strategic Reserve Fund at enrolment. This backs your lifetime share rights.</p>
-                          </div>
-                        </div>
-
+                      <CardContent className="pt-5">
                         <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-3">
                           <span>Status</span>
                           <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 text-xs">Active · Lifetime</Badge>

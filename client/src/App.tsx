@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
+import { LocalCurrencyProvider } from "@/contexts/LocalCurrencyContext";
 import NotFound from "@/pages/not-found";
 
 import Landing from "@/pages/Landing";
@@ -74,13 +75,15 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <AuthProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Router />
-              <AiAssistant />
-            </TooltipProvider>
-          </AuthProvider>
+          <LocalCurrencyProvider>
+            <AuthProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Router />
+                <AiAssistant />
+              </TooltipProvider>
+            </AuthProvider>
+          </LocalCurrencyProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>

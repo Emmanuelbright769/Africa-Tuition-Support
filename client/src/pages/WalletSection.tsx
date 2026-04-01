@@ -14,7 +14,7 @@ import {
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
   Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy, Coins
 } from "lucide-react";
-import { toNGN } from "@/lib/utils";
+import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
 
 // ── TSIA Receiving Wallet Addresses ───────────────────────────────────────────
@@ -41,6 +41,7 @@ const itemVariants = {
 export default function WalletSection() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { formatAmount, rateLabel, currency, loading: currencyLoading } = useLocalCurrency();
 
   const hiddenKey = `tsia_balance_hidden_${user?.id ?? "guest"}`;
   const [hidden, setHidden] = useState(() => {
@@ -205,7 +206,14 @@ export default function WalletSection() {
               <p className="text-5xl font-black text-white tracking-tight mb-1" data-testid="text-wallet-balance">
                 {hidden ? <span className="tracking-[0.3em]">••••••</span> : `$${balance.toFixed(2)}`}
               </p>
-              {!hidden && <p className="text-white/60 text-sm font-semibold mb-1">≈ {toNGN(balance)}</p>}
+              {!hidden && (
+                <p className="text-white/60 text-sm font-semibold mb-1">
+                  ≈ {currencyLoading ? <span className="opacity-50 text-xs">detecting…</span> : formatAmount(balance)}
+                  {currency && currency.code !== "USD" && (
+                    <span className="ml-1.5 text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency.code}</span>
+                  )}
+                </p>
+              )}
               <p className="text-white/50 text-xs mb-6">Available balance · 7.5% VAT on withdrawals</p>
 
               <div className="grid grid-cols-2 gap-3">
@@ -279,7 +287,7 @@ export default function WalletSection() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
-                    <p className="text-[10px] text-tsia-green/70">{toNGN(parseFloat(d.amountUsd))}</p>
+                    <p className="text-[10px] text-tsia-green/70">{formatAmount(parseFloat(d.amountUsd))}</p>
                     <p className={`text-[10px] font-semibold capitalize ${d.status === "completed" ? "text-tsia-green" : "text-amber-500"}`}>{d.status}</p>
                   </div>
                 </div>
@@ -300,7 +308,7 @@ export default function WalletSection() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-sm text-red-500">−${parseFloat(t.amount).toFixed(2)}</p>
-                    <p className="text-[10px] text-muted-foreground/70">{toNGN(parseFloat(t.amount))}</p>
+                    <p className="text-[10px] text-muted-foreground/70">{formatAmount(parseFloat(t.amount))}</p>
                     <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                   </div>
                 </div>
@@ -321,7 +329,7 @@ export default function WalletSection() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-sm text-tsia-green">+${parseFloat(t.amount).toFixed(2)}</p>
-                    <p className="text-[10px] text-tsia-green/70">{toNGN(parseFloat(t.amount))}</p>
+                    <p className="text-[10px] text-tsia-green/70">{formatAmount(parseFloat(t.amount))}</p>
                     <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                   </div>
                 </div>
@@ -342,7 +350,7 @@ export default function WalletSection() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
-                    <p className="text-[10px] text-muted-foreground/70">{toNGN(parseFloat(b.amount))}</p>
+                    <p className="text-[10px] text-muted-foreground/70">{formatAmount(parseFloat(b.amount))}</p>
                     <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                   </div>
                 </div>
@@ -396,7 +404,7 @@ export default function WalletSection() {
                       value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                       className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
                     {parseFloat(fundAmount) > 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(fundAmount))} at ₦1,600/$1</p>
+                      <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
                     )}
                   </div>
                   <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">
@@ -492,7 +500,7 @@ export default function WalletSection() {
                     value={cryptoAmount} onChange={e => setCryptoAmount(e.target.value)}
                     className="mt-1 text-lg font-bold" data-testid="input-crypto-amount" />
                   {parseFloat(cryptoAmount) > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(cryptoAmount))} at ₦1,600/$1</p>
+                    <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(cryptoAmount))} {rateLabel()}</p>
                   )}
                 </div>
 
@@ -541,7 +549,7 @@ export default function WalletSection() {
                 value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
                 className="mt-1 text-lg font-bold" data-testid="input-withdraw-amount" />
               {parseFloat(withdrawAmount) > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(withdrawAmount))} at ₦1,600/$1</p>
+                <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(withdrawAmount))} {rateLabel()}</p>
               )}
             </div>
 
@@ -553,7 +561,7 @@ export default function WalletSection() {
                   <span>You Receive</span>
                   <div className="text-right">
                     <span className="text-tsia-green">${youGet.toFixed(2)}</span>
-                    <p className="text-[11px] text-muted-foreground font-normal">≈ {toNGN(youGet)}</p>
+                    <p className="text-[11px] text-muted-foreground font-normal">≈ {formatAmount(youGet)}</p>
                   </div>
                 </div>
               </div>

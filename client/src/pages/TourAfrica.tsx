@@ -20,7 +20,7 @@ import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 import { apiRequest } from "@/lib/queryClient";
-import { toNGN } from "@/lib/utils";
+import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
@@ -43,6 +43,7 @@ export default function TourAfrica() {
   const { mode, setMode } = useTheme();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { formatAmount } = useLocalCurrency();
   const [activeSection, setActiveSection] = useState<TourSection>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -124,7 +125,7 @@ export default function TourAfrica() {
 
   const WalletBadge = () => (
     <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl text-xs font-semibold text-green-700 dark:text-green-400">
-      <Wallet className="w-3.5 h-3.5" /> Wallet: ${walletBalance.toFixed(2)} <span className="font-normal opacity-70">({toNGN(walletBalance)})</span>
+      <Wallet className="w-3.5 h-3.5" /> Wallet: ${walletBalance.toFixed(2)} <span className="font-normal opacity-70">({formatAmount(walletBalance)})</span>
     </div>
   );
 
@@ -333,7 +334,7 @@ export default function TourAfrica() {
                           <Label>Price per Night (USD) *</Label>
                           <Input type="number" min="1" placeholder="0.00" value={hotelForm.pricePerNight} onChange={e => setHotelForm(f => ({ ...f, pricePerNight: e.target.value }))} data-testid="input-hotel-price" />
                           {parseFloat(hotelForm.pricePerNight) > 0 && (
-                            <p className="text-xs text-muted-foreground">≈ {toNGN(parseFloat(hotelForm.pricePerNight))} per night</p>
+                            <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(hotelForm.pricePerNight))} per night</p>
                           )}
                         </div>
                       </div>
@@ -341,13 +342,13 @@ export default function TourAfrica() {
                       {hotelTotal > 0 && (
                         <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-4 space-y-2 text-sm">
                           <BookingSummaryRow label="Stay duration" value={`${hotelNights} night(s) × ${hotelForm.rooms} room(s)`} />
-                          <BookingSummaryRow label="Sub-total" value={`$${hotelTotal.toFixed(2)} (${toNGN(hotelTotal)})`} />
+                          <BookingSummaryRow label="Sub-total" value={`$${hotelTotal.toFixed(2)} (${formatAmount(hotelTotal)})`} />
                           <BookingSummaryRow label="TSIA commission (10%)" value={`$${(hotelTotal * COMMISSION_RATE).toFixed(2)}`} />
                           <div className="border-t pt-2 flex justify-between font-bold">
                             <span>Total charged to wallet</span>
                             <div className="text-right">
                               <span className="text-purple-700 dark:text-purple-400">${hotelTotal.toFixed(2)}</span>
-                              <p className="text-[10px] font-normal text-muted-foreground">{toNGN(hotelTotal)}</p>
+                              <p className="text-[10px] font-normal text-muted-foreground">{formatAmount(hotelTotal)}</p>
                             </div>
                           </div>
                           {walletBalance < hotelTotal && (
@@ -422,7 +423,7 @@ export default function TourAfrica() {
                           <Label>Price per Day (USD) *</Label>
                           <Input type="number" min="1" placeholder="0.00" value={carForm.pricePerDay} onChange={e => setCarForm(f => ({ ...f, pricePerDay: e.target.value }))} data-testid="input-car-price" />
                           {parseFloat(carForm.pricePerDay) > 0 && (
-                            <p className="text-xs text-muted-foreground">≈ {toNGN(parseFloat(carForm.pricePerDay))} per day</p>
+                            <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(carForm.pricePerDay))} per day</p>
                           )}
                         </div>
                       </div>
@@ -430,13 +431,13 @@ export default function TourAfrica() {
                       {carTotal > 0 && (
                         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 space-y-2 text-sm">
                           <BookingSummaryRow label="Rental duration" value={`${carDays} day(s) · ${carForm.carType} · ${carForm.driver === "self" ? "Self-drive" : "With Chauffeur"}`} />
-                          <BookingSummaryRow label="Sub-total" value={`$${carTotal.toFixed(2)} (${toNGN(carTotal)})`} />
+                          <BookingSummaryRow label="Sub-total" value={`$${carTotal.toFixed(2)} (${formatAmount(carTotal)})`} />
                           <BookingSummaryRow label="TSIA commission (10%)" value={`$${(carTotal * COMMISSION_RATE).toFixed(2)}`} />
                           <div className="border-t pt-2 flex justify-between font-bold">
                             <span>Total charged to wallet</span>
                             <div className="text-right">
                               <span className="text-blue-700 dark:text-blue-400">${carTotal.toFixed(2)}</span>
-                              <p className="text-[10px] font-normal text-muted-foreground">{toNGN(carTotal)}</p>
+                              <p className="text-[10px] font-normal text-muted-foreground">{formatAmount(carTotal)}</p>
                             </div>
                           </div>
                           {walletBalance < carTotal && (
@@ -508,7 +509,7 @@ export default function TourAfrica() {
                           <Label>Ticket Price per Person (USD) *</Label>
                           <Input type="number" min="1" placeholder="0.00" value={flightForm.ticketPrice} onChange={e => setFlightForm(f => ({ ...f, ticketPrice: e.target.value }))} data-testid="input-flight-price" />
                           {parseFloat(flightForm.ticketPrice) > 0 && (
-                            <p className="text-xs text-muted-foreground">≈ {toNGN(parseFloat(flightForm.ticketPrice))} per person</p>
+                            <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(flightForm.ticketPrice))} per person</p>
                           )}
                         </div>
                       </div>

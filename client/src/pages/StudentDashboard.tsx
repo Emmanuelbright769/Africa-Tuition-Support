@@ -20,7 +20,7 @@ import {
   ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
-import { toNGN } from "@/lib/utils";
+import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -54,6 +54,7 @@ const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, trans
 const itemVariants       = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
 export default function StudentDashboard() {
+  const { formatAmount, rateLabel } = useLocalCurrency();
   const [, setLocation] = useLocation();
   const { user, logout, isLoading: authLoading } = useAuth();
   const { mode, setMode } = useTheme();
@@ -678,7 +679,7 @@ export default function StudentDashboard() {
                               data-testid="input-loan-amount"
                             />
                             {parseFloat(loanAmount) > 0 && (
-                              <p className="text-xs text-muted-foreground mt-1">≈ {toNGN(parseFloat(loanAmount))} at ₦1,600/$1</p>
+                              <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(loanAmount))} {rateLabel()}</p>
                             )}
                           </div>
                           <div>

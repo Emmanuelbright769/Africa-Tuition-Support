@@ -58,7 +58,7 @@ export function DashboardSwitcher() {
   return (
     <div className="relative">
       <AnimatePresence>
-        {/* Show "Switch" button when user has both accounts */}
+        {/* Switch button — icon + short label on larger screens */}
         {hasOtherRole && otherRole && (
           <motion.button
             key="switch-btn"
@@ -67,7 +67,7 @@ export function DashboardSwitcher() {
             onClick={() => { setSwitching(true); switchMutation.mutate(otherRole); }}
             disabled={switchMutation.isPending}
             data-testid="button-switch-dashboard"
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted hover:bg-muted/80 border border-border transition-all text-sm font-semibold text-foreground shadow-sm hover:shadow-md active:scale-95"
+            className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-muted hover:bg-muted/80 border border-border transition-all text-sm font-semibold text-foreground shadow-sm hover:shadow-md active:scale-95"
             title={`Switch to ${otherRole === "affiliate" ? "Business" : "Student"} Dashboard`}
           >
             {switchMutation.isPending ? (
@@ -75,26 +75,23 @@ export function DashboardSwitcher() {
             ) : (
               <ArrowLeftRight className="w-4 h-4 shrink-0 text-muted-foreground" />
             )}
-            <span className="hidden sm:inline">
+            <span className="hidden sm:flex items-center gap-1">
               {otherRole === "affiliate" ? (
-                <span className="flex items-center gap-1.5">
+                <>
                   <Briefcase className="w-3.5 h-3.5 text-blue-600" />
-                  <span className="text-blue-600">Business</span>
-                </span>
+                  <span className="text-blue-600 text-xs">Business</span>
+                </>
               ) : (
-                <span className="flex items-center gap-1.5">
+                <>
                   <GraduationCap className="w-3.5 h-3.5 text-tsia-green" />
-                  <span className="text-tsia-green">Student</span>
-                </span>
+                  <span className="text-tsia-green text-xs">Student</span>
+                </>
               )}
-            </span>
-            <span className="sm:hidden text-xs text-muted-foreground">
-              {otherRole === "affiliate" ? "Biz" : "Student"}
             </span>
           </motion.button>
         )}
 
-        {/* Show "Add account type" link when user only has one role */}
+        {/* Add account — compact "+" icon only */}
         {!hasOtherRole && (
           <motion.a
             key="add-account"
@@ -102,14 +99,10 @@ export function DashboardSwitcher() {
             animate={{ opacity: 1 }}
             href={`/signup?role=${currentRole === "student" ? "affiliate" : "student"}`}
             data-testid="link-add-account-type"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-muted/60 hover:bg-muted border border-dashed border-border transition-colors text-xs font-medium text-muted-foreground hover:text-foreground"
+            className="flex items-center justify-center w-9 h-9 rounded-xl bg-muted/60 hover:bg-muted border border-dashed border-border transition-colors text-muted-foreground hover:text-foreground"
             title={`Add a ${currentRole === "student" ? "Business (Affiliate)" : "Student"} account`}
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">
-              Add {currentRole === "student" ? "Business" : "Student"} account
-            </span>
-            <span className="sm:hidden">+ Account</span>
+            <Plus className="w-4 h-4" />
           </motion.a>
         )}
       </AnimatePresence>

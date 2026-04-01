@@ -4,6 +4,7 @@ import { apiRequest } from "./queryClient";
 import { queryClient } from "./queryClient";
 
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+const LAST_ACTIVITY_KEY = "tsia_last_activity";
 
 type AuthUser = {
   id: number;
@@ -31,6 +32,20 @@ function clearSessionCache() {
   queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "/api/auth/me" });
 }
 
+function stampActivity() {
+  try { localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString()); } catch {}
+}
+
+function isSessionExpired(): boolean {
+  try {
+    const raw = localStorage.getItem(LAST_ACTIVITY_KEY);
+    if (!raw) return false;
+    return Date.now() - parseInt(raw, 10) > INACTIVITY_TIMEOUT_MS;
+  } catch {
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: user, isLoading } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/me"],
@@ -54,15 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const doAutoLogout = async () => {
     if (!userRef.current) return;
-    try {
-      await apiRequest("POST", "/api/auth/logout");
-    } catch {}
+    try { await apiRequest("POST", "/api/auth/logout"); } catch {}
     clearSessionCache();
+    try { localStorage.removeItem(LAST_ACTIVITY_KEY); } catch {}
     window.location.href = "/login?reason=inactivity";
   };
 
   const resetTimer = () => {
     if (!userRef.current) return;
+    stampActivity();
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
     inactivityTimer.current = setTimeout(doAutoLogout, INACTIVITY_TIMEOUT_MS);
   };
@@ -72,6 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (inactivityTimer.current) { clearTimeout(inactivityTimer.current); inactivityTimer.current = null; }
       return;
     }
+
+    if (isSessionExpired()) {
+      doAutoLogout();
+      return;
+    }
+
     const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"];
     const handler = () => resetTimer();
     events.forEach(e => window.addEventListener(e, handler, { passive: true }));
@@ -92,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userData = await res.json();
     queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "/api/auth/me" });
     queryClient.setQueryData(["/api/auth/me"], userData);
+    stampActivity();
     return userData;
   };
 
@@ -99,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (inactivityTimer.current) { clearTimeout(inactivityTimer.current); inactivityTimer.current = null; }
     try { await apiRequest("POST", "/api/auth/logout"); } catch {}
     clearSessionCache();
+    try { localStorage.removeItem(LAST_ACTIVITY_KEY); } catch {}
   };
 
   return (

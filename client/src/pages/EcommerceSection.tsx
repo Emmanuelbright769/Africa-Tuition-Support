@@ -226,6 +226,7 @@ function SellerStories({ products }: { products: Product[] }) {
 function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
 }) {
+  const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
   const orig = originalPrice(product.price);
   return (
@@ -302,6 +303,7 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
 function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
 }) {
+  const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
   const orig = originalPrice(product.price);
   return (
@@ -343,6 +345,7 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist }: {
 // ─── List Product Modal ────────────────────────────────────────────────────
 function ListProductModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { toast } = useToast();
+  const { formatAmount } = useLocalCurrency();
   const [form, setForm] = useState({ title: "", description: "", price: "", category: "other", condition: "new", stock: "1", location: "London, UK" });
   const [images, setImages] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -474,6 +477,7 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
 // ─── Buy Modal ─────────────────────────────────────────────────────────────
 function BuyModal({ product, open, onClose, walletBalance }: { product: Product | null; open: boolean; onClose: () => void; walletBalance: number }) {
   const { toast } = useToast();
+  const { formatAmount } = useLocalCurrency();
   const [qty, setQty] = useState(1);
   const [address, setAddress] = useState("");
 
@@ -548,6 +552,7 @@ function BuyModal({ product, open, onClose, walletBalance }: { product: Product 
 
 // ─── Product Detail Modal ──────────────────────────────────────────────────
 function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }: { product: Product | null; open: boolean; onClose: () => void; onBuy: () => void; onChat?: () => void; isSeller?: boolean }) {
+  const { formatAmount } = useLocalCurrency();
   const { user } = useAuth();
   const { toast } = useToast();
   const [imgIdx, setImgIdx] = useState(0);

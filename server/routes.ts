@@ -2080,6 +2080,9 @@ export async function registerRoutes(
                 const notif = await storage.createNotification({ userId: alert.userId, type: "price_drop", title: "Price Drop!", message: `"${updated.title}" dropped from $${oldPrice.toFixed(2)} to $${newPrice.toFixed(2)}`, relatedId: updated.id });
                 pushToUser(alert.userId, "notification", notif);
                 await storage.updatePriceAlertLastKnown(alert.userId, updated.id, newPrice.toFixed(2));
+                storage.getUser(alert.userId).then(u => {
+                  if (u) sendPriceDropEmail(u.email, u.firstName, updated.title, oldPrice.toFixed(2), newPrice.toFixed(2), updated.id).catch(() => {});
+                });
               }
             }
           } catch (_) {}
@@ -2207,6 +2210,16 @@ export async function registerRoutes(
     const { status } = req.body;
     try {
       const order = await storage.updateOrderStatus(parseInt(req.params.id), status);
+      // Email buyer about order status change
+      try {
+        const [buyerUser, prod] = await Promise.all([
+          storage.getUser(order.buyerId),
+          storage.getProductById(order.productId),
+        ]);
+        if (buyerUser && prod) {
+          sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, status, prod.title, order.id).catch(() => {});
+        }
+      } catch { /* non-critical */ }
       res.json(order);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

@@ -294,11 +294,6 @@ export default function Signup() {
                         <Label htmlFor="referral">Referral Code (Optional)</Label>
                         <Input id="referral" placeholder="e.g. TSIA-JOH0001" className="h-11 bg-muted/30" value={formData.referralCode} onChange={e => setFormData({ ...formData, referralCode: e.target.value })} data-testid="input-referral" />
                       </div>
-                      {(roleChoice === "student" || roleChoice === "both") && (
-                        <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
-                          A one-time <strong>$3 portal fee</strong> is required during student onboarding after your WAEC details are submitted.
-                        </p>
-                      )}
                       <TermsCheckbox
                         checked={termsAccepted}
                         onCheckedChange={setTermsAccepted}

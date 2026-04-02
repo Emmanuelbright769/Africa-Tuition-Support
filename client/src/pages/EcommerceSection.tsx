@@ -1451,7 +1451,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
                   {featured.map(p => (
-                    <FeaturedCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} isSeller={p.sellerId === user?.id} />
+                    <FeaturedCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} isSeller={p.sellerId === user?.id || (!!p.sellerEmail && p.sellerEmail === user?.email)} />
                   ))}
                 </div>
               )}
@@ -1502,7 +1502,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                 {filterViewMode === "grid" ? (
                   <div className="grid grid-cols-2 gap-3">
                     {gridProducts.map(p => (
-                      <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} isSeller={p.sellerId === user?.id} />
+                      <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} isSeller={p.sellerId === user?.id || (!!p.sellerEmail && p.sellerEmail === user?.email)} />
                     ))}
                   </div>
                 ) : (
@@ -1523,7 +1523,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            {p.sellerId === user?.id ? (
+                            {(p.sellerId === user?.id || (!!p.sellerEmail && p.sellerEmail === user?.email)) ? (
                               <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-full shrink-0">Your listing</span>
                             ) : (
                               <>
@@ -1704,7 +1704,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
         onBuy={() => { setDetailOpen(false); setBuyProduct(selectedProduct); setBuyOpen(true); }}
-        isSeller={selectedProduct?.sellerId === user?.id}
+        isSeller={selectedProduct?.sellerId === user?.id || (!!selectedProduct?.sellerEmail && selectedProduct.sellerEmail === user?.email)}
         onChat={() => { setDetailOpen(false); setChatProduct(selectedProduct); setChatProductOpen(true); }}
         inCart={selectedProduct ? cart.has(selectedProduct.id) : false}
         onCart={() => {

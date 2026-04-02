@@ -548,12 +548,12 @@ export class DatabaseStorage implements IStorage {
     return p;
   }
 
-  async getProducts(opts?: { category?: string; search?: string; sellerId?: number; status?: string }): Promise<(Product & { sellerName: string })[]> {
+  async getProducts(opts?: { category?: string; search?: string; sellerId?: number; status?: string }): Promise<(Product & { sellerName: string; sellerEmail: string })[]> {
     let query = db.select({
       id: products.id, sellerId: products.sellerId, title: products.title, description: products.description,
       price: products.price, category: products.category, condition: products.condition, images: products.images,
       stock: products.stock, location: products.location, status: products.status, viewCount: products.viewCount, createdAt: products.createdAt,
-      firstName: users.firstName, lastName: users.lastName,
+      firstName: users.firstName, lastName: users.lastName, email: users.email,
     }).from(products).innerJoin(users, eq(products.sellerId, users.id)).$dynamic();
 
     const conditions: any[] = [];
@@ -565,19 +565,19 @@ export class DatabaseStorage implements IStorage {
     if (conditions.length) query = query.where(and(...conditions));
 
     const rows = await query.orderBy(desc(products.createdAt));
-    return rows.map(r => ({ ...r, sellerName: `${r.firstName} ${r.lastName}` })) as any[];
+    return rows.map(r => ({ ...r, sellerName: `${r.firstName} ${r.lastName}`, sellerEmail: r.email })) as any[];
   }
 
-  async getProductById(id: number): Promise<(Product & { sellerName: string }) | undefined> {
+  async getProductById(id: number): Promise<(Product & { sellerName: string; sellerEmail: string }) | undefined> {
     const [row] = await db.select({
       id: products.id, sellerId: products.sellerId, title: products.title, description: products.description,
       price: products.price, category: products.category, condition: products.condition, images: products.images,
       stock: products.stock, location: products.location, status: products.status, viewCount: products.viewCount, createdAt: products.createdAt,
-      firstName: users.firstName, lastName: users.lastName,
+      firstName: users.firstName, lastName: users.lastName, email: users.email,
     }).from(products).innerJoin(users, eq(products.sellerId, users.id)).where(eq(products.id, id));
     if (!row) return undefined;
     await db.update(products).set({ viewCount: (row.viewCount ?? 0) + 1 }).where(eq(products.id, id));
-    return { ...row, sellerName: `${row.firstName} ${row.lastName}` } as any;
+    return { ...row, sellerName: `${row.firstName} ${row.lastName}`, sellerEmail: row.email } as any;
   }
 
   async updateProduct(id: number, data: Partial<Product>): Promise<Product> {

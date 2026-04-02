@@ -2167,7 +2167,10 @@ export async function registerRoutes(
       const prod = await storage.getProductById(parseInt(productId));
       if (!prod) return res.status(404).json({ message: "Product not found" });
       if (prod.status !== "active") return res.status(400).json({ message: "Product is not available" });
-      if (prod.sellerId === userId) return res.status(400).json({ message: "You cannot buy your own product" });
+      const buyer = await storage.getUser(userId);
+      if (prod.sellerId === userId || (buyer && (prod as any).sellerEmail && (prod as any).sellerEmail === buyer.email)) {
+        return res.status(400).json({ message: "You cannot buy your own product" });
+      }
       if (prod.stock < quantity) return res.status(400).json({ message: "Insufficient stock" });
 
       const qty = parseInt(quantity);
@@ -2275,7 +2278,10 @@ export async function registerRoutes(
     try {
       const product = await storage.getProductById(parseInt(productId));
       if (!product) return res.status(404).json({ message: "Product not found" });
-      if (product.sellerId === userId) return res.status(400).json({ message: "You cannot chat with yourself" });
+      const requester = await storage.getUser(userId);
+      if (product.sellerId === userId || (requester && (product as any).sellerEmail && (product as any).sellerEmail === requester.email)) {
+        return res.status(400).json({ message: "You cannot chat with yourself on your own listing" });
+      }
       const chat = await storage.getOrCreateChat(parseInt(productId), userId, product.sellerId);
       res.json(chat);
     } catch (e: any) { res.status(500).json({ message: e.message }); }

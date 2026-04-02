@@ -968,6 +968,11 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
   const { formatAmount } = useLocalCurrency();
   const { user } = useAuth();
   const { toast } = useToast();
+  // Re-derive locally so same-email cross-account owners are always caught,
+  // even if the parent passed an incorrect isSeller prop.
+  const isMyListing = isSeller
+    || product?.sellerId === user?.id
+    || (!!product?.sellerEmail && !!user?.email && product.sellerEmail === user.email);
   const [imgIdx, setImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [ratingComment, setRatingComment] = useState("");
@@ -1020,7 +1025,7 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
   const disc = Math.round((1 - parseFloat(product.price) / parseFloat(orig)) * 100);
   const avgRating = ratingsData?.summary?.avgRating ?? product.avgRating ?? 0;
   const ratingCount = ratingsData?.summary?.count ?? product.ratingCount ?? 0;
-  const canRate = !isSeller;
+  const canRate = !isMyListing;
 
   return (<>
     <Dialog open={open} onOpenChange={onClose}>
@@ -1157,7 +1162,7 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
           )}
         </div>
         <div className="px-5 pb-5 flex flex-col gap-3">
-          {isSeller ? (
+          {isMyListing ? (
             <div className="w-full py-3 px-4 bg-muted rounded-2xl text-center text-sm font-semibold text-muted-foreground">
               This is your listing
             </div>
@@ -1181,7 +1186,7 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
               )}
             </>
           )}
-          {!isSeller && onChat && (
+          {!isMyListing && onChat && (
             <Button variant="outline" onClick={onChat} className="w-full rounded-2xl font-semibold h-11" data-testid={`btn-detail-chat-${product.id}`}>
               <MessageCircle className="w-4 h-4 mr-2" /> Chat with Seller
             </Button>

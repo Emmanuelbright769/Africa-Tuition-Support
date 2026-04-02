@@ -37,7 +37,7 @@ const TYPE_META: Record<NotifType, { icon: any; color: string; bg: string; accen
   new_arrival:         { icon: Sparkles,         color: "text-violet-600", bg: "bg-violet-100 dark:bg-violet-900/40", accent: "border-l-violet-400" },
 };
 
-function NotifItem({ n }: { n: Notification }) {
+function NotifItem({ n, onNavigate }: { n: Notification; onNavigate: () => void }) {
   const meta = TYPE_META[n.type] ?? TYPE_META.system;
   const Icon = meta.icon;
   const [expanded, setExpanded] = useState(false);
@@ -45,12 +45,21 @@ function NotifItem({ n }: { n: Notification }) {
   const isLong = n.message.length > PREVIEW_LENGTH;
   const preview = isLong ? n.message.slice(0, PREVIEW_LENGTH).trimEnd() + "…" : n.message;
 
+  const handleClick = () => {
+    if (n.type === "chat_message" && n.data?.chatId) {
+      onNavigate();
+      window.dispatchEvent(new CustomEvent("tsia:open-chat", { detail: { chatId: n.data.chatId } }));
+    }
+  };
+
   return (
     <div
+      onClick={handleClick}
       className={cn(
         "flex gap-4 px-5 py-4 border-l-4 transition-colors",
         meta.accent,
-        !n.isRead ? "bg-primary/5" : "bg-transparent"
+        !n.isRead ? "bg-primary/5" : "bg-transparent",
+        n.type === "chat_message" && n.data?.chatId ? "cursor-pointer hover:bg-muted/50" : ""
       )}
       data-testid={`notif-item-${n.id}`}
     >
@@ -270,7 +279,7 @@ export function NotificationBell({ className }: { className?: string }) {
                       <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-5 py-3 bg-muted/30 sticky top-0 z-10">
                         {group.label}
                       </p>
-                      {group.items.map(n => <NotifItem key={n.id} n={n} />)}
+                      {group.items.map(n => <NotifItem key={n.id} n={n} onNavigate={() => setOpen(false)} />)}
                     </div>
                   ))}
                 </div>

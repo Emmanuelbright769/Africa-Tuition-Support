@@ -2275,6 +2275,16 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Mark all messages in a chat as read by the current user
+  app.patch("/api/chats/:chatId/read", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      await storage.markChatMessagesRead(parseInt(req.params.chatId), userId);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Send a message — server-side censorship as defence-in-depth
   app.post("/api/chats/:chatId/messages", async (req, res) => {
     const userId = (req.session as any)?.userId;

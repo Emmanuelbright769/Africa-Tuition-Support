@@ -78,6 +78,8 @@ export default function AffiliateDashboard() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
+  const [walletExpanded, setWalletExpanded] = useState(false);
+  const [openChatId, setOpenChatId] = useState<number | null>(null);
 
   const [subscribeOpen, setSubscribeOpen]       = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -362,8 +364,19 @@ export default function AffiliateDashboard() {
   const txTypeLabel: Record<string, string> = { deposit: "Deposit", withdraw_exchange: "Withdraw → Exchange", withdraw_bank: "Withdraw → Bank", bot_earning: "Bot Earnings" };
   const txTypeIcon: Record<string, any> = { deposit: ArrowDownLeft, withdraw_exchange: ArrowUpRight, withdraw_bank: ArrowUpRight, bot_earning: TrendingUp };
 
+  // Listen for chat notification deep-links
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const chatId = (e as CustomEvent).detail?.chatId;
+      if (chatId) { setOpenChatId(chatId); setActiveSection("ecommerce"); }
+    };
+    window.addEventListener("tsia:open-chat", handler);
+    return () => window.removeEventListener("tsia:open-chat", handler);
+  }, []);
+
   const navigate = (s: Section) => {
     if (s === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
+    if (s !== "ecommerce") setOpenChatId(null);
     setActiveSection(s); setMenuOpen(false);
   };
   const currentNav = NAV_ITEMS.find(n => n.id === activeSection) ?? NAV_ITEMS[0]!;
@@ -437,19 +450,42 @@ export default function AffiliateDashboard() {
               <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
                 {NAV_ITEMS.map(item => {
                   const isActive = activeSection === item.id;
+                  const isWallet = item.id === "wallet";
                   return (
-                    <button key={item.id} onClick={() => navigate(item.id)} data-testid={`nav-${item.id}`}
-                      className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                        isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-muted text-foreground'
-                      }`}>
-                      <div className="flex items-center gap-3">
-                        <item.icon className="w-4 h-4 shrink-0" />
-                        <span>{item.label}</span>
-                      </div>
-                      {item.badge && (
-                        <Badge className="text-[10px] py-0 px-2 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold">{item.badge}</Badge>
+                    <div key={item.id}>
+                      <button onClick={() => { navigate(item.id); if (isWallet) setWalletExpanded(v => !v); }}
+                        data-testid={`nav-${item.id}`}
+                        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                          isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-muted text-foreground'
+                        }`}>
+                        <div className="flex items-center gap-3">
+                          <item.icon className="w-4 h-4 shrink-0" />
+                          <span>{item.label}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {item.badge && (
+                            <Badge className="text-[10px] py-0 px-2 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold">{item.badge}</Badge>
+                          )}
+                          {isWallet && <ChevronDown className={`w-3.5 h-3.5 transition-transform ${walletExpanded ? "rotate-180" : ""}`} />}
+                        </div>
+                      </button>
+                      {/* Wallet sub-menu */}
+                      {isWallet && walletExpanded && (
+                        <div className="ml-4 mt-1 space-y-0.5 border-l-2 border-primary/20 pl-3">
+                          {[
+                            { label: "Deposit", icon: ArrowDownLeft },
+                            { label: "Withdraw", icon: ArrowUpRight },
+                            { label: "Bill Pay", icon: Zap },
+                          ].map(sub => (
+                            <button key={sub.label} onClick={() => navigate("wallet")}
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                              <sub.icon className="w-3.5 h-3.5 shrink-0" />
+                              <span>{sub.label}</span>
+                            </button>
+                          ))}
+                        </div>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </nav>
@@ -970,7 +1006,7 @@ export default function AffiliateDashboard() {
             {/* ── E-COMMERCE ── */}
             {activeSection === "ecommerce" && (
               <motion.div variants={itemVariants}>
-                <EcommerceSection />
+                <EcommerceSection initialOpenChatId={openChatId} />
               </motion.div>
             )}
 

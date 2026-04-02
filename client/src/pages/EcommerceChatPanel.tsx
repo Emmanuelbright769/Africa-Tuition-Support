@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   Send, X, MessageCircle, ShoppingBag, AlertTriangle, ChevronLeft,
-  Shield, Phone, PhoneOff, PhoneIncoming, Mic, MicOff, ArrowLeft
+  Shield, Phone, PhoneOff, PhoneIncoming, Mic, MicOff, ArrowLeft,
+  Check, CheckCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { OFFPLATFORM_PATTERNS } from "@shared/schema";
@@ -16,7 +17,7 @@ import { OFFPLATFORM_PATTERNS } from "@shared/schema";
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ChatMessage = {
   id: number; chatId: number; senderId: number;
-  content: string; isFlagged: boolean; createdAt: string; senderName: string;
+  content: string; isFlagged: boolean; isRead: boolean; createdAt: string; senderName: string;
 };
 type Chat = {
   id: number; productId: number; buyerId: number; sellerId: number;
@@ -57,7 +58,14 @@ function MessageBubble({ msg, isOwn }: { msg: ChatMessage; isOwn: boolean }) {
             </span>
           )}
           <p className="leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
-          <p className={`text-[10px] mt-1 text-right ${isOwn ? "text-white/60" : "text-muted-foreground"}`}>{time}</p>
+          <div className={`flex items-center justify-end gap-1 mt-1`}>
+            <p className={`text-[10px] ${isOwn ? "text-white/60" : "text-muted-foreground"}`}>{time}</p>
+            {isOwn && (
+              msg.isRead
+                ? <CheckCheck className="w-3.5 h-3.5 text-blue-300" title="Read" />
+                : <Check className="w-3.5 h-3.5 text-white/50" title="Sent" />
+            )}
+          </div>
         </div>
       </div>
     </motion.div>
@@ -313,7 +321,16 @@ function ChatWindow({ chat, onBack }: { chat: Chat; onBack: () => void }) {
     refetchInterval: 3000,
   });
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  // Mark messages as read whenever new messages arrive
+  useEffect(() => {
+    if (messages.length > 0) {
+      apiRequest("PATCH", `/api/chats/${chat.id}/read`).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/chats"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      }).catch(() => {});
+    }
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   // Poll for incoming calls
   useQuery({
@@ -557,10 +574,35 @@ function ChatsInbox({ onOpen, onClose }: { onOpen: (chat: Chat) => void; onClose
 }
 
 // ── EcommerceChatDrawer — now full-screen ────────────────────────────────────
-export function EcommerceChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function EcommerceChatDrawer({
+  open, onClose, initialChatId,
+}: { open: boolean; onClose: () => void; initialChatId?: number | null }) {
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
+  const [resolving, setResolving] = useState(false);
+
+  // Reset on close
   useEffect(() => { if (!open) setActiveChat(null); }, [open]);
+
+  // Auto-open a specific chat when initialChatId is provided
+  useEffect(() => {
+    if (!open || !initialChatId) return;
+    setResolving(true);
+    apiRequest("GET", "/api/chats")
+      .then(r => r.json())
+      .then((chats: Chat[]) => {
+        const found = chats.find(c => c.id === initialChatId);
+        if (found) setActiveChat(found);
+      })
+      .catch(() => {})
+      .finally(() => setResolving(false));
+  }, [open, initialChatId]);
+
   if (!open) return null;
+  if (resolving) return (
+    <div className="fixed inset-0 z-[9000] bg-background flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-tsia-green border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
   if (activeChat) return <ChatWindow chat={activeChat} onBack={() => setActiveChat(null)} />;
   return <ChatsInbox onOpen={setActiveChat} onClose={onClose} />;
 }

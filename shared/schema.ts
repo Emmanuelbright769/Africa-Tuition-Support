@@ -691,6 +691,7 @@ export const ecommerceChatMessages = pgTable("ecommerce_chat_messages", {
   senderId:   integer("sender_id").notNull().references(() => users.id),
   content:    text("content").notNull(),
   isFlagged:  boolean("is_flagged").notNull().default(false),
+  isRead:     boolean("is_read").notNull().default(false),
   createdAt:  timestamp("created_at").defaultNow().notNull(),
 });
 

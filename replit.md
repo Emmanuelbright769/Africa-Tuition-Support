@@ -10,6 +10,15 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - **Routing**: wouter (frontend), Express (backend)
 - **File Uploads**: multer (memory storage → base64 in DB)
 
+## Recent Updates (Session 8)
+- **WhatsApp-style read ticks**: Chat messages now show single grey ✓ (sent) or double blue ✓✓ (read) in MessageBubble; `isRead` column added to `ecommerce_chat_messages` table; `markChatMessagesRead` storage method + `PATCH /api/chats/:chatId/read` route; auto-marks messages as read when chat is opened
+- **Chat inbox sort**: Conversations now sorted by most recent message time (not creation time); `getUserChats` returns `lastMessageAt` and sorts descending
+- **Chat notification deep-link**: Tapping a chat notification in the notification bell closes the panel, switches to E-Commerce section, and opens the specific chat conversation directly
+- **Nav sidebar wallet dropdown**: Both StudentDashboard and AffiliateDashboard sidebars now have a chevron on "Personal Wallet" that expands to show Deposit / Withdraw / Bill Pay quick links
+- **Product card click fix**: Clicking a product card in the grid now always opens the detail modal (not the lightbox); hover overlay says "View details"; lightbox removed from `ProductCard`
+- **Lightbox arrow navigation fix**: Prev/next arrows in `ImageLightbox` now have correct `z-10` and `top-1/2 -translate-y-1/2` positioning so they're reliably clickable
+- **Security**: Demo OTP removed from all UI and API responses; OTP code never exposed to screen
+
 ## Recent Updates (Session 7)
 - **QCE (Quick Credit Eligibility)**: New savings feature in both dashboards; activates with $5 min from Personal Wallet; builds credit eligibility up to 30% over 90 days via daily transactions; Credit Portal unlocks on first contribution; $2 minimum always retained; DB tables: qce_savings, qce_transactions; API routes: GET/POST /api/qce/status, /api/qce/contribute, /api/qce/withdraw, /api/qce/tick
 - **Post-signup welcome popup**: Shown on screen immediately after new user OTP verification — tells user to activate wallet with $5 minimum; in-app notification (wallet_activation type) created on signup with full details including $2 minimum balance requirement; email logged to console

@@ -290,14 +290,14 @@ function ImageLightbox({ images, startIndex = 0, open, onClose }: {
             <>
               <button
                 onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + images.length) % images.length); }}
-                className="absolute left-3 w-11 h-11 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
+                className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
                 data-testid="btn-lightbox-prev"
               >
                 <ChevronLeft className="w-6 h-6 text-white" />
               </button>
               <button
                 onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % images.length); }}
-                className="absolute right-3 w-11 h-11 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
                 data-testid="btn-lightbox-next"
               >
                 <ChevronRight className="w-6 h-6 text-white" />
@@ -503,7 +503,6 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
   const orig = originalPrice(product.price);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
   return (
     <>
     <motion.div
@@ -518,21 +517,18 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
         {img ? (
           <img
             src={img} alt={product.title}
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 cursor-zoom-in"
-            onClick={e => { e.stopPropagation(); setLightboxOpen(true); }}
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-1">
             <span className="text-3xl">{CATEGORY_ICONS[product.category] || "📦"}</span>
           </div>
         )}
-        {/* Hover overlay — shows expand hint on image, view hint on rest */}
+        {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none flex items-center justify-center">
-          {img && (
-            <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 pointer-events-none">
-              <Expand className="w-3 h-3" /> Full view
-            </span>
-          )}
+          <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 pointer-events-none">
+            <Eye className="w-3 h-3" /> View details
+          </span>
         </div>
         {/* Wishlist + Watch */}
         <div className="absolute top-2 right-2 flex flex-col gap-1">
@@ -607,7 +603,6 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
         </div>
       </div>
     </motion.div>
-    {product.images?.length ? <ImageLightbox images={product.images} open={lightboxOpen} onClose={() => setLightboxOpen(false)} /> : null}
     </>
   );
 }
@@ -1200,7 +1195,7 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
 }
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────────────────
-export default function EcommerceSection() {
+export default function EcommerceSection({ initialOpenChatId }: { initialOpenChatId?: number | null }) {
   const { user } = useAuth();
   const { toast } = useToast();
   const { formatAmount } = useLocalCurrency();
@@ -1225,12 +1220,28 @@ export default function EcommerceSection() {
   const [filterCondition, setFilterCondition] = useState<""|"new"|"used"|"refurbished">("");
   const [filterViewMode, setFilterViewMode] = useState<"grid"|"list">("grid");
   const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
+  const [pendingChatId, setPendingChatId] = useState<number | null>(initialOpenChatId ?? null);
   const [chatProduct, setChatProduct] = useState<Product | null>(null);
   const [chatProductOpen, setChatProductOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [cart, setCart] = useState<Set<number>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("tsia_cart") || "[]")); } catch { return new Set(); }
   });
+
+  // Auto-open chat drawer if initialOpenChatId is set
+  useEffect(() => {
+    if (initialOpenChatId) { setChatDrawerOpen(true); setPendingChatId(initialOpenChatId); }
+  }, [initialOpenChatId]);
+
+  // Listen for tsia:open-chat events (from notification bell)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const chatId = (e as CustomEvent).detail?.chatId;
+      if (chatId) { setPendingChatId(chatId); setChatDrawerOpen(true); }
+    };
+    window.addEventListener("tsia:open-chat", handler);
+    return () => window.removeEventListener("tsia:open-chat", handler);
+  }, []);
 
   const { data: wallet } = useQuery<any>({ queryKey: ["/api/wallet"] });
   const walletBalance = parseFloat(wallet?.balance ?? "0");
@@ -1712,7 +1723,7 @@ export default function EcommerceSection() {
       />
 
       {/* Chat components */}
-      <EcommerceChatDrawer open={chatDrawerOpen} onClose={() => setChatDrawerOpen(false)} />
+      <EcommerceChatDrawer open={chatDrawerOpen} onClose={() => { setChatDrawerOpen(false); setPendingChatId(null); }} initialChatId={pendingChatId} />
 
       <CartDrawer
         open={cartOpen}

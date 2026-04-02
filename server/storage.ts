@@ -1,4 +1,4 @@
-import { eq, desc, and, gt, gte, lte, count, sql, ne, like, ilike, or } from "drizzle-orm";
+import { eq, desc, and, gt, gte, lte, count, sql, ne, like, ilike, or, not } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
@@ -134,7 +134,8 @@ export interface IStorage {
   getOrCreateChat(productId: number, buyerId: number, sellerId: number): Promise<EcommerceChat>;
   getChatMessages(chatId: number): Promise<(EcommerceChatMessage & { senderName: string })[]>;
   createChatMessage(data: InsertEcommerceChatMessage): Promise<EcommerceChatMessage>;
-  getUserChats(userId: number): Promise<(EcommerceChat & { productTitle: string; otherPersonName: string; lastMessage?: string; unread: number })[]>;
+  markChatMessagesRead(chatId: number, readerId: number): Promise<void>;
+  getUserChats(userId: number): Promise<(EcommerceChat & { productTitle: string; otherPersonName: string; lastMessage?: string; lastMessageAt?: string; unread: number })[]>;
 
   // Notifications
   createNotification(data: InsertNotification): Promise<Notification>;
@@ -658,6 +659,7 @@ export class DatabaseStorage implements IStorage {
       senderId: ecommerceChatMessages.senderId,
       content: ecommerceChatMessages.content,
       isFlagged: ecommerceChatMessages.isFlagged,
+      isRead: ecommerceChatMessages.isRead,
       createdAt: ecommerceChatMessages.createdAt,
       senderFirst: users.firstName,
       senderLast: users.lastName,
@@ -666,6 +668,16 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ecommerceChatMessages.chatId, chatId))
       .orderBy(ecommerceChatMessages.createdAt);
     return rows.map(r => ({ ...r, senderName: `${r.senderFirst} ${r.senderLast}` }));
+  }
+
+  async markChatMessagesRead(chatId: number, readerId: number): Promise<void> {
+    await db.update(ecommerceChatMessages)
+      .set({ isRead: true })
+      .where(and(
+        eq(ecommerceChatMessages.chatId, chatId),
+        not(eq(ecommerceChatMessages.senderId, readerId)),
+        eq(ecommerceChatMessages.isRead, false),
+      ));
   }
 
   async createChatMessage(data: InsertEcommerceChatMessage): Promise<EcommerceChatMessage> {
@@ -690,9 +702,16 @@ export class DatabaseStorage implements IStorage {
         productTitle: prod?.title ?? "Unknown product",
         otherPersonName: otherUser ? `${otherUser.firstName} ${otherUser.lastName}` : "Unknown",
         lastMessage: msgs[0]?.content,
-        unread: 0, // simplified — no read-tracking in v1
+        lastMessageAt: msgs[0]?.createdAt?.toISOString(),
+        unread: 0,
       };
     }));
+    // Sort by last message time (most recent first), fall back to chat creation time
+    result.sort((a, b) => {
+      const ta = a.lastMessageAt ?? a.createdAt.toISOString();
+      const tb = b.lastMessageAt ?? b.createdAt.toISOString();
+      return tb.localeCompare(ta);
+    });
     return result;
   }
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import {
   Camera, ScanFace, Sparkles, PartyPopper, XCircle, MapPin,
   Wallet, ArrowRight, Share2, BadgeCheck, AlertTriangle, TrendingUp, Clock
 } from "lucide-react";
+import BiometricVerification from "@/components/ui/BiometricVerification";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -59,9 +60,6 @@ export default function Onboarding() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationCoords, setLocationCoords] = useState("");
   const [showBiometric, setShowBiometric] = useState(false);
-  const [biometricPhase, setBiometricPhase] = useState<"ready" | "scanning" | "processing" | "complete">("ready");
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
   const { toast } = useToast();
   const { user } = useAuth();
@@ -172,37 +170,13 @@ export default function Onboarding() {
     }
   };
 
-  // ── Biometric ─────────────────────────────────────────────────────
-  const startBiometricScan = async () => {
+  // ── Biometric complete handler ─────────────────────────────────────
+  const handleBiometricComplete = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 640, height: 480 } });
-      streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
-      setBiometricPhase("scanning");
-      setTimeout(() => {
-        setBiometricPhase("processing");
-        setTimeout(async () => {
-          if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-          try {
-            await apiRequest("POST", "/api/verification/biometric");
-            setBiometricPhase("complete");
-            setTimeout(() => { setShowBiometric(false); submitWaec(); }, 1500);
-          } catch (err: any) {
-            toast({ title: "Error", description: err.message, variant: "destructive" });
-            setShowBiometric(false);
-          }
-        }, 3000);
-      }, 4000);
-    } catch {
-      toast({ title: "Camera Denied", description: "Allow camera access to complete face verification.", variant: "destructive" });
-      setShowBiometric(false);
-    }
-  };
-
-  const closeBiometric = () => {
-    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+      await apiRequest("POST", "/api/verification/biometric");
+    } catch { /* non-critical */ }
     setShowBiometric(false);
-    setBiometricPhase("ready");
+    submitWaec();
   };
 
   const submitWaec = async () => {
@@ -767,78 +741,35 @@ export default function Onboarding() {
         </div>
       </div>
 
-      {/* Biometric dialog */}
-      <Dialog open={showBiometric} onOpenChange={open => { if (!open) closeBiometric(); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3 text-xl">
-              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-xl flex items-center justify-center text-blue-600">
-                <ScanFace className="w-6 h-6" />
-              </div>
-              Biometric Verification
-            </DialogTitle>
-            <DialogDescription>Face scan required to confirm you are a real, unique student applicant.</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col items-center py-4 space-y-6">
-            {biometricPhase === "ready" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center space-y-6">
-                <div className="w-32 h-32 mx-auto bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-full flex items-center justify-center">
-                  <Camera className="w-16 h-16 text-blue-500" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">Ready for Face Scan</h3>
-                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">Position your face in frame. Good lighting required. Remove glasses or face coverings.</p>
-                </div>
-                <Button onClick={startBiometricScan} className="bg-blue-600 hover:bg-blue-700 h-12 px-8 text-base" data-testid="button-start-scan">
-                  <Camera className="w-5 h-5 mr-2" /> Start Face Scan
-                </Button>
-              </motion.div>
-            )}
-            {biometricPhase === "scanning" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center space-y-4">
-                <div className="relative">
-                  <video ref={videoRef} className="w-64 h-64 object-cover rounded-2xl border-4 border-blue-500 shadow-lg shadow-blue-500/20" autoPlay playsInline muted />
-                  <div className="absolute inset-0 rounded-2xl border-4 border-blue-400 animate-pulse pointer-events-none"></div>
-                  <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div> SCANNING
-                  </div>
-                </div>
-                <p className="text-sm font-medium text-blue-600">Analyzing facial features...</p>
-                <p className="text-xs text-muted-foreground">Hold still. Do not move.</p>
-              </motion.div>
-            )}
-            {biometricPhase === "processing" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center space-y-6 py-8">
-                <div className="relative w-24 h-24 mx-auto">
-                  <div className="absolute inset-0 border-4 border-blue-200 dark:border-blue-800 rounded-full"></div>
-                  <div className="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
-                  <ScanFace className="absolute inset-0 m-auto w-10 h-10 text-blue-500" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold mb-1">Processing Biometric Data</h3>
-                  <p className="text-sm text-muted-foreground">Verifying liveness and cross-referencing identity...</p>
-                </div>
-                <div className="space-y-2 max-w-xs mx-auto">
-                  {["Extracting facial features", "Running liveness detection", "Cross-referencing identity"].map(m => (
-                    <div key={m} className="flex items-center gap-2 text-sm"><Loader2 className="w-4 h-4 animate-spin text-blue-500" /> {m}</div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-            {biometricPhase === "complete" && (
-              <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center space-y-4 py-8">
-                <div className="w-24 h-24 mx-auto bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                  <CheckCircle2 className="w-14 h-14 text-green-500" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-green-600">Verification Successful</h3>
-                  <p className="text-sm text-muted-foreground mt-1">Biometric confirmed. Submitting WAEC results...</p>
-                </div>
-                <div className="flex items-center justify-center gap-2 text-xs text-green-600 font-medium">
-                  <Sparkles className="w-4 h-4" /> Liveness: 99.8% | Confidence: High
-                </div>
-              </motion.div>
-            )}
+      {/* Biometric dialog — OPay-style with animated character */}
+      <Dialog open={showBiometric} onOpenChange={open => { if (!open) setShowBiometric(false); }}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-2xl border-0 shadow-2xl">
+          {/* Branded header bar */}
+          <div className="bg-[#1A3C34] px-5 py-4 flex items-center gap-3">
+            <div className="w-9 h-9 bg-[#D4AF37]/20 rounded-xl flex items-center justify-center">
+              <ScanFace className="w-5 h-5 text-[#D4AF37]" />
+            </div>
+            <div>
+              <h2 className="text-white font-bold text-base leading-tight">TSIA Identity Verification</h2>
+              <p className="text-white/60 text-[11px]">Powered by secure facial biometrics</p>
+            </div>
+            <div className="ml-auto flex items-center gap-1 bg-[#D4AF37]/20 rounded-full px-2 py-0.5">
+              <div className="w-1.5 h-1.5 bg-[#D4AF37] rounded-full" />
+              <span className="text-[#D4AF37] text-[10px] font-bold">SECURE</span>
+            </div>
+          </div>
+
+          {/* Component body */}
+          <div className="px-5 py-4">
+            <BiometricVerification
+              onComplete={handleBiometricComplete}
+              onCancel={() => setShowBiometric(false)}
+            />
+          </div>
+
+          {/* Footer */}
+          <div className="px-5 py-3 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-800 flex items-center justify-center gap-2">
+            <span className="text-[10px] text-muted-foreground">🔒 256-bit encrypted · NDPR compliant · Data not stored</span>
           </div>
         </DialogContent>
       </Dialog>

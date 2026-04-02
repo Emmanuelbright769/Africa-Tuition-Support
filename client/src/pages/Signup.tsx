@@ -79,7 +79,6 @@ export default function Signup() {
   const [diasporaCountry, setDiasporaCountry] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "", referralCode: "" });
-  const [otpHint, setOtpHint] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
@@ -111,7 +110,6 @@ export default function Signup() {
     try {
       const result = await requestOtp({ ...formData, country: getCountry(), role: roleChoice });
       if (!result.otpSent) throw new Error(result as any);
-      setOtpHint(result.hint || "");
       setStep(2);
       toast({ title: "OTP Sent", description: "Check your email for the 6-digit verification code." });
     } catch (err: any) {
@@ -332,12 +330,6 @@ export default function Signup() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="pb-6">
-                    {otpHint && (
-                      <div className="mb-4 text-center p-3 bg-primary/10 rounded-xl border border-primary/20">
-                        <span className="text-xs text-muted-foreground">Demo OTP: </span>
-                        <span className="font-mono font-bold text-primary tracking-widest text-lg">{otpHint}</span>
-                      </div>
-                    )}
                     {roleChoice === "both" && (
                       <div className="mb-4 flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
                         <CheckCircle2 className="w-4 h-4 text-amber-500 shrink-0" />

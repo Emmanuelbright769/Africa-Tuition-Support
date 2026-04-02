@@ -45,7 +45,6 @@ export default function Login() {
   const [loginRole, setLoginRole] = useState<"student" | "affiliate" | "">("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otpHint, setOtpHint] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const passwordRef = useRef<HTMLInputElement | null>(null);
@@ -93,7 +92,6 @@ export default function Login() {
     try {
       const result = await requestOtp({ email, loginRole });
       if (result.otpSent) {
-        setOtpHint(result.hint || "");
         setStep(2);
         toast({ title: "OTP Sent", description: "Check your email for the 6-digit code." });
       } else {
@@ -144,7 +142,6 @@ export default function Login() {
     setLoading(true);
     try {
       const result = await requestOtp({ email, loginRole: loginRole || undefined });
-      setOtpHint(result.hint || "");
       setOtpDigits(["", "", "", "", "", ""]);
       toast({ title: "OTP Resent", description: "A new code has been sent." });
     } catch (err: any) {
@@ -359,13 +356,7 @@ export default function Login() {
                           <KeyRound className="w-4 h-4" />
                           <span>Code sent to <strong className="text-foreground">{email}</strong></span>
                         </div>
-                        {otpHint && (
-                          <div className="text-center p-3 bg-primary/10 rounded-lg border border-primary/20">
-                            <span className="text-xs text-muted-foreground">Demo OTP: </span>
-                            <span className="font-mono font-bold text-primary tracking-widest">{otpHint}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-center gap-3 mb-6">
+                                        <div className="flex justify-center gap-3 mb-6">
                           {otpDigits.map((digit, i) => (
                             <Input
                               key={i}

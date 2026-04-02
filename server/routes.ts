@@ -90,7 +90,7 @@ export async function registerRoutes(
         console.log(`[OTP] Code for ${email} (${targetUser.role}): ${code}`);
         sendOtpEmail(email, code, false).catch(() => {});
 
-        return res.json({ message: "OTP sent to your email", otpSent: true, hint: code });
+        return res.json({ message: "OTP sent to your email", otpSent: true });
       }
 
       // ── Signup flow ────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ export async function registerRoutes(
         await storage.createOtp({ email, code, expiresAt, used: false });
         console.log(`[OTP] Dual-account code for ${email}: ${code}`);
         sendOtpEmail(email, code, true).catch(() => {});
-        return res.json({ message: "OTP sent to your email", otpSent: true, bothCreated: true, hint: code });
+        return res.json({ message: "OTP sent to your email", otpSent: true, bothCreated: true });
       }
 
       // Single-role signup
@@ -162,7 +162,6 @@ export async function registerRoutes(
         message: "OTP sent to your email",
         otpSent: true,
         isNewUser: !await storage.getVerificationByUser(user!.id),
-        hint: code,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });

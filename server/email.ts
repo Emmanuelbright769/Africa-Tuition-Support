@@ -1,3 +1,5 @@
+import nodemailer from "nodemailer";
+
 const FROM_NAME = "TSIA – SMAKEMGGOLD Ltd";
 const FROM_EMAIL = process.env.FROM_EMAIL || "onboarding@resend.dev";
 const RESEND_API = "https://api.resend.com/emails";
@@ -54,10 +56,42 @@ function btn(href: string, label: string): string {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// ─── SMTP transport (primary — no domain verification needed) ─────────────────
+function getSmtpTransport(): nodemailer.Transporter | null {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !user || !pass) return null;
+  return nodemailer.createTransport({
+    host,
+    port: parseInt(process.env.SMTP_PORT || "587"),
+    secure: process.env.SMTP_PORT === "465",
+    auth: { user, pass },
+  });
+}
+
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  // 1 — Try SMTP first (works with any email provider, no domain verification needed)
+  const smtp = getSmtpTransport();
+  if (smtp) {
+    try {
+      await smtp.sendMail({
+        from: `"${FROM_NAME}" <${process.env.SMTP_USER}>`,
+        to,
+        subject,
+        html,
+      });
+      console.log(`[EMAIL] SMTP sent "${subject}" to ${to}`);
+      return;
+    } catch (err: any) {
+      console.error(`[EMAIL] SMTP error for ${to}: ${err.message}`);
+    }
+  }
+
+  // 2 — Fall back to Resend REST API
   const key = process.env.RESEND_API_KEY;
   if (!key) {
-    console.warn(`[EMAIL] No RESEND_API_KEY — skipping send to ${to}. Subject: ${subject}`);
+    console.warn(`[EMAIL] No SMTP or RESEND_API_KEY configured — skipping send to ${to}.`);
     return;
   }
   const res = await fetch(RESEND_API, {
@@ -74,7 +108,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     const err = await res.text();
     console.error(`[EMAIL] Resend error ${res.status} for ${to}: ${err}`);
   } else {
-    console.log(`[EMAIL] Sent "${subject}" to ${to}`);
+    console.log(`[EMAIL] Resend sent "${subject}" to ${to}`);
   }
 }
 

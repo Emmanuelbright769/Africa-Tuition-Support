@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
+import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
@@ -2028,6 +2029,16 @@ export async function registerRoutes(
     if (priceNum < ECOMMERCE.MIN_PRICE || priceNum > ECOMMERCE.MAX_PRICE) return res.status(400).json({ message: `Price must be $${ECOMMERCE.MIN_PRICE}–$${ECOMMERCE.MAX_PRICE}` });
     try {
       const prod = await storage.createProduct({ sellerId: userId, title, description, price: priceNum.toFixed(2), category: category || "other", condition: condition || "new", images: images || [], stock: parseInt(stock) || 1, location: location || "London, UK", status: "active", negotiable: negotiable === true });
+      // Notify category subscribers
+      try {
+        const cat = prod.category || "other";
+        const subs = await storage.getCategorySubscribers(cat);
+        for (const subId of subs) {
+          if (subId === userId) continue;
+          const notif = await storage.createNotification({ userId: subId, type: "new_arrival", title: "New Arrival", message: `A new item in ${cat}: "${prod.title}"`, relatedId: prod.id });
+          pushToUser(subId, "notification", notif);
+        }
+      } catch (_) {}
       res.json(prod);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2038,7 +2049,24 @@ export async function registerRoutes(
     try {
       const prod = await storage.getProductById(parseInt(req.params.id));
       if (!prod || prod.sellerId !== userId) return res.status(403).json({ message: "Not your product" });
+      const oldPrice = parseFloat(prod.price);
       const updated = await storage.updateProduct(parseInt(req.params.id), req.body);
+      // Fire price-drop alerts if price decreased
+      if (req.body.price !== undefined) {
+        const newPrice = parseFloat(updated.price);
+        if (newPrice < oldPrice) {
+          try {
+            const alerts = await storage.getPriceAlertsForProduct(updated.id);
+            for (const alert of alerts) {
+              if (newPrice < parseFloat(alert.lastKnownPrice)) {
+                const notif = await storage.createNotification({ userId: alert.userId, type: "price_drop", title: "Price Drop!", message: `"${updated.title}" dropped from $${oldPrice.toFixed(2)} to $${newPrice.toFixed(2)}`, relatedId: updated.id });
+                pushToUser(alert.userId, "notification", notif);
+                await storage.updatePriceAlertLastKnown(alert.userId, updated.id, newPrice.toFixed(2));
+              }
+            }
+          } catch (_) {}
+        }
+      }
       res.json(updated);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2699,6 +2727,88 @@ export async function registerRoutes(
     try {
       const savings = await storage.tickQceDays(userId);
       res.json({ savings });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── SERVER-SENT EVENTS ────────────────────────────────────────────────────
+  app.get("/api/events", (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).end();
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    res.write(": connected\n\n");
+    addSseClient(userId, res);
+    const hb = setInterval(() => { try { res.write(": ping\n\n"); } catch { clearInterval(hb); } }, 25000);
+    req.on("close", () => { clearInterval(hb); removeSseClient(userId, res); });
+  });
+
+  // ─── PRICE ALERTS ──────────────────────────────────────────────────────────
+  // GET /api/price-alerts — get product IDs the user is watching
+  app.get("/api/price-alerts", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const productIds = await storage.getUserPriceAlertProductIds(userId);
+      res.json({ productIds });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/price-alerts — watch a product
+  app.post("/api/price-alerts", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { productId } = req.body;
+    if (!productId) return res.status(400).json({ message: "productId required" });
+    try {
+      const prod = await storage.getProductById(parseInt(productId));
+      if (!prod) return res.status(404).json({ message: "Product not found" });
+      const alert = await storage.upsertPriceAlert(userId, prod.id, prod.price);
+      res.json(alert);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/price-alerts/:productId — unwatch a product
+  app.delete("/api/price-alerts/:productId", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      await storage.deletePriceAlert(userId, parseInt(req.params.productId));
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── CATEGORY SUBSCRIPTIONS ────────────────────────────────────────────────
+  // GET /api/category-subscriptions — get user's subscribed categories
+  app.get("/api/category-subscriptions", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const categories = await storage.getUserCategorySubscriptions(userId);
+      res.json({ categories });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/category-subscriptions — subscribe to a category
+  app.post("/api/category-subscriptions", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { category } = req.body;
+    if (!category) return res.status(400).json({ message: "category required" });
+    try {
+      const sub = await storage.upsertCategorySubscription(userId, category);
+      res.json(sub);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/category-subscriptions/:category — unsubscribe from a category
+  app.delete("/api/category-subscriptions/:category", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      await storage.deleteCategorySubscription(userId, decodeURIComponent(req.params.category));
+      res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

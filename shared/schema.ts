@@ -603,7 +603,7 @@ export type BillPayment = typeof billPayments.$inferSelect;
 export const notificationTypeEnum = pgEnum("notification_type", [
   "bot_reminder", "chat_message", "order_update", "wallet_credit",
   "loan_update", "verification_update", "referral", "trade_deposit", "system",
-  "wallet_activation", "qce_update"
+  "wallet_activation", "qce_update", "price_drop", "new_arrival"
 ]);
 
 export const notifications = pgTable("notifications", {
@@ -785,6 +785,35 @@ export function calculateQceEligibility(daysActive: number, balance: number): nu
   const daysPct = Math.min(daysActive / QCE.PERIOD_DAYS, 1);
   return Math.round(daysPct * QCE.MAX_ELIGIBILITY * 100) / 100;
 }
+
+// ─── PRICE ALERTS & CATEGORY SUBSCRIPTIONS ───────────────────────────────────
+export const priceAlerts = pgTable("price_alerts", {
+  id:             integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:         integer("user_id").notNull().references(() => users.id),
+  productId:      integer("product_id").notNull().references(() => products.id),
+  lastKnownPrice: decimal("last_known_price", { precision: 10, scale: 2 }).notNull(),
+  active:         boolean("active").notNull().default(true),
+  createdAt:      timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  userProductUniq: uniqueIndex("price_alerts_user_product_uq").on(table.userId, table.productId),
+}));
+
+export const categorySubscriptions = pgTable("category_subscriptions", {
+  id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:    integer("user_id").notNull().references(() => users.id),
+  category:  text("category").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  userCategoryUniq: uniqueIndex("category_subs_user_category_uq").on(table.userId, table.category),
+}));
+
+export const insertPriceAlertSchema = createInsertSchema(priceAlerts).omit({ id: true, createdAt: true });
+export type InsertPriceAlert = z.infer<typeof insertPriceAlertSchema>;
+export type PriceAlert = typeof priceAlerts.$inferSelect;
+
+export const insertCategorySubscriptionSchema = createInsertSchema(categorySubscriptions).omit({ id: true, createdAt: true });
+export type InsertCategorySubscription = z.infer<typeof insertCategorySubscriptionSchema>;
+export type CategorySubscription = typeof categorySubscriptions.$inferSelect;
 
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [

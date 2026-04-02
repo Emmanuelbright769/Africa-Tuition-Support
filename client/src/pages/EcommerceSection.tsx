@@ -498,9 +498,9 @@ function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
 }
 
 // ─── Product Card (Grid) ───────────────────────────────────────────────────
-function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart }: {
+function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart, watched, onWatch }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
-  inCart: boolean; onCart: () => void;
+  inCart: boolean; onCart: () => void; watched?: boolean; onWatch?: () => void;
 }) {
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
@@ -536,14 +536,26 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
             </span>
           )}
         </div>
-        {/* Wishlist */}
-        <button
-          onClick={e => { e.stopPropagation(); onWishlist(); }}
-          data-testid={`btn-wishlist-${product.id}`}
-          className="absolute top-2 right-2 w-8 h-8 bg-white/90 dark:bg-slate-800/90 rounded-full flex items-center justify-center shadow-sm transition-transform hover:scale-110"
-        >
-          <Heart className={`w-4 h-4 transition-colors ${wishlisted ? "fill-red-500 text-red-500" : "text-slate-400"}`} />
-        </button>
+        {/* Wishlist + Watch */}
+        <div className="absolute top-2 right-2 flex flex-col gap-1">
+          <button
+            onClick={e => { e.stopPropagation(); onWishlist(); }}
+            data-testid={`btn-wishlist-${product.id}`}
+            className="w-8 h-8 bg-white/90 dark:bg-slate-800/90 rounded-full flex items-center justify-center shadow-sm transition-transform hover:scale-110"
+          >
+            <Heart className={`w-4 h-4 transition-colors ${wishlisted ? "fill-red-500 text-red-500" : "text-slate-400"}`} />
+          </button>
+          {onWatch && (
+            <button
+              onClick={e => { e.stopPropagation(); onWatch(); }}
+              data-testid={`btn-watch-${product.id}`}
+              title={watched ? "Unwatch price" : "Watch price drop"}
+              className="w-8 h-8 bg-white/90 dark:bg-slate-800/90 rounded-full flex items-center justify-center shadow-sm transition-transform hover:scale-110"
+            >
+              <Bell className={`w-4 h-4 transition-colors ${watched ? "fill-tsia-green text-tsia-green" : "text-slate-400"}`} />
+            </button>
+          )}
+        </div>
         {/* Badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-1">
           {product.condition === "new" && (
@@ -599,9 +611,9 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
 }
 
 // ─── Featured Card (Horizontal scroll) ────────────────────────────────────
-function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart }: {
+function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart, watched, onWatch }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
-  inCart: boolean; onCart: () => void;
+  inCart: boolean; onCart: () => void; watched?: boolean; onWatch?: () => void;
 }) {
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
@@ -1236,6 +1248,46 @@ export default function EcommerceSection() {
   const { data: purchases = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/purchases"], enabled: tab === "purchases" });
   const { data: sales = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/sales"], enabled: tab === "sales" });
 
+  // Price alerts
+  const { data: alertData } = useQuery<{ productIds: number[] }>({
+    queryKey: ["/api/price-alerts"],
+    enabled: !!user,
+  });
+  const watchedIds = new Set(alertData?.productIds ?? []);
+  const toggleWatch = async (product: Product) => {
+    if (!user) return toast({ title: "Sign in to watch prices", variant: "destructive" });
+    try {
+      if (watchedIds.has(product.id)) {
+        await apiRequest("DELETE", `/api/price-alerts/${product.id}`);
+        toast({ description: `Stopped watching "${product.title}"` });
+      } else {
+        await apiRequest("POST", "/api/price-alerts", { productId: product.id });
+        toast({ description: `Watching "${product.title}" for price drops` });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/price-alerts"] });
+    } catch { toast({ title: "Error", variant: "destructive" }); }
+  };
+
+  // Category subscriptions
+  const { data: catSubData } = useQuery<{ categories: string[] }>({
+    queryKey: ["/api/category-subscriptions"],
+    enabled: !!user,
+  });
+  const subscribedCats = new Set(catSubData?.categories ?? []);
+  const toggleCategorySubscription = async (category: string) => {
+    if (!user) return toast({ title: "Sign in to subscribe to categories", variant: "destructive" });
+    try {
+      if (subscribedCats.has(category)) {
+        await apiRequest("DELETE", `/api/category-subscriptions/${encodeURIComponent(category)}`);
+        toast({ description: `Unsubscribed from "${CATEGORY_LABELS[category] || category}"` });
+      } else {
+        await apiRequest("POST", "/api/category-subscriptions", { category });
+        toast({ description: `You'll be notified when new items are listed in "${CATEGORY_LABELS[category] || category}"` });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/category-subscriptions"] });
+    } catch { toast({ title: "Error", variant: "destructive" }); }
+  };
+
   const toggleCart = (id: number) => {
     setCart(prev => {
       const next = new Set(prev);
@@ -1386,7 +1438,7 @@ export default function EcommerceSection() {
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
                   {featured.map(p => (
-                    <FeaturedCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} />
+                    <FeaturedCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} />
                   ))}
                 </div>
               )}
@@ -1404,9 +1456,22 @@ export default function EcommerceSection() {
               <h3 className="font-bold text-base">
                 {activeSearch ? `Results for "${activeSearch}"` : activeCategory ? `${CATEGORY_LABELS[activeCategory] || activeCategory}` : "New Arrivals"}
               </h3>
-              {(products as Product[]).length > 12 && !showAllProducts && (
-                <button className="text-xs text-tsia-green font-semibold" onClick={() => setShowAllProducts(true)}>See all {(products as Product[]).length}</button>
-              )}
+              <div className="flex items-center gap-2">
+                {activeCategory && user && (
+                  <button
+                    onClick={() => toggleCategorySubscription(activeCategory)}
+                    data-testid={`btn-subscribe-cat-${activeCategory}`}
+                    title={subscribedCats.has(activeCategory) ? "Unsubscribe from new arrivals" : "Get notified of new arrivals"}
+                    className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all ${subscribedCats.has(activeCategory) ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "border-border text-muted-foreground hover:border-tsia-green hover:text-tsia-green"}`}
+                  >
+                    <Bell className="w-3 h-3" />
+                    {subscribedCats.has(activeCategory) ? "Subscribed" : "Subscribe"}
+                  </button>
+                )}
+                {(products as Product[]).length > 12 && !showAllProducts && (
+                  <button className="text-xs text-tsia-green font-semibold" onClick={() => setShowAllProducts(true)}>See all {(products as Product[]).length}</button>
+                )}
+              </div>
             </div>
             {isLoading ? (
               <div className="grid grid-cols-2 gap-3">
@@ -1424,7 +1489,7 @@ export default function EcommerceSection() {
                 {filterViewMode === "grid" ? (
                   <div className="grid grid-cols-2 gap-3">
                     {gridProducts.map(p => (
-                      <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} />
+                      <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} />
                     ))}
                   </div>
                 ) : (

@@ -10,6 +10,7 @@ import {
   ecommerceChats, ecommerceChatMessages,
   notifications, callSessions, forumTopics, forumPosts,
   qceSavings, qceTransactions,
+  priceAlerts, categorySubscriptions,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -39,6 +40,7 @@ import {
   tourBookings,
   type TourBooking, type InsertTourBooking,
   type QceSavings, type QceTransaction,
+  type PriceAlert, type CategorySubscription,
   TRADE_MARKET, ECOMMERCE, QCE, calculateQceEligibility,
 } from "@shared/schema";
 
@@ -181,6 +183,19 @@ export interface IStorage {
   withdrawFromQce(userId: number, amountUsd: number): Promise<{ savings: QceSavings; transaction: QceTransaction }>;
   getQceTransactions(userId: number): Promise<QceTransaction[]>;
   tickQceDays(userId: number): Promise<QceSavings>;
+
+  // Price Alerts
+  upsertPriceAlert(userId: number, productId: number, lastKnownPrice: string): Promise<PriceAlert>;
+  deletePriceAlert(userId: number, productId: number): Promise<void>;
+  getUserPriceAlertProductIds(userId: number): Promise<number[]>;
+  getPriceAlertsForProduct(productId: number): Promise<PriceAlert[]>;
+  updatePriceAlertLastKnown(userId: number, productId: number, price: string): Promise<void>;
+
+  // Category Subscriptions
+  upsertCategorySubscription(userId: number, category: string): Promise<CategorySubscription>;
+  deleteCategorySubscription(userId: number, category: string): Promise<void>;
+  getUserCategorySubscriptions(userId: number): Promise<string[]>;
+  getCategorySubscribers(category: string): Promise<number[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -988,6 +1003,72 @@ export class DatabaseStorage implements IStorage {
       });
     }
     return savings;
+  }
+
+  // ─── Price Alerts ─────────────────────────────────────────────────────────
+  async upsertPriceAlert(userId: number, productId: number, lastKnownPrice: string): Promise<PriceAlert> {
+    const [row] = await db.insert(priceAlerts)
+      .values({ userId, productId, lastKnownPrice, active: true })
+      .onConflictDoUpdate({
+        target: [priceAlerts.userId, priceAlerts.productId],
+        set: { lastKnownPrice, active: true },
+      })
+      .returning();
+    return row;
+  }
+
+  async deletePriceAlert(userId: number, productId: number): Promise<void> {
+    await db.delete(priceAlerts)
+      .where(and(eq(priceAlerts.userId, userId), eq(priceAlerts.productId, productId)));
+  }
+
+  async getUserPriceAlertProductIds(userId: number): Promise<number[]> {
+    const rows = await db.select({ productId: priceAlerts.productId })
+      .from(priceAlerts)
+      .where(and(eq(priceAlerts.userId, userId), eq(priceAlerts.active, true)));
+    return rows.map(r => r.productId);
+  }
+
+  async getPriceAlertsForProduct(productId: number): Promise<PriceAlert[]> {
+    return db.select().from(priceAlerts)
+      .where(and(eq(priceAlerts.productId, productId), eq(priceAlerts.active, true)));
+  }
+
+  async updatePriceAlertLastKnown(userId: number, productId: number, price: string): Promise<void> {
+    await db.update(priceAlerts)
+      .set({ lastKnownPrice: price })
+      .where(and(eq(priceAlerts.userId, userId), eq(priceAlerts.productId, productId)));
+  }
+
+  // ─── Category Subscriptions ───────────────────────────────────────────────
+  async upsertCategorySubscription(userId: number, category: string): Promise<CategorySubscription> {
+    const [row] = await db.insert(categorySubscriptions)
+      .values({ userId, category })
+      .onConflictDoNothing()
+      .returning();
+    if (row) return row;
+    const [existing] = await db.select().from(categorySubscriptions)
+      .where(and(eq(categorySubscriptions.userId, userId), eq(categorySubscriptions.category, category)));
+    return existing;
+  }
+
+  async deleteCategorySubscription(userId: number, category: string): Promise<void> {
+    await db.delete(categorySubscriptions)
+      .where(and(eq(categorySubscriptions.userId, userId), eq(categorySubscriptions.category, category)));
+  }
+
+  async getUserCategorySubscriptions(userId: number): Promise<string[]> {
+    const rows = await db.select({ category: categorySubscriptions.category })
+      .from(categorySubscriptions)
+      .where(eq(categorySubscriptions.userId, userId));
+    return rows.map(r => r.category);
+  }
+
+  async getCategorySubscribers(category: string): Promise<number[]> {
+    const rows = await db.select({ userId: categorySubscriptions.userId })
+      .from(categorySubscriptions)
+      .where(eq(categorySubscriptions.category, category));
+    return rows.map(r => r.userId);
   }
 }
 

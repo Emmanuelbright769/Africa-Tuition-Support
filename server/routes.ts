@@ -271,6 +271,26 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Admin password login (no OTP) ─────────────────────────────────────────
+  app.post("/api/auth/admin-login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
+
+      const admin = await storage.getUserByEmailAndRole(email, "admin");
+      if (!admin) return res.status(401).json({ message: "Invalid credentials" });
+      if (admin.password !== password) return res.status(401).json({ message: "Incorrect password" });
+
+      (req.session as any).userId = admin.id;
+      req.session.save((err) => {
+        if (err) return res.status(500).json({ message: "Session save failed" });
+        res.json({ id: admin.id, firstName: admin.firstName, lastName: admin.lastName, email: admin.email, role: admin.role, affiliateCode: admin.affiliateCode });
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/upload", upload.single("file"), async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

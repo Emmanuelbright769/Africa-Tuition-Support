@@ -1,20 +1,22 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight, ArrowLeft } from "lucide-react";
+import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight, ArrowLeft, Lock, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 
-// step 0 = pick role  ·  step 1 = enter email  ·  step 2 = enter OTP
+// step 0 = pick role  ·  step 1 = enter email (+ password if admin)  ·  step 2 = enter OTP
 type Step = 0 | 1 | 2;
 
+const ADMIN_EMAIL = "admin@tsiforafrica.com";
+
 const ROLE_META = {
-  student:   {
+  student: {
     label: "Student Login",
     sub: "Student dashboard, wallet & sponsorship",
     icon: GraduationCap,
@@ -42,11 +44,23 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [loginRole, setLoginRole] = useState<"student" | "affiliate" | "">("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [otpHint, setOtpHint] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const passwordRef = useRef<HTMLInputElement | null>(null);
   const { requestOtp, verifyOtp } = useAuth();
   const { toast } = useToast();
+
+  // Detect if admin email is typed
+  const isAdminMode = email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  // Auto-focus password field when admin mode activates on step 1
+  useEffect(() => {
+    if (isAdminMode && step === 1) {
+      setTimeout(() => passwordRef.current?.focus(), 80);
+    }
+  }, [isAdminMode, step]);
 
   // ── Step 0 → 1: pick a role ────────────────────────────────────────────
   const handlePickRole = (role: "student" | "affiliate") => {
@@ -54,10 +68,35 @@ export default function Login() {
     setStep(1);
   };
 
-  // ── Step 1: request OTP ────────────────────────────────────────────────
+  // ── Admin password login ────────────────────────────────────────────────
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/admin-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Login failed");
+      // Redirect to admin dashboard
+      setLocation("/admin");
+    } catch (err: any) {
+      toast({ title: "Login Failed", description: err.message || "Incorrect password.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Step 1: request OTP (regular users) ───────────────────────────────
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginRole) return;
+    // Intercept admin email — use password flow instead
+    if (isAdminMode) { return handleAdminLogin(e); }
     setLoading(true);
     try {
       const result = await requestOtp({ email, loginRole });
@@ -127,6 +166,7 @@ export default function Login() {
     setStep(0);
     setLoginRole("");
     setEmail("");
+    setPassword("");
     setOtpDigits(["", "", "", "", "", ""]);
     setOtpHint("");
   };
@@ -153,7 +193,7 @@ export default function Login() {
             <Card className="shadow-xl border-0 overflow-hidden relative">
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-tsia-green to-tsia-gold" />
 
-              {/* ── Step 0: Always-visible role selector ────────────── */}
+              {/* ── Step 0: Role selector ────────────────────────────── */}
               {step === 0 && (
                 <>
                   <CardHeader className="space-y-2 pt-8 pb-4">
@@ -200,16 +240,28 @@ export default function Login() {
                 <>
                   <CardHeader className="space-y-2 pt-8">
                     <div className="flex justify-center mb-2">
-                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${roleMeta.pill}`}>
-                        {loginRole === "student" ? <GraduationCap className="w-3.5 h-3.5" /> : <Briefcase className="w-3.5 h-3.5" />}
-                        {roleMeta.label}
-                      </span>
+                      {isAdminMode ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-slate-900 text-white">
+                          <ShieldCheck className="w-3.5 h-3.5" /> Admin Portal
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${roleMeta.pill}`}>
+                          {loginRole === "student" ? <GraduationCap className="w-3.5 h-3.5" /> : <Briefcase className="w-3.5 h-3.5" />}
+                          {roleMeta.label}
+                        </span>
+                      )}
                     </div>
-                    <CardTitle className="text-2xl text-center font-bold">Enter your email</CardTitle>
-                    <CardDescription className="text-center text-base">We'll send a one-time code to sign you in</CardDescription>
+                    <CardTitle className="text-2xl text-center font-bold">
+                      {isAdminMode ? "Admin Sign In" : "Enter your email"}
+                    </CardTitle>
+                    <CardDescription className="text-center text-base">
+                      {isAdminMode ? "Enter your administrator password to continue" : "We'll send a one-time code to sign you in"}
+                    </CardDescription>
                   </CardHeader>
+
                   <CardContent className="pb-8">
-                    <form onSubmit={handleRequestOtp} className="space-y-6">
+                    <form onSubmit={handleRequestOtp} className="space-y-5">
+                      {/* Email field */}
                       <div className="space-y-2">
                         <Label htmlFor="email">Email address</Label>
                         <div className="relative">
@@ -219,21 +271,62 @@ export default function Login() {
                             type="email"
                             placeholder="you@example.com"
                             required
+                            autoComplete="email"
                             className="h-12 pl-10 bg-muted/30"
                             value={email}
-                            onChange={e => setEmail(e.target.value)}
+                            onChange={e => { setEmail(e.target.value); setPassword(""); }}
                             data-testid="input-login-email"
                           />
                         </div>
                       </div>
+
+                      {/* Password field — slides in only for admin email */}
+                      <AnimatePresence>
+                        {isAdminMode && (
+                          <motion.div
+                            key="admin-password"
+                            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                            animate={{ opacity: 1, height: "auto", marginTop: 20 }}
+                            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                            transition={{ duration: 0.25, ease: "easeOut" }}
+                            className="overflow-hidden"
+                          >
+                            <div className="space-y-2">
+                              <Label htmlFor="admin-password">Administrator Password</Label>
+                              <div className="relative">
+                                <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                  id="admin-password"
+                                  ref={passwordRef}
+                                  type="password"
+                                  placeholder="Enter admin password"
+                                  required
+                                  autoComplete="current-password"
+                                  className="h-12 pl-10 bg-muted/30"
+                                  value={password}
+                                  onChange={e => setPassword(e.target.value)}
+                                  data-testid="input-admin-password"
+                                />
+                              </div>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-2 text-center flex items-center justify-center gap-1">
+                              <ShieldCheck className="w-3 h-3" /> Secure admin access — no OTP required
+                            </p>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
                       <Button
                         type="submit"
-                        className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md"
-                        disabled={loading}
-                        data-testid="button-request-otp"
+                        className={`w-full h-12 text-base font-semibold shadow-md ${isAdminMode ? "bg-slate-900 hover:bg-slate-800 text-white" : "bg-primary hover:bg-primary/90"}`}
+                        disabled={loading || (isAdminMode && !password)}
+                        data-testid={isAdminMode ? "button-admin-login" : "button-request-otp"}
                       >
-                        {loading ? "Sending code..." : "Send Login Code"}
+                        {loading
+                          ? (isAdminMode ? "Signing in..." : "Sending code...")
+                          : (isAdminMode ? "Sign In as Admin" : "Send Login Code")}
                       </Button>
+
                       <button
                         type="button"
                         onClick={resetToRole}
@@ -244,6 +337,7 @@ export default function Login() {
                       </button>
                     </form>
                   </CardContent>
+
                   <CardFooter className="flex justify-center border-t py-6 bg-muted/30">
                     <p className="text-sm text-muted-foreground">
                       Don't have an account?{" "}
@@ -253,7 +347,7 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── Step 2: Enter OTP ───────────────────────────────── */}
+              {/* ── Step 2: Enter OTP (regular users only) ──────────── */}
               {step === 2 && roleMeta && (
                 <>
                   <CardHeader className="space-y-2 pt-8">

@@ -73,7 +73,6 @@ const COUNTRY_CURRENCY: Record<string, { code: string; symbol: string; name: str
   QA: { code: "QAR", symbol: "﷼",    name: "Riyal" },
   BR: { code: "BRL", symbol: "R$",   name: "Real" },
   MX: { code: "MXN", symbol: "MX$",  name: "Peso" },
-  ZA: { code: "ZAR", symbol: "R",    name: "Rand" },
   PK: { code: "PKR", symbol: "₨",    name: "Rupee" },
   BD: { code: "BDT", symbol: "৳",    name: "Taka" },
   SG: { code: "SGD", symbol: "S$",   name: "Dollar" },

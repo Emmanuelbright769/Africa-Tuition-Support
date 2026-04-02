@@ -2,6 +2,10 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { storage } from "./storage";
+import { db } from "./db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 const app = express();
 const httpServer = createServer(app);
@@ -60,8 +64,39 @@ app.use((req, res, next) => {
   next();
 });
 
+async function seedAdmin() {
+  const ADMIN_EMAIL = "admin@tsiforafrica.com";
+  const ADMIN_PASSWORD = "admin123";
+  try {
+    const existing = await storage.getUserByEmailAndRole(ADMIN_EMAIL, "admin");
+    if (!existing) {
+      const admin = await storage.createUser({
+        firstName: "TSIA",
+        lastName: "Admin",
+        email: ADMIN_EMAIL,
+        phone: "",
+        password: ADMIN_PASSWORD,
+        country: "gb",
+        role: "admin",
+        referredBy: null,
+      });
+      await storage.updateUserAffiliateCode(admin.id, "ADMIN-TSIA");
+      console.log("[SEED] Admin user created:", ADMIN_EMAIL);
+    } else if (existing.password !== ADMIN_PASSWORD) {
+      // Password drifted — correct it
+      await db.update(users).set({ password: ADMIN_PASSWORD }).where(eq(users.id, existing.id));
+      console.log("[SEED] Admin password corrected for:", ADMIN_EMAIL);
+    } else {
+      console.log("[SEED] Admin user OK:", ADMIN_EMAIL);
+    }
+  } catch (e) {
+    console.error("[SEED] Failed to seed admin:", e);
+  }
+}
+
 (async () => {
   await registerRoutes(httpServer, app);
+  await seedAdmin();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

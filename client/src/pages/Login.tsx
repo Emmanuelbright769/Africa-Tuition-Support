@@ -49,7 +49,7 @@ export default function Login() {
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const passwordRef = useRef<HTMLInputElement | null>(null);
-  const { requestOtp, verifyOtp } = useAuth();
+  const { requestOtp, verifyOtp, adminLogin } = useAuth();
   const { toast } = useToast();
 
   // Detect if admin email is typed
@@ -74,16 +74,8 @@ export default function Login() {
     if (!password) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/admin-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Login failed");
-      // Redirect to admin dashboard
-      setLocation("/admin");
+      const user = await adminLogin(email.trim(), password);
+      if (user.role === "admin") setLocation("/admin");
     } catch (err: any) {
       toast({ title: "Login Failed", description: err.message || "Incorrect password.", variant: "destructive" });
     } finally {

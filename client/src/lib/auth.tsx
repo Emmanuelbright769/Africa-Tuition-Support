@@ -22,6 +22,7 @@ type AuthContextType = {
   isLoading: boolean;
   requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string; loginRole?: string }) => Promise<{ otpSent?: boolean; hint?: string; isNewUser?: boolean; multipleRoles?: boolean; roles?: string[] }>;
   verifyOtp: (email: string, code: string, loginRole?: string) => Promise<AuthUser>;
+  adminLogin: (email: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 };
 
@@ -117,6 +118,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return userData;
   };
 
+  const adminLogin = async (email: string, password: string): Promise<AuthUser> => {
+    const res = await fetch("/api/auth/admin-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      credentials: "include",
+    });
+    const userData = await res.json();
+    if (!res.ok) throw new Error(userData.message || "Login failed");
+    // Update auth cache exactly like verifyOtp does — this prevents the stale-null redirect
+    queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "/api/auth/me" });
+    queryClient.setQueryData(["/api/auth/me"], userData);
+    stampActivity();
+    return userData;
+  };
+
   const logout = async () => {
     if (inactivityTimer.current) { clearTimeout(inactivityTimer.current); inactivityTimer.current = null; }
     try { await apiRequest("POST", "/api/auth/logout"); } catch {}
@@ -125,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, requestOtp, verifyOtp, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, requestOtp, verifyOtp, adminLogin, logout }}>
       {children}
     </AuthContext.Provider>
   );

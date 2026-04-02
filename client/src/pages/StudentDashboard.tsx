@@ -117,6 +117,16 @@ export default function StudentDashboard() {
     return () => { if (redirectTimerRef.current) { clearTimeout(redirectTimerRef.current); redirectTimerRef.current = null; } };
   }, [authLoading, user]);
 
+  // Listen for chat notification deep-links — must be before any early return
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const chatId = (e as CustomEvent).detail?.chatId;
+      if (chatId) { setOpenChatId(chatId); setActiveSection("ecommerce"); }
+    };
+    window.addEventListener("tsia:open-chat", handler);
+    return () => window.removeEventListener("tsia:open-chat", handler);
+  }, []);
+
   if (authLoading || (!user && !authLoading)) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
@@ -133,16 +143,6 @@ export default function StudentDashboard() {
   const showGoToOnboarding  = !isVerified && !showPendingApproval && !feePaid;
 
   const themeOpts = [{ v: "light" as const, i: Sun }, { v: "dark" as const, i: Moon }, { v: "system" as const, i: Monitor }];
-
-  // Listen for chat notification deep-links
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const chatId = (e as CustomEvent).detail?.chatId;
-      if (chatId) { setOpenChatId(chatId); setActiveSection("ecommerce"); }
-    };
-    window.addEventListener("tsia:open-chat", handler);
-    return () => window.removeEventListener("tsia:open-chat", handler);
-  }, []);
 
   const navigate = (section: Section) => {
     if (section === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }

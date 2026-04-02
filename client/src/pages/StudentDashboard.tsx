@@ -17,7 +17,7 @@ import {
   LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X,
   LayoutDashboard, Star, History, ChevronRight, ChevronDown, Car, Globe, Loader2,
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
-  ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake
+  ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -63,7 +63,7 @@ export default function StudentDashboard() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
-  const [walletExpanded, setWalletExpanded] = useState(false);
+  const [servicesExpanded, setServicesExpanded] = useState(false);
   const [openChatId, setOpenChatId] = useState<number | null>(null);
   const [loanAmount, setLoanAmount] = useState("");
   const [loanTerm, setLoanTerm] = useState(12);

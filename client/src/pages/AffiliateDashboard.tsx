@@ -836,26 +836,26 @@ export default function AffiliateDashboard() {
 
                 {/* ── Fund Stats (always visible) ── */}
                 <motion.div variants={itemVariants}>
-                  <div className="grid grid-cols-3 gap-3">
-                    <Card className="shadow-md border-0 text-center" data-testid="stat-total-fund-pool">
-                      <CardContent className="pt-5 pb-4">
-                        <div className="text-2xl font-extrabold text-primary">${totalFundPool.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                        <div className="text-xs text-muted-foreground mt-1 font-medium">Total Fund Pool</div>
-                        <div className="text-[10px] text-muted-foreground">invested by all participants</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Card className="shadow-md border-0 text-center overflow-hidden min-w-0" data-testid="stat-total-fund-pool">
+                      <CardContent className="pt-4 pb-3 px-2">
+                        <div className="text-base font-extrabold text-primary leading-tight truncate" title={`$${totalFundPool.toFixed(2)}`}>${totalFundPool.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="text-[10px] text-muted-foreground mt-1 font-semibold leading-tight">Total Fund Pool</div>
+                        <div className="text-[9px] text-muted-foreground leading-tight">invested by all</div>
                       </CardContent>
                     </Card>
-                    <Card className="shadow-md border-0 text-center" data-testid="stat-total-profit-pool">
-                      <CardContent className="pt-5 pb-4">
-                        <div className="text-2xl font-extrabold text-emerald-600">${totalAffiliatePool.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                        <div className="text-xs text-muted-foreground mt-1 font-medium">Profit Pool</div>
-                        <div className="text-[10px] text-muted-foreground">total distributed so far</div>
+                    <Card className="shadow-md border-0 text-center overflow-hidden min-w-0" data-testid="stat-total-profit-pool">
+                      <CardContent className="pt-4 pb-3 px-2">
+                        <div className="text-base font-extrabold text-emerald-600 leading-tight truncate" title={`$${totalAffiliatePool.toFixed(2)}`}>${totalAffiliatePool.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="text-[10px] text-muted-foreground mt-1 font-semibold leading-tight">Profit Pool</div>
+                        <div className="text-[9px] text-muted-foreground leading-tight">distributed so far</div>
                       </CardContent>
                     </Card>
-                    <Card className="shadow-md border-0 text-center" data-testid="stat-total-enrolled">
-                      <CardContent className="pt-5 pb-4">
-                        <div className="text-2xl font-extrabold text-tsia-gold">{totalEnrolled.toLocaleString()}</div>
-                        <div className="text-xs text-muted-foreground mt-1 font-medium">Co-Affiliates</div>
-                        <div className="text-[10px] text-muted-foreground">of {CO_AFFILIATE_PROGRAM.TARGET.toLocaleString()} max</div>
+                    <Card className="shadow-md border-0 text-center overflow-hidden min-w-0" data-testid="stat-total-enrolled">
+                      <CardContent className="pt-4 pb-3 px-2">
+                        <div className="text-base font-extrabold text-tsia-gold leading-tight">{totalEnrolled.toLocaleString()}</div>
+                        <div className="text-[10px] text-muted-foreground mt-1 font-semibold leading-tight">Co-Affiliates</div>
+                        <div className="text-[9px] text-muted-foreground leading-tight">of 1M max</div>
                       </CardContent>
                     </Card>
                   </div>

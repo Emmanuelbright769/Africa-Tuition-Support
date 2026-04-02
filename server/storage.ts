@@ -89,6 +89,8 @@ export interface IStorage {
   getCoAffiliateCount(): Promise<number>;
   getAllCoAffiliates(): Promise<CoAffiliate[]>;
   updateCoAffiliate(userId: number, data: Partial<InsertCoAffiliate>): Promise<CoAffiliate>;
+  getTotalCoAffiliateFund(): Promise<number>;
+  getTotalAffiliatePool(): Promise<number>;
 
   // Trade Market
   getOrCreateTradeWallet(userId: number): Promise<TradeWallet>;
@@ -397,6 +399,16 @@ export class DatabaseStorage implements IStorage {
   async updateCoAffiliate(userId: number, data: Partial<InsertCoAffiliate>): Promise<CoAffiliate> {
     const [updated] = await db.update(coAffiliates).set({ ...data, updatedAt: new Date() }).where(eq(coAffiliates.userId, userId)).returning();
     return updated;
+  }
+
+  async getTotalCoAffiliateFund(): Promise<number> {
+    const [result] = await db.select({ total: sql<string>`COALESCE(SUM(amount_paid), 0)` }).from(coAffiliates).where(eq(coAffiliates.status, "active"));
+    return parseFloat(result?.total ?? "0");
+  }
+
+  async getTotalAffiliatePool(): Promise<number> {
+    const [result] = await db.select({ total: sql<string>`COALESCE(SUM(total_pool_amount), 0)` }).from(affiliateTradeShares);
+    return parseFloat(result?.total ?? "0");
   }
 
   async getOrCreateTradeWallet(userId: number): Promise<TradeWallet> {

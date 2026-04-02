@@ -347,12 +347,17 @@ export default function AffiliateDashboard() {
   const referralCount  = affiliateInfo?.referralCount || 0;
   const referrals      = affiliateInfo?.referrals || [];
   const referralLink   = `${window.location.origin}/signup?ref=${affiliateCode}`;
-  const totalEnrolled  = programData?.totalEnrolled ?? 0;
-  const spotsRemaining = programData?.spotsRemaining ?? CO_AFFILIATE_PROGRAM.TARGET;
-  const pricing        = programData?.pricing ?? [];
-  const progress       = programData?.progress ?? { overallPct: 0, pctToNext: 0, nextMilestone: 150000, milestones: 0 };
-  const isEnrolled     = !!myCoAff;
-  const myCategory     = myCoAff ? Number(myCoAff.investmentCategory) : null;
+  const totalEnrolled      = programData?.totalEnrolled ?? 0;
+  const spotsRemaining     = programData?.spotsRemaining ?? CO_AFFILIATE_PROGRAM.TARGET;
+  const pricing            = programData?.pricing ?? [];
+  const progress           = programData?.progress ?? { overallPct: 0, pctToNext: 0, nextMilestone: 150000, milestones: 0 };
+  const totalFundPool      = programData?.totalFundPool ?? 0;
+  const totalAffiliatePool = programData?.totalAffiliatePool ?? 0;
+  const isEnrolled         = !!myCoAff;
+  const myCategory         = myCoAff ? Number(myCoAff.investmentCategory) : null;
+  const myProfit           = myCoAff ? parseFloat(myCoAff.myProfit ?? "0") : 0;
+  const myAmountPaid       = myCoAff ? parseFloat(myCoAff.amountPaid) : 0;
+  const mySharePct         = myCoAff ? (parseFloat(myCoAff.sharePercentage) * 100).toFixed(6) : "0";
   const tradeBalance   = parseFloat(tradeWallet?.tradeBalance ?? "0");
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);
@@ -548,9 +553,19 @@ export default function AffiliateDashboard() {
                           </div>
                         </div>
                         {isEnrolled && myCoAff ? (
-                          <div className="space-y-1">
-                            <p className="text-xs text-green-600 dark:text-green-400 font-semibold">Share: {(parseFloat(myCoAff.sharePercentage) * 100).toFixed(6)}% lifetime</p>
-                            <p className="text-xs text-amber-600 dark:text-amber-400">Reserve: ${(parseFloat(myCoAff.amountPaid) * 0.20).toFixed(2)} ring-fenced ✓</p>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-muted-foreground">My Profit</p>
+                              <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-overview-my-profit">${myProfit.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-muted-foreground">Invested</p>
+                              <p className="text-xs font-semibold">${myAmountPaid.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-muted-foreground">Share</p>
+                              <p className="text-xs text-green-600 dark:text-green-400 font-medium">{mySharePct}% lifetime</p>
+                            </div>
                           </div>
                         ) : (
                           <p className="text-xs text-muted-foreground">Tap to join the Trust Fund →</p>
@@ -822,6 +837,33 @@ export default function AffiliateDashboard() {
                   <p className="text-muted-foreground text-sm mb-2">Invest once, earn lifetime profit share — exclusively for affiliate accounts.</p>
                 </motion.div>
 
+                {/* ── Fund Stats (always visible) ── */}
+                <motion.div variants={itemVariants}>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Card className="shadow-md border-0 text-center" data-testid="stat-total-fund-pool">
+                      <CardContent className="pt-5 pb-4">
+                        <div className="text-2xl font-extrabold text-primary">${totalFundPool.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="text-xs text-muted-foreground mt-1 font-medium">Total Fund Pool</div>
+                        <div className="text-[10px] text-muted-foreground">invested by all participants</div>
+                      </CardContent>
+                    </Card>
+                    <Card className="shadow-md border-0 text-center" data-testid="stat-total-profit-pool">
+                      <CardContent className="pt-5 pb-4">
+                        <div className="text-2xl font-extrabold text-emerald-600">${totalAffiliatePool.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="text-xs text-muted-foreground mt-1 font-medium">Profit Pool</div>
+                        <div className="text-[10px] text-muted-foreground">total distributed so far</div>
+                      </CardContent>
+                    </Card>
+                    <Card className="shadow-md border-0 text-center" data-testid="stat-total-enrolled">
+                      <CardContent className="pt-5 pb-4">
+                        <div className="text-2xl font-extrabold text-tsia-gold">{totalEnrolled.toLocaleString()}</div>
+                        <div className="text-xs text-muted-foreground mt-1 font-medium">Co-Affiliates</div>
+                        <div className="text-[10px] text-muted-foreground">of {CO_AFFILIATE_PROGRAM.TARGET.toLocaleString()} max</div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </motion.div>
+
                 {/* Progress */}
                 <motion.div variants={itemVariants}>
                   <Card className="shadow-md border-0">
@@ -922,18 +964,58 @@ export default function AffiliateDashboard() {
                 {/* ── Trust Fund Growth Panel (enrolled only) ── */}
                 {isEnrolled && myCoAff && (
                   <motion.div variants={itemVariants}>
-                    <Card className="shadow-md border-0 overflow-hidden">
+                    <Card className="shadow-md border-0 overflow-hidden" data-testid="panel-trust-fund-growth">
                       <div className="bg-gradient-to-r from-green-700 to-emerald-600 text-white px-6 pt-5 pb-4">
-                        <div className="flex items-center gap-2 mb-1">
-                          <TrendingUp className="w-5 h-5" />
-                          <h3 className="font-bold text-lg">Your Trust Fund Growth</h3>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <TrendingUp className="w-5 h-5" />
+                            <h3 className="font-bold text-lg">Your Trust Fund Growth</h3>
+                          </div>
+                          <Badge className="bg-white/20 text-white border-0 text-xs">Active · Lifetime</Badge>
                         </div>
-                        <p className="text-green-100 text-xs">Active co-affiliate · Lifetime participation confirmed</p>
+                        <p className="text-green-100 text-xs">Co-Affiliate enrolled — profit participation confirmed</p>
                       </div>
-                      <CardContent className="pt-5">
+                      <CardContent className="pt-5 space-y-4">
+                        {/* My Profit — hero number */}
+                        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4 text-center">
+                          <p className="text-xs text-muted-foreground font-medium mb-1">My Total Profit So Far</p>
+                          <p className="text-4xl font-extrabold text-emerald-600 dark:text-emerald-400" data-testid="text-my-profit">
+                            ${myProfit.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">from ${parseFloat(myCoAff.totalAffiliatePool ?? "0").toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total profit pool</p>
+                        </div>
+
+                        {/* My investment details */}
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <div className="rounded-lg bg-muted/50 p-3">
+                            <p className="text-lg font-bold text-foreground" data-testid="text-my-investment">${myAmountPaid.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">My Investment</p>
+                          </div>
+                          <div className="rounded-lg bg-muted/50 p-3">
+                            <p className="text-lg font-bold text-foreground" data-testid="text-my-share">{mySharePct}%</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">Lifetime Share</p>
+                          </div>
+                          <div className="rounded-lg bg-muted/50 p-3">
+                            <p className="text-lg font-bold text-tsia-gold capitalize">{myCoAff.status}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">Status</p>
+                          </div>
+                        </div>
+
+                        {/* Fund pool progress bar */}
+                        <div>
+                          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                            <span className="font-medium flex items-center gap-1"><BarChart3 className="w-3 h-3" /> Fund Pool</span>
+                            <span>${totalFundPool.toLocaleString("en-US", { minimumFractionDigits: 2 })} raised</span>
+                          </div>
+                          <Progress value={Math.min(100, (totalFundPool / (CO_AFFILIATE_PROGRAM.TARGET * 100)) * 100)} className="h-2" />
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            {((totalFundPool / (CO_AFFILIATE_PROGRAM.TARGET * 100)) * 100).toFixed(4)}% of estimated ${(CO_AFFILIATE_PROGRAM.TARGET * 100).toLocaleString()} maximum fund
+                          </p>
+                        </div>
+
                         <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-3">
-                          <span>Status</span>
-                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 text-xs">Active · Lifetime</Badge>
+                          <span>Enrolled since</span>
+                          <span>{new Date(myCoAff.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</span>
                         </div>
                       </CardContent>
                     </Card>

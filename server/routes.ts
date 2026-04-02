@@ -749,9 +749,14 @@ export async function registerRoutes(
 
   app.get("/api/co-affiliate/program", async (req, res) => {
     try {
-      const totalEnrolled = await storage.getCoAffiliateCount();
+      const [totalEnrolled, totalFundPool, totalAffiliatePool] = await Promise.all([
+        storage.getCoAffiliateCount(),
+        storage.getTotalCoAffiliateFund(),
+        storage.getTotalAffiliatePool(),
+      ]);
       const pricing = getCoAffiliatePricing(totalEnrolled);
       const progress = getMilestoneProgress(totalEnrolled);
+      const TARGET_FUND = CO_AFFILIATE_PROGRAM.TARGET * 100; // estimated max fund (1M participants × avg $100)
       res.json({
         totalEnrolled,
         target: CO_AFFILIATE_PROGRAM.TARGET,
@@ -759,6 +764,9 @@ export async function registerRoutes(
         pricing,
         progress,
         spotsRemaining: CO_AFFILIATE_PROGRAM.TARGET - totalEnrolled,
+        totalFundPool,
+        totalAffiliatePool,
+        targetFund: TARGET_FUND,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -770,7 +778,11 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const record = await storage.getCoAffiliateByUser(userId);
-      res.json(record || null);
+      if (!record) return res.json(null);
+      const totalAffiliatePool = await storage.getTotalAffiliatePool();
+      const sharePercentage = parseFloat(record.sharePercentage);
+      const myProfit = totalAffiliatePool * sharePercentage;
+      res.json({ ...record, myProfit: myProfit.toFixed(6), totalAffiliatePool: totalAffiliatePool.toFixed(2) });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

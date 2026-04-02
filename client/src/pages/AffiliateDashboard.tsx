@@ -339,6 +339,16 @@ export default function AffiliateDashboard() {
     }
   }, [search]);
 
+  // Listen for chat notification deep-links — MUST be before early return to keep hooks order stable
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const chatId = (e as CustomEvent).detail?.chatId;
+      if (chatId) { setOpenChatId(chatId); setActiveSection("ecommerce"); }
+    };
+    window.addEventListener("tsia:open-chat", handler);
+    return () => window.removeEventListener("tsia:open-chat", handler);
+  }, []);
+
   if (authLoading || (!user && !authLoading)) {
     return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
@@ -365,19 +375,6 @@ export default function AffiliateDashboard() {
   const copyCode = () => { navigator.clipboard.writeText(affiliateCode); toast({ title: "Copied!", description: "Affiliate code copied." }); };
   const copyLink = () => { navigator.clipboard.writeText(referralLink); toast({ title: "Copied!", description: "Referral link copied." }); };
   const handleLogout = async () => { await logout(); setLocation("/"); };
-
-  const txTypeLabel: Record<string, string> = { deposit: "Deposit", withdraw_exchange: "Withdraw → Exchange", withdraw_bank: "Withdraw → Bank", bot_earning: "Bot Earnings" };
-  const txTypeIcon: Record<string, any> = { deposit: ArrowDownLeft, withdraw_exchange: ArrowUpRight, withdraw_bank: ArrowUpRight, bot_earning: TrendingUp };
-
-  // Listen for chat notification deep-links
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const chatId = (e as CustomEvent).detail?.chatId;
-      if (chatId) { setOpenChatId(chatId); setActiveSection("ecommerce"); }
-    };
-    window.addEventListener("tsia:open-chat", handler);
-    return () => window.removeEventListener("tsia:open-chat", handler);
-  }, []);
 
   const navigate = (s: Section) => {
     if (s === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }

@@ -339,10 +339,9 @@ export default function Signup() {
                       </div>
                     )}
                     {devOtp && (
-                      <div className="mb-4 bg-amber-50 dark:bg-amber-900/30 border-2 border-amber-400 dark:border-amber-600 rounded-xl p-4 text-center" data-testid="banner-dev-otp-signup">
-                        <p className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-1">Development Mode — Your Code</p>
-                        <p className="text-3xl font-black tracking-[0.3em] text-amber-800 dark:text-amber-300 font-mono">{devOtp}</p>
-                        <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-1">Email delivery not configured — code shown here for testing</p>
+                      <div className="mb-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-400 dark:border-amber-600 rounded-lg px-3 py-2 flex items-center justify-between gap-3" data-testid="banner-dev-otp-signup">
+                        <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide leading-tight">Dev mode<br/>code:</p>
+                        <p className="text-base font-bold tracking-widest text-amber-800 dark:text-amber-300 font-mono">{devOtp}</p>
                       </div>
                     )}
                     <form onSubmit={handleVerifyOtp} className="space-y-5">

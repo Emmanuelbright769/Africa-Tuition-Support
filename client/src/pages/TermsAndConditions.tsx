@@ -7,7 +7,7 @@ const EFFECTIVE_DATE = "1 April 2026";
 const COMPANY = "SMAKEMGGOLD Ltd";
 const RC = "1359954";
 const CONTACT_EMAIL = "legal@tsia.org";
-const ADMIN_EMAIL = "admin@tsia.org";
+const ADMIN_EMAIL = "admin@tsiforafrica.com";
 
 interface SectionProps {
   id: string;

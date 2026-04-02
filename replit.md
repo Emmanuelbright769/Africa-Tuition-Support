@@ -71,7 +71,7 @@ Full-stack education fintech platform that manages student sponsorship funding a
 ## User Roles
 - **student** - Signs up, completes onboarding (NIN + WAEC + biometric + $3 fee), gets sponsored
 - **affiliate** - Non-students who earn commission by referring eligible students; separate signup (/affiliate-signup) and dashboard (/affiliate-dashboard)
-- **admin** - Reviews verifications, processes disbursements (admin@tsia.org / admin123)
+- **admin** - Reviews verifications, processes disbursements (admin@tsiforafrica.com / admin123)
 
 ## Database Schema
 - `users` - Student, affiliate, and admin accounts (role enum: student/admin/affiliate)
@@ -122,7 +122,7 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - `/contact` - Contact Us
 
 ## Demo Access
-- Admin: admin@tsia.org / admin123
+- Admin: admin@tsiforafrica.com / admin123
 - Students: sign up through /signup (OTP shown in demo hint)
 - Affiliates: sign up through /affiliate-signup (OTP shown in demo hint)
 - OTP codes are logged to server console for development

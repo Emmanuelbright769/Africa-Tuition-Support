@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, BotMessageSquare, MessageSquare, Wallet, TrendingUp, FileCheck, Users, Package, Info, Trash2, CheckCheck, X, ArrowLeft, PiggyBank, Zap, Tag, Sparkles } from "lucide-react";
+import { Bell, BotMessageSquare, MessageSquare, Wallet, TrendingUp, FileCheck, Users, Package, Info, Trash2, CheckCheck, X, ArrowLeft, PiggyBank, Zap, Tag, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
+
+const PREVIEW_LENGTH = 90;
 
 type NotifType =
   | "bot_reminder" | "chat_message" | "order_update" | "wallet_credit"
@@ -38,24 +40,88 @@ const TYPE_META: Record<NotifType, { icon: any; color: string; bg: string; accen
 function NotifItem({ n }: { n: Notification }) {
   const meta = TYPE_META[n.type] ?? TYPE_META.system;
   const Icon = meta.icon;
+  const [expanded, setExpanded] = useState(false);
+
+  const isLong = n.message.length > PREVIEW_LENGTH;
+  const preview = isLong ? n.message.slice(0, PREVIEW_LENGTH).trimEnd() + "…" : n.message;
+
   return (
-    <div className={cn(
-      "flex gap-4 px-5 py-4 border-l-4 transition-colors",
-      meta.accent,
-      !n.isRead ? "bg-primary/5" : "bg-transparent"
-    )}>
-      <div className={cn("w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", meta.bg)}>
+    <div
+      className={cn(
+        "flex gap-4 px-5 py-4 border-l-4 transition-colors",
+        meta.accent,
+        !n.isRead ? "bg-primary/5" : "bg-transparent"
+      )}
+      data-testid={`notif-item-${n.id}`}
+    >
+      {/* Icon */}
+      <div className={cn("w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 mt-0.5", meta.bg)}>
         <Icon className={cn("w-5 h-5", meta.color)} />
       </div>
+
+      {/* Content */}
       <div className="flex-1 min-w-0">
+        {/* Title row */}
         <div className="flex items-start justify-between gap-2">
-          <p className={cn("text-sm font-bold leading-snug", !n.isRead ? "text-foreground" : "text-muted-foreground")}>{n.title}</p>
+          <p className={cn("text-sm font-bold leading-snug", !n.isRead ? "text-foreground" : "text-muted-foreground")}>
+            {n.title}
+          </p>
           {!n.isRead && <span className="w-2.5 h-2.5 rounded-full bg-tsia-green shrink-0 mt-1" />}
         </div>
-        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{n.message}</p>
-        <p className="text-xs text-muted-foreground/60 mt-1.5">
-          {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
-        </p>
+
+        {/* Message — preview or full */}
+        <AnimatePresence initial={false} mode="wait">
+          {expanded ? (
+            <motion.p
+              key="full"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.22, ease: "easeInOut" }}
+              className="text-sm text-foreground/80 mt-1 leading-relaxed overflow-hidden"
+              data-testid={`notif-message-full-${n.id}`}
+            >
+              {n.message}
+            </motion.p>
+          ) : (
+            <motion.p
+              key="preview"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="text-sm text-muted-foreground mt-1 leading-relaxed"
+              data-testid={`notif-message-preview-${n.id}`}
+            >
+              {preview}
+            </motion.p>
+          )}
+        </AnimatePresence>
+
+        {/* Footer row: timestamp + View button */}
+        <div className="flex items-center justify-between mt-2 gap-2">
+          <p className="text-xs text-muted-foreground/60">
+            {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+          </p>
+          {isLong && (
+            <button
+              onClick={() => setExpanded(v => !v)}
+              data-testid={`button-notif-view-${n.id}`}
+              className={cn(
+                "flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full border transition-all",
+                expanded
+                  ? "border-muted-foreground/30 text-muted-foreground hover:bg-muted"
+                  : "border-tsia-green/40 text-tsia-green bg-tsia-green/5 hover:bg-tsia-green/10"
+              )}
+            >
+              {expanded ? (
+                <><ChevronUp className="w-3 h-3" /> Hide</>
+              ) : (
+                <><ChevronDown className="w-3 h-3" /> View</>
+              )}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

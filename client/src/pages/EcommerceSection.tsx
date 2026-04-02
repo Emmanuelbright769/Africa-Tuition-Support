@@ -364,31 +364,29 @@ function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
     <AnimatePresence>
       {open && (
         <>
-          <motion.div key="cart-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
           <motion.div key="cart-panel"
-            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[88vh] flex flex-col"
+            className="fixed inset-0 z-50 bg-card flex flex-col"
             data-testid="cart-drawer"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b shrink-0">
-              <div className="flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5 text-tsia-green" />
-                <h3 className="font-bold text-lg">My Cart</h3>
-                {cartIds.size > 0 && (
-                  <span className="w-6 h-6 bg-tsia-green text-white text-xs font-bold rounded-full flex items-center justify-center">{cartIds.size}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {cartIds.size > 0 && (
-                  <button onClick={onClearAll} className="text-xs text-red-500 font-semibold hover:text-red-700 transition-colors">Clear all</button>
-                )}
-                <button onClick={onClose} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                  <X className="w-4 h-4" />
+            <div className="flex items-center justify-between px-4 py-4 border-b shrink-0 bg-card/95 backdrop-blur-sm sticky top-0 z-10">
+              <div className="flex items-center gap-3">
+                <button onClick={onClose} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center active:scale-95 transition-transform" data-testid="btn-cart-close">
+                  <ChevronLeft className="w-5 h-5" />
                 </button>
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5 text-tsia-green" />
+                  <h3 className="font-bold text-lg">My Cart</h3>
+                  {cartIds.size > 0 && (
+                    <span className="w-6 h-6 bg-tsia-green text-white text-xs font-bold rounded-full flex items-center justify-center">{cartIds.size}</span>
+                  )}
+                </div>
               </div>
+              {cartIds.size > 0 && (
+                <button onClick={onClearAll} className="text-xs text-red-500 font-semibold hover:text-red-700 transition-colors">Clear all</button>
+              )}
             </div>
 
             {/* Out-of-stock warning */}
@@ -618,9 +616,7 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
   const orig = originalPrice(product.price);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
   return (
-    <>
     <div
       onClick={onView}
       data-testid={`card-featured-${product.id}`}
@@ -629,18 +625,10 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
       <div className="relative w-40 h-44 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700">
         {img ? (
           <img src={img} alt={product.title}
-            className="w-full h-full object-cover cursor-zoom-in"
-            onClick={e => { e.stopPropagation(); setLightboxOpen(true); }}
+            className="w-full h-full object-cover"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-4xl">{CATEGORY_ICONS[product.category] || "📦"}</div>
-        )}
-        {img && (
-          <button onClick={e => { e.stopPropagation(); setLightboxOpen(true); }}
-            className="absolute bottom-2 right-2 w-6 h-6 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
-            data-testid={`btn-featured-expand-${product.id}`}>
-            <Expand className="w-3 h-3 text-white" />
-          </button>
         )}
         <button onClick={e => { e.stopPropagation(); onWishlist(); }}
           className="absolute top-2 right-2 w-7 h-7 bg-white/90 dark:bg-slate-800/90 rounded-full flex items-center justify-center">
@@ -677,8 +665,6 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
         </div>
       </div>
     </div>
-    {product.images?.length ? <ImageLightbox images={product.images} open={lightboxOpen} onClose={() => setLightboxOpen(false)} /> : null}
-    </>
   );
 }
 

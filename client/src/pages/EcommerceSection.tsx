@@ -224,9 +224,168 @@ function SellerStories({ products }: { products: Product[] }) {
   );
 }
 
+// ─── Cart Drawer ───────────────────────────────────────────────────────────
+function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
+  open: boolean; onClose: () => void; cartIds: Set<number>;
+  onBuy: (product: Product) => void; onRemove: (id: number) => void; onClearAll: () => void;
+}) {
+  const { formatAmount } = useLocalCurrency();
+  const { data: allProducts = [], isLoading } = useQuery<Product[]>({
+    queryKey: ["/api/products/browse-all"],
+    queryFn: async () => {
+      const res = await fetch("/api/products", { credentials: "include" });
+      return res.json();
+    },
+    enabled: open && cartIds.size > 0,
+    staleTime: 30_000,
+  });
+
+  const cartItems = (allProducts as Product[]).filter(p => cartIds.has(p.id));
+  const stalePids = [...cartIds].filter(id => !allProducts.find(p => p.id === id));
+  const outOfStockCount = cartItems.filter(p => p.stock === 0).length;
+  const totalValue = cartItems.reduce((s, p) => s + parseFloat(p.price), 0);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div key="cart-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+          <motion.div key="cart-panel"
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[88vh] flex flex-col"
+            data-testid="cart-drawer"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b shrink-0">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-tsia-green" />
+                <h3 className="font-bold text-lg">My Cart</h3>
+                {cartIds.size > 0 && (
+                  <span className="w-6 h-6 bg-tsia-green text-white text-xs font-bold rounded-full flex items-center justify-center">{cartIds.size}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {cartIds.size > 0 && (
+                  <button onClick={onClearAll} className="text-xs text-red-500 font-semibold hover:text-red-700 transition-colors">Clear all</button>
+                )}
+                <button onClick={onClose} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Out-of-stock warning */}
+            {outOfStockCount > 0 && (
+              <div className="mx-5 mt-4 shrink-0 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span><strong>{outOfStockCount}</strong> item{outOfStockCount > 1 ? "s are" : " is"} out of stock — you cannot order {outOfStockCount > 1 ? "them" : "it"} right now.</span>
+              </div>
+            )}
+
+            {/* Items */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {cartIds.size === 0 ? (
+                <div className="text-center py-16">
+                  <ShoppingCart className="w-14 h-14 text-muted-foreground/20 mx-auto mb-3" />
+                  <p className="font-semibold mb-1">Your cart is empty</p>
+                  <p className="text-muted-foreground text-sm">Browse the marketplace and save items here.</p>
+                </div>
+              ) : isLoading ? (
+                <div className="space-y-3">
+                  {[1,2,3].map(i => <div key={i} className="h-20 rounded-2xl bg-muted animate-pulse" />)}
+                </div>
+              ) : (
+                <>
+                  {cartItems.map(p => {
+                    const img = p.images?.[0];
+                    const outOfStock = p.stock === 0;
+                    return (
+                      <div key={p.id} data-testid={`cart-item-${p.id}`}
+                        className={`flex items-center gap-3 rounded-2xl border p-3 transition-all ${outOfStock ? "bg-red-50/50 dark:bg-red-900/10 border-red-200 dark:border-red-800 opacity-80" : "bg-card border-border hover:shadow-sm"}`}
+                      >
+                        {/* Image */}
+                        <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-muted shrink-0">
+                          {img ? <img src={img} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-2xl">{CATEGORY_ICONS[p.category]}</div>}
+                          {outOfStock && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                              <span className="text-[9px] font-bold text-white text-center leading-tight px-1">OUT OF STOCK</span>
+                            </div>
+                          )}
+                        </div>
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm line-clamp-1">{p.title}</p>
+                          <p className="text-xs text-muted-foreground capitalize">{p.condition}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-sm font-black text-tsia-green">${parseFloat(p.price).toFixed(2)}</span>
+                            <span className="text-[11px] text-muted-foreground">{formatAmount(parseFloat(p.price))}</span>
+                            {p.negotiable && <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">NEGO</span>}
+                          </div>
+                          {outOfStock ? (
+                            <span className="text-[11px] font-bold text-red-500 flex items-center gap-1 mt-0.5"><AlertCircle className="w-3 h-3" />Out of stock</span>
+                          ) : (
+                            <span className="text-[11px] text-tsia-green font-medium">{p.stock} available</span>
+                          )}
+                        </div>
+                        {/* Actions */}
+                        <div className="flex flex-col gap-1.5 shrink-0">
+                          <button
+                            onClick={() => { onBuy(p); }}
+                            disabled={outOfStock}
+                            data-testid={`btn-cart-buy-${p.id}`}
+                            className="h-8 px-3 bg-tsia-green hover:bg-tsia-green/90 text-white text-xs font-bold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                          >
+                            {outOfStock ? "Unavailable" : "Buy"}
+                          </button>
+                          <button
+                            onClick={() => onRemove(p.id)}
+                            data-testid={`btn-cart-remove-${p.id}`}
+                            className="h-8 px-3 border border-red-200 text-red-500 text-xs font-medium rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Products removed from platform */}
+                  {stalePids.map(id => (
+                    <div key={id} className="flex items-center gap-3 rounded-2xl border border-dashed border-muted-foreground/20 p-3 opacity-60">
+                      <div className="w-16 h-16 rounded-xl bg-muted shrink-0 flex items-center justify-center"><Package className="w-6 h-6 text-muted-foreground" /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-muted-foreground">Product no longer available</p>
+                        <p className="text-xs text-muted-foreground">This listing was removed by the seller.</p>
+                      </div>
+                      <button onClick={() => onRemove(id)} className="h-8 px-3 border text-xs font-medium rounded-xl hover:bg-muted transition-all">Remove</button>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            {/* Footer total */}
+            {cartItems.length > 0 && (
+              <div className="p-5 border-t shrink-0 bg-muted/30">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm text-muted-foreground">Estimated total ({cartItems.length} item{cartItems.length !== 1 ? "s" : ""})</span>
+                  <span className="font-black text-lg text-tsia-green">${totalValue.toFixed(2)}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground text-center">Prices may vary after P2P negotiation. Buy each item separately via the P2P order flow.</p>
+              </div>
+            )}
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
 // ─── Product Card (Grid) ───────────────────────────────────────────────────
-function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
+function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
+  inCart: boolean; onCart: () => void;
 }) {
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
@@ -290,14 +449,24 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
             </div>
             <p className="text-[10px] text-muted-foreground">{formatAmount(parseFloat(product.price))}</p>
           </div>
-          <button
-            onClick={e => { e.stopPropagation(); onBuy(); }}
-            disabled={product.stock === 0}
-            data-testid={`btn-buy-${product.id}`}
-            className="w-8 h-8 bg-tsia-green rounded-full flex items-center justify-center shadow-md hover:bg-tsia-green/90 disabled:opacity-40 transition-all hover:scale-105"
-          >
-            <ArrowLeftRight className="w-3.5 h-3.5 text-white" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={e => { e.stopPropagation(); onCart(); }}
+              data-testid={`btn-cart-add-${product.id}`}
+              title={inCart ? "Remove from cart" : "Add to cart"}
+              className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition-all hover:scale-105 border ${inCart ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground hover:border-tsia-green hover:text-tsia-green"}`}
+            >
+              <ShoppingCart className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); onBuy(); }}
+              disabled={product.stock === 0}
+              data-testid={`btn-buy-${product.id}`}
+              className="w-8 h-8 bg-tsia-green rounded-full flex items-center justify-center shadow-md hover:bg-tsia-green/90 disabled:opacity-40 transition-all hover:scale-105"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5 text-white" />
+            </button>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -305,8 +474,9 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
 }
 
 // ─── Featured Card (Horizontal scroll) ────────────────────────────────────
-function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist }: {
+function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
+  inCart: boolean; onCart: () => void;
 }) {
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
@@ -327,6 +497,11 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist }: {
           className="absolute top-2 right-2 w-7 h-7 bg-white/90 dark:bg-slate-800/90 rounded-full flex items-center justify-center">
           <Heart className={`w-3.5 h-3.5 ${wishlisted ? "fill-red-500 text-red-500" : "text-slate-400"}`} />
         </button>
+        {product.stock === 0 && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+            <span className="text-white text-[9px] font-bold bg-black/60 px-2 py-0.5 rounded-full">Out of Stock</span>
+          </div>
+        )}
       </div>
       <div className="p-2.5">
         <p className="text-[12px] font-semibold line-clamp-2 leading-snug mb-1">{product.title}</p>
@@ -336,11 +511,20 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist }: {
             <p className="text-[10px] text-muted-foreground line-through">${orig}</p>
             <p className="text-[9px] text-muted-foreground">{formatAmount(parseFloat(product.price))}</p>
           </div>
-          <button onClick={e => { e.stopPropagation(); onBuy(); }}
-            className="w-7 h-7 bg-tsia-gold rounded-full flex items-center justify-center shadow hover:scale-105 transition-transform"
-            data-testid={`btn-featured-buy-${product.id}`}>
-            <ArrowLeftRight className="w-3 h-3 text-slate-900" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={e => { e.stopPropagation(); onCart(); }}
+              data-testid={`btn-featured-cart-${product.id}`}
+              title={inCart ? "Remove from cart" : "Add to cart"}
+              className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all hover:scale-105 ${inCart ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground"}`}>
+              <ShoppingCart className="w-3 h-3" />
+            </button>
+            <button onClick={e => { e.stopPropagation(); onBuy(); }}
+              disabled={product.stock === 0}
+              className="w-7 h-7 bg-tsia-gold rounded-full flex items-center justify-center shadow hover:scale-105 transition-transform disabled:opacity-40"
+              data-testid={`btn-featured-buy-${product.id}`}>
+              <ArrowLeftRight className="w-3 h-3 text-slate-900" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -640,7 +824,7 @@ function P2PTradeModal({ product, open, onClose, walletBalance, onChat }: {
 }
 
 // ─── Product Detail Modal ──────────────────────────────────────────────────
-function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }: { product: Product | null; open: boolean; onClose: () => void; onBuy: () => void; onChat?: () => void; isSeller?: boolean }) {
+function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, inCart, onCart }: { product: Product | null; open: boolean; onClose: () => void; onBuy: () => void; onChat?: () => void; isSeller?: boolean; inCart?: boolean; onCart?: () => void }) {
   const { formatAmount } = useLocalCurrency();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -820,6 +1004,17 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }:
             {product.negotiable ? "Negotiate & Trade" : "Place P2P Order"}
             {" "}— ${parseFloat(product.price).toFixed(2)}
           </Button>
+          {onCart && (
+            <Button
+              variant="outline"
+              onClick={onCart}
+              className={`w-full rounded-2xl font-semibold h-11 transition-all ${inCart ? "border-tsia-green text-tsia-green bg-tsia-green/5" : ""}`}
+              data-testid={`btn-detail-cart-${product.id}`}
+            >
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              {inCart ? "Remove from Cart" : "Save to Cart"}
+            </Button>
+          )}
           {!isSeller && onChat && (
             <Button variant="outline" onClick={onChat} className="w-full rounded-2xl font-semibold h-11" data-testid={`btn-detail-chat-${product.id}`}>
               <MessageCircle className="w-4 h-4 mr-2" /> Chat with Seller
@@ -859,6 +1054,10 @@ export default function EcommerceSection() {
   const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
   const [chatProduct, setChatProduct] = useState<Product | null>(null);
   const [chatProductOpen, setChatProductOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [cart, setCart] = useState<Set<number>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("tsia_cart") || "[]")); } catch { return new Set(); }
+  });
 
   const { data: wallet } = useQuery<any>({ queryKey: ["/api/wallet"] });
   const walletBalance = parseFloat(wallet?.balance ?? "0");
@@ -877,7 +1076,19 @@ export default function EcommerceSection() {
   const { data: myListings = [] } = useQuery<Product[]>({ queryKey: ["/api/products/my"], enabled: tab === "my-listings" });
   const { data: purchases = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/purchases"], enabled: tab === "purchases" });
   const { data: sales = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/sales"], enabled: tab === "sales" });
-  const { data: cartItems = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/purchases"] });
+
+  const toggleCart = (id: number) => {
+    setCart(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      try { localStorage.setItem("tsia_cart", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
 
   const toggleWishlist = (id: number) => {
     setWishlist(prev => {
@@ -934,11 +1145,11 @@ export default function EcommerceSection() {
             className="relative w-10 h-10 bg-card rounded-full border flex items-center justify-center shadow-sm hover:shadow transition-shadow">
             <MessageCircle className="w-5 h-5" />
           </button>
-          <button onClick={() => { setTab("purchases"); }} data-testid="btn-cart" className="relative w-10 h-10 bg-card rounded-full border flex items-center justify-center shadow-sm hover:shadow transition-shadow">
+          <button onClick={() => setCartOpen(true)} data-testid="btn-cart" className="relative w-10 h-10 bg-card rounded-full border flex items-center justify-center shadow-sm hover:shadow transition-shadow">
             <ShoppingCart className="w-5 h-5" />
-            {(cartItems as Order[]).length > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                {Math.min((cartItems as Order[]).length, 99)}
+            {cart.size > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-tsia-green text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                {Math.min(cart.size, 99)}
               </span>
             )}
           </button>
@@ -1016,7 +1227,7 @@ export default function EcommerceSection() {
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
                   {featured.map(p => (
-                    <FeaturedCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} />
+                    <FeaturedCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} />
                   ))}
                 </div>
               )}
@@ -1054,7 +1265,7 @@ export default function EcommerceSection() {
                 {filterViewMode === "grid" ? (
                   <div className="grid grid-cols-2 gap-3">
                     {gridProducts.map(p => (
-                      <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} />
+                      <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} />
                     ))}
                   </div>
                 ) : (
@@ -1074,9 +1285,17 @@ export default function EcommerceSection() {
                               <span className="text-[11px] text-muted-foreground line-through">${originalPrice(p.price)}</span>
                             </div>
                           </div>
-                          <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-9 h-9 bg-tsia-green rounded-xl flex items-center justify-center shrink-0" title="Place P2P Order">
-                            <ArrowLeftRight className="w-4 h-4 text-white" />
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={e => { e.stopPropagation(); toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }}
+                              data-testid={`btn-list-cart-${p.id}`}
+                              className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all shrink-0 ${cart.has(p.id) ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground"}`}
+                              title={cart.has(p.id) ? "Remove from cart" : "Add to cart"}>
+                              <ShoppingCart className="w-4 h-4" />
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-9 h-9 bg-tsia-green rounded-xl flex items-center justify-center shrink-0" title="Place P2P Order">
+                              <ArrowLeftRight className="w-4 h-4 text-white" />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -1244,6 +1463,13 @@ export default function EcommerceSection() {
         onBuy={() => { setDetailOpen(false); setBuyProduct(selectedProduct); setBuyOpen(true); }}
         isSeller={selectedProduct?.sellerId === user?.id}
         onChat={() => { setDetailOpen(false); setChatProduct(selectedProduct); setChatProductOpen(true); }}
+        inCart={selectedProduct ? cart.has(selectedProduct.id) : false}
+        onCart={() => {
+          if (!selectedProduct) return;
+          const wasIn = cart.has(selectedProduct.id);
+          toggleCart(selectedProduct.id);
+          toast({ title: wasIn ? "Removed from cart" : "Saved to cart", description: wasIn ? `${selectedProduct.title} removed.` : `${selectedProduct.title} saved to your cart.` });
+        }}
       />
       <P2PTradeModal
         product={buyProduct}
@@ -1255,6 +1481,25 @@ export default function EcommerceSection() {
 
       {/* Chat components */}
       <EcommerceChatDrawer open={chatDrawerOpen} onClose={() => setChatDrawerOpen(false)} />
+
+      <CartDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        cartIds={cart}
+        onBuy={p => { setCartOpen(false); handleBuy(p); }}
+        onRemove={id => {
+          setCart(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            try { localStorage.setItem("tsia_cart", JSON.stringify([...next])); } catch {}
+            return next;
+          });
+        }}
+        onClearAll={() => {
+          setCart(new Set());
+          try { localStorage.removeItem("tsia_cart"); } catch {}
+        }}
+      />
       {chatProduct && (
         <ProductChatModal
           productId={chatProduct.id}

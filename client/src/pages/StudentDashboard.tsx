@@ -219,50 +219,65 @@ export default function StudentDashboard() {
                 </button>
               </div>
               <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                {NAV_ITEMS.map(item => {
+                {/* Top-level flat items: Overview, Fintech Hub, Personal Wallet */}
+                {NAV_ITEMS.filter(item => ["overview", "fintech", "wallet"].includes(item.id)).map(item => {
                   const isActive = activeSection === item.id;
-                  const isWallet = item.id === "wallet";
                   return (
-                    <div key={item.id}>
+                    <button key={item.id} onClick={() => { navigate(item.id); setMenuOpen(false); }}
+                      data-testid={`nav-${item.id}`}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                        isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-muted text-foreground'
+                      }`}>
+                      <item.icon className="w-4 h-4 shrink-0" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+
+                {/* More Services collapsible group */}
+                {(() => {
+                  const serviceItems = NAV_ITEMS.filter(item => !["overview", "fintech", "wallet"].includes(item.id));
+                  const anyServiceActive = serviceItems.some(i => i.id === activeSection);
+                  const isOpen = servicesExpanded || anyServiceActive;
+                  return (
+                    <div>
                       <button
-                        onClick={() => { navigate(item.id); if (isWallet) setWalletExpanded(v => !v); }}
-                        data-testid={`nav-${item.id}`}
+                        onClick={() => setServicesExpanded(v => !v)}
                         className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                          isActive
-                            ? 'bg-primary text-primary-foreground shadow-sm'
-                            : 'hover:bg-muted text-foreground'
+                          anyServiceActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <item.icon className="w-4 h-4 shrink-0" />
-                          <span>{item.label}</span>
+                          <LayoutGrid className="w-4 h-4 shrink-0" />
+                          <span>More Services</span>
                         </div>
-                        <div className="flex items-center gap-1">
-                          {item.badge && (
-                            <Badge className="text-[10px] py-0 px-2 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold">{item.badge}</Badge>
-                          )}
-                          {isWallet && <ChevronDown className={`w-3.5 h-3.5 transition-transform ${walletExpanded ? "rotate-180" : ""}`} />}
-                        </div>
+                        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
                       </button>
-                      {/* Wallet sub-menu */}
-                      {isWallet && walletExpanded && (
+                      {isOpen && (
                         <div className="ml-4 mt-1 space-y-0.5 border-l-2 border-primary/20 pl-3">
-                          {[
-                            { label: "Deposit", icon: ArrowDownLeft },
-                            { label: "Withdraw", icon: ArrowUpRight },
-                            { label: "Bill Pay", icon: Zap },
-                          ].map(sub => (
-                            <button key={sub.label} onClick={() => navigate("wallet")}
-                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                              <sub.icon className="w-3.5 h-3.5 shrink-0" />
-                              <span>{sub.label}</span>
-                            </button>
-                          ))}
+                          {serviceItems.map(item => {
+                            const isActive = activeSection === item.id;
+                            return (
+                              <button key={item.id} onClick={() => { navigate(item.id); setMenuOpen(false); }}
+                                data-testid={`nav-${item.id}`}
+                                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                  isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                                }`}>
+                                <div className="flex items-center gap-2">
+                                  <item.icon className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{item.label}</span>
+                                </div>
+                                {item.badge && (
+                                  <Badge className="text-[10px] py-0 px-2 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold">{item.badge}</Badge>
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
                   );
-                })}
+                })()}
               </nav>
               <div className="p-4 border-t">
                 <Button variant="outline" className="w-full" onClick={handleLogout}>

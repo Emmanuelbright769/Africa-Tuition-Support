@@ -5,7 +5,9 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, users, loans, transactions, tradeTransactions, orders, wallets, verifications, coAffiliates } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, ne, and, sql } from "drizzle-orm";
 
 const PgSession = pgSession(session);
 
@@ -1129,7 +1131,7 @@ export async function registerRoutes(
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
 
-      const { approve } = req.body;
+      const { approve, reason } = req.body;
       const vId = parseInt(req.params.verificationId);
       const status = approve ? "verified" : "rejected";
       const updated = await storage.updateVerification(vId, { status });
@@ -1138,11 +1140,11 @@ export async function registerRoutes(
         await storage.createNotification({
           userId: updated.userId,
           type: "verification_update",
-          title: approve ? "Verification Approved" : "Verification Update",
+          title: approve ? "Verification Approved ✓" : "Verification Update",
           message: approve
-            ? "Congratulations! Your identity has been verified. You now have full access to all TSIA features."
-            : "Your verification was not approved. Please contact support or resubmit your documents.",
-          data: { verificationId: vId, status },
+            ? "Congratulations! Your identity has been verified. You now have full access to all TSIA features and your wallet will be funded shortly."
+            : `Your verification was not approved. ${reason ? `Reason: ${reason}` : "Please contact support or resubmit your documents."}`,
+          data: { verificationId: vId, status, reason },
           isRead: false,
         });
       } catch { /* non-critical */ }
@@ -1201,6 +1203,283 @@ export async function registerRoutes(
       totalDisbursementValue: pendingDisbursements.reduce((sum, d) => sum + parseFloat(d.amount), 0).toFixed(2),
     });
   });
+
+  // ─── ADMIN: Enhanced stats ────────────────────────────────────────────────────
+  app.get("/api/admin/enhanced-stats", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const [allStudents, allAffiliates, pendingVerifications, pendingDisbursements] = await Promise.all([
+        storage.getAllStudents(),
+        db.select().from(users).where(eq(users.role, "affiliate")),
+        storage.getPendingVerifications(),
+        storage.getPendingDisbursements(),
+      ]);
+      const [allLoans, allTxns, reserveFund, allOrders] = await Promise.all([
+        db.select().from(loans),
+        db.select().from(transactions).orderBy(desc(transactions.createdAt)).limit(200),
+        storage.getTradeReserveFund(),
+        db.select().from(orders),
+      ]);
+
+      const pendingLoans = allLoans.filter(l => l.status === "pending").length;
+      const totalCommission = allOrders.reduce((s, o) => s + parseFloat(o.commission || "0"), 0);
+      const totalDisbursed = allTxns.filter(t => t.type === "sponsorship_credit").reduce((s, t) => s + parseFloat(t.amount), 0);
+      const totalFeeRevenue = allTxns.filter(t => t.type === "verification_fee").reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+      const verifiedStudents = allStudents.length; // full list
+      const coAffiliateCount = await storage.getCoAffiliateCount();
+
+      res.json({
+        totalStudents: allStudents.length,
+        totalAffiliates: allAffiliates.length,
+        totalCoAffiliates: coAffiliateCount,
+        pendingVerifications: pendingVerifications.length,
+        pendingDisbursements: pendingDisbursements.length,
+        pendingLoans,
+        totalLoans: allLoans.length,
+        activeLoans: allLoans.filter(l => l.status === "active").length,
+        totalDisbursed: totalDisbursed.toFixed(2),
+        totalFeeRevenue: totalFeeRevenue.toFixed(2),
+        totalEcommerceCommission: totalCommission.toFixed(2),
+        tradeReserveBalance: reserveFund.total_balance,
+        totalOrders: allOrders.length,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: All users ────────────────────────────────────────────────────────
+  app.get("/api/admin/all-users", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const allUsers = await db.select().from(users).where(ne(users.role, "admin")).orderBy(desc(users.createdAt));
+      const enriched = await Promise.all(
+        allUsers.map(async (u) => {
+          const wallet = await storage.getOrCreateWallet(u.id);
+          const verification = await storage.getVerificationByUser(u.id);
+          return { ...u, password: undefined, wallet, verification };
+        })
+      );
+      res.json(enriched);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: All affiliates ───────────────────────────────────────────────────
+  app.get("/api/admin/affiliates-all", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const affiliates = await db.select().from(users).where(eq(users.role, "affiliate")).orderBy(desc(users.createdAt));
+      const enriched = await Promise.all(
+        affiliates.map(async (a) => {
+          const wallet = await storage.getOrCreateWallet(a.id);
+          const coAffiliate = await storage.getCoAffiliateByUser(a.id);
+          const referrals = await storage.getReferralsByCode(a.affiliateCode || "");
+          const tradeWallet = await storage.getOrCreateTradeWallet(a.id);
+          return { ...a, password: undefined, wallet, coAffiliate, referralCount: referrals.length, tradeWallet };
+        })
+      );
+      res.json(enriched);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: All loans ────────────────────────────────────────────────────────
+  app.get("/api/admin/loans-all", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const allLoans = await db.select().from(loans).orderBy(desc(loans.createdAt));
+      const enriched = await Promise.all(
+        allLoans.map(async (l) => {
+          const loanUser = await storage.getUser(l.userId);
+          return { ...l, user: loanUser ? { id: loanUser.id, firstName: loanUser.firstName, lastName: loanUser.lastName, email: loanUser.email, role: loanUser.role } : null };
+        })
+      );
+      res.json(enriched);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Update loan status ───────────────────────────────────────────────
+  app.post("/api/admin/loans/:id/status", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const { status } = req.body;
+      const loanId = parseInt(req.params.id);
+      if (!["approved", "active", "rejected"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+
+      const loan = await storage.updateLoan(loanId, {
+        status,
+        ...(status === "active" ? { disbursedAt: new Date() } : {}),
+      });
+
+      if (status === "active") {
+        await storage.updateWalletBalance(loan.userId, loan.amountUsd);
+        await storage.createTransaction({
+          userId: loan.userId, type: "sponsorship_credit",
+          amount: loan.amountUsd,
+          description: `Loan disbursed: $${loan.amountUsd} (${loan.userRole} loan)`,
+        });
+        await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Disbursed", message: `Your $${loan.amountUsd} loan has been approved and credited to your wallet.`, data: { loanId: loan.id }, isRead: false });
+      } else if (status === "rejected") {
+        await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Application Update", message: "Your loan application was not approved at this time. Please contact support for more information.", data: { loanId: loan.id }, isRead: false });
+      }
+      res.json(loan);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: All transactions ─────────────────────────────────────────────────
+  app.get("/api/admin/transactions-all", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const txns = await db.select().from(transactions).orderBy(desc(transactions.createdAt)).limit(200);
+      const enriched = await Promise.all(
+        txns.map(async (t) => {
+          const txUser = await storage.getUser(t.userId);
+          return { ...t, user: txUser ? { firstName: txUser.firstName, lastName: txUser.lastName, email: txUser.email, role: txUser.role } : null };
+        })
+      );
+      res.json(enriched);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: E-commerce stats ─────────────────────────────────────────────────
+  app.get("/api/admin/ecommerce-stats", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const allProducts = await storage.getProducts({});
+      const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt)).limit(100);
+      const enrichedOrders = await Promise.all(
+        allOrders.map(async (o) => {
+          const buyer = await storage.getUser(o.buyerId);
+          const seller = await storage.getUser(o.sellerId);
+          const product = await storage.getProductById(o.productId);
+          return { ...o, buyer: buyer ? { firstName: buyer.firstName, lastName: buyer.lastName, email: buyer.email } : null, seller: seller ? { firstName: seller.firstName, lastName: seller.lastName, email: seller.email } : null, product: product ? { title: product.title } : null };
+        })
+      );
+      const totalCommission = allOrders.reduce((s, o) => s + parseFloat(o.commission || "0"), 0);
+      res.json({
+        totalProducts: allProducts.length,
+        activeProducts: allProducts.filter(p => p.status === "active").length,
+        soldProducts: allProducts.filter(p => p.status === "sold").length,
+        totalOrders: allOrders.length,
+        completedOrders: allOrders.filter(o => o.status === "delivered").length,
+        totalCommission: totalCommission.toFixed(2),
+        recentOrders: enrichedOrders,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Trade market stats ───────────────────────────────────────────────
+  app.get("/api/admin/trade-stats", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const reserveFund = await storage.getTradeReserveFund();
+      const affiliateCount = await storage.getAffiliateCount();
+      const tradeTxns = await db.select().from(tradeTransactions).orderBy(desc(tradeTransactions.createdAt)).limit(50);
+      const totalBotEarnings = tradeTxns.filter(t => t.type === "bot_earning").reduce((s, t) => s + parseFloat(t.amount), 0);
+
+      res.json({
+        reserveBalance: reserveFund.total_balance,
+        totalDeposited: reserveFund.total_deposited,
+        affiliateCount,
+        totalBotEarnings: totalBotEarnings.toFixed(2),
+        recentTransactions: tradeTxns.slice(0, 20),
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Send notification to user ───────────────────────────────────────
+  app.post("/api/admin/notify-user/:targetUserId", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const { title, message } = req.body;
+      if (!title || !message) return res.status(400).json({ message: "Title and message are required" });
+
+      const notification = await storage.createNotification({
+        userId: parseInt(req.params.targetUserId),
+        type: "verification_update", title, message, data: {}, isRead: false,
+      });
+      res.json(notification);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Bulk notify all users ────────────────────────────────────────────
+  app.post("/api/admin/notify-all", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const { title, message, role } = req.body;
+      if (!title || !message) return res.status(400).json({ message: "Title and message required" });
+
+      let targetUsers: any[];
+      if (role === "student") targetUsers = await storage.getAllStudents();
+      else if (role === "affiliate") targetUsers = await db.select().from(users).where(eq(users.role, "affiliate"));
+      else targetUsers = await db.select().from(users).where(ne(users.role, "admin"));
+
+      await Promise.all(
+        targetUsers.map(u => storage.createNotification({ userId: u.id, type: "verification_update", title, message, data: {}, isRead: false }))
+      );
+      res.json({ sent: targetUsers.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Verify with rejection reason ─────────────────────────────────────
+  // (updates the existing route to support reason field)
 
   app.post("/api/leadership/inquiry", async (req, res) => {
     try {

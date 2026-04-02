@@ -3,48 +3,133 @@ import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import { Users, DollarSign, Search, CheckCircle2, AlertCircle, TrendingUp, Building2, Wallet, FileText, LogOut, ArrowRight } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Users, DollarSign, Search, CheckCircle2, AlertCircle, TrendingUp, Building2,
+  Wallet, FileText, LogOut, ArrowRight, BarChart2, ShoppingBag, Share2,
+  ArrowLeftRight, Bell, Landmark, XCircle, AlertTriangle, RefreshCw,
+  ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 
-function ClockIcon(props: any) {
+// ─── helpers ──────────────────────────────────────────────────────────────────
+const fmtUSD = (v: any) => `$${parseFloat(v || "0").toFixed(2)}`;
+const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    verified: "bg-green-100 text-green-700 border-green-200",
+    pending: "bg-amber-100 text-amber-700 border-amber-200",
+    rejected: "bg-red-100 text-red-700 border-red-200",
+    approved: "bg-blue-100 text-blue-700 border-blue-200",
+    active: "bg-green-100 text-green-700 border-green-200",
+    repaid: "bg-slate-100 text-slate-600 border-slate-200",
+    completed: "bg-green-100 text-green-700 border-green-200",
+    delivered: "bg-green-100 text-green-700 border-green-200",
+    cancelled: "bg-red-100 text-red-700 border-red-200",
+  };
+  return <Badge variant="outline" className={`capitalize text-xs ${map[status] ?? "bg-slate-100 text-slate-600"}`}>{status || "—"}</Badge>;
+}
+
+function TierBadge({ tier }: { tier: string }) {
+  if (tier === "platinum") return <Badge className="bg-slate-800 text-white text-xs">Platinum</Badge>;
+  if (tier === "gold") return <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs" variant="outline">Gold</Badge>;
+  if (tier === "silver") return <Badge className="bg-slate-200 text-slate-700 text-xs" variant="outline">Silver</Badge>;
+  return <span className="text-slate-400 text-xs">—</span>;
+}
+
+function StatCard({ title, value, sub, icon: Icon, color }: { title: string; value: any; sub?: string; icon: any; color: string }) {
+  const colors: Record<string, string> = {
+    blue: "bg-blue-50 text-blue-600", green: "bg-green-50 text-green-600",
+    amber: "bg-amber-50 text-amber-600", purple: "bg-purple-50 text-purple-600",
+    red: "bg-red-50 text-red-600", slate: "bg-slate-100 text-slate-600",
+    tsia: "bg-tsia-green/10 text-tsia-green",
+  };
   return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-    </svg>
+    <Card className="border-0 shadow-sm hover:shadow-md transition-shadow">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between mb-3">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${colors[color]}`}>
+            <Icon className="w-5 h-5" />
+          </div>
+        </div>
+        <p className="text-2xl font-bold text-slate-900">{value}</p>
+        <p className="text-sm text-slate-500 mt-0.5">{title}</p>
+        {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
+      </CardContent>
+    </Card>
   );
 }
 
+// ─── Nav items ────────────────────────────────────────────────────────────────
+const NAV = [
+  { id: "overview",      icon: TrendingUp,     label: "Overview" },
+  { id: "applications",  icon: UserCheck,      label: "Applications",  badgeKey: "pendingVerifications" },
+  { id: "payouts",       icon: DollarSign,     label: "Disbursements", badgeKey: "pendingDisbursements" },
+  { id: "loans",         icon: Landmark,       label: "Loans",         badgeKey: "pendingLoans" },
+  { id: "users",         icon: Users,          label: "All Users" },
+  { id: "affiliates",    icon: Share2,         label: "Affiliates" },
+  { id: "transactions",  icon: ArrowLeftRight, label: "Transactions" },
+  { id: "ecommerce",     icon: ShoppingBag,    label: "E-commerce" },
+  { id: "trade",         icon: BarChart2,      label: "Trade Market" },
+  { id: "notifications", icon: Bell,           label: "Notifications" },
+];
+
+// ─── AdminDashboard ───────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("overview");
-  const [selectedVerification, setSelectedVerification] = useState<any>(null);
-  const [selectedDisbursement, setSelectedDisbursement] = useState<any>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [rejectDialog, setRejectDialog] = useState<{ open: boolean; verification: any }>({ open: false, verification: null });
+  const [rejectReason, setRejectReason] = useState("");
+  const [reviewDialog, setReviewDialog] = useState<any>(null);
+  const [loanDialog, setLoanDialog] = useState<{ open: boolean; loan: any; action: string }>({ open: false, loan: null, action: "" });
+  const [disburseDialog, setDisburseDialog] = useState<any>(null);
+  const [notifyDialog, setNotifyDialog] = useState(false);
+  const [notifyTarget, setNotifyTarget] = useState<any>(null);
+  const [notifyTitle, setNotifyTitle] = useState("");
+  const [notifyMsg, setNotifyMsg] = useState("");
+  const [notifyRole, setNotifyRole] = useState("all");
+  const [txFilter, setTxFilter] = useState("all");
+
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
 
-  const { data: stats } = useQuery({ queryKey: ["/api/admin/stats"] });
+  // ─── Queries ───────────────────────────────────────────────────────────────
+  const { data: stats }                   = useQuery({ queryKey: ["/api/admin/enhanced-stats"] });
   const { data: pendingVerifications = [] } = useQuery({ queryKey: ["/api/admin/pending-verifications"] });
   const { data: pendingDisbursements = [] } = useQuery({ queryKey: ["/api/admin/pending-disbursements"] });
-  const { data: allStudents = [] } = useQuery({ queryKey: ["/api/admin/students"] });
+  const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: activeTab === "users" });
+  const { data: allAffiliates = [] }       = useQuery({ queryKey: ["/api/admin/affiliates-all"], enabled: activeTab === "affiliates" });
+  const { data: allLoans = [] }            = useQuery({ queryKey: ["/api/admin/loans-all"], enabled: activeTab === "loans" });
+  const { data: allTransactions = [] }     = useQuery({ queryKey: ["/api/admin/transactions-all"], enabled: activeTab === "transactions" });
+  const { data: ecommerceStats }           = useQuery({ queryKey: ["/api/admin/ecommerce-stats"], enabled: activeTab === "ecommerce" });
+  const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade" });
 
+  // ─── Mutations ─────────────────────────────────────────────────────────────
   const verifyMutation = useMutation({
-    mutationFn: async ({ id, approve }: { id: number; approve: boolean }) => {
-      const res = await apiRequest("POST", `/api/admin/verify/${id}`, { approve });
+    mutationFn: async ({ id, approve, reason }: { id: number; approve: boolean; reason?: string }) => {
+      const res = await apiRequest("POST", `/api/admin/verify/${id}`, { approve, reason });
       return res.json();
     },
     onSuccess: (_, { approve }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-verifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/students"] });
-      setSelectedVerification(null);
-      toast({ title: approve ? "Student Approved" : "Application Rejected", description: approve ? "Student has been verified successfully." : "The application has been rejected." });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
+      setReviewDialog(null);
+      setRejectDialog({ open: false, verification: null });
+      setRejectReason("");
+      toast({ title: approve ? "Student Approved ✓" : "Application Rejected", description: approve ? "Verification approved. Wallet funding pending disbursement." : "Application rejected and student notified." });
     },
   });
 
@@ -55,224 +140,308 @@ export default function AdminDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-disbursements"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/students"] });
-      setSelectedDisbursement(null);
-      toast({ title: "Payout Processed", description: "Funds have been credited to the student's wallet." });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
+      setDisburseDialog(null);
+      toast({ title: "Payout Processed ✓", description: "Funds credited to student wallet successfully." });
     },
   });
 
-  const handleLogout = async () => { await logout(); setLocation("/"); };
+  const loanStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const res = await apiRequest("POST", `/api/admin/loans/${id}/status`, { status });
+      return res.json();
+    },
+    onSuccess: (_, { status }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/loans-all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
+      setLoanDialog({ open: false, loan: null, action: "" });
+      toast({ title: status === "active" ? "Loan Disbursed ✓" : status === "rejected" ? "Loan Rejected" : "Loan Updated", description: status === "active" ? "Loan amount credited to user wallet." : "Loan status updated and user notified." });
+    },
+  });
 
-  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notifyMutation = useMutation({
+    mutationFn: async () => {
+      if (notifyTarget) {
+        const res = await apiRequest("POST", `/api/admin/notify-user/${notifyTarget.id}`, { title: notifyTitle, message: notifyMsg });
+        return res.json();
+      } else {
+        const res = await apiRequest("POST", `/api/admin/notify-all`, { title: notifyTitle, message: notifyMsg, role: notifyRole });
+        return res.json();
+      }
+    },
+    onSuccess: (data: any) => {
+      setNotifyDialog(false);
+      setNotifyTarget(null);
+      setNotifyTitle("");
+      setNotifyMsg("");
+      toast({ title: "Notification Sent ✓", description: data?.sent ? `Sent to ${data.sent} users.` : "Notification delivered." });
+    },
+  });
+
+  // ─── Auth guard ────────────────────────────────────────────────────────────
+  const timerRef = useRef<any>(null);
   useEffect(() => {
     if (authLoading) return;
-    if (!user || user.role !== "admin") { redirectTimerRef.current = setTimeout(() => setLocation("/login"), 200); }
-    else if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
-    return () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current); };
+    if (!user || user.role !== "admin") { timerRef.current = setTimeout(() => setLocation("/login"), 200); }
+    return () => clearTimeout(timerRef.current);
   }, [authLoading, user]);
 
-  if (authLoading || (!user && !authLoading)) return <div className="min-h-screen flex items-center justify-center"><p>Loading...</p></div>;
+  if (authLoading || (!user && !authLoading)) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin w-8 h-8 border-4 border-tsia-green border-t-transparent rounded-full" /></div>;
 
-  const contentVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } }, exit: { opacity: 0, y: -20, transition: { duration: 0.3 } } };
+  const handleLogout = async () => { await logout(); setLocation("/"); };
+
+  const slide = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35 } }, exit: { opacity: 0, y: -12, transition: { duration: 0.25 } } };
+
+  // ─── Filtered data helpers ─────────────────────────────────────────────────
+  const q = search.toLowerCase();
+  const filteredUsers = (allUsers as any[]).filter(u =>
+    !q || `${u.firstName} ${u.lastName} ${u.email} ${u.country}`.toLowerCase().includes(q)
+  );
+  const filteredAffiliates = (allAffiliates as any[]).filter(a =>
+    !q || `${a.firstName} ${a.lastName} ${a.email} ${a.affiliateCode}`.toLowerCase().includes(q)
+  );
+  const filteredLoans = (allLoans as any[]).filter(l =>
+    !q || `${l.user?.firstName} ${l.user?.lastName} ${l.user?.email} ${l.status}`.toLowerCase().includes(q)
+  );
+  const filteredTxns = (allTransactions as any[]).filter(t =>
+    (txFilter === "all" || t.type === txFilter) &&
+    (!q || `${t.user?.firstName} ${t.user?.lastName} ${t.description}`.toLowerCase().includes(q))
+  );
+  const filteredVerifications = (pendingVerifications as any[]).filter(v =>
+    !q || `${v.user?.firstName} ${v.user?.lastName} ${v.user?.email} ${v.nin}`.toLowerCase().includes(q)
+  );
+  const filteredDisbursements = (pendingDisbursements as any[]).filter(d =>
+    !q || `${d.user?.firstName} ${d.user?.lastName} ${d.user?.email}`.toLowerCase().includes(q)
+  );
+  const filteredOrders = ((ecommerceStats as any)?.recentOrders || []).filter((o: any) =>
+    !q || `${o.buyer?.firstName} ${o.seller?.firstName} ${o.product?.title} ${o.status}`.toLowerCase().includes(q)
+  );
+
+  const badgeCounts: Record<string, number> = {
+    pendingVerifications: (pendingVerifications as any[]).length,
+    pendingDisbursements: (pendingDisbursements as any[]).length,
+    pendingLoans: (allLoans as any[]).filter((l: any) => l.status === "pending").length,
+  };
+
+  // ─── Sidebar nav ───────────────────────────────────────────────────────────
+  const SidebarContent = () => (
+    <>
+      <div className="h-16 flex items-center px-6 border-b border-slate-800 shrink-0">
+        <div className="w-8 h-8 bg-tsia-green rounded-lg flex items-center justify-center mr-3 shadow-lg shadow-tsia-green/20">
+          <span className="text-white font-bold text-sm">A</span>
+        </div>
+        <span className="text-lg font-bold text-white tracking-wide">TSIA Admin</span>
+      </div>
+      <nav className="p-4 space-y-1 flex-1 overflow-y-auto">
+        {NAV.map(item => {
+          const badge = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
+          return (
+            <button key={item.id} onClick={() => { setActiveTab(item.id); setSearch(""); setSidebarOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === item.id ? "bg-tsia-green/15 text-tsia-green border border-tsia-green/25" : "hover:bg-slate-900 hover:text-white border border-transparent text-slate-400"}`}
+            >
+              <item.icon className="w-4 h-4 shrink-0" />
+              <span className="flex-1 text-left">{item.label}</span>
+              {badge > 0 && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${activeTab === item.id ? "bg-tsia-green text-white" : "bg-red-500 text-white"}`}>{badge}</span>}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="p-4 border-t border-slate-800 shrink-0">
+        <div className="flex items-center gap-3 px-2 mb-3">
+          <div className="w-8 h-8 bg-tsia-green rounded-full flex items-center justify-center text-white text-xs font-bold">AD</div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-white truncate">Admin</p>
+            <p className="text-[11px] text-slate-500 truncate">{user?.email}</p>
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" className="w-full justify-start text-slate-400 hover:text-white hover:bg-slate-900 text-xs" onClick={handleLogout}>
+          <LogOut className="w-3.5 h-3.5 mr-2" /> Sign Out
+        </Button>
+      </div>
+    </>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans flex flex-col md:flex-row">
-      {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-slate-950 text-slate-300 flex-shrink-0 flex flex-col hidden md:flex border-r border-slate-800">
-        <div className="h-16 flex items-center px-6 border-b border-slate-800">
-          <div className="w-8 h-8 bg-tsia-green rounded-lg flex items-center justify-center mr-3 shadow-lg shadow-tsia-green/20">
-            <span className="text-white font-bold text-sm">A</span>
-          </div>
-          <span className="text-lg font-bold text-white tracking-wide">TSIA Admin</span>
-        </div>
-        <div className="p-4 space-y-1.5 flex-1">
-          {[
-            { id: "overview", icon: TrendingUp, label: "Overview" },
-            { id: "students", icon: Users, label: "Applications", badge: (pendingVerifications as any[]).length },
-            { id: "payouts", icon: DollarSign, label: "Disbursements", badge: (pendingDisbursements as any[]).length },
-            { id: "all-students", icon: FileText, label: "All Students" },
-            { id: "cohorts", icon: Building2, label: "Cohorts" }
-          ].map((item) => (
-            <button key={item.id} onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${activeTab === item.id ? 'bg-tsia-green/10 text-tsia-green border border-tsia-green/20' : 'hover:bg-slate-900 hover:text-white border border-transparent'}`}
-            >
-              <item.icon className="w-4 h-4" /> {item.label}
-              {item.badge !== undefined && item.badge > 0 && (
-                <Badge className={`ml-auto ${activeTab === item.id ? 'bg-tsia-green' : 'bg-slate-800 text-slate-300 hover:bg-slate-800'}`}>{item.badge}</Badge>
-              )}
-            </button>
-          ))}
-        </div>
-        <div className="p-4 border-t border-slate-800">
-          <Button variant="ghost" size="sm" className="w-full justify-start text-slate-400 hover:text-white hover:bg-slate-900" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" /> Logout
-          </Button>
-        </div>
+    <div className="min-h-screen bg-slate-50 font-sans flex">
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex w-64 bg-slate-950 text-slate-300 flex-col flex-shrink-0 border-r border-slate-800 h-screen sticky top-0">
+        <SidebarContent />
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50/50">
-        <header className="h-16 bg-white border-b flex items-center justify-between px-8 shrink-0 shadow-sm z-10">
-          <h1 className="text-xl font-semibold text-slate-900 capitalize flex items-center gap-2">{activeTab.replace('-', ' ')}</h1>
-          <div className="flex items-center gap-5">
-            <div className="relative">
+      {/* Mobile sidebar overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div className="fixed inset-0 z-50 flex md:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
+            <motion.div className="relative w-72 bg-slate-950 text-slate-300 flex flex-col h-full" initial={{ x: -288 }} animate={{ x: 0 }} exit={{ x: -288 }} transition={{ type: "spring", stiffness: 280, damping: 30 }}>
+              <SidebarContent />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main */}
+      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+        {/* Header */}
+        <header className="h-14 bg-white border-b flex items-center justify-between px-4 md:px-6 shrink-0 shadow-sm z-10 sticky top-0">
+          <div className="flex items-center gap-3">
+            <button className="md:hidden p-1.5 rounded-lg hover:bg-slate-100" onClick={() => setSidebarOpen(true)}>
+              <Menu className="w-5 h-5 text-slate-600" />
+            </button>
+            <h1 className="text-base md:text-lg font-semibold text-slate-900 capitalize">
+              {NAV.find(n => n.id === activeTab)?.label || activeTab}
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative hidden sm:block">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <Input placeholder="Search records..." className="pl-9 h-9 w-64 bg-slate-100/50 border-slate-200 rounded-full" />
+              <Input placeholder="Search..." className="pl-9 h-8 w-52 bg-slate-100 border-slate-200 rounded-full text-sm" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <div className="w-9 h-9 rounded-full bg-slate-900 flex items-center justify-center text-white text-sm font-bold shadow-md cursor-pointer">AD</div>
+            <button className="sm:hidden p-1.5 rounded-lg hover:bg-slate-100" onClick={() => setSearch(s => s ? "" : " ")}><Search className="w-4 h-4 text-slate-500" /></button>
+            <Button size="sm" variant="outline" onClick={() => { queryClient.invalidateQueries(); }} className="hidden sm:flex gap-1.5 h-8 text-xs">
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </Button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-8 relative">
+        {/* Mobile search */}
+        {search.trim() && (
+          <div className="sm:hidden px-4 py-2 bg-white border-b">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input autoFocus placeholder="Search..." className="pl-9 h-9 bg-slate-100 border-0 rounded-xl text-sm" value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+          </div>
+        )}
+
+        <main className="flex-1 overflow-auto p-4 md:p-6">
           <AnimatePresence mode="wait">
+
+            {/* ═══════════════════════════════ OVERVIEW ═══════════════════════════════ */}
             {activeTab === "overview" && (
-              <motion.div key="overview" variants={contentVariants} initial="hidden" animate="visible" exit="exit" className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  {[
-                    { title: "Total Students", value: stats?.totalStudents ?? 0, icon: Users, color: "blue" },
-                    { title: "Pending Verifications", value: stats?.pendingVerifications ?? 0, icon: AlertCircle, color: "amber" },
-                    { title: "Pending Payouts", value: stats?.pendingDisbursements ?? 0, icon: DollarSign, color: "green" },
-                    { title: "Active Cohorts", value: "8", icon: Building2, color: "purple" }
-                  ].map((stat, i) => (
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }} key={i}>
-                      <Card className="border-0 shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
-                        <CardContent className="p-6 relative">
-                          <div className="flex justify-between items-start mb-4 relative z-10">
-                            <div className={`w-12 h-12 rounded-xl bg-${stat.color}-50 text-${stat.color}-600 flex items-center justify-center shadow-inner`}>
-                              <stat.icon className="w-6 h-6" />
-                            </div>
-                          </div>
-                          <h3 className="text-slate-500 text-sm font-medium mb-1">{stat.title}</h3>
-                          <div className="text-3xl font-bold text-slate-900 tracking-tight">{stat.value}</div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
+              <motion.div key="overview" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <StatCard title="Total Students"     value={stats?.totalStudents ?? 0}      icon={Users}          color="blue"   />
+                  <StatCard title="Total Affiliates"   value={stats?.totalAffiliates ?? 0}    icon={Share2}         color="purple" />
+                  <StatCard title="Co-Affiliates"      value={stats?.totalCoAffiliates ?? 0}  icon={Building2}      color="slate"  />
+                  <StatCard title="Total Loans"        value={stats?.totalLoans ?? 0}         icon={Landmark}       color="amber"  sub={`${stats?.activeLoans ?? 0} active`} />
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <StatCard title="Pending Verifications" value={stats?.pendingVerifications ?? 0} icon={AlertCircle}  color="amber" />
+                  <StatCard title="Pending Payouts"       value={stats?.pendingDisbursements ?? 0} icon={DollarSign}   color="green" />
+                  <StatCard title="Pending Loans"         value={stats?.pendingLoans ?? 0}         icon={Clock}        color="red"   />
+                  <StatCard title="Total Orders"          value={stats?.totalOrders ?? 0}          icon={Package}      color="slate" />
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <StatCard title="Total Disbursed"       value={fmtUSD(stats?.totalDisbursed)}            icon={Wallet}       color="tsia" />
+                  <StatCard title="Portal Fee Revenue"    value={fmtUSD(stats?.totalFeeRevenue)}           icon={TrendingUp}   color="green" />
+                  <StatCard title="E-commerce Commission" value={fmtUSD(stats?.totalEcommerceCommission)}  icon={ShoppingBag}  color="blue"  />
+                  <StatCard title="Trade Reserve Fund"    value={fmtUSD(stats?.tradeReserveBalance)}       icon={BarChart2}    color="purple"/>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Card className="md:col-span-2 shadow-sm border-0">
-                    <CardHeader><CardTitle className="text-lg">Recent Verification Requests</CardTitle></CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {(pendingVerifications as any[]).slice(0, 3).map((v: any) => (
-                          <div key={v.id} className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-slate-200 hover:shadow-sm transition-all bg-white">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-semibold text-slate-600">
-                                {v.user?.firstName?.charAt(0) || '?'}
-                              </div>
-                              <div>
-                                <p className="font-semibold text-sm text-slate-900">{v.user?.firstName} {v.user?.lastName}</p>
-                                <p className="text-xs text-slate-500">{v.user?.email}</p>
-                              </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader className="pb-3"><CardTitle className="text-base">Pending Applications</CardTitle><CardDescription>Require admin review</CardDescription></CardHeader>
+                    <CardContent className="space-y-2">
+                      {(pendingVerifications as any[]).slice(0, 5).map((v: any) => (
+                        <div key={v.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border hover:bg-white transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center font-semibold text-amber-700 text-sm">
+                              {v.user?.firstName?.charAt(0)}
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => setActiveTab('students')}>View <ArrowRight className="w-4 h-4 ml-1" /></Button>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{v.user?.firstName} {v.user?.lastName}</p>
+                              <p className="text-xs text-slate-500">{v.user?.email}</p>
+                            </div>
                           </div>
-                        ))}
-                        {(pendingVerifications as any[]).length === 0 && <p className="text-sm text-slate-500 text-center py-4">No pending verifications.</p>}
-                      </div>
+                          <div className="flex items-center gap-2">
+                            {v.tier && v.tier !== "none" && <TierBadge tier={v.tier} />}
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActiveTab("applications"); setReviewDialog(v); }}>Review</Button>
+                          </div>
+                        </div>
+                      ))}
+                      {(pendingVerifications as any[]).length === 0 && <p className="text-sm text-slate-500 text-center py-6">No pending applications. 🎉</p>}
+                      {(pendingVerifications as any[]).length > 5 && (
+                        <Button variant="ghost" size="sm" className="w-full text-xs mt-2" onClick={() => setActiveTab("applications")}>
+                          View all {(pendingVerifications as any[]).length} applications <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
-                  <Card className="shadow-sm border-0">
-                    <CardHeader><CardTitle className="text-lg">SLA Status</CardTitle></CardHeader>
-                    <CardContent>
-                      <div className="bg-green-50 border border-green-100 rounded-xl p-5 mb-4">
-                        <h4 className="font-semibold text-green-900 flex items-center gap-2 mb-1"><CheckCircle2 className="w-4 h-4" /> Payout SLA (24-48h)</h4>
-                        <p className="text-sm text-green-800">Payouts are processed within the SLA window.</p>
-                      </div>
-                      <div className="bg-amber-50 border border-amber-100 rounded-xl p-5">
-                        <h4 className="font-semibold text-amber-900 flex items-center gap-2 mb-1"><AlertCircle className="w-4 h-4" /> Queue</h4>
-                        <p className="text-sm text-amber-800">{(pendingVerifications as any[]).length} verification(s) and {(pendingDisbursements as any[]).length} payout(s) pending.</p>
-                      </div>
+
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader className="pb-3"><CardTitle className="text-base">Platform SLA Status</CardTitle></CardHeader>
+                    <CardContent className="space-y-3">
+                      {[
+                        { label: "Verification SLA", value: (pendingVerifications as any[]).length, target: "24–48h review", ok: (pendingVerifications as any[]).length < 10 },
+                        { label: "Payout SLA",        value: (pendingDisbursements as any[]).length, target: "24–48h disbursement", ok: (pendingDisbursements as any[]).length < 5 },
+                        { label: "Loan Reviews",      value: stats?.pendingLoans ?? 0, target: "48–72h decision", ok: (stats?.pendingLoans ?? 0) < 5 },
+                      ].map(item => (
+                        <div key={item.label} className={`p-4 rounded-xl border ${item.ok ? "bg-green-50 border-green-100" : "bg-amber-50 border-amber-100"}`}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className={`text-sm font-semibold ${item.ok ? "text-green-800" : "text-amber-800"}`}>{item.label}</p>
+                              <p className={`text-xs mt-0.5 ${item.ok ? "text-green-600" : "text-amber-600"}`}>{item.target}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-lg font-bold ${item.ok ? "text-green-700" : "text-amber-700"}`}>{item.value}</span>
+                              {item.ok ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <AlertCircle className="w-5 h-5 text-amber-500" />}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </CardContent>
                   </Card>
                 </div>
               </motion.div>
             )}
 
-            {activeTab === "students" && (
-              <motion.div key="students" variants={contentVariants} initial="hidden" animate="visible" exit="exit">
+            {/* ═══════════════════════════════ APPLICATIONS ═══════════════════════════════ */}
+            {activeTab === "applications" && (
+              <motion.div key="applications" variants={slide} initial="hidden" animate="visible" exit="exit">
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
-                    <CardTitle className="text-lg">Application Verification Queue</CardTitle>
-                    <CardDescription>Review student identity and academic records.</CardDescription>
+                    <CardTitle className="text-base">Verification Queue</CardTitle>
+                    <CardDescription>{(pendingVerifications as any[]).length} applications pending review</CardDescription>
                   </CardHeader>
-                  <div className="p-0">
+                  <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50/80">
+                      <TableHeader className="bg-slate-50">
                         <TableRow>
-                          <TableHead className="font-semibold text-slate-600 py-4 px-6">Student</TableHead>
-                          <TableHead className="font-semibold text-slate-600">NIN</TableHead>
-                          <TableHead className="font-semibold text-slate-600">WAEC</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Tier</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Fee Paid</TableHead>
-                          <TableHead className="text-right font-semibold text-slate-600 px-6">Action</TableHead>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">NIN</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">WAEC Reg</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Score</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Tier</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Fee</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Biometric</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(pendingVerifications as any[]).length === 0 ? (
-                          <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-500">No pending applications.</TableCell></TableRow>
-                        ) : (pendingVerifications as any[]).map((v: any) => (
+                        {filteredVerifications.length === 0 ? (
+                          <TableRow><TableCell colSpan={8} className="text-center py-10 text-slate-500">No pending applications.</TableCell></TableRow>
+                        ) : filteredVerifications.map((v: any) => (
                           <TableRow key={v.id} className="hover:bg-slate-50/50">
                             <TableCell className="px-6">
-                              <div className="font-medium text-slate-900">{v.user?.firstName} {v.user?.lastName}</div>
+                              <div className="font-medium text-slate-900 text-sm">{v.user?.firstName} {v.user?.lastName}</div>
                               <div className="text-xs text-slate-500">{v.user?.email}</div>
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">{v.nin || '-'}</TableCell>
-                            <TableCell>
-                              {v.waecRegNumber ? (
-                                <div className="flex items-center gap-2 bg-slate-100 px-2 py-1 rounded-md inline-flex w-fit">
-                                  <FileText className="w-3.5 h-3.5 text-slate-500" />
-                                  <span className="text-xs font-medium text-slate-700">{v.waecRegNumber}</span>
+                              {v.ageDisqualified && (
+                                <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-600 font-semibold">
+                                  <AlertTriangle className="w-3 h-3" /> Age flag
                                 </div>
-                              ) : <span className="text-slate-400">-</span>}
+                              )}
                             </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={`${v.tier === 'platinum' ? 'bg-slate-800 text-white border-slate-800' : v.tier === 'gold' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-slate-200 text-slate-800 border-slate-300'}`}>
-                                {v.tier?.charAt(0).toUpperCase() + v.tier?.slice(1)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{v.portalFeePaid ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <span className="text-slate-400">No</span>}</TableCell>
+                            <TableCell className="font-mono text-xs text-slate-600">{v.nin || "—"}</TableCell>
+                            <TableCell className="text-xs font-medium text-slate-700">{v.waecRegNumber || "—"}</TableCell>
+                            <TableCell className="text-sm font-bold text-slate-900">{v.waecPercentage ? `${v.waecPercentage}%` : "—"}</TableCell>
+                            <TableCell><TierBadge tier={v.tier} /></TableCell>
+                            <TableCell>{v.portalFeePaid ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-red-400" />}</TableCell>
+                            <TableCell>{v.biometricVerified ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-slate-300" />}</TableCell>
                             <TableCell className="text-right px-6">
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button size="sm" className="bg-slate-900 hover:bg-slate-800 shadow-sm" onClick={() => setSelectedVerification(v)} data-testid={`button-review-${v.id}`}>
-                                    Review
-                                  </Button>
-                                </DialogTrigger>
-                                {selectedVerification?.id === v.id && (
-                                  <DialogContent className="sm:max-w-[600px]">
-                                    <DialogHeader>
-                                      <DialogTitle>Review: {v.user?.firstName} {v.user?.lastName}</DialogTitle>
-                                      <DialogDescription>Verify documents and approve the student.</DialogDescription>
-                                    </DialogHeader>
-                                    <div className="grid grid-cols-2 gap-6 py-4">
-                                      <div className="bg-slate-50 p-4 rounded-xl border space-y-2">
-                                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Identity</h4>
-                                        <p className="text-sm"><strong>NIN:</strong> {v.nin || 'Not provided'}</p>
-                                        <p className="text-sm"><strong>Country:</strong> {v.user?.country}</p>
-                                        <p className="text-sm"><strong>Phone:</strong> {v.user?.phone}</p>
-                                      </div>
-                                      <div className="bg-slate-50 p-4 rounded-xl border space-y-2">
-                                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Academic</h4>
-                                        <p className="text-sm"><strong>WAEC Reg:</strong> {v.waecRegNumber || 'Not provided'}</p>
-                                        <p className="text-sm"><strong>Year:</strong> {v.waecYear || '-'}</p>
-                                        <p className="text-sm"><strong>Grades:</strong> {v.waecGrades || '-'}</p>
-                                        <p className="text-sm"><strong>Tier:</strong> {v.tier}</p>
-                                      </div>
-                                    </div>
-                                    <DialogFooter className="flex justify-between sm:justify-between border-t pt-4">
-                                      <Button variant="destructive" onClick={() => verifyMutation.mutate({ id: v.id, approve: false })} disabled={verifyMutation.isPending} data-testid="button-reject">
-                                        Reject
-                                      </Button>
-                                      <Button className="bg-tsia-green hover:bg-tsia-green/90" onClick={() => verifyMutation.mutate({ id: v.id, approve: true })} disabled={verifyMutation.isPending} data-testid="button-approve">
-                                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Verify
-                                      </Button>
-                                    </DialogFooter>
-                                  </DialogContent>
-                                )}
-                              </Dialog>
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setReviewDialog(v)} data-testid={`button-review-${v.id}`}>
+                                <Eye className="w-3.5 h-3.5 mr-1.5" /> Review
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -283,119 +452,49 @@ export default function AdminDashboard() {
               </motion.div>
             )}
 
+            {/* ═══════════════════════════════ PAYOUTS ═══════════════════════════════ */}
             {activeTab === "payouts" && (
-              <motion.div key="payouts" variants={contentVariants} initial="hidden" animate="visible" exit="exit" className="space-y-6">
-                <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-5 flex items-start gap-4">
-                  <div className="bg-blue-100 p-2 rounded-lg text-blue-600 shrink-0"><AlertCircle className="w-5 h-5" /></div>
+              <motion.div key="payouts" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
+                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="font-semibold text-blue-900">SLA Requirement Active</h4>
-                    <p className="text-sm text-blue-800/80 mt-1">Process all approved sponsorships to student wallets within <strong>24-48 hours</strong>.</p>
+                    <p className="font-semibold text-blue-900 text-sm">SLA Requirement Active</p>
+                    <p className="text-xs text-blue-700 mt-0.5">All approved disbursements must be processed within <strong>24–48 hours</strong>.</p>
                   </div>
                 </div>
-                <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6"><CardTitle className="text-lg">Pending Disbursements</CardTitle></CardHeader>
-                  <div className="p-0">
-                    <Table>
-                      <TableHeader className="bg-slate-50/80">
-                        <TableRow>
-                          <TableHead className="font-semibold text-slate-600 py-4 px-6">ID</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Student</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Amount</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Requested</TableHead>
-                          <TableHead className="text-right font-semibold text-slate-600 px-6">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(pendingDisbursements as any[]).length === 0 ? (
-                          <TableRow><TableCell colSpan={5} className="text-center py-8 text-slate-500">No pending payouts.</TableCell></TableRow>
-                        ) : (pendingDisbursements as any[]).map((d: any) => (
-                          <TableRow key={d.id} className="hover:bg-slate-50/50">
-                            <TableCell className="px-6 font-mono text-xs text-slate-500">DIS-{d.id}</TableCell>
-                            <TableCell>
-                              <div className="font-medium text-slate-900">{d.user?.firstName} {d.user?.lastName}</div>
-                              <div className="text-xs text-slate-500">{d.user?.email}</div>
-                            </TableCell>
-                            <TableCell className="font-bold text-slate-900">${parseFloat(d.amount).toFixed(2)}</TableCell>
-                            <TableCell className="text-sm text-slate-600">{new Date(d.createdAt).toLocaleDateString()}</TableCell>
-                            <TableCell className="text-right px-6">
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700 shadow-sm" onClick={() => setSelectedDisbursement(d)} data-testid={`button-process-${d.id}`}>
-                                    Process
-                                  </Button>
-                                </DialogTrigger>
-                                {selectedDisbursement?.id === d.id && (
-                                  <DialogContent>
-                                    <DialogHeader>
-                                      <DialogTitle>Confirm Payout</DialogTitle>
-                                      <DialogDescription>Transfer funds to the student's digital wallet.</DialogDescription>
-                                    </DialogHeader>
-                                    <div className="bg-slate-50 rounded-xl p-6 border my-4 space-y-4">
-                                      <div className="flex justify-between items-center border-b pb-4">
-                                        <span className="text-sm text-slate-500">Recipient</span>
-                                        <span className="font-medium">{d.user?.firstName} {d.user?.lastName}</span>
-                                      </div>
-                                      <div className="flex justify-between items-center">
-                                        <span className="text-sm text-slate-500">Transfer Amount</span>
-                                        <span className="text-2xl font-bold text-slate-900">${parseFloat(d.amount).toFixed(2)}</span>
-                                      </div>
-                                    </div>
-                                    <DialogFooter>
-                                      <Button variant="outline">Cancel</Button>
-                                      <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => disburseMutation.mutate(d.id)} disabled={disburseMutation.isPending} data-testid="button-execute-transfer">
-                                        <Wallet className="w-4 h-4 mr-2" /> {disburseMutation.isPending ? "Processing..." : "Execute Transfer"}
-                                      </Button>
-                                    </DialogFooter>
-                                  </DialogContent>
-                                )}
-                              </Dialog>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </Card>
-              </motion.div>
-            )}
-
-            {activeTab === "all-students" && (
-              <motion.div key="all-students" variants={contentVariants} initial="hidden" animate="visible" exit="exit">
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
-                    <CardTitle className="text-lg">All Registered Students</CardTitle>
-                    <CardDescription>{(allStudents as any[]).length} total student records.</CardDescription>
+                    <CardTitle className="text-base">Pending Disbursements</CardTitle>
+                    <CardDescription>{filteredDisbursements.length} payouts awaiting processing</CardDescription>
                   </CardHeader>
-                  <div className="p-0">
+                  <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50/80">
+                      <TableHeader className="bg-slate-50">
                         <TableRow>
-                          <TableHead className="font-semibold text-slate-600 py-4 px-6">Student</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Country</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Verification</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Tier</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Plan</TableHead>
-                          <TableHead className="font-semibold text-slate-600">Wallet</TableHead>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Ref</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Requested</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(allStudents as any[]).length === 0 ? (
-                          <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-500">No students registered yet.</TableCell></TableRow>
-                        ) : (allStudents as any[]).map((s: any) => (
-                          <TableRow key={s.id} className="hover:bg-slate-50/50">
-                            <TableCell className="px-6">
-                              <div className="font-medium text-slate-900">{s.firstName} {s.lastName}</div>
-                              <div className="text-xs text-slate-500">{s.email}</div>
-                            </TableCell>
-                            <TableCell>{s.country}</TableCell>
+                        {filteredDisbursements.length === 0 ? (
+                          <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-500">No pending payouts.</TableCell></TableRow>
+                        ) : filteredDisbursements.map((d: any) => (
+                          <TableRow key={d.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6 font-mono text-xs text-slate-400">DIS-{String(d.id).padStart(5, "0")}</TableCell>
                             <TableCell>
-                              <Badge variant="outline" className={`${s.verification?.status === 'verified' ? 'bg-green-50 text-green-700 border-green-200' : s.verification?.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : s.verification?.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-100 text-slate-500'}`}>
-                                {s.verification?.status || 'Not started'}
-                              </Badge>
+                              <div className="font-medium text-sm text-slate-900">{d.user?.firstName} {d.user?.lastName}</div>
+                              <div className="text-xs text-slate-500">{d.user?.email}</div>
                             </TableCell>
-                            <TableCell className="capitalize">{s.verification?.tier || '-'}</TableCell>
-                            <TableCell>{s.plan ? `${s.plan.planYears}yr` : '-'}</TableCell>
-                            <TableCell className="font-medium">${parseFloat(s.wallet?.balance || '0').toFixed(2)}</TableCell>
+                            <TableCell className="font-bold text-slate-900">{fmtUSD(d.amount)}</TableCell>
+                            <TableCell className="text-sm text-slate-600">{fmtDate(d.createdAt)}</TableCell>
+                            <TableCell className="text-right px-6">
+                              <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" onClick={() => setDisburseDialog(d)} data-testid={`button-process-${d.id}`}>
+                                Process
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -405,19 +504,581 @@ export default function AdminDashboard() {
               </motion.div>
             )}
 
-            {activeTab === "cohorts" && (
-              <motion.div key="cohorts" variants={contentVariants} initial="hidden" animate="visible" exit="exit" className="flex items-center justify-center h-[60vh]">
-                <div className="text-center max-w-md">
-                  <div className="w-20 h-20 bg-purple-100 rounded-3xl flex items-center justify-center mx-auto mb-6"><Building2 className="w-10 h-10 text-purple-600" /></div>
-                  <h3 className="text-2xl font-bold text-slate-900 mb-2">Leadership Cohorts</h3>
-                  <p className="text-slate-500 mb-6">Manage enterprise and corporate sponsorships of 100+ students.</p>
-                  <Button variant="outline">Create New Cohort</Button>
-                </div>
+            {/* ═══════════════════════════════ LOANS ═══════════════════════════════ */}
+            {activeTab === "loans" && (
+              <motion.div key="loans" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base">All Loan Applications</CardTitle>
+                    <CardDescription>{(allLoans as any[]).length} total — {(allLoans as any[]).filter((l: any) => l.status === "pending").length} pending action</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Role</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Term</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Monthly</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Total</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Applied</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredLoans.length === 0 ? (
+                          <TableRow><TableCell colSpan={9} className="text-center py-10 text-slate-500">No loans found.</TableCell></TableRow>
+                        ) : filteredLoans.map((l: any) => (
+                          <TableRow key={l.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6">
+                              <div className="font-medium text-sm text-slate-900">{l.user?.firstName} {l.user?.lastName}</div>
+                              <div className="text-xs text-slate-500">{l.user?.email}</div>
+                            </TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs capitalize">{l.userRole}</Badge></TableCell>
+                            <TableCell className="font-bold text-slate-900">{fmtUSD(l.amountUsd)}</TableCell>
+                            <TableCell className="text-sm text-slate-600">{l.termMonths}mo</TableCell>
+                            <TableCell className="text-sm text-slate-600">{fmtUSD(l.monthlyPaymentUsd)}</TableCell>
+                            <TableCell className="text-sm font-medium text-slate-700">{fmtUSD(l.totalPayableUsd)}</TableCell>
+                            <TableCell><StatusBadge status={l.status} /></TableCell>
+                            <TableCell className="text-xs text-slate-500">{fmtDate(l.createdAt)}</TableCell>
+                            <TableCell className="text-right px-6">
+                              {l.status === "pending" && (
+                                <div className="flex justify-end gap-1.5">
+                                  <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" onClick={() => setLoanDialog({ open: true, loan: l, action: "active" })}>
+                                    Approve
+                                  </Button>
+                                  <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => setLoanDialog({ open: true, loan: l, action: "rejected" })}>
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
+                              {l.status !== "pending" && <span className="text-xs text-slate-400 italic">—</span>}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
               </motion.div>
             )}
+
+            {/* ═══════════════════════════════ ALL USERS ═══════════════════════════════ */}
+            {activeTab === "users" && (
+              <motion.div key="users" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base">All Platform Users</CardTitle>
+                    <CardDescription>{(allUsers as any[]).length} users registered (students + affiliates)</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Role</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Country</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Verification</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Tier</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Joined</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Notify</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredUsers.length === 0 ? (
+                          <TableRow><TableCell colSpan={8} className="text-center py-10 text-slate-500">No users found.</TableCell></TableRow>
+                        ) : filteredUsers.map((u: any) => (
+                          <TableRow key={u.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6">
+                              <div className="font-medium text-sm text-slate-900">{u.firstName} {u.lastName}</div>
+                              <div className="text-xs text-slate-500">{u.email}</div>
+                            </TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs capitalize">{u.role}</Badge></TableCell>
+                            <TableCell className="text-sm text-slate-600">{u.country || "—"}</TableCell>
+                            <TableCell><StatusBadge status={u.verification?.status || "not started"} /></TableCell>
+                            <TableCell><TierBadge tier={u.verification?.tier || ""} /></TableCell>
+                            <TableCell className="font-semibold text-sm">{fmtUSD(u.wallet?.balance)}</TableCell>
+                            <TableCell className="text-xs text-slate-500">{fmtDate(u.createdAt)}</TableCell>
+                            <TableCell className="text-right px-6">
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setNotifyTarget(u); setNotifyDialog(true); }}>
+                                <Bell className="w-3 h-3 mr-1" /> Notify
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════════ AFFILIATES ═══════════════════════════════ */}
+            {activeTab === "affiliates" && (
+              <motion.div key="affiliates" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base">Affiliate Directory</CardTitle>
+                    <CardDescription>{(allAffiliates as any[]).length} registered affiliates</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Affiliate</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Code</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Referrals</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Co-Affiliate</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Trade Wallet</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Joined</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Notify</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredAffiliates.length === 0 ? (
+                          <TableRow><TableCell colSpan={8} className="text-center py-10 text-slate-500">No affiliates found.</TableCell></TableRow>
+                        ) : filteredAffiliates.map((a: any) => (
+                          <TableRow key={a.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6">
+                              <div className="font-medium text-sm text-slate-900">{a.firstName} {a.lastName}</div>
+                              <div className="text-xs text-slate-500">{a.email}</div>
+                            </TableCell>
+                            <TableCell><code className="text-xs bg-slate-100 px-2 py-0.5 rounded font-mono">{a.affiliateCode || "—"}</code></TableCell>
+                            <TableCell>
+                              <span className={`font-bold text-sm ${a.referralCount > 0 ? "text-tsia-green" : "text-slate-400"}`}>{a.referralCount}</span>
+                            </TableCell>
+                            <TableCell>
+                              {a.coAffiliate ? (
+                                <Badge variant="outline" className="text-xs">
+                                  {a.coAffiliate.investmentCategory >= 500 ? "Elite" : a.coAffiliate.investmentCategory >= 300 ? "Growth" : "Starter"}
+                                </Badge>
+                              ) : <span className="text-slate-400 text-xs">—</span>}
+                            </TableCell>
+                            <TableCell className="font-semibold text-sm">{fmtUSD(a.wallet?.balance)}</TableCell>
+                            <TableCell className="text-sm text-slate-600">{fmtUSD(a.tradeWallet?.balance)}</TableCell>
+                            <TableCell className="text-xs text-slate-500">{fmtDate(a.createdAt)}</TableCell>
+                            <TableCell className="text-right px-6">
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setNotifyTarget(a); setNotifyDialog(true); }}>
+                                <Bell className="w-3 h-3 mr-1" /> Notify
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════════ TRANSACTIONS ═══════════════════════════════ */}
+            {activeTab === "transactions" && (
+              <motion.div key="transactions" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Select value={txFilter} onValueChange={setTxFilter}>
+                    <SelectTrigger className="w-52 h-9 bg-white border text-sm">
+                      <SelectValue placeholder="Filter by type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="verification_fee">Portal Fees</SelectItem>
+                      <SelectItem value="sponsorship_credit">Sponsorship Credits</SelectItem>
+                      <SelectItem value="withdrawal">Withdrawals</SelectItem>
+                      <SelectItem value="vat_deduction">VAT Deductions</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-slate-500">{filteredTxns.length} transactions</p>
+                </div>
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">ID</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Role</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Type</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Description</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredTxns.length === 0 ? (
+                          <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-500">No transactions found.</TableCell></TableRow>
+                        ) : filteredTxns.slice(0, 100).map((t: any) => (
+                          <TableRow key={t.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6 font-mono text-xs text-slate-400">#{t.id}</TableCell>
+                            <TableCell>
+                              <div className="text-sm font-medium text-slate-900">{t.user?.firstName} {t.user?.lastName}</div>
+                              <div className="text-xs text-slate-500">{t.user?.email}</div>
+                            </TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs capitalize">{t.user?.role || "—"}</Badge></TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={`text-xs ${t.type === "sponsorship_credit" ? "bg-green-50 text-green-700 border-green-200" : t.type === "verification_fee" ? "bg-blue-50 text-blue-700 border-blue-200" : t.type === "withdrawal" ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-50 text-slate-600"}`}>
+                                {t.type?.replace(/_/g, " ")}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className={`font-bold text-sm ${parseFloat(t.amount) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                              {parseFloat(t.amount) >= 0 ? "+" : ""}{fmtUSD(t.amount)}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-500 max-w-xs truncate">{t.description}</TableCell>
+                            <TableCell className="text-xs text-slate-500">{fmtDate(t.createdAt)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════════ E-COMMERCE ═══════════════════════════════ */}
+            {activeTab === "ecommerce" && (
+              <motion.div key="ecommerce" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <StatCard title="Total Products"   value={ecommerceStats?.totalProducts ?? 0}  icon={Package}    color="blue"  />
+                  <StatCard title="Active Listings"  value={ecommerceStats?.activeProducts ?? 0} icon={Eye}        color="green" sub={`${ecommerceStats?.soldProducts ?? 0} sold`} />
+                  <StatCard title="Total Orders"     value={ecommerceStats?.totalOrders ?? 0}    icon={ShoppingBag}color="amber" sub={`${ecommerceStats?.completedOrders ?? 0} delivered`} />
+                  <StatCard title="Commission Earned" value={fmtUSD(ecommerceStats?.totalCommission)} icon={DollarSign} color="tsia" sub="8% per sale" />
+                </div>
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base">Recent Orders</CardTitle>
+                    <CardDescription>Latest {filteredOrders.length} marketplace transactions</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Ref</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Product</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Buyer</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Seller</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Total</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Commission</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredOrders.length === 0 ? (
+                          <TableRow><TableCell colSpan={8} className="text-center py-10 text-slate-500">No orders found.</TableCell></TableRow>
+                        ) : filteredOrders.slice(0, 50).map((o: any) => (
+                          <TableRow key={o.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6 font-mono text-xs text-slate-400">ORD-{String(o.id).padStart(5,"0")}</TableCell>
+                            <TableCell className="text-sm font-medium text-slate-900 max-w-[180px] truncate">{o.product?.title || "—"}</TableCell>
+                            <TableCell className="text-xs text-slate-600">{o.buyer?.firstName} {o.buyer?.lastName}</TableCell>
+                            <TableCell className="text-xs text-slate-600">{o.seller?.firstName} {o.seller?.lastName}</TableCell>
+                            <TableCell className="font-bold text-sm">{fmtUSD(o.totalPrice)}</TableCell>
+                            <TableCell className="text-sm text-tsia-green font-semibold">{fmtUSD(o.commission)}</TableCell>
+                            <TableCell><StatusBadge status={o.status} /></TableCell>
+                            <TableCell className="text-xs text-slate-500">{fmtDate(o.createdAt)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════════ TRADE MARKET ═══════════════════════════════ */}
+            {activeTab === "trade" && (
+              <motion.div key="trade" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <StatCard title="Reserve Fund"    value={fmtUSD(tradeStats?.reserveBalance)}  icon={Wallet}     color="green"  />
+                  <StatCard title="Total Deposited" value={fmtUSD(tradeStats?.totalDeposited)}  icon={TrendingUp} color="blue"   />
+                  <StatCard title="Bot Earnings"    value={fmtUSD(tradeStats?.totalBotEarnings)}icon={BarChart2}  color="tsia"   />
+                  <StatCard title="Active Affiliates" value={tradeStats?.affiliateCount ?? 0}   icon={Share2}     color="purple" />
+                </div>
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base">Recent Trade Transactions</CardTitle>
+                    <CardDescription>Latest bot trading and affiliate pool activity</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">ID</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Type</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Description</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(tradeStats?.recentTransactions || []).length === 0 ? (
+                          <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-500">No trade transactions yet.</TableCell></TableRow>
+                        ) : (tradeStats?.recentTransactions || []).map((t: any) => (
+                          <TableRow key={t.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6 font-mono text-xs text-slate-400">#{t.id}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={`text-xs ${t.type === "bot_earning" ? "bg-green-50 text-green-700 border-green-200" : t.type === "deposit" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-50 text-slate-600"}`}>
+                                {t.type?.replace(/_/g, " ")}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className={`font-bold text-sm ${parseFloat(t.amount) >= 0 ? "text-green-600" : "text-red-500"}`}>
+                              {fmtUSD(t.amount)}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-500 max-w-xs truncate">{t.description || "—"}</TableCell>
+                            <TableCell className="text-xs text-slate-500">{fmtDate(t.createdAt)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════════ NOTIFICATIONS ═══════════════════════════════ */}
+            {activeTab === "notifications" && (
+              <motion.div key="notifications" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-6 max-w-2xl">
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="border-b pb-4">
+                    <CardTitle className="text-base">Send Platform Notification</CardTitle>
+                    <CardDescription>Compose a notification for a specific user or broadcast to all users.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-6 space-y-5">
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Target Audience</Label>
+                      <Select value={notifyRole} onValueChange={v => { setNotifyRole(v); setNotifyTarget(null); }}>
+                        <SelectTrigger className="h-10 bg-muted/30">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Users (Students + Affiliates)</SelectItem>
+                          <SelectItem value="student">All Students Only</SelectItem>
+                          <SelectItem value="affiliate">All Affiliates Only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Notification Title</Label>
+                      <Input placeholder="e.g. Important Platform Update" className="h-10 bg-muted/30" value={notifyTitle} onChange={e => setNotifyTitle(e.target.value)} data-testid="input-notify-title" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Message Body</Label>
+                      <Textarea placeholder="Write your notification message here..." className="bg-muted/30 min-h-[100px] resize-none" value={notifyMsg} onChange={e => setNotifyMsg(e.target.value)} data-testid="input-notify-message" />
+                    </div>
+                    <Button className="w-full h-11 font-semibold" disabled={!notifyTitle || !notifyMsg || notifyMutation.isPending} onClick={() => notifyMutation.mutate()} data-testid="button-send-notification">
+                      {notifyMutation.isPending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Sending...</> : <><Send className="w-4 h-4 mr-2" /> Send Notification</>}
+                    </Button>
+                  </CardContent>
+                </Card>
+                <p className="text-xs text-slate-500 text-center">To notify a specific user, go to the Users or Affiliates tab and use the Notify button on their row.</p>
+              </motion.div>
+            )}
+
           </AnimatePresence>
-        </div>
-      </main>
+        </main>
+      </div>
+
+      {/* ═══════════════ DIALOGS ═══════════════ */}
+
+      {/* Review verification dialog */}
+      <Dialog open={!!reviewDialog} onOpenChange={open => !open && setReviewDialog(null)}>
+        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review Application — {reviewDialog?.user?.firstName} {reviewDialog?.user?.lastName}</DialogTitle>
+            <DialogDescription>Verify the student's identity, academic records, and KYC status before approving.</DialogDescription>
+          </DialogHeader>
+          {reviewDialog && (
+            <div className="space-y-4 py-2">
+              {reviewDialog.ageDisqualified && (
+                <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <div><strong>Admin Flag:</strong> This applicant's estimated age exceeds the 29-year eligibility limit based on their WAEC year. The $3 fee was collected. Do not approve for sponsorship.</div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 border rounded-xl p-4 space-y-2">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Identity</h4>
+                  <p className="text-sm"><span className="text-slate-500">NIN:</span> <span className="font-mono font-semibold">{reviewDialog.nin || "Not provided"}</span></p>
+                  <p className="text-sm"><span className="text-slate-500">Country:</span> <strong>{reviewDialog.user?.country || "—"}</strong></p>
+                  <p className="text-sm"><span className="text-slate-500">Phone:</span> <strong>{reviewDialog.user?.phone || "—"}</strong></p>
+                  <p className="text-sm"><span className="text-slate-500">Diaspora:</span> <strong>{reviewDialog.user?.isDiaspora ? "Yes" : "No"}</strong></p>
+                </div>
+                <div className="bg-slate-50 border rounded-xl p-4 space-y-2">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Academic</h4>
+                  <p className="text-sm"><span className="text-slate-500">WAEC Reg:</span> <span className="font-mono font-semibold">{reviewDialog.waecRegNumber || "Not provided"}</span></p>
+                  <p className="text-sm"><span className="text-slate-500">Year:</span> <strong>{reviewDialog.waecYear || "—"}</strong></p>
+                  <p className="text-sm"><span className="text-slate-500">School:</span> <strong>{reviewDialog.schoolName || "—"}</strong></p>
+                  <p className="text-sm"><span className="text-slate-500">Location:</span> <strong>{reviewDialog.schoolLocation || "—"}</strong></p>
+                </div>
+              </div>
+              <div className="bg-slate-50 border rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">WAEC Grades</h4>
+                <div className="flex flex-wrap gap-2">
+                  {reviewDialog.waecSubjects?.split(",").map((sub: string, i: number) => {
+                    const gradesList = reviewDialog.waecGrades?.split(" ") || [];
+                    return (
+                      <div key={i} className="bg-white border rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
+                        <span className="text-slate-600">{sub.trim()}</span>
+                        <span className="font-bold text-slate-900">{gradesList[i] || "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-4 pt-1">
+                  <div><span className="text-xs text-slate-500">Score:</span> <span className="font-bold text-lg ml-1">{reviewDialog.waecPercentage ? `${reviewDialog.waecPercentage}%` : "—"}</span></div>
+                  <TierBadge tier={reviewDialog.tier} />
+                  {reviewDialog.tier !== "none" && <span className="text-sm font-semibold text-tsia-green">${reviewDialog.payoutMin}–${reviewDialog.payoutMax}</span>}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {[{ label: "Portal Fee", ok: reviewDialog.portalFeePaid }, { label: "Biometric", ok: reviewDialog.biometricVerified }, { label: "KYC Ready", ok: reviewDialog.portalFeePaid && reviewDialog.biometricVerified }].map(item => (
+                  <div key={item.label} className={`rounded-xl border p-3 flex items-center gap-2 ${item.ok ? "bg-green-50 border-green-200" : "bg-slate-50 border-slate-200"}`}>
+                    {item.ok ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-slate-400 shrink-0" />}
+                    <span className={`text-sm font-medium ${item.ok ? "text-green-700" : "text-slate-500"}`}>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex justify-between sm:justify-between border-t pt-4 gap-3 flex-col sm:flex-row">
+            <Button variant="destructive" onClick={() => { setRejectDialog({ open: true, verification: reviewDialog }); setReviewDialog(null); }} disabled={verifyMutation.isPending}>
+              <XCircle className="w-4 h-4 mr-2" /> Reject Application
+            </Button>
+            <Button className="bg-tsia-green hover:bg-tsia-green/90" onClick={() => verifyMutation.mutate({ id: reviewDialog.id, approve: true })} disabled={verifyMutation.isPending} data-testid="button-approve">
+              {verifyMutation.isPending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Approving...</> : <><CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Verify</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject with reason dialog */}
+      <Dialog open={rejectDialog.open} onOpenChange={open => { if (!open) { setRejectDialog({ open: false, verification: null }); setRejectReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Application</DialogTitle>
+            <DialogDescription>Provide a reason for rejection. This will be sent to the student.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-slate-50 border rounded-xl p-3 text-sm">
+              <strong>{rejectDialog.verification?.user?.firstName} {rejectDialog.verification?.user?.lastName}</strong>
+              <p className="text-slate-500 text-xs mt-0.5">{rejectDialog.verification?.user?.email}</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold">Rejection Reason <span className="text-red-400">*</span></Label>
+              <Textarea
+                placeholder="e.g. WAEC registration number could not be verified. Please resubmit with the correct details."
+                className="bg-muted/30 min-h-[100px] resize-none"
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                data-testid="input-reject-reason"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setRejectDialog({ open: false, verification: null }); setRejectReason(""); }}>Cancel</Button>
+            <Button variant="destructive" disabled={!rejectReason.trim() || verifyMutation.isPending} onClick={() => verifyMutation.mutate({ id: rejectDialog.verification?.id, approve: false, reason: rejectReason })} data-testid="button-confirm-reject">
+              {verifyMutation.isPending ? "Rejecting..." : "Confirm Rejection"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Process disbursement dialog */}
+      <Dialog open={!!disburseDialog} onOpenChange={open => !open && setDisburseDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Payout Disbursement</DialogTitle>
+            <DialogDescription>This will immediately credit funds to the student's wallet. This action cannot be undone.</DialogDescription>
+          </DialogHeader>
+          {disburseDialog && (
+            <div className="bg-slate-50 border rounded-2xl p-6 my-2 space-y-4">
+              <div className="flex justify-between items-center border-b pb-4">
+                <span className="text-sm text-slate-500">Recipient</span>
+                <span className="font-semibold">{disburseDialog.user?.firstName} {disburseDialog.user?.lastName}</span>
+              </div>
+              <div className="flex justify-between items-center border-b pb-4">
+                <span className="text-sm text-slate-500">Email</span>
+                <span className="text-sm">{disburseDialog.user?.email}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-500">Transfer Amount</span>
+                <span className="text-2xl font-bold text-slate-900">{fmtUSD(disburseDialog.amount)}</span>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDisburseDialog(null)}>Cancel</Button>
+            <Button className="bg-tsia-green hover:bg-tsia-green/90" onClick={() => disburseMutation.mutate(disburseDialog.id)} disabled={disburseMutation.isPending} data-testid="button-execute-transfer">
+              {disburseMutation.isPending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Processing...</> : <><Wallet className="w-4 h-4 mr-2" />Execute Transfer</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Loan action dialog */}
+      <Dialog open={loanDialog.open} onOpenChange={open => !open && setLoanDialog({ open: false, loan: null, action: "" })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{loanDialog.action === "active" ? "Approve & Disburse Loan" : "Reject Loan Application"}</DialogTitle>
+            <DialogDescription>
+              {loanDialog.action === "active" ? "Funds will be credited to the user's wallet immediately." : "The applicant will be notified of this decision."}
+            </DialogDescription>
+          </DialogHeader>
+          {loanDialog.loan && (
+            <div className="bg-slate-50 border rounded-2xl p-5 my-2 space-y-3">
+              <div className="flex justify-between"><span className="text-sm text-slate-500">Applicant</span><span className="font-semibold text-sm">{loanDialog.loan.user?.firstName} {loanDialog.loan.user?.lastName}</span></div>
+              <div className="flex justify-between"><span className="text-sm text-slate-500">Role</span><Badge variant="outline" className="text-xs capitalize">{loanDialog.loan.userRole}</Badge></div>
+              <div className="flex justify-between border-t pt-3"><span className="text-sm text-slate-500">Loan Amount</span><span className="text-2xl font-bold">{fmtUSD(loanDialog.loan.amountUsd)}</span></div>
+              <div className="flex justify-between"><span className="text-sm text-slate-500">Term / Rate</span><span className="text-sm">{loanDialog.loan.termMonths} months at {loanDialog.loan.interestRate}%</span></div>
+              <div className="flex justify-between"><span className="text-sm text-slate-500">Total Repayable</span><span className="font-semibold text-sm">{fmtUSD(loanDialog.loan.totalPayableUsd)}</span></div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setLoanDialog({ open: false, loan: null, action: "" })}>Cancel</Button>
+            <Button
+              className={loanDialog.action === "active" ? "bg-tsia-green hover:bg-tsia-green/90" : ""}
+              variant={loanDialog.action === "rejected" ? "destructive" : "default"}
+              disabled={loanStatusMutation.isPending}
+              onClick={() => loanStatusMutation.mutate({ id: loanDialog.loan?.id, status: loanDialog.action })}
+              data-testid={`button-loan-${loanDialog.action}`}
+            >
+              {loanStatusMutation.isPending ? "Processing..." : loanDialog.action === "active" ? "Approve & Credit Wallet" : "Reject Application"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Notify individual user dialog */}
+      <Dialog open={notifyDialog && !!notifyTarget} onOpenChange={open => { if (!open) { setNotifyDialog(false); setNotifyTarget(null); setNotifyTitle(""); setNotifyMsg(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Notification</DialogTitle>
+            <DialogDescription>Send a direct notification to {notifyTarget?.firstName} {notifyTarget?.lastName}.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-slate-50 border rounded-xl p-3 text-sm">
+              <strong>{notifyTarget?.firstName} {notifyTarget?.lastName}</strong>
+              <p className="text-slate-500 text-xs mt-0.5">{notifyTarget?.email} · <span className="capitalize">{notifyTarget?.role}</span></p>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold">Title</Label>
+              <Input placeholder="Notification title" className="h-10 bg-muted/30" value={notifyTitle} onChange={e => setNotifyTitle(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold">Message</Label>
+              <Textarea placeholder="Your message here..." className="bg-muted/30 resize-none min-h-[80px]" value={notifyMsg} onChange={e => setNotifyMsg(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setNotifyDialog(false); setNotifyTarget(null); setNotifyTitle(""); setNotifyMsg(""); }}>Cancel</Button>
+            <Button disabled={!notifyTitle || !notifyMsg || notifyMutation.isPending} onClick={() => notifyMutation.mutate()}>
+              <Send className="w-4 h-4 mr-2" /> Send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

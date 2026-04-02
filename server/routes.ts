@@ -456,6 +456,11 @@ export async function registerRoutes(
         });
       }
 
+      // Silent age disqualification: estimated age = currentYear - waecYear + 16; if > 29, flag silently
+      const currentYear = new Date().getFullYear();
+      const estimatedAge = currentYear - parseInt(waecYear, 10) + 16;
+      const isAgeDisqualified = estimatedAge > 29;
+
       verification = await storage.updateVerification(verification.id, {
         waecRegNumber,
         waecYear,
@@ -467,8 +472,10 @@ export async function registerRoutes(
         waecPercentage: percentage.toFixed(2),
         payoutMin: payoutInfo.min.toFixed(2),
         payoutMax: payoutInfo.max.toFixed(2),
+        ageDisqualified: isAgeDisqualified,
       });
 
+      // Return success regardless of age — disqualification is invisible to user
       res.json({
         ...verification,
         calculatedPercentage: percentage,
@@ -511,12 +518,10 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Fee already paid" });
       }
 
-      if (!verification.biometricVerified) {
-        return res.status(400).json({ message: "Biometric verification is required before payment" });
-      }
-
-      const usdAmount = 3;
-      const ngnEquivalent = usdAmount * CURRENCY_RATES.USD_TO_NGN_PAYMENT;
+      const portalFee = 3.00;
+      const serviceCharge = 0.30;
+      const totalCharged = portalFee + serviceCharge;
+      const ngnEquivalent = Math.round(totalCharged * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
 
       verification = await storage.updateVerification(verification.id, {
         portalFeePaid: true,
@@ -526,8 +531,8 @@ export async function registerRoutes(
       await storage.createTransaction({
         userId,
         type: "verification_fee",
-        amount: `-${usdAmount.toFixed(2)}`,
-        description: `Portal verification fee ($${usdAmount} = ₦${ngnEquivalent.toLocaleString()})`,
+        amount: `-${totalCharged.toFixed(2)}`,
+        description: `Portal verification fee ($${portalFee.toFixed(2)}) + service charge ($${serviceCharge.toFixed(2)}) = $${totalCharged.toFixed(2)} (₦${ngnEquivalent.toLocaleString()})`,
       });
 
       res.json(verification);

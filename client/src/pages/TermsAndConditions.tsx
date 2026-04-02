@@ -209,12 +209,8 @@ export default function TermsAndConditions() {
               <Clause num="5.2" title="Step 2 — WAEC Result Validation">
                 <p>Enter your WAEC examination details including registration number, year, school, and grades for at least 5 subjects (2 compulsory + 3 electives). Results are cross-referenced against the WAEC verification database. Fabricating results constitutes academic fraud and is a criminal offence.</p>
               </Clause>
-              <Clause num="5.3" title="Step 3 — Wallet KYC and Portal Fee Payment">
-                <p>You must complete a three-part KYC: (a) NIN re-confirmation, (b) Bank Verification Number (BVN), (c) GPS proof of address. You then pay the <strong>$3 portal fee</strong> (non-refundable). This fee covers administrative processing, identity checks, and platform maintenance. The fee is payable by card through our payment processor. Payment is required <em>before</em> biometric verification proceeds.</p>
-                <div className="mt-3 flex items-start gap-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
-                  <span className="text-base leading-none mt-px">⚠️</span>
-                  <span>A one-time <strong>$3 portal fee</strong> is required during student onboarding after your WAEC details are submitted. This fee is <strong>non-refundable</strong>.</span>
-                </div>
+              <Clause num="5.3" title="Step 3 — Portal Fee Payment">
+                <p>Immediately after submitting your WAEC details, you must pay the one-time <strong>$3 portal fee</strong> (non-refundable). A processing service charge is added at checkout. This fee covers administrative processing, identity checks, and platform maintenance. The fee is payable by card through our payment processor.</p>
               </Clause>
               <Clause num="5.4" title="Step 4 — Biometric Face Scan">
                 <p>A face scan is performed for liveness detection and to confirm you are a real, unique individual. You must grant camera access on your device. Your biometric data is processed for identity matching only and is not shared with third parties.</p>

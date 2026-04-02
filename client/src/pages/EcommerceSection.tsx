@@ -496,9 +496,9 @@ function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
 }
 
 // ─── Product Card (Grid) ───────────────────────────────────────────────────
-function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart, watched, onWatch }: {
+function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart, watched, onWatch, isSeller }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
-  inCart: boolean; onCart: () => void; watched?: boolean; onWatch?: () => void;
+  inCart: boolean; onCart: () => void; watched?: boolean; onWatch?: () => void; isSeller?: boolean;
 }) {
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
@@ -582,24 +582,28 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
             </div>
             <p className="text-[10px] text-muted-foreground">{formatAmount(parseFloat(product.price))}</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={e => { e.stopPropagation(); onCart(); }}
-              data-testid={`btn-cart-add-${product.id}`}
-              title={inCart ? "Remove from cart" : "Add to cart"}
-              className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition-all hover:scale-105 border ${inCart ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground hover:border-tsia-green hover:text-tsia-green"}`}
-            >
-              <ShoppingCart className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={e => { e.stopPropagation(); onBuy(); }}
-              disabled={product.stock === 0}
-              data-testid={`btn-buy-${product.id}`}
-              className="w-8 h-8 bg-tsia-green rounded-full flex items-center justify-center shadow-md hover:bg-tsia-green/90 disabled:opacity-40 transition-all hover:scale-105"
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5 text-white" />
-            </button>
-          </div>
+          {isSeller ? (
+            <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-full">Your listing</span>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={e => { e.stopPropagation(); onCart(); }}
+                data-testid={`btn-cart-add-${product.id}`}
+                title={inCart ? "Remove from cart" : "Add to cart"}
+                className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition-all hover:scale-105 border ${inCart ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground hover:border-tsia-green hover:text-tsia-green"}`}
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); onBuy(); }}
+                disabled={product.stock === 0}
+                data-testid={`btn-buy-${product.id}`}
+                className="w-8 h-8 bg-tsia-green rounded-full flex items-center justify-center shadow-md hover:bg-tsia-green/90 disabled:opacity-40 transition-all hover:scale-105"
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5 text-white" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
@@ -609,9 +613,9 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
 }
 
 // ─── Featured Card (Horizontal scroll) ────────────────────────────────────
-function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart, watched, onWatch }: {
+function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart, watched, onWatch, isSeller }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
-  inCart: boolean; onCart: () => void; watched?: boolean; onWatch?: () => void;
+  inCart: boolean; onCart: () => void; watched?: boolean; onWatch?: () => void; isSeller?: boolean;
 }) {
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
@@ -648,20 +652,24 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
             <p className="text-[10px] text-muted-foreground line-through">${orig}</p>
             <p className="text-[9px] text-muted-foreground">{formatAmount(parseFloat(product.price))}</p>
           </div>
-          <div className="flex items-center gap-1">
-            <button onClick={e => { e.stopPropagation(); onCart(); }}
-              data-testid={`btn-featured-cart-${product.id}`}
-              title={inCart ? "Remove from cart" : "Add to cart"}
-              className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all hover:scale-105 ${inCart ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground"}`}>
-              <ShoppingCart className="w-3 h-3" />
-            </button>
-            <button onClick={e => { e.stopPropagation(); onBuy(); }}
-              disabled={product.stock === 0}
-              className="w-7 h-7 bg-tsia-gold rounded-full flex items-center justify-center shadow hover:scale-105 transition-transform disabled:opacity-40"
-              data-testid={`btn-featured-buy-${product.id}`}>
-              <ArrowLeftRight className="w-3 h-3 text-slate-900" />
-            </button>
-          </div>
+          {isSeller ? (
+            <span className="text-[9px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Yours</span>
+          ) : (
+            <div className="flex items-center gap-1">
+              <button onClick={e => { e.stopPropagation(); onCart(); }}
+                data-testid={`btn-featured-cart-${product.id}`}
+                title={inCart ? "Remove from cart" : "Add to cart"}
+                className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all hover:scale-105 ${inCart ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground"}`}>
+                <ShoppingCart className="w-3 h-3" />
+              </button>
+              <button onClick={e => { e.stopPropagation(); onBuy(); }}
+                disabled={product.stock === 0}
+                className="w-7 h-7 bg-tsia-gold rounded-full flex items-center justify-center shadow hover:scale-105 transition-transform disabled:opacity-40"
+                data-testid={`btn-featured-buy-${product.id}`}>
+                <ArrowLeftRight className="w-3 h-3 text-slate-900" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1154,21 +1162,29 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
           )}
         </div>
         <div className="px-5 pb-5 flex flex-col gap-3">
-          <Button onClick={onBuy} disabled={product.stock === 0} className="w-full py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base" data-testid={`btn-detail-buy-${product.id}`}>
-            <ArrowLeftRight className="w-5 h-5 mr-2" />
-            {product.negotiable ? "Negotiate & Trade" : "Place P2P Order"}
-            {" "}— ${parseFloat(product.price).toFixed(2)}
-          </Button>
-          {onCart && (
-            <Button
-              variant="outline"
-              onClick={onCart}
-              className={`w-full rounded-2xl font-semibold h-11 transition-all ${inCart ? "border-tsia-green text-tsia-green bg-tsia-green/5" : ""}`}
-              data-testid={`btn-detail-cart-${product.id}`}
-            >
-              <ShoppingCart className="w-4 h-4 mr-2" />
-              {inCart ? "Remove from Cart" : "Save to Cart"}
-            </Button>
+          {isSeller ? (
+            <div className="w-full py-3 px-4 bg-muted rounded-2xl text-center text-sm font-semibold text-muted-foreground">
+              This is your listing
+            </div>
+          ) : (
+            <>
+              <Button onClick={onBuy} disabled={product.stock === 0} className="w-full py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base" data-testid={`btn-detail-buy-${product.id}`}>
+                <ArrowLeftRight className="w-5 h-5 mr-2" />
+                {product.negotiable ? "Negotiate & Trade" : "Place P2P Order"}
+                {" "}— ${parseFloat(product.price).toFixed(2)}
+              </Button>
+              {onCart && (
+                <Button
+                  variant="outline"
+                  onClick={onCart}
+                  className={`w-full rounded-2xl font-semibold h-11 transition-all ${inCart ? "border-tsia-green text-tsia-green bg-tsia-green/5" : ""}`}
+                  data-testid={`btn-detail-cart-${product.id}`}
+                >
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                  {inCart ? "Remove from Cart" : "Save to Cart"}
+                </Button>
+              )}
+            </>
           )}
           {!isSeller && onChat && (
             <Button variant="outline" onClick={onChat} className="w-full rounded-2xl font-semibold h-11" data-testid={`btn-detail-chat-${product.id}`}>
@@ -1424,7 +1440,7 @@ export default function EcommerceSection() {
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
                   {featured.map(p => (
-                    <FeaturedCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} />
+                    <FeaturedCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} isSeller={p.sellerId === user?.id} />
                   ))}
                 </div>
               )}
@@ -1475,7 +1491,7 @@ export default function EcommerceSection() {
                 {filterViewMode === "grid" ? (
                   <div className="grid grid-cols-2 gap-3">
                     {gridProducts.map(p => (
-                      <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} />
+                      <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} isSeller={p.sellerId === user?.id} />
                     ))}
                   </div>
                 ) : (
@@ -1496,15 +1512,21 @@ export default function EcommerceSection() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <button onClick={e => { e.stopPropagation(); toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }}
-                              data-testid={`btn-list-cart-${p.id}`}
-                              className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all shrink-0 ${cart.has(p.id) ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground"}`}
-                              title={cart.has(p.id) ? "Remove from cart" : "Add to cart"}>
-                              <ShoppingCart className="w-4 h-4" />
-                            </button>
-                            <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-9 h-9 bg-tsia-green rounded-xl flex items-center justify-center shrink-0" title="Place P2P Order">
-                              <ArrowLeftRight className="w-4 h-4 text-white" />
-                            </button>
+                            {p.sellerId === user?.id ? (
+                              <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-full shrink-0">Your listing</span>
+                            ) : (
+                              <>
+                                <button onClick={e => { e.stopPropagation(); toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }}
+                                  data-testid={`btn-list-cart-${p.id}`}
+                                  className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all shrink-0 ${cart.has(p.id) ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground"}`}
+                                  title={cart.has(p.id) ? "Remove from cart" : "Add to cart"}>
+                                  <ShoppingCart className="w-4 h-4" />
+                                </button>
+                                <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-9 h-9 bg-tsia-green rounded-xl flex items-center justify-center shrink-0" title="Place P2P Order">
+                                  <ArrowLeftRight className="w-4 h-4 text-white" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       );

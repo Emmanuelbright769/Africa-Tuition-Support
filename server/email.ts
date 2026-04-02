@@ -1,5 +1,5 @@
 const FROM_NAME = "TSIA – SMAKEMGGOLD Ltd";
-const FROM_EMAIL = "noreply@tsiforafrica.com";
+const FROM_EMAIL = process.env.FROM_EMAIL || "onboarding@resend.dev";
 const RESEND_API = "https://api.resend.com/emails";
 
 function baseTemplate(content: string): string {

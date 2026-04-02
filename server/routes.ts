@@ -1307,6 +1307,22 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Delete user by ID (admin-only) ──────────────────────────────────
+  app.delete("/api/admin/users/:id", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const targetId = parseInt(req.params.id);
+      if (isNaN(targetId)) return res.status(400).json({ message: "Invalid id" });
+      await storage.deleteUserById(targetId);
+      res.json({ success: true, deletedId: targetId });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── ADMIN: All affiliates ───────────────────────────────────────────────────
   app.get("/api/admin/affiliates-all", async (req, res) => {
     try {

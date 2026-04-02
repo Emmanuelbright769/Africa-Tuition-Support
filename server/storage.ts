@@ -46,6 +46,7 @@ import {
 
 export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
+  deleteUserById(id: number): Promise<void>;
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUsersByEmail(email: string): Promise<User[]>;
@@ -203,6 +204,10 @@ export class DatabaseStorage implements IStorage {
     const [created] = await db.insert(users).values(user).returning();
     await db.insert(wallets).values({ userId: created.id, balance: "0.00" });
     return created;
+  }
+
+  async deleteUserById(id: number): Promise<void> {
+    await db.delete(users).where(eq(users.id, id));
   }
 
   async getUser(id: number): Promise<User | undefined> {

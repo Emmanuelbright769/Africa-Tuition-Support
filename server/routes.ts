@@ -2,6 +2,11 @@ import type { Express } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { addSseClient, removeSseClient, pushToUser } from "./realtime";
+import {
+  sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail,
+  sendOrderUpdateEmail, sendLoanUpdateEmail, sendVerificationUpdateEmail,
+  sendReferralCommissionEmail, sendPriceDropEmail,
+} from "./email";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
@@ -83,6 +88,7 @@ export async function registerRoutes(
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
         await storage.createOtp({ email, code, expiresAt, used: false });
         console.log(`[OTP] Code for ${email} (${targetUser.role}): ${code}`);
+        sendOtpEmail(email, code, false).catch(() => {});
 
         return res.json({ message: "OTP sent to your email", otpSent: true, hint: code });
       }
@@ -124,8 +130,8 @@ export async function registerRoutes(
               }
             } catch { /* non-critical */ }
           }
-          // Log a simulated welcome email (no email provider configured)
-          console.log(`[EMAIL] Welcome email to ${email}: Activate your TSIA wallet with $${QCE.MIN_ACTIVATION}. Minimum $${QCE.MIN_BALANCE} balance required. You can withdraw anytime. QCE savings build your credit eligibility up to 30% over 90 days.`);
+          // Send real welcome email
+          sendWelcomeEmail(email, firstName, targetRole as "student" | "affiliate").catch(() => {});
         }
         return u;
       };
@@ -138,6 +144,7 @@ export async function registerRoutes(
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
         await storage.createOtp({ email, code, expiresAt, used: false });
         console.log(`[OTP] Dual-account code for ${email}: ${code}`);
+        sendOtpEmail(email, code, true).catch(() => {});
         return res.json({ message: "OTP sent to your email", otpSent: true, bothCreated: true, hint: code });
       }
 
@@ -149,6 +156,7 @@ export async function registerRoutes(
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
       await storage.createOtp({ email, code, expiresAt, used: false });
       console.log(`[OTP] Code for ${email}: ${code}`);
+      sendOtpEmail(email, code, true).catch(() => {});
 
       res.json({
         message: "OTP sent to your email",
@@ -1158,6 +1166,10 @@ export async function registerRoutes(
       const updated = await storage.updateVerification(vId, { status });
       // Notify student
       try {
+        const verUser = await storage.getUser(updated.userId);
+        if (verUser) {
+          sendVerificationUpdateEmail(verUser.email, verUser.firstName, status).catch(() => {});
+        }
         await storage.createNotification({
           userId: updated.userId,
           type: "verification_update",
@@ -1365,8 +1377,10 @@ export async function registerRoutes(
           description: `Loan disbursed: $${loan.amountUsd} (${loan.userRole} loan)`,
         });
         await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Disbursed", message: `Your $${loan.amountUsd} loan has been approved and credited to your wallet.`, data: { loanId: loan.id }, isRead: false });
+        storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "approved", loan.amountUsd).catch(() => {}); });
       } else if (status === "rejected") {
         await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Application Update", message: "Your loan application was not approved at this time. Please contact support for more information.", data: { loanId: loan.id }, isRead: false });
+        storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "rejected", loan.amountUsd).catch(() => {}); });
       }
       res.json(loan);
     } catch (e: any) {
@@ -1981,6 +1995,10 @@ export async function registerRoutes(
       await storage.updateWalletBalance(deposit.userId, newBalance);
       // Notify user
       try {
+        const depUser = await storage.getUser(deposit.userId);
+        if (depUser) {
+          sendWalletCreditEmail(depUser.email, depUser.firstName, parseFloat(deposit.amountUsd).toFixed(2), newBalance).catch(() => {});
+        }
         await storage.createNotification({
           userId: deposit.userId,
           type: "wallet_credit",
@@ -2142,6 +2160,11 @@ export async function registerRoutes(
 
       // Notify buyer and seller
       try {
+        const [buyerUser, sellerUser] = await Promise.all([
+          storage.getUser(userId),
+          storage.getUser(prod.sellerId),
+        ]);
+        if (buyerUser) sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, "confirmed", prod.title, order.id).catch(() => {});
         await Promise.all([
           storage.createNotification({
             userId,

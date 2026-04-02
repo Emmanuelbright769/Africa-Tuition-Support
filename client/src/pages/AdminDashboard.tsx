@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { logoBadgeWhite, logoWhiteHorizontal } from "@/components/ui/Logo";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; verification: any }>({ open: false, verification: null });
   const [rejectReason, setRejectReason] = useState("");
   const [reviewDialog, setReviewDialog] = useState<any>(null);
@@ -226,11 +228,9 @@ export default function AdminDashboard() {
   // ─── Sidebar nav ───────────────────────────────────────────────────────────
   const SidebarContent = () => (
     <>
-      <div className="h-16 flex items-center px-6 border-b border-slate-800 shrink-0">
-        <div className="w-8 h-8 bg-tsia-green rounded-lg flex items-center justify-center mr-3 shadow-lg shadow-tsia-green/20">
-          <span className="text-white font-bold text-sm">A</span>
-        </div>
-        <span className="text-lg font-bold text-white tracking-wide">TSIA Admin</span>
+      <div className="h-20 flex flex-col justify-center px-5 border-b border-slate-800 shrink-0 bg-slate-950">
+        <img src={logoWhiteHorizontal} alt="TSIA" className="h-8 w-auto object-contain mb-0.5" />
+        <span className="text-[10px] font-bold text-tsia-gold tracking-widest uppercase pl-0.5">Admin Control Panel</span>
       </div>
       <nav className="p-4 space-y-1 flex-1 overflow-y-auto">
         {NAV.map(item => {
@@ -297,7 +297,7 @@ export default function AdminDashboard() {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input placeholder="Search..." className="pl-9 h-8 w-52 bg-slate-100 border-slate-200 rounded-full text-sm" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <button className="sm:hidden p-1.5 rounded-lg hover:bg-slate-100" onClick={() => setSearch(s => s ? "" : " ")}><Search className="w-4 h-4 text-slate-500" /></button>
+            <button className="sm:hidden p-1.5 rounded-lg hover:bg-slate-100" onClick={() => setMobileSearchOpen(p => !p)}><Search className="w-4 h-4 text-slate-500" /></button>
             <Button size="sm" variant="outline" onClick={() => { queryClient.invalidateQueries(); }} className="hidden sm:flex gap-1.5 h-8 text-xs">
               <RefreshCw className="w-3.5 h-3.5" /> Refresh
             </Button>
@@ -305,11 +305,11 @@ export default function AdminDashboard() {
         </header>
 
         {/* Mobile search */}
-        {search.trim() && (
+        {mobileSearchOpen && (
           <div className="sm:hidden px-4 py-2 bg-white border-b">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <Input autoFocus placeholder="Search..." className="pl-9 h-9 bg-slate-100 border-0 rounded-xl text-sm" value={search} onChange={e => setSearch(e.target.value)} />
+              <Input autoFocus placeholder="Search users, emails, NIN..." className="pl-9 h-9 bg-slate-100 border-0 rounded-xl text-sm" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
           </div>
         )}

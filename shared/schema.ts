@@ -477,6 +477,7 @@ export const products = pgTable("products", {
   location:    text("location").notNull().default("London, UK"),
   status:      productStatusEnum("status").notNull().default("active"),
   viewCount:   integer("view_count").notNull().default(0),
+  negotiable:  boolean("negotiable").notNull().default(false),
   createdAt:   timestamp("created_at").defaultNow().notNull(),
 });
 

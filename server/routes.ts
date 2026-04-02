@@ -2022,12 +2022,12 @@ export async function registerRoutes(
   app.post("/api/products", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const { title, description, price, category, condition, images, stock, location } = req.body;
+    const { title, description, price, category, condition, images, stock, location, negotiable } = req.body;
     if (!title || !description || !price) return res.status(400).json({ message: "Title, description and price are required" });
     const priceNum = parseFloat(price);
     if (priceNum < ECOMMERCE.MIN_PRICE || priceNum > ECOMMERCE.MAX_PRICE) return res.status(400).json({ message: `Price must be $${ECOMMERCE.MIN_PRICE}–$${ECOMMERCE.MAX_PRICE}` });
     try {
-      const prod = await storage.createProduct({ sellerId: userId, title, description, price: priceNum.toFixed(2), category: category || "other", condition: condition || "new", images: images || [], stock: parseInt(stock) || 1, location: location || "London, UK", status: "active" });
+      const prod = await storage.createProduct({ sellerId: userId, title, description, price: priceNum.toFixed(2), category: category || "other", condition: condition || "new", images: images || [], stock: parseInt(stock) || 1, location: location || "London, UK", status: "active", negotiable: negotiable === true });
       res.json(prod);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

@@ -13,7 +13,8 @@ import {
   Search, ShoppingBag, Package, Star, MapPin, Plus, Eye, ShoppingCart,
   Tag, Truck, CheckCircle2, X, Camera, TrendingUp, Loader2, Heart,
   Filter, ChevronRight, BadgePercent, Bell, Zap, ArrowRight, Flame,
-  Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, MessageCircle
+  Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, MessageCircle,
+  Mail, HandCoins, AlertCircle, ArrowLeftRight, User
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ECOMMERCE } from "@shared/schema";
@@ -25,7 +26,8 @@ type Product = {
   id: number; sellerId: number; title: string; description: string;
   price: string; category: string; condition: string; images: string[] | null;
   stock: number; location: string; status: string; viewCount: number;
-  createdAt: string; sellerName: string;
+  createdAt: string; sellerName: string; sellerEmail?: string;
+  negotiable?: boolean;
   avgRating?: number; ratingCount?: number;
 };
 type ProductRatingEntry = {
@@ -260,12 +262,15 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
         >
           <Heart className={`w-4 h-4 transition-colors ${wishlisted ? "fill-red-500 text-red-500" : "text-slate-400"}`} />
         </button>
-        {/* New badge */}
-        {product.condition === "new" && (
-          <div className="absolute top-2 left-2">
+        {/* Badges */}
+        <div className="absolute top-2 left-2 flex flex-col gap-1">
+          {product.condition === "new" && (
             <span className="text-[9px] font-bold bg-tsia-green text-white px-2 py-0.5 rounded-full">NEW</span>
-          </div>
-        )}
+          )}
+          {product.negotiable && (
+            <span className="text-[9px] font-bold bg-amber-400 text-slate-900 px-2 py-0.5 rounded-full">NEGO</span>
+          )}
+        </div>
         {product.stock === 0 && (
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
             <span className="text-white text-xs font-bold bg-black/60 px-3 py-1 rounded-full">Out of Stock</span>
@@ -291,7 +296,7 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist }: {
             data-testid={`btn-buy-${product.id}`}
             className="w-8 h-8 bg-tsia-green rounded-full flex items-center justify-center shadow-md hover:bg-tsia-green/90 disabled:opacity-40 transition-all hover:scale-105"
           >
-            <Plus className="w-4 h-4 text-white" />
+            <ArrowLeftRight className="w-3.5 h-3.5 text-white" />
           </button>
         </div>
       </div>
@@ -334,7 +339,7 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist }: {
           <button onClick={e => { e.stopPropagation(); onBuy(); }}
             className="w-7 h-7 bg-tsia-gold rounded-full flex items-center justify-center shadow hover:scale-105 transition-transform"
             data-testid={`btn-featured-buy-${product.id}`}>
-            <Plus className="w-3.5 h-3.5 text-slate-900" />
+            <ArrowLeftRight className="w-3 h-3 text-slate-900" />
           </button>
         </div>
       </div>
@@ -346,7 +351,7 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist }: {
 function ListProductModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { toast } = useToast();
   const { formatAmount } = useLocalCurrency();
-  const [form, setForm] = useState({ title: "", description: "", price: "", category: "other", condition: "new", stock: "1", location: "London, UK" });
+  const [form, setForm] = useState({ title: "", description: "", price: "", category: "other", condition: "new", stock: "1", location: "London, UK", negotiable: false });
   const [images, setImages] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -357,7 +362,7 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       queryClient.invalidateQueries({ queryKey: ["/api/products/my"] });
       onClose();
-      setForm({ title: "", description: "", price: "", category: "other", condition: "new", stock: "1", location: "London, UK" });
+      setForm({ title: "", description: "", price: "", category: "other", condition: "new", stock: "1", location: "London, UK", negotiable: false });
       setImages([]);
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -452,6 +457,23 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
             </div>
           </div>
           <div><Label>Your location</Label><Input placeholder="London, UK" value={form.location} onChange={e => setForm(p => ({...p, location: e.target.value}))} className="mt-1" data-testid="input-product-location" /></div>
+
+          {/* Negotiable toggle */}
+          <div className={`rounded-xl border-2 p-4 cursor-pointer transition-all ${form.negotiable ? "border-tsia-green bg-tsia-green/5" : "border-border bg-muted/30"}`}
+            onClick={() => setForm(p => ({...p, negotiable: !p.negotiable}))}
+            data-testid="toggle-negotiable"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-sm">Accept Price Negotiations</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Allow buyers to propose a different price via chat before paying</p>
+              </div>
+              <div className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ml-3 ${form.negotiable ? "bg-tsia-green" : "bg-muted-foreground/30"}`}>
+                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.negotiable ? "translate-x-5" : "translate-x-0.5"}`} />
+              </div>
+            </div>
+          </div>
+
           {parseFloat(form.price) > 0 && (
             <div className="bg-tsia-green/5 rounded-xl p-4 border border-tsia-green/20">
               <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1"><BadgePercent className="w-3.5 h-3.5 text-tsia-green" /> Earnings breakdown</p>
@@ -465,7 +487,7 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => createMutation.mutate({...form, images, price: parseFloat(form.price), stock: parseInt(form.stock)})} disabled={createMutation.isPending || !form.title || !form.description || !form.price} data-testid="button-submit-product" className="bg-tsia-green text-white">
+          <Button onClick={() => createMutation.mutate({...form, images, price: parseFloat(form.price), stock: parseInt(form.stock), negotiable: form.negotiable})} disabled={createMutation.isPending || !form.title || !form.description || !form.price} data-testid="button-submit-product" className="bg-tsia-green text-white">
             {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />} List Product
           </Button>
         </DialogFooter>
@@ -474,77 +496,144 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
   );
 }
 
-// ─── Buy Modal ─────────────────────────────────────────────────────────────
-function BuyModal({ product, open, onClose, walletBalance }: { product: Product | null; open: boolean; onClose: () => void; walletBalance: number }) {
+// ─── P2P Trade Modal ────────────────────────────────────────────────────────
+function P2PTradeModal({ product, open, onClose, walletBalance, onChat }: {
+  product: Product | null; open: boolean; onClose: () => void; walletBalance: number; onChat?: () => void;
+}) {
   const { toast } = useToast();
   const { formatAmount } = useLocalCurrency();
   const [qty, setQty] = useState(1);
-  const [address, setAddress] = useState("");
+  const [step, setStep] = useState<"review" | "confirm">("review");
 
   const total = product ? parseFloat(product.price) * qty : 0;
   const commission = total * ECOMMERCE.COMMISSION_RATE;
+  const sellerReceives = total - commission;
   const canAfford = walletBalance >= total;
 
   const buyMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/orders", data); return res.json(); },
     onSuccess: (res: any) => {
-      toast({ title: "Order placed!", description: res.message, className: "border-tsia-green" });
+      toast({
+        title: "P2P Order Placed!",
+        description: "Your TSIA wallet has been debited. Contact the seller to complete the trade.",
+        className: "border-tsia-green",
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/purchases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      onClose(); setQty(1); setAddress("");
+      onClose(); setQty(1); setStep("review");
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   if (!product) return null;
   const img = product.images?.[0];
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Confirm Purchase</DialogTitle>
-          <DialogDescription>Payment from your TSIA wallet — instant & secure.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
+    <Dialog open={open} onOpenChange={() => { onClose(); setStep("review"); setQty(1); }}>
+      <DialogContent className="max-w-sm p-0 overflow-hidden rounded-2xl">
+        {/* P2P Header */}
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-5 pt-5 pb-4">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-6 h-6 bg-tsia-green rounded-full flex items-center justify-center">
+              <ArrowLeftRight className="w-3 h-3 text-white" />
+            </div>
+            <span className="text-xs font-bold text-tsia-green uppercase tracking-widest">P2P Trade</span>
+          </div>
+          <h2 className="text-white font-bold text-lg leading-tight">{product.title}</h2>
+          <p className="text-slate-400 text-xs mt-0.5">Seller: {product.sellerName}</p>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Product thumbnail + price */}
           <div className="flex gap-3 bg-muted/40 rounded-xl p-3">
-            <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-100 shrink-0">
+            <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 shrink-0">
               {img ? <img src={img} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-2xl">{CATEGORY_ICONS[product.category]}</div>}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm line-clamp-2">{product.title}</p>
-              <p className="text-xs text-muted-foreground">by {product.sellerName}</p>
-              <p className="text-xl font-black text-tsia-green mt-1">${parseFloat(product.price).toFixed(2)}</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-2xl font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
+                <span className="text-xs text-muted-foreground">({formatAmount(parseFloat(product.price))})</span>
+                {product.negotiable && (
+                  <span className="text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300 px-2 py-0.5 rounded-full">Negotiable</span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground capitalize">{product.condition} · {CATEGORY_LABELS[product.category]}</p>
             </div>
           </div>
+
+          {/* Qty selector */}
           {product.stock > 1 && (
             <div className="flex items-center gap-3">
-              <Label className="shrink-0">Qty:</Label>
+              <span className="text-sm font-semibold shrink-0">Qty</span>
               <div className="flex items-center gap-2">
-                <button onClick={() => setQty(q => Math.max(1,q-1))} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold hover:bg-muted/70">−</button>
+                <button onClick={() => setQty(q => Math.max(1,q-1))} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold hover:bg-muted/70 text-lg leading-none">−</button>
                 <span className="w-8 text-center font-bold text-lg">{qty}</span>
-                <button onClick={() => setQty(q => Math.min(product.stock,q+1))} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold hover:bg-muted/70">+</button>
-                <span className="text-xs text-muted-foreground">of {product.stock}</span>
+                <button onClick={() => setQty(q => Math.min(product.stock,q+1))} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold hover:bg-muted/70 text-lg leading-none">+</button>
+                <span className="text-xs text-muted-foreground">/{product.stock} available</span>
               </div>
             </div>
           )}
-          <div><Label>Delivery address (optional)</Label><Input placeholder="e.g. 12 Baker Street, London" value={address} onChange={e => setAddress(e.target.value)} className="mt-1" data-testid="input-delivery-address" /></div>
-          <div className="bg-muted/40 rounded-xl p-3 text-sm space-y-1">
-            <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>${total.toFixed(2)} <span className="text-xs text-muted-foreground">({formatAmount(total)})</span></span></div>
-            <div className="flex justify-between text-xs text-muted-foreground"><span>TSIA fee (8%)</span><span>${commission.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold border-t pt-1"><span>Total</span><span>${total.toFixed(2)} <span className="font-normal text-xs text-muted-foreground">({formatAmount(total)})</span></span></div>
+
+          {/* P2P Payment Instructions */}
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5" /> How P2P Payment Works
+            </p>
+            <div className="space-y-2">
+              {[
+                { n: "1", text: product.negotiable ? "Chat with seller to agree on final price & terms" : "Review the listed price and confirm with seller" },
+                { n: "2", text: "Get the seller's TSIA email address from the chat" },
+                { n: "3", text: "Place order here — your wallet is debited to TSIA escrow" },
+                { n: "4", text: "Seller confirms receipt and discusses shipping in chat" },
+              ].map(s => (
+                <div key={s.n} className="flex items-start gap-2">
+                  <span className="w-5 h-5 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-700 dark:text-blue-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{s.n}</span>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">{s.text}</p>
+                </div>
+              ))}
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2 flex items-start gap-2 mt-1">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                <strong>Security note:</strong> Only use TSIA email addresses for payments. Do not send money to external accounts to avoid fraud.
+              </p>
+            </div>
           </div>
+
+          {/* Order summary */}
+          <div className="bg-muted/40 rounded-xl p-3 text-sm space-y-1.5">
+            <div className="flex justify-between text-muted-foreground text-xs"><span>Unit price × {qty}</span><span>${(parseFloat(product.price) * qty).toFixed(2)}</span></div>
+            <div className="flex justify-between text-xs text-muted-foreground"><span>TSIA fee (8%)</span><span>−${commission.toFixed(2)}</span></div>
+            <div className="flex justify-between text-xs text-muted-foreground"><span>Seller receives</span><span>${sellerReceives.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold border-t pt-1.5 text-sm"><span>You pay</span><span className="text-tsia-green">${total.toFixed(2)} <span className="font-normal text-xs text-muted-foreground">({formatAmount(total)})</span></span></div>
+          </div>
+
+          {/* Wallet status */}
           <div className={`rounded-xl p-3 text-sm flex items-center gap-2 ${canAfford ? "bg-green-50 dark:bg-green-900/20 text-green-700" : "bg-red-50 dark:bg-red-900/20 text-red-600"}`}>
             {canAfford ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <X className="w-4 h-4 shrink-0" />}
-            {canAfford ? `Wallet: $${walletBalance.toFixed(2)} — Ready` : `Need $${(total - walletBalance).toFixed(2)} more in wallet`}
+            {canAfford ? `Wallet balance: $${walletBalance.toFixed(2)} — Sufficient` : `Insufficient funds — need $${(total - walletBalance).toFixed(2)} more`}
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => buyMutation.mutate({productId: product.id, quantity: qty, deliveryAddress: address || undefined})} disabled={buyMutation.isPending || !canAfford} data-testid="button-confirm-purchase" className="flex-1 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold">
-            {buyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShoppingCart className="w-4 h-4 mr-2" />} Pay ${total.toFixed(2)} ({formatAmount(total)})
+
+        {/* Action buttons */}
+        <div className="px-5 pb-5 flex gap-2">
+          {onChat && (
+            <Button variant="outline" className="flex-1 rounded-xl h-11 font-semibold" onClick={() => { onClose(); onChat(); }} data-testid="btn-p2p-chat">
+              <MessageCircle className="w-4 h-4 mr-1.5" />
+              {product.negotiable ? "Negotiate" : "Chat Seller"}
+            </Button>
+          )}
+          <Button
+            onClick={() => buyMutation.mutate({ productId: product.id, quantity: qty })}
+            disabled={buyMutation.isPending || !canAfford}
+            data-testid="button-confirm-purchase"
+            className="flex-1 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-xl h-11"
+          >
+            {buyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <ArrowLeftRight className="w-4 h-4 mr-1.5" />}
+            Place Order
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -664,9 +753,17 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }:
             <div><p className="text-sm font-semibold">{product.sellerName}</p><p className="text-xs text-muted-foreground">Verified TSIA seller</p></div>
             <Badge className="ml-auto bg-tsia-green/10 text-tsia-green text-[10px]">✓ Verified</Badge>
           </div>
-          <div className="flex items-center justify-between text-sm bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
+          <div className="flex items-center justify-between text-sm bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 flex-wrap gap-2">
             <span className="text-amber-700 dark:text-amber-300 flex items-center gap-1"><Package className="w-3.5 h-3.5" />{product.stock} in stock</span>
-            <span className="text-amber-700 dark:text-amber-300 flex items-center gap-1"><Truck className="w-3.5 h-3.5" />Free shipping</span>
+            {product.negotiable && (
+              <span className="flex items-center gap-1 text-xs font-bold bg-amber-100 text-amber-700 border border-amber-300 px-2.5 py-1 rounded-full">
+                <HandCoins className="w-3 h-3" /> Price Negotiable
+              </span>
+            )}
+          </div>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-3 text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
+            <Truck className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>Shipping details are arranged directly with the seller in chat. Use your TSIA email address for all payments to stay protected.</span>
           </div>
 
           {/* ── Rate this product ── */}
@@ -718,8 +815,10 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller }:
           )}
         </div>
         <div className="px-5 pb-5 flex flex-col gap-3">
-          <Button onClick={onBuy} disabled={product.stock === 0} className="w-full h-13 py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base" data-testid={`btn-detail-buy-${product.id}`}>
-            <ShoppingCart className="w-5 h-5 mr-2" /> Buy Now — ${parseFloat(product.price).toFixed(2)} ({formatAmount(parseFloat(product.price))})
+          <Button onClick={onBuy} disabled={product.stock === 0} className="w-full py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base" data-testid={`btn-detail-buy-${product.id}`}>
+            <ArrowLeftRight className="w-5 h-5 mr-2" />
+            {product.negotiable ? "Negotiate & Trade" : "Place P2P Order"}
+            {" "}— ${parseFloat(product.price).toFixed(2)}
           </Button>
           {!isSeller && onChat && (
             <Button variant="outline" onClick={onChat} className="w-full rounded-2xl font-semibold h-11" data-testid={`btn-detail-chat-${product.id}`}>
@@ -975,8 +1074,8 @@ export default function EcommerceSection() {
                               <span className="text-[11px] text-muted-foreground line-through">${originalPrice(p.price)}</span>
                             </div>
                           </div>
-                          <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-9 h-9 bg-tsia-green rounded-xl flex items-center justify-center shrink-0">
-                            <ShoppingCart className="w-4 h-4 text-white" />
+                          <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-9 h-9 bg-tsia-green rounded-xl flex items-center justify-center shrink-0" title="Place P2P Order">
+                            <ArrowLeftRight className="w-4 h-4 text-white" />
                           </button>
                         </div>
                       );
@@ -1146,7 +1245,13 @@ export default function EcommerceSection() {
         isSeller={selectedProduct?.sellerId === user?.id}
         onChat={() => { setDetailOpen(false); setChatProduct(selectedProduct); setChatProductOpen(true); }}
       />
-      <BuyModal product={buyProduct} open={buyOpen} onClose={() => setBuyOpen(false)} walletBalance={walletBalance} />
+      <P2PTradeModal
+        product={buyProduct}
+        open={buyOpen}
+        onClose={() => setBuyOpen(false)}
+        walletBalance={walletBalance}
+        onChat={() => { setBuyOpen(false); setChatProduct(buyProduct); setChatProductOpen(true); }}
+      />
 
       {/* Chat components */}
       <EcommerceChatDrawer open={chatDrawerOpen} onClose={() => setChatDrawerOpen(false)} />

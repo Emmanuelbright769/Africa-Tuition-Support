@@ -42,6 +42,7 @@ export default function Landing() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [openHowSteps, setOpenHowSteps] = useState<Set<number>>(new Set());
   const [openAffSteps, setOpenAffSteps] = useState<Set<number>>(new Set());
+  const [showAll, setShowAll] = useState(false);
   const toggleHow = (i: number) => setOpenHowSteps(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; });
   const toggleAff = (i: number) => setOpenAffSteps(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; });
 
@@ -118,6 +119,35 @@ export default function Landing() {
             ))}
           </div>
         </section>
+
+        {/* ── Explore Dropdown Toggle ───────────────────────────── */}
+        <div className="bg-gradient-to-r from-tsia-green/5 via-tsia-gold/5 to-tsia-green/5 border-y border-border">
+          <button
+            onClick={() => setShowAll(p => !p)}
+            data-testid="btn-explore-platform"
+            className="w-full py-5 px-6 flex items-center justify-center gap-3 hover:bg-tsia-green/5 transition-colors group"
+          >
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-lg font-bold text-foreground group-hover:text-tsia-green transition-colors">
+                {showAll ? "Hide Platform Details" : "Explore the TSIA Platform"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {showAll ? "Collapse this section" : "How it works · Affiliate · Plans · MSc · Tenancy · About"}
+              </span>
+            </div>
+            <ChevronDown className={`w-6 h-6 text-tsia-green transition-transform duration-300 ${showAll ? "rotate-180" : ""}`} />
+          </button>
+        </div>
+
+        <AnimatePresence>
+          {showAll && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.4, ease: "easeInOut" }}
+              className="overflow-hidden"
+            >
 
         <section id="how-it-works" className="py-24 bg-card">
           <div className="container mx-auto px-4">
@@ -419,6 +449,10 @@ export default function Landing() {
             </div>
           </div>
         </section>
+
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <section id="contact-preview" className="py-24 bg-card border-t">
           <div className="container mx-auto px-4 text-center">

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -12,9 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   Search, ShoppingBag, Package, Star, MapPin, Plus, Eye, ShoppingCart,
   Tag, Truck, CheckCircle2, X, Camera, TrendingUp, Loader2, Heart,
-  Filter, ChevronRight, BadgePercent, Bell, Zap, ArrowRight, Flame,
+  Filter, ChevronRight, ChevronLeft, BadgePercent, Bell, Zap, ArrowRight, Flame,
   Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, MessageCircle,
-  Mail, HandCoins, AlertCircle, ArrowLeftRight, User
+  Mail, HandCoins, AlertCircle, ArrowLeftRight, User, Expand
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ECOMMERCE } from "@shared/schema";
@@ -224,6 +225,120 @@ function SellerStories({ products }: { products: Product[] }) {
   );
 }
 
+// ─── Image Lightbox ────────────────────────────────────────────────────────
+function ImageLightbox({ images, startIndex = 0, open, onClose }: {
+  images: string[]; startIndex?: number; open: boolean; onClose: () => void;
+}) {
+  const [idx, setIdx] = useState(startIndex);
+
+  useEffect(() => { setIdx(startIndex); }, [startIndex, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") setIdx(i => (i + 1) % images.length);
+      if (e.key === "ArrowLeft")  setIdx(i => (i - 1 + images.length) % images.length);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, images.length, onClose]);
+
+  if (!images.length) return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="lightbox-bg"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center"
+          onClick={onClose}
+          data-testid="image-lightbox"
+        >
+          {/* Close */}
+          <button
+            className="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors z-10"
+            onClick={onClose} data-testid="btn-lightbox-close"
+          >
+            <X className="w-5 h-5 text-white" />
+          </button>
+
+          {/* Counter */}
+          {images.length > 1 && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
+              {idx + 1} / {images.length}
+            </div>
+          )}
+
+          {/* Image */}
+          <motion.img
+            key={idx}
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.92 }}
+            transition={{ duration: 0.2 }}
+            src={images[idx]}
+            alt={`Image ${idx + 1}`}
+            className="max-w-[95vw] max-h-[80vh] object-contain rounded-xl select-none"
+            onClick={e => e.stopPropagation()}
+            draggable={false}
+          />
+
+          {/* Arrows */}
+          {images.length > 1 && (
+            <>
+              <button
+                onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + images.length) % images.length); }}
+                className="absolute left-3 w-11 h-11 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
+                data-testid="btn-lightbox-prev"
+              >
+                <ChevronLeft className="w-6 h-6 text-white" />
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % images.length); }}
+                className="absolute right-3 w-11 h-11 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
+                data-testid="btn-lightbox-next"
+              >
+                <ChevronRight className="w-6 h-6 text-white" />
+              </button>
+            </>
+          )}
+
+          {/* Dot strip */}
+          {images.length > 1 && (
+            <div className="absolute bottom-6 flex items-center gap-2">
+              {images.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={e => { e.stopPropagation(); setIdx(i); }}
+                  className={`rounded-full transition-all ${i === idx ? "w-5 h-2 bg-white" : "w-2 h-2 bg-white/40 hover:bg-white/70"}`}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Thumbnail strip (multi-image) */}
+          {images.length > 1 && (
+            <div className="absolute bottom-14 flex gap-2 overflow-x-auto max-w-[90vw] px-2">
+              {images.map((src, i) => (
+                <button
+                  key={i}
+                  onClick={e => { e.stopPropagation(); setIdx(i); }}
+                  className={`shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${i === idx ? "border-white" : "border-white/20 opacity-60 hover:opacity-90"}`}
+                >
+                  <img src={src} className="w-full h-full object-cover" alt="" draggable={false} />
+                </button>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body
+  );
+}
+
 // ─── Cart Drawer ───────────────────────────────────────────────────────────
 function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
   open: boolean; onClose: () => void; cartIds: Set<number>;
@@ -390,7 +505,9 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
   const orig = originalPrice(product.price);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   return (
+    <>
     <motion.div
       whileHover={{ y: -3 }}
       transition={{ type: "spring", stiffness: 400, damping: 25 }}
@@ -401,17 +518,23 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
       {/* Image */}
       <div className="relative aspect-[4/3] bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 overflow-hidden">
         {img ? (
-          <img src={img} alt={product.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+          <img
+            src={img} alt={product.title}
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 cursor-zoom-in"
+            onClick={e => { e.stopPropagation(); setLightboxOpen(true); }}
+          />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-1">
             <span className="text-3xl">{CATEGORY_ICONS[product.category] || "📦"}</span>
           </div>
         )}
-        {/* View overlay hint */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-          <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
-            <Eye className="w-3 h-3" /> View
-          </span>
+        {/* Hover overlay — shows expand hint on image, view hint on rest */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none flex items-center justify-center">
+          {img && (
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 pointer-events-none">
+              <Expand className="w-3 h-3" /> Full view
+            </span>
+          )}
         </div>
         {/* Wishlist */}
         <button
@@ -470,6 +593,8 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
         </div>
       </div>
     </motion.div>
+    {product.images?.length ? <ImageLightbox images={product.images} open={lightboxOpen} onClose={() => setLightboxOpen(false)} /> : null}
+    </>
   );
 }
 
@@ -481,17 +606,29 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
   const orig = originalPrice(product.price);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   return (
+    <>
     <div
       onClick={onView}
       data-testid={`card-featured-${product.id}`}
-      className="shrink-0 w-40 bg-card rounded-2xl overflow-hidden shadow-md border border-border/50 cursor-pointer hover:shadow-lg transition-shadow"
+      className="shrink-0 w-40 bg-card rounded-2xl overflow-hidden shadow-md border border-border/50 cursor-pointer hover:shadow-lg transition-shadow group"
     >
       <div className="relative w-40 h-44 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700">
         {img ? (
-          <img src={img} alt={product.title} className="w-full h-full object-cover" />
+          <img src={img} alt={product.title}
+            className="w-full h-full object-cover cursor-zoom-in"
+            onClick={e => { e.stopPropagation(); setLightboxOpen(true); }}
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-4xl">{CATEGORY_ICONS[product.category] || "📦"}</div>
+        )}
+        {img && (
+          <button onClick={e => { e.stopPropagation(); setLightboxOpen(true); }}
+            className="absolute bottom-2 right-2 w-6 h-6 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
+            data-testid={`btn-featured-expand-${product.id}`}>
+            <Expand className="w-3 h-3 text-white" />
+          </button>
         )}
         <button onClick={e => { e.stopPropagation(); onWishlist(); }}
           className="absolute top-2 right-2 w-7 h-7 bg-white/90 dark:bg-slate-800/90 rounded-full flex items-center justify-center">
@@ -528,6 +665,8 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
         </div>
       </div>
     </div>
+    {product.images?.length ? <ImageLightbox images={product.images} open={lightboxOpen} onClose={() => setLightboxOpen(false)} /> : null}
+    </>
   );
 }
 
@@ -829,6 +968,7 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
   const { user } = useAuth();
   const { toast } = useToast();
   const [imgIdx, setImgIdx] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [ratingComment, setRatingComment] = useState("");
   const [pendingRating, setPendingRating] = useState(0);
 
@@ -881,20 +1021,33 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
   const ratingCount = ratingsData?.summary?.count ?? product.ratingCount ?? 0;
   const canRate = !isSeller;
 
-  return (
+  return (<>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-0 gap-0">
         {/* Image hero */}
-        <div className="relative w-full aspect-video bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 rounded-t-2xl overflow-hidden">
+        <div className="relative w-full aspect-video bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 rounded-t-2xl overflow-hidden group">
           {imgs.length > 0 ? (
-            <img src={imgs[imgIdx]} alt={product.title} className="w-full h-full object-cover" />
+            <img
+              src={imgs[imgIdx]} alt={product.title}
+              className="w-full h-full object-cover cursor-zoom-in"
+              onClick={() => setLightboxOpen(true)}
+            />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-6xl">{CATEGORY_ICONS[product.category] || "📦"}</div>
           )}
           <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 bg-black/50 rounded-full flex items-center justify-center"><X className="w-4 h-4 text-white" /></button>
           {disc > 0 && <div className="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">−{disc}%</div>}
+          {imgs.length > 0 && (
+            <button
+              onClick={() => setLightboxOpen(true)}
+              className="absolute bottom-3 right-3 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition-colors"
+              data-testid={`btn-detail-expand-${product.id}`}
+            >
+              <Expand className="w-4 h-4 text-white" />
+            </button>
+          )}
           {imgs.length > 1 && (
-            <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+            <div className="absolute bottom-3 left-0 right-12 flex justify-center gap-1">
               {imgs.map((_, i) => <button key={i} onClick={() => setImgIdx(i)} className={`w-1.5 h-1.5 rounded-full ${i === imgIdx ? "bg-white" : "bg-white/40"}`} />)}
             </div>
           )}
@@ -902,9 +1055,13 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
         {/* Thumb strip */}
         {imgs.length > 1 && (
           <div className="flex gap-2 px-4 pt-3 overflow-x-auto">
-            {imgs.map((img, i) => (
-              <button key={i} onClick={() => setImgIdx(i)} className={`w-12 h-12 rounded-xl overflow-hidden shrink-0 border-2 ${i === imgIdx ? "border-tsia-green" : "border-transparent"}`}>
-                <img src={img} className="w-full h-full object-cover" alt="" />
+            {imgs.map((src, i) => (
+              <button key={i}
+                onClick={() => { setImgIdx(i); }}
+                onDoubleClick={() => { setImgIdx(i); setLightboxOpen(true); }}
+                className={`w-12 h-12 rounded-xl overflow-hidden shrink-0 border-2 transition-all ${i === imgIdx ? "border-tsia-green" : "border-transparent opacity-60 hover:opacity-100"}`}
+              >
+                <img src={src} className="w-full h-full object-cover" alt="" />
               </button>
             ))}
           </div>
@@ -1023,6 +1180,8 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
         </div>
       </DialogContent>
     </Dialog>
+    {imgs.length > 0 && <ImageLightbox images={imgs} startIndex={imgIdx} open={lightboxOpen} onClose={() => setLightboxOpen(false)} />}
+  </>
   );
 }
 

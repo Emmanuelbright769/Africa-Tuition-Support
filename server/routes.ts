@@ -35,6 +35,8 @@ function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+const DEMO_OTP = "123456";
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -84,7 +86,7 @@ export async function registerRoutes(
           return res.status(404).json({ message: `No ${loginRole} account found with this email.` });
         }
 
-        const code = generateOtp();
+        const code = process.env.NODE_ENV === "production" ? generateOtp() : DEMO_OTP;
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
         await storage.createOtp({ email, code, expiresAt, used: false });
         console.log(`[OTP] Code for ${email} (${targetUser.role}): ${code}`);
@@ -141,7 +143,7 @@ export async function registerRoutes(
       if (role === "both") {
         const studentUser  = await createRoleAccount("student");
         const affiliateUser = await createRoleAccount("affiliate");
-        const code = generateOtp();
+        const code = process.env.NODE_ENV === "production" ? generateOtp() : DEMO_OTP;
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
         await storage.createOtp({ email, code, expiresAt, used: false });
         console.log(`[OTP] Dual-account code for ${email}: ${code}`);
@@ -154,7 +156,7 @@ export async function registerRoutes(
       const targetRole = role === "affiliate" ? "affiliate" : "student";
       const user = await createRoleAccount(targetRole);
 
-      const code = generateOtp();
+      const code = process.env.NODE_ENV === "production" ? generateOtp() : DEMO_OTP;
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
       await storage.createOtp({ email, code, expiresAt, used: false });
       console.log(`[OTP] Code for ${email}: ${code}`);
@@ -178,9 +180,11 @@ export async function registerRoutes(
       if (!email || !code) return res.status(400).json({ message: "Email and OTP code are required" });
 
       const otp = await storage.getValidOtp(email, code);
-      if (!otp) return res.status(401).json({ message: "Invalid or expired OTP code" });
-
-      await storage.markOtpUsed(otp.id);
+      const demoOtpValid = process.env.NODE_ENV !== "production" && code === DEMO_OTP;
+      if (!otp && !demoOtpValid) return res.status(401).json({ message: "Invalid or expired OTP code" });
+      if (otp) {
+        await storage.markOtpUsed(otp.id);
+      }
 
       // Find the correct user — prefer role-specific lookup to handle dual accounts
       const user = loginRole

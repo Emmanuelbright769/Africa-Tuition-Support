@@ -816,6 +816,37 @@ export const insertCategorySubscriptionSchema = createInsertSchema(categorySubsc
 export type InsertCategorySubscription = z.infer<typeof insertCategorySubscriptionSchema>;
 export type CategorySubscription = typeof categorySubscriptions.$inferSelect;
 
+// ─── SPONSOR COHORTS ─────────────────────────────────────────────────────────
+export const sponsorCohorts = pgTable("sponsor_cohorts", {
+  id:          integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  sponsorName: text("sponsor_name").notNull(),
+  sponsorEmail: text("sponsor_email").notNull(),
+  sponsorPhone: text("sponsor_phone"),
+  totalSlots:  integer("total_slots").notNull(),
+  usedSlots:   integer("used_slots").notNull().default(0),
+  notes:       text("notes"),
+  status:      text("status").notNull().default("active"),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+});
+
+export const cohortCodes = pgTable("cohort_codes", {
+  id:           integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  cohortId:     integer("cohort_id").notNull().references(() => sponsorCohorts.id),
+  code:         text("code").notNull().unique(),
+  used:         boolean("used").notNull().default(false),
+  usedByUserId: integer("used_by_user_id").references(() => users.id),
+  usedAt:       timestamp("used_at"),
+  createdAt:    timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSponsorCohortSchema = createInsertSchema(sponsorCohorts).omit({ id: true, createdAt: true, usedSlots: true });
+export type InsertSponsorCohort = z.infer<typeof insertSponsorCohortSchema>;
+export type SponsorCohort = typeof sponsorCohorts.$inferSelect;
+
+export const insertCohortCodeSchema = createInsertSchema(cohortCodes).omit({ id: true, createdAt: true });
+export type InsertCohortCode = z.infer<typeof insertCohortCodeSchema>;
+export type CohortCode = typeof cohortCodes.$inferSelect;
+
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [
   { id: "binance", name: "Binance", specialty: "Crypto & Futures", rating: 4.9, minDeposit: 10, fee: "0.1%", description: "World's largest crypto exchange with deep liquidity." },

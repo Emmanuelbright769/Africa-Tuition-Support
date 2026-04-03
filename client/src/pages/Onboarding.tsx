@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import {
   ShieldAlert, CreditCard, Lock, FileText, CheckCircle2, Loader2,
   Camera, ScanFace, Sparkles, PartyPopper, XCircle, MapPin,
-  Wallet, ArrowRight, Share2, BadgeCheck, AlertTriangle, TrendingUp, Clock
+  Wallet, ArrowRight, Share2, BadgeCheck, AlertTriangle, TrendingUp, Clock,
+  Gift, Tag, ChevronDown, ChevronUp
 } from "lucide-react";
 import BiometricVerification from "@/components/ui/BiometricVerification";
 import { motion, AnimatePresence } from "framer-motion";
@@ -51,6 +52,12 @@ export default function Onboarding() {
   // Step 3 — Payment
   const [paymentTermsAccepted, setPaymentTermsAccepted] = useState(false);
   const [paymentDone, setPaymentDone] = useState(false);
+  // Sponsor code
+  const [showSponsorCode, setShowSponsorCode] = useState(false);
+  const [sponsorCodeInput, setSponsorCodeInput] = useState("");
+  const [sponsorCodeValidating, setSponsorCodeValidating] = useState(false);
+  const [sponsorCodeResult, setSponsorCodeResult] = useState<{ valid: boolean; cohortName?: string; reason?: string } | null>(null);
+  const [usedSponsorCode, setUsedSponsorCode] = useState(false);
 
   // Step 4 — KYC (BVN + GPS) + Biometric
   const [bvn, setBvn] = useState("");
@@ -135,6 +142,40 @@ export default function Onboarding() {
       setStep(4);
     } catch (err: any) {
       toast({ title: "Payment Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ── Sponsor Code (Step 3 alternative) ────────────────────────────
+  const handleValidateSponsorCode = async () => {
+    if (!sponsorCodeInput.trim()) { toast({ title: "Error", description: "Please enter a sponsor code", variant: "destructive" }); return; }
+    setSponsorCodeValidating(true);
+    setSponsorCodeResult(null);
+    try {
+      const res = await apiRequest("POST", "/api/verification/validate-sponsor-code", { code: sponsorCodeInput.trim() });
+      const data = await res.json();
+      setSponsorCodeResult({ valid: true, cohortName: data.cohortName });
+    } catch (err: any) {
+      let msg = "Invalid code";
+      try { const d = await err.json?.(); msg = d?.message || msg; } catch {}
+      setSponsorCodeResult({ valid: false, reason: msg });
+    } finally {
+      setSponsorCodeValidating(false);
+    }
+  };
+
+  const handleApplySponsorCode = async () => {
+    if (!sponsorCodeResult?.valid) return;
+    setIsProcessing(true);
+    try {
+      await apiRequest("POST", "/api/verification/use-sponsor-code", { code: sponsorCodeInput.trim() });
+      setUsedSponsorCode(true);
+      setPaymentDone(true);
+      toast({ title: "Sponsor Code Applied ✓", description: `Access granted by ${sponsorCodeResult.cohortName}. Proceed to complete your KYC.` });
+      setStep(4);
+    } catch (err: any) {
+      toast({ title: "Failed to Apply Code", description: err.message, variant: "destructive" });
     } finally {
       setIsProcessing(false);
     }
@@ -537,39 +578,152 @@ export default function Onboarding() {
                     </div>
                   )}
 
-                  {/* Card fields */}
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label className="text-sm text-muted-foreground">Card Number</Label>
-                      <div className="relative">
-                        <Input placeholder="0000 0000 0000 0000" className="h-12 pl-10 bg-muted/30" data-testid="input-card" />
-                        <CreditCard className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-sm text-muted-foreground">Expiry Date</Label>
-                        <Input placeholder="MM/YY" className="h-12 bg-muted/30 text-center" data-testid="input-expiry" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-sm text-muted-foreground">CVV</Label>
-                        <Input placeholder="123" className="h-12 bg-muted/30 text-center" type="password" maxLength={4} data-testid="input-cvv" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <TermsCheckbox checked={paymentTermsAccepted} onCheckedChange={setPaymentTermsAccepted} context="payment" className="px-1" />
-
-                  <Button
-                    onClick={handlePayment}
-                    className="w-full h-14 text-lg font-semibold shadow-md"
-                    disabled={isProcessing || !paymentTermsAccepted}
-                    data-testid="button-pay"
+                  {/* Sponsor Code Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => { setShowSponsorCode(p => !p); setSponsorCodeResult(null); setSponsorCodeInput(""); }}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-dashed border-tsia-gold/60 bg-amber-50/50 dark:bg-amber-900/10 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors text-left"
+                    data-testid="button-toggle-sponsor-code"
                   >
-                    {isProcessing
-                      ? <span className="flex items-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Processing Payment...</span>
-                      : <><CreditCard className="w-5 h-5 mr-2" /> Pay ${TOTAL_FEE.toFixed(2)} Now</>}
-                  </Button>
+                    <span className="flex items-center gap-3">
+                      <span className="w-9 h-9 rounded-lg bg-tsia-gold/15 text-tsia-gold flex items-center justify-center shrink-0">
+                        <Gift className="w-5 h-5" />
+                      </span>
+                      <span>
+                        <span className="block text-sm font-semibold">Have a Sponsor Code?</span>
+                        <span className="block text-xs text-muted-foreground">Enter your cohort code to skip the portal fee</span>
+                      </span>
+                    </span>
+                    {showSponsorCode ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+                  </button>
+
+                  <AnimatePresence>
+                    {showSponsorCode && (
+                      <motion.div
+                        key="sponsor-code-panel"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-5 rounded-xl border bg-muted/20 space-y-4">
+                          <div className="space-y-2">
+                            <Label className="font-semibold flex items-center gap-2"><Tag className="w-4 h-4 text-tsia-gold" /> Sponsor Code</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="e.g. TSP-001-A4B9C2"
+                                className={`h-11 font-mono tracking-wider text-sm uppercase bg-background ${sponsorCodeResult?.valid ? "border-green-500" : sponsorCodeResult?.valid === false ? "border-destructive" : ""}`}
+                                value={sponsorCodeInput}
+                                onChange={e => { setSponsorCodeInput(e.target.value.toUpperCase()); setSponsorCodeResult(null); }}
+                                disabled={sponsorCodeValidating || sponsorCodeResult?.valid}
+                                data-testid="input-sponsor-code"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleValidateSponsorCode}
+                                disabled={sponsorCodeValidating || !sponsorCodeInput.trim() || !!sponsorCodeResult?.valid}
+                                className="h-11 px-4 shrink-0"
+                                data-testid="button-validate-sponsor-code"
+                              >
+                                {sponsorCodeValidating ? <Loader2 className="w-4 h-4 animate-spin" /> : sponsorCodeResult?.valid ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : "Verify"}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <AnimatePresence>
+                            {sponsorCodeResult && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0 }}
+                              >
+                                {sponsorCodeResult.valid ? (
+                                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl p-4">
+                                    <div className="flex items-start gap-3">
+                                      <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                                      <div>
+                                        <p className="font-bold text-green-800 dark:text-green-300 text-sm">Valid Sponsor Code!</p>
+                                        <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">Sponsored by: <strong>{sponsorCodeResult.cohortName}</strong></p>
+                                        <p className="text-xs text-green-600 dark:text-green-500 mt-1">This code will cover your $3.30 portal fee. Click "Apply & Continue" below.</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
+                                    <div className="flex items-center gap-3">
+                                      <XCircle className="w-5 h-5 text-red-600 shrink-0" />
+                                      <div>
+                                        <p className="font-bold text-red-700 dark:text-red-400 text-sm">Invalid Code</p>
+                                        <p className="text-xs text-red-600 dark:text-red-500">{sponsorCodeResult.reason}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
+                          {sponsorCodeResult?.valid && (
+                            <Button
+                              onClick={handleApplySponsorCode}
+                              className="w-full h-12 font-semibold bg-tsia-green hover:bg-tsia-green/90 text-white"
+                              disabled={isProcessing}
+                              data-testid="button-apply-sponsor-code"
+                            >
+                              {isProcessing
+                                ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Applying Code...</span>
+                                : <><Gift className="w-4 h-4 mr-2" /> Apply Code & Continue</>}
+                            </Button>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Card fields (shown only when NOT using sponsor code) */}
+                  {!sponsorCodeResult?.valid && (
+                    <>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="text-xs text-muted-foreground font-medium">OR PAY WITH CARD</span>
+                        <div className="flex-1 h-px bg-border" />
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label className="text-sm text-muted-foreground">Card Number</Label>
+                          <div className="relative">
+                            <Input placeholder="0000 0000 0000 0000" className="h-12 pl-10 bg-muted/30" data-testid="input-card" />
+                            <CreditCard className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="text-sm text-muted-foreground">Expiry Date</Label>
+                            <Input placeholder="MM/YY" className="h-12 bg-muted/30 text-center" data-testid="input-expiry" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-sm text-muted-foreground">CVV</Label>
+                            <Input placeholder="123" className="h-12 bg-muted/30 text-center" type="password" maxLength={4} data-testid="input-cvv" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <TermsCheckbox checked={paymentTermsAccepted} onCheckedChange={setPaymentTermsAccepted} context="payment" className="px-1" />
+
+                      <Button
+                        onClick={handlePayment}
+                        className="w-full h-14 text-lg font-semibold shadow-md"
+                        disabled={isProcessing || !paymentTermsAccepted}
+                        data-testid="button-pay"
+                      >
+                        {isProcessing
+                          ? <span className="flex items-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Processing Payment...</span>
+                          : <><CreditCard className="w-5 h-5 mr-2" /> Pay ${TOTAL_FEE.toFixed(2)} Now</>}
+                      </Button>
+                    </>
+                  )}
                 </div>
               </motion.div>
             )}
@@ -584,7 +738,10 @@ export default function Onboarding() {
                   <h2 className="text-3xl font-bold mb-2">Wallet KYC & Biometric</h2>
                   <p className="text-muted-foreground text-lg mb-2">Complete BVN verification, GPS location, and face scan to finalise your application.</p>
                   <div className="inline-flex items-center gap-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1.5 rounded-full text-xs font-semibold mb-6">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Payment confirmed — ${ TOTAL_FEE.toFixed(2)} received
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {usedSponsorCode
+                      ? <><Gift className="w-3 h-3" /> Sponsor code applied — portal fee waived</>
+                      : `Payment confirmed — $${TOTAL_FEE.toFixed(2)} received`}
                   </div>
                 </div>
 

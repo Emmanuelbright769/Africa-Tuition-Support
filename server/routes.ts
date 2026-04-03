@@ -1548,8 +1548,72 @@ export async function registerRoutes(
     }
   });
 
-  // ─── ADMIN: Verify with rejection reason ─────────────────────────────────────
-  // (updates the existing route to support reason field)
+  // ─── ADMIN: Sponsor Cohorts ───────────────────────────────────────────────────
+  app.post("/api/admin/sponsor-cohorts", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const { sponsorName, sponsorEmail, sponsorPhone, totalSlots, notes } = req.body;
+      if (!sponsorName || !sponsorEmail) return res.status(400).json({ message: "Sponsor name and email are required" });
+      const slots = parseInt(totalSlots, 10);
+      if (!slots || slots < 10) return res.status(400).json({ message: "Minimum 10 slots required per cohort" });
+
+      const result = await storage.createSponsorCohort({ sponsorName, sponsorEmail, sponsorPhone, totalSlots: slots, notes, status: "active" });
+      res.status(201).json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/admin/sponsor-cohorts", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const cohorts = await storage.getSponsorCohorts();
+      res.json(cohorts);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── STUDENT: Validate / Use Sponsor Code ─────────────────────────────────────
+  app.post("/api/verification/validate-sponsor-code", async (req, res) => {
+    try {
+      const { code } = req.body;
+      if (!code) return res.status(400).json({ message: "Code is required" });
+      const result = await storage.validateSponsorCode(code);
+      if (!result.valid) return res.status(400).json({ message: result.reason });
+      res.json({ valid: true, cohortName: result.cohortName });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/verification/use-sponsor-code", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { code } = req.body;
+      if (!code) return res.status(400).json({ message: "Code is required" });
+
+      const validation = await storage.validateSponsorCode(code);
+      if (!validation.valid) return res.status(400).json({ message: validation.reason });
+
+      await storage.useSponsorCode(code, userId);
+
+      const verification = await storage.getVerificationByUser(userId);
+      res.json({ success: true, verification });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
 
   app.post("/api/leadership/inquiry", async (req, res) => {
     try {

@@ -11,6 +11,7 @@ import {
   notifications, callSessions, forumTopics, forumPosts,
   qceSavings, qceTransactions,
   priceAlerts, categorySubscriptions,
+  sponsorCohorts, cohortCodes,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -41,6 +42,8 @@ import {
   type TourBooking, type InsertTourBooking,
   type QceSavings, type QceTransaction,
   type PriceAlert, type CategorySubscription,
+  type SponsorCohort, type InsertSponsorCohort,
+  type CohortCode,
   TRADE_MARKET, ECOMMERCE, QCE, calculateQceEligibility,
 } from "@shared/schema";
 
@@ -200,6 +203,13 @@ export interface IStorage {
   deleteCategorySubscription(userId: number, category: string): Promise<void>;
   getUserCategorySubscriptions(userId: number): Promise<string[]>;
   getCategorySubscribers(category: string): Promise<number[]>;
+
+  // Sponsor Cohorts
+  createSponsorCohort(data: InsertSponsorCohort): Promise<{ cohort: SponsorCohort; codes: CohortCode[] }>;
+  getSponsorCohorts(): Promise<(SponsorCohort & { codes: CohortCode[] })[]>;
+  getSponsorCohortById(id: number): Promise<(SponsorCohort & { codes: CohortCode[] }) | undefined>;
+  validateSponsorCode(code: string): Promise<{ valid: boolean; cohortName?: string; reason?: string }>;
+  useSponsorCode(code: string, userId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1105,6 +1115,84 @@ export class DatabaseStorage implements IStorage {
       .from(categorySubscriptions)
       .where(eq(categorySubscriptions.category, category));
     return rows.map(r => r.userId);
+  }
+
+  // ── Sponsor Cohorts ──────────────────────────────────────────────────────────
+  async createSponsorCohort(data: InsertSponsorCohort): Promise<{ cohort: SponsorCohort; codes: CohortCode[] }> {
+    const [cohort] = await db.insert(sponsorCohorts).values({
+      sponsorName: data.sponsorName,
+      sponsorEmail: data.sponsorEmail,
+      sponsorPhone: data.sponsorPhone ?? null,
+      totalSlots: data.totalSlots,
+      notes: data.notes ?? null,
+      status: data.status ?? "active",
+    }).returning();
+
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const generated: string[] = [];
+    while (generated.length < data.totalSlots) {
+      const rand = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+      const code = `TSP-${String(cohort.id).padStart(3, "0")}-${rand}`;
+      if (!generated.includes(code)) generated.push(code);
+    }
+
+    const codeRows = await db.insert(cohortCodes)
+      .values(generated.map(c => ({ cohortId: cohort.id, code: c })))
+      .returning();
+
+    return { cohort, codes: codeRows };
+  }
+
+  async getSponsorCohorts(): Promise<(SponsorCohort & { codes: CohortCode[] })[]> {
+    const allCohorts = await db.select().from(sponsorCohorts).orderBy(desc(sponsorCohorts.createdAt));
+    const allCodes = await db.select().from(cohortCodes);
+    return allCohorts.map(c => ({
+      ...c,
+      codes: allCodes.filter(code => code.cohortId === c.id),
+    }));
+  }
+
+  async getSponsorCohortById(id: number): Promise<(SponsorCohort & { codes: CohortCode[] }) | undefined> {
+    const [cohort] = await db.select().from(sponsorCohorts).where(eq(sponsorCohorts.id, id));
+    if (!cohort) return undefined;
+    const codes = await db.select().from(cohortCodes).where(eq(cohortCodes.cohortId, id));
+    return { ...cohort, codes };
+  }
+
+  async validateSponsorCode(code: string): Promise<{ valid: boolean; cohortName?: string; reason?: string }> {
+    const [row] = await db.select().from(cohortCodes).where(eq(cohortCodes.code, code.toUpperCase().trim()));
+    if (!row) return { valid: false, reason: "Code not found" };
+    if (row.used) return { valid: false, reason: "Code has already been used" };
+    const [cohort] = await db.select().from(sponsorCohorts).where(eq(sponsorCohorts.id, row.cohortId));
+    if (!cohort || cohort.status !== "active") return { valid: false, reason: "Cohort is no longer active" };
+    return { valid: true, cohortName: cohort.sponsorName };
+  }
+
+  async useSponsorCode(code: string, userId: number): Promise<void> {
+    const [row] = await db.select().from(cohortCodes).where(eq(cohortCodes.code, code.toUpperCase().trim()));
+    if (!row || row.used) throw new Error("Invalid or already-used sponsor code");
+
+    await db.transaction(async (tx) => {
+      await tx.update(cohortCodes)
+        .set({ used: true, usedByUserId: userId, usedAt: new Date() })
+        .where(eq(cohortCodes.id, row.id));
+      await tx.update(sponsorCohorts)
+        .set({ usedSlots: sql`${sponsorCohorts.usedSlots} + 1` })
+        .where(eq(sponsorCohorts.id, row.cohortId));
+
+      let verification = await tx.select().from(verifications).where(eq(verifications.userId, userId)).then(r => r[0]);
+      if (!verification) {
+        const [v] = await tx.insert(verifications).values({
+          userId, status: "pending", portalFeePaid: false, tier: "none",
+        }).returning();
+        verification = v;
+      }
+      if (!verification.portalFeePaid) {
+        await tx.update(verifications)
+          .set({ portalFeePaid: true, commitmentStartDate: new Date() })
+          .where(eq(verifications.id, verification.id));
+      }
+    });
   }
 }
 

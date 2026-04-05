@@ -802,7 +802,7 @@ export default function Onboarding() {
                     <Button
                       size="sm"
                       className="h-10 w-full bg-blue-600 hover:bg-blue-700"
-                      onClick={() => { setShowBiometric(true); setBiometricPhase("ready"); }}
+                      onClick={() => setShowBiometric(true)}
                       disabled={!locationVerified}
                       data-testid="button-start-biometric"
                     >

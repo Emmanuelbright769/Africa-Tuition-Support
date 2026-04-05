@@ -1551,6 +1551,43 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Resend domain detail (DNS records) ──────────────────────────────
+  app.get("/api/admin/resend-domain-records/:id", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const key = process.env.RESEND_API_KEY;
+      if (!key) return res.status(500).json({ message: "RESEND_API_KEY not set" });
+      const r = await fetch(`https://api.resend.com/domains/${req.params.id}`, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      res.json(await r.json());
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Resend domain status check ──────────────────────────────────────
+  app.get("/api/admin/resend-domain-status", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const key = process.env.RESEND_API_KEY;
+      if (!key) return res.status(500).json({ message: "RESEND_API_KEY not set" });
+      const domainsRes = await fetch("https://api.resend.com/domains", {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      const domainsData = await domainsRes.json();
+      res.json(domainsData);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── ADMIN: Test email ───────────────────────────────────────────────────────
   app.post("/api/admin/test-email", async (req, res) => {
     try {

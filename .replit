@@ -50,3 +50,4 @@ mockupState = "FULLSTACK"
 
 [userenv.shared]
 FROM_EMAIL = "noreply@tsiforafrica.com"
+DEMO_MODE = "true"

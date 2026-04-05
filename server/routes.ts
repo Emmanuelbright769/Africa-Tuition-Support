@@ -86,14 +86,14 @@ export async function registerRoutes(
           return res.status(404).json({ message: `No ${loginRole} account found with this email.` });
         }
 
-        const code = process.env.NODE_ENV === "production" ? generateOtp() : DEMO_OTP;
+        const isDemo = process.env.DEMO_MODE === "true" || process.env.NODE_ENV !== "production";
+        const code = isDemo ? DEMO_OTP : generateOtp();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
         await storage.createOtp({ email, code, expiresAt, used: false });
         console.log(`[OTP] Code for ${email} (${targetUser.role}): ${code}`);
         sendOtpEmail(email, code, false).catch((err: any) => console.error("[EMAIL] OTP send failed:", err?.message ?? err));
 
-        const isDev = process.env.NODE_ENV !== "production";
-        return res.json({ message: "OTP sent to your email", otpSent: true, ...(isDev ? { devOtp: code } : {}) });
+        return res.json({ message: "OTP sent to your email", otpSent: true, ...(isDemo ? { devOtp: code } : {}) });
       }
 
       // ── Signup flow ────────────────────────────────────────────────────
@@ -143,31 +143,31 @@ export async function registerRoutes(
       if (role === "both") {
         const studentUser  = await createRoleAccount("student");
         const affiliateUser = await createRoleAccount("affiliate");
-        const code = process.env.NODE_ENV === "production" ? generateOtp() : DEMO_OTP;
+        const isDemo2 = process.env.DEMO_MODE === "true" || process.env.NODE_ENV !== "production";
+        const code = isDemo2 ? DEMO_OTP : generateOtp();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
         await storage.createOtp({ email, code, expiresAt, used: false });
         console.log(`[OTP] Dual-account code for ${email}: ${code}`);
         sendOtpEmail(email, code, true).catch((err: any) => console.error("[EMAIL] OTP send failed:", err?.message ?? err));
-        const isDev2 = process.env.NODE_ENV !== "production";
-        return res.json({ message: "OTP sent to your email", otpSent: true, bothCreated: true, ...(isDev2 ? { devOtp: code } : {}) });
+        return res.json({ message: "OTP sent to your email", otpSent: true, bothCreated: true, ...(isDemo2 ? { devOtp: code } : {}) });
       }
 
       // Single-role signup
       const targetRole = role === "affiliate" ? "affiliate" : "student";
       const user = await createRoleAccount(targetRole);
 
-      const code = process.env.NODE_ENV === "production" ? generateOtp() : DEMO_OTP;
+      const isDemo3 = process.env.DEMO_MODE === "true" || process.env.NODE_ENV !== "production";
+      const code = isDemo3 ? DEMO_OTP : generateOtp();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
       await storage.createOtp({ email, code, expiresAt, used: false });
       console.log(`[OTP] Code for ${email}: ${code}`);
       sendOtpEmail(email, code, true).catch((err: any) => console.error("[EMAIL] OTP send failed:", err?.message ?? err));
 
-      const isDev3 = process.env.NODE_ENV !== "production";
       res.json({
         message: "OTP sent to your email",
         otpSent: true,
         isNewUser: !await storage.getVerificationByUser(user!.id),
-        ...(isDev3 ? { devOtp: code } : {}),
+        ...(isDemo3 ? { devOtp: code } : {}),
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });

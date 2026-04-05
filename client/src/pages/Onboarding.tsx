@@ -1,17 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   ShieldAlert, CreditCard, Lock, FileText, CheckCircle2, Loader2,
-  Camera, ScanFace, Sparkles, PartyPopper, XCircle, MapPin,
-  Wallet, ArrowRight, Share2, BadgeCheck, AlertTriangle, TrendingUp, Clock,
+  PartyPopper, XCircle, Wallet, ArrowRight, Share2, TrendingUp,
   Gift, Tag, ChevronDown, ChevronUp
 } from "lucide-react";
-import BiometricVerification from "@/components/ui/BiometricVerification";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -59,14 +56,6 @@ export default function Onboarding() {
   const [sponsorCodeResult, setSponsorCodeResult] = useState<{ valid: boolean; cohortName?: string; reason?: string } | null>(null);
   const [usedSponsorCode, setUsedSponsorCode] = useState(false);
 
-  // Step 4 — KYC (BVN + GPS) + Biometric
-  const [bvn, setBvn] = useState("");
-  const [bvnVerified, setBvnVerified] = useState(false);
-  const [bvnVerifying, setBvnVerifying] = useState(false);
-  const [locationVerified, setLocationVerified] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(false);
-  const [locationCoords, setLocationCoords] = useState("");
-  const [showBiometric, setShowBiometric] = useState(false);
 
   const { toast } = useToast();
   const { user } = useAuth();
@@ -138,8 +127,8 @@ export default function Onboarding() {
     try {
       await apiRequest("POST", "/api/verification/pay-fee");
       setPaymentDone(true);
-      toast({ title: "Payment Successful ✓", description: `$${TOTAL_FEE.toFixed(2)} confirmed. You can complete your KYC now or later.` });
-      setStep(4);
+      toast({ title: "Payment Successful ✓", description: `$${TOTAL_FEE.toFixed(2)} confirmed. Submitting your application…` });
+      await submitWaec();
     } catch (err: any) {
       toast({ title: "Payment Failed", description: err.message, variant: "destructive" });
     } finally {
@@ -172,52 +161,13 @@ export default function Onboarding() {
       await apiRequest("POST", "/api/verification/use-sponsor-code", { code: sponsorCodeInput.trim() });
       setUsedSponsorCode(true);
       setPaymentDone(true);
-      toast({ title: "Sponsor Code Applied ✓", description: `Access granted by ${sponsorCodeResult.cohortName}. Proceed to complete your KYC.` });
-      setStep(4);
+      toast({ title: "Sponsor Code Applied ✓", description: `Access granted by ${sponsorCodeResult.cohortName}. Submitting your application…` });
+      await submitWaec();
     } catch (err: any) {
       toast({ title: "Failed to Apply Code", description: err.message, variant: "destructive" });
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  // ── BVN + GPS (Step 4) ────────────────────────────────────────────
-  const handleVerifyBvn = async () => {
-    if (!bvn || bvn.length !== 11 || !/^\d{11}$/.test(bvn)) {
-      toast({ title: "Error", description: "Enter a valid 11-digit BVN", variant: "destructive" }); return;
-    }
-    setBvnVerifying(true);
-    await new Promise(r => setTimeout(r, 2200));
-    setBvnVerified(true);
-    setBvnVerifying(false);
-    toast({ title: "BVN Verified ✓", description: "Bank Verification Number confirmed." });
-  };
-
-  const handleVerifyLocation = async () => {
-    setLocationLoading(true);
-    try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
-      );
-      const { latitude, longitude } = pos.coords;
-      setLocationCoords(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
-      await new Promise(r => setTimeout(r, 1200));
-      setLocationVerified(true);
-      toast({ title: "Location Verified ✓", description: "GPS coordinates confirmed for proof of address." });
-    } catch {
-      toast({ title: "Location Denied", description: "Enable GPS and try again. False location leads to disqualification.", variant: "destructive" });
-    } finally {
-      setLocationLoading(false);
-    }
-  };
-
-  // ── Biometric complete handler ─────────────────────────────────────
-  const handleBiometricComplete = async () => {
-    try {
-      await apiRequest("POST", "/api/verification/biometric");
-    } catch { /* non-critical */ }
-    setShowBiometric(false);
-    submitWaec();
   };
 
   const submitWaec = async () => {
@@ -248,7 +198,7 @@ export default function Onboarding() {
     exit: { opacity: 0, x: -40, transition: { duration: 0.3 } },
   };
 
-  const totalSteps = 4;
+  const totalSteps = 3;
   const displayStep = Math.min(step, totalSteps);
   const progressPct = (displayStep / totalSteps) * 100;
 
@@ -728,105 +678,7 @@ export default function Onboarding() {
               </motion.div>
             )}
 
-            {/* ── STEP 4: KYC + Biometric (deferrable) ── */}
-            {step === 4 && (
-              <motion.div key="s4-kyc" {...slide} className="bg-card rounded-3xl shadow-2xl border overflow-hidden">
-                <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 p-8 pb-0">
-                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
-                    <Wallet className="w-8 h-8" />
-                  </div>
-                  <h2 className="text-3xl font-bold mb-2">Wallet KYC & Biometric</h2>
-                  <p className="text-muted-foreground text-lg mb-2">Complete BVN verification, GPS location, and face scan to finalise your application.</p>
-                  <div className="inline-flex items-center gap-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1.5 rounded-full text-xs font-semibold mb-6">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {usedSponsorCode
-                      ? <><Gift className="w-3 h-3" /> Sponsor code applied — portal fee waived</>
-                      : `Payment confirmed — $${TOTAL_FEE.toFixed(2)} received`}
-                  </div>
-                </div>
-
-                <div className="p-8 space-y-5 max-h-[55vh] overflow-y-auto">
-                  {/* BVN */}
-                  <div className={`p-4 rounded-xl border transition-all ${bvnVerified ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700' : 'bg-white dark:bg-slate-800 border-border'}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="font-semibold flex items-center gap-2">
-                        {bvnVerified
-                          ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                          : <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 text-xs font-bold flex items-center justify-center">1</span>}
-                        BVN Verification
-                      </Label>
-                      {bvnVerified && <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 px-2 py-0.5 rounded-full font-bold">Verified ✓</span>}
-                    </div>
-                    {!bvnVerified && (
-                      <div className="flex gap-2">
-                        <Input placeholder="11-digit BVN" className="h-10 bg-muted/30 flex-1 font-mono tracking-widest" value={bvn} maxLength={11} onChange={e => setBvn(e.target.value.replace(/\D/g, ""))} data-testid="input-bvn" />
-                        <Button size="sm" className="h-10 px-4" onClick={handleVerifyBvn} disabled={bvnVerifying || bvn.length !== 11} data-testid="button-verify-bvn">
-                          {bvnVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify"}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* GPS Location */}
-                  <div className={`p-4 rounded-xl border transition-all ${!bvnVerified ? 'opacity-40 pointer-events-none' : locationVerified ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700' : 'bg-white dark:bg-slate-800 border-border'}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="font-semibold flex items-center gap-2">
-                        {locationVerified
-                          ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                          : <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 text-xs font-bold flex items-center justify-center">2</span>}
-                        Proof of Address (GPS)
-                      </Label>
-                      {locationVerified && <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 px-2 py-0.5 rounded-full font-bold">Verified ✓</span>}
-                    </div>
-                    {!locationVerified ? (
-                      <>
-                        <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-3 flex items-center gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Providing false location data leads to immediate disqualification.
-                        </p>
-                        <Button size="sm" className="h-10 w-full" onClick={handleVerifyLocation} disabled={locationLoading} data-testid="button-verify-location">
-                          {locationLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Detecting your location...</> : <><MapPin className="w-4 h-4 mr-2" /> Enable GPS & Verify Location</>}
-                        </Button>
-                      </>
-                    ) : (
-                      <p className="text-xs text-green-600 dark:text-green-400 font-mono flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> GPS: {locationCoords}</p>
-                    )}
-                  </div>
-
-                  {/* Biometric */}
-                  <div className={`p-4 rounded-xl border transition-all ${!locationVerified ? 'opacity-40 pointer-events-none' : 'bg-white dark:bg-slate-800 border-border'}`}>
-                    <Label className="font-semibold flex items-center gap-2 mb-3">
-                      <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 text-xs font-bold flex items-center justify-center">3</span>
-                      Biometric Face Scan
-                    </Label>
-                    <p className="text-xs text-muted-foreground mb-3">A quick face scan confirms you are a real, unique individual. Camera access required.</p>
-                    <Button
-                      size="sm"
-                      className="h-10 w-full bg-blue-600 hover:bg-blue-700"
-                      onClick={() => setShowBiometric(true)}
-                      disabled={!locationVerified}
-                      data-testid="button-start-biometric"
-                    >
-                      <ScanFace className="w-4 h-4 mr-2" /> Start Face Scan
-                    </Button>
-                  </div>
-
-                  {/* Defer option */}
-                  <div className="border-t pt-5 space-y-3">
-                    <p className="text-xs text-muted-foreground text-center">You can complete KYC and biometric later from your dashboard.</p>
-                    <Button
-                      variant="outline"
-                      className="w-full h-11 font-semibold"
-                      onClick={() => setLocation("/dashboard")}
-                      data-testid="button-complete-later"
-                    >
-                      <Clock className="w-4 h-4 mr-2" /> Complete Later — Go to Dashboard
-                    </Button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* ── STEP 5: Done ── */}
+            {/* ── STEP 4 / Done ── */}
             {step === 5 && !waecFailed && (
               <motion.div key="s5-done" {...slide} className="bg-card rounded-3xl shadow-2xl border overflow-hidden text-center">
                 <div className="bg-gradient-to-r from-green-500/10 to-tsia-gold/10 p-10">
@@ -842,9 +694,13 @@ export default function Onboarding() {
                     </div>
                   )}
                 </div>
-                <div className="p-8">
-                  <p className="text-sm text-muted-foreground mb-8">Our team will review within 24–48 hours. You'll receive a notification once approved and your wallet is funded.</p>
-                  <Button onClick={() => setLocation("/dashboard")} className="h-12 px-8 text-base font-semibold" data-testid="button-go-dashboard">
+                <div className="p-8 space-y-4">
+                  <p className="text-sm text-muted-foreground">Our team will review within 24–48 hours. You'll receive a notification once approved and your wallet is funded.</p>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-left">
+                    <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Next step: Activate your Wallet</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-400">Head to the <strong>Wallet</strong> section in your dashboard to complete BVN verification, GPS location, and face scan — required to fund and transact.</p>
+                  </div>
+                  <Button onClick={() => setLocation("/dashboard")} className="h-12 px-8 text-base font-semibold w-full" data-testid="button-go-dashboard">
                     Go to Dashboard <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </div>
@@ -898,38 +754,6 @@ export default function Onboarding() {
         </div>
       </div>
 
-      {/* Biometric dialog — OPay-style with animated character */}
-      <Dialog open={showBiometric} onOpenChange={open => { if (!open) setShowBiometric(false); }}>
-        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-2xl border-0 shadow-2xl">
-          {/* Branded header bar */}
-          <div className="bg-[#1A3C34] px-5 py-4 flex items-center gap-3">
-            <div className="w-9 h-9 bg-[#D4AF37]/20 rounded-xl flex items-center justify-center">
-              <ScanFace className="w-5 h-5 text-[#D4AF37]" />
-            </div>
-            <div>
-              <h2 className="text-white font-bold text-base leading-tight">TSIA Identity Verification</h2>
-              <p className="text-white/60 text-[11px]">Powered by secure facial biometrics</p>
-            </div>
-            <div className="ml-auto flex items-center gap-1 bg-[#D4AF37]/20 rounded-full px-2 py-0.5">
-              <div className="w-1.5 h-1.5 bg-[#D4AF37] rounded-full" />
-              <span className="text-[#D4AF37] text-[10px] font-bold">SECURE</span>
-            </div>
-          </div>
-
-          {/* Component body */}
-          <div className="px-5 py-4">
-            <BiometricVerification
-              onComplete={handleBiometricComplete}
-              onCancel={() => setShowBiometric(false)}
-            />
-          </div>
-
-          {/* Footer */}
-          <div className="px-5 py-3 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-800 flex items-center justify-center gap-2">
-            <span className="text-[10px] text-muted-foreground">🔒 256-bit encrypted · NDPR compliant · Data not stored</span>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

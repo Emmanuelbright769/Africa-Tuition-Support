@@ -405,6 +405,13 @@ export default function Signup() {
                 You can withdraw your money whenever you want. A check notification and email have been sent with full details on how to get started.
               </p>
             </div>
+
+            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-3 flex items-start gap-2">
+              <Info className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-slate-700 dark:text-slate-300">
+                <strong>Minimum balance:</strong> A minimum of <strong>$2</strong> must always remain in your wallet to ensure seamless operations across the platform — payments, transfers, and platform features stay active.
+              </p>
+            </div>
           </div>
 
           <DialogFooter>

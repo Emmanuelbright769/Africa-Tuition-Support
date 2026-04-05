@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 
 const FROM_NAME = "TSIA – SMAKEMGGOLD Ltd";
-const FROM_EMAIL = process.env.FROM_EMAIL || "onboarding@resend.dev";
+const FROM_EMAIL = process.env.FROM_EMAIL || "noreply@tsiforafrica.com";
 const RESEND_API = "https://api.resend.com/emails";
 
 function baseTemplate(content: string): string {
@@ -71,6 +71,12 @@ function getSmtpTransport(): nodemailer.Transporter | null {
 }
 
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  // In development, skip real email sends to avoid API errors (dev OTP is 123456)
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[EMAIL] Dev mode — skipping real send of "${subject}" to ${to}`);
+    return;
+  }
+
   // 1 — Try SMTP first (works with any email provider, no domain verification needed)
   const smtp = getSmtpTransport();
   if (smtp) {
@@ -81,34 +87,35 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
         subject,
         html,
       });
-      console.log(`[EMAIL] SMTP sent "${subject}" to ${to}`);
+      console.log(`[EMAIL] SMTP ✓ "${subject}" → ${to}`);
       return;
     } catch (err: any) {
       console.error(`[EMAIL] SMTP error for ${to}: ${err.message}`);
     }
   }
 
-  // 2 — Fall back to Resend REST API
+  // 2 — Resend REST API
   const key = process.env.RESEND_API_KEY;
   if (!key) {
-    console.warn(`[EMAIL] No SMTP or RESEND_API_KEY configured — skipping send to ${to}.`);
+    console.warn(`[EMAIL] No SMTP or RESEND_API_KEY — skipping send to ${to}`);
     return;
   }
+
+  const fromAddr = `${FROM_NAME} <${FROM_EMAIL}>`;
+  console.log(`[EMAIL] Sending via Resend: "${subject}" → ${to} (from: ${FROM_EMAIL})`);
+
   const res = await fetch(RESEND_API, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      from: `${FROM_NAME} <${FROM_EMAIL}>`,
-      to: [to],
-      subject,
-      html,
-    }),
+    body: JSON.stringify({ from: fromAddr, to: [to], subject, html }),
   });
+
+  const body = await res.text();
   if (!res.ok) {
-    const err = await res.text();
-    console.error(`[EMAIL] Resend error ${res.status} for ${to}: ${err}`);
+    console.error(`[EMAIL] Resend ${res.status} for ${to}: ${body}`);
+    throw new Error(`Resend ${res.status}: ${body}`);
   } else {
-    console.log(`[EMAIL] Resend sent "${subject}" to ${to}`);
+    console.log(`[EMAIL] Resend ✓ "${subject}" → ${to} | id: ${body}`);
   }
 }
 

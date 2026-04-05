@@ -45,3 +45,8 @@ waitForPort = 5000
 [agent]
 stack = "MOCKUP_JS"
 mockupState = "FULLSTACK"
+
+[userenv]
+
+[userenv.shared]
+FROM_EMAIL = "noreply@tsiforafrica.com"

@@ -90,7 +90,7 @@ export async function registerRoutes(
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
         await storage.createOtp({ email, code, expiresAt, used: false });
         console.log(`[OTP] Code for ${email} (${targetUser.role}): ${code}`);
-        sendOtpEmail(email, code, false).catch(() => {});
+        sendOtpEmail(email, code, false).catch((err: any) => console.error("[EMAIL] OTP send failed:", err?.message ?? err));
 
         const isDev = process.env.NODE_ENV !== "production";
         return res.json({ message: "OTP sent to your email", otpSent: true, ...(isDev ? { devOtp: code } : {}) });
@@ -134,7 +134,7 @@ export async function registerRoutes(
             } catch { /* non-critical */ }
           }
           // Send real welcome email
-          sendWelcomeEmail(email, firstName, targetRole as "student" | "affiliate").catch(() => {});
+          sendWelcomeEmail(email, firstName, targetRole as "student" | "affiliate").catch((err: any) => console.error("[EMAIL] Welcome send failed:", err?.message ?? err));
         }
         return u;
       };
@@ -147,7 +147,7 @@ export async function registerRoutes(
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
         await storage.createOtp({ email, code, expiresAt, used: false });
         console.log(`[OTP] Dual-account code for ${email}: ${code}`);
-        sendOtpEmail(email, code, true).catch(() => {});
+        sendOtpEmail(email, code, true).catch((err: any) => console.error("[EMAIL] OTP send failed:", err?.message ?? err));
         const isDev2 = process.env.NODE_ENV !== "production";
         return res.json({ message: "OTP sent to your email", otpSent: true, bothCreated: true, ...(isDev2 ? { devOtp: code } : {}) });
       }
@@ -160,7 +160,7 @@ export async function registerRoutes(
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
       await storage.createOtp({ email, code, expiresAt, used: false });
       console.log(`[OTP] Code for ${email}: ${code}`);
-      sendOtpEmail(email, code, true).catch(() => {});
+      sendOtpEmail(email, code, true).catch((err: any) => console.error("[EMAIL] OTP send failed:", err?.message ?? err));
 
       const isDev3 = process.env.NODE_ENV !== "production";
       res.json({
@@ -1187,9 +1187,9 @@ export async function registerRoutes(
       try {
         const verUser = await storage.getUser(updated.userId);
         if (verUser) {
-          sendVerificationUpdateEmail(verUser.email, verUser.firstName, status).catch(() => {});
+          sendVerificationUpdateEmail(verUser.email, verUser.firstName, status).catch((err: any) => console.error("[EMAIL] Verification email failed:", err?.message ?? err));
         }
-        await storage.createNotification({
+        const notif = await storage.createNotification({
           userId: updated.userId,
           type: "verification_update",
           title: approve ? "Verification Approved ✓" : "Verification Update",
@@ -1199,6 +1199,7 @@ export async function registerRoutes(
           data: { verificationId: vId, status, reason },
           isRead: false,
         });
+        pushToUser(updated.userId, "notification", notif);
       } catch { /* non-critical */ }
       res.json(updated);
     } catch (e: any) {
@@ -1411,11 +1412,13 @@ export async function registerRoutes(
           amount: loan.amountUsd,
           description: `Loan disbursed: $${loan.amountUsd} (${loan.userRole} loan)`,
         });
-        await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Disbursed", message: `Your $${loan.amountUsd} loan has been approved and credited to your wallet.`, data: { loanId: loan.id }, isRead: false });
-        storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "approved", loan.amountUsd).catch(() => {}); });
+        const loanApprNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Disbursed", message: `Your $${loan.amountUsd} loan has been approved and credited to your wallet.`, data: { loanId: loan.id }, isRead: false });
+        pushToUser(loan.userId, "notification", loanApprNotif);
+        storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "approved", loan.amountUsd).catch((err: any) => console.error("[EMAIL] Loan email failed:", err?.message ?? err)); });
       } else if (status === "rejected") {
-        await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Application Update", message: "Your loan application was not approved at this time. Please contact support for more information.", data: { loanId: loan.id }, isRead: false });
-        storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "rejected", loan.amountUsd).catch(() => {}); });
+        const loanRejNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Application Update", message: "Your loan application was not approved at this time. Please contact support for more information.", data: { loanId: loan.id }, isRead: false });
+        pushToUser(loan.userId, "notification", loanRejNotif);
+        storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "rejected", loan.amountUsd).catch((err: any) => console.error("[EMAIL] Loan email failed:", err?.message ?? err)); });
       }
       res.json(loan);
     } catch (e: any) {
@@ -1543,6 +1546,30 @@ export async function registerRoutes(
         targetUsers.map(u => storage.createNotification({ userId: u.id, type: "verification_update", title, message, data: {}, isRead: false }))
       );
       res.json({ sent: targetUsers.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Test email ───────────────────────────────────────────────────────
+  app.post("/api/admin/test-email", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const { to } = req.body;
+      const target = to || admin.email;
+      // Force production-mode email send for testing
+      const savedEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        const { sendOtpEmail: sendTest } = await import("./email");
+        await sendTest(target, "TEST-123456", false);
+        res.json({ ok: true, sentTo: target });
+      } finally {
+        process.env.NODE_ENV = savedEnv;
+      }
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -2096,9 +2123,9 @@ export async function registerRoutes(
       try {
         const depUser = await storage.getUser(deposit.userId);
         if (depUser) {
-          sendWalletCreditEmail(depUser.email, depUser.firstName, parseFloat(deposit.amountUsd).toFixed(2), newBalance).catch(() => {});
+          sendWalletCreditEmail(depUser.email, depUser.firstName, parseFloat(deposit.amountUsd).toFixed(2), newBalance).catch((err: any) => console.error("[EMAIL] Wallet credit email failed:", err?.message ?? err));
         }
-        await storage.createNotification({
+        const walletNotif = await storage.createNotification({
           userId: deposit.userId,
           type: "wallet_credit",
           title: "Wallet Credited",
@@ -2106,6 +2133,7 @@ export async function registerRoutes(
           data: { depositId: deposit.id, amount: deposit.amountUsd },
           isRead: false,
         });
+        pushToUser(deposit.userId, "notification", walletNotif);
       } catch { /* non-critical */ }
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -2180,7 +2208,7 @@ export async function registerRoutes(
                 pushToUser(alert.userId, "notification", notif);
                 await storage.updatePriceAlertLastKnown(alert.userId, updated.id, newPrice.toFixed(2));
                 storage.getUser(alert.userId).then(u => {
-                  if (u) sendPriceDropEmail(u.email, u.firstName, updated.title, oldPrice.toFixed(2), newPrice.toFixed(2), updated.id).catch(() => {});
+                  if (u) sendPriceDropEmail(u.email, u.firstName, updated.title, oldPrice.toFixed(2), newPrice.toFixed(2), updated.id).catch((err: any) => console.error("[EMAIL] Price drop email failed:", err?.message ?? err));
                 });
               }
             }
@@ -2269,8 +2297,8 @@ export async function registerRoutes(
           storage.getUser(userId),
           storage.getUser(prod.sellerId),
         ]);
-        if (buyerUser) sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, "confirmed", prod.title, order.id).catch(() => {});
-        await Promise.all([
+        if (buyerUser) sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, "confirmed", prod.title, order.id).catch((err: any) => console.error("[EMAIL] Order email failed:", err?.message ?? err));
+        const [buyerNotif, sellerNotif] = await Promise.all([
           storage.createNotification({
             userId,
             type: "order_update",
@@ -2288,6 +2316,8 @@ export async function registerRoutes(
             isRead: false,
           }),
         ]);
+        pushToUser(userId, "notification", buyerNotif);
+        pushToUser(prod.sellerId, "notification", sellerNotif);
       } catch { /* non-critical */ }
 
       res.json({ order, message: `Order placed! $${totalAmount.toFixed(2)} deducted. TSIA commission: $${commissionAmount.toFixed(2)} (${(ECOMMERCE.COMMISSION_RATE * 100)}%).` });
@@ -2319,7 +2349,7 @@ export async function registerRoutes(
           storage.getProductById(order.productId),
         ]);
         if (buyerUser && prod) {
-          sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, status, prod.title, order.id).catch(() => {});
+          sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, status, prod.title, order.id).catch((err: any) => console.error("[EMAIL] Order email failed:", err?.message ?? err));
         }
       } catch { /* non-critical */ }
       res.json(order);
@@ -2886,12 +2916,18 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).end();
     res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
     res.flushHeaders();
     res.write(": connected\n\n");
     addSseClient(userId, res);
-    const hb = setInterval(() => { try { res.write(": ping\n\n"); } catch { clearInterval(hb); } }, 25000);
+    const hb = setInterval(() => {
+      try { res.write(": ping\n\n"); }
+      catch { clearInterval(hb); removeSseClient(userId, res); }
+    }, 15000);
     req.on("close", () => { clearInterval(hb); removeSseClient(userId, res); });
   });
 

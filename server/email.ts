@@ -73,13 +73,7 @@ function getSmtpTransport(): nodemailer.Transporter | null {
 }
 
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
-  // In development, skip real email sends to avoid API errors (dev OTP is 123456)
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`[EMAIL] Dev mode — skipping real send of "${subject}" to ${to}`);
-    return;
-  }
-
-  // 1 — Try SMTP first (works with any email provider, no domain verification needed)
+  // 1 — Always try SMTP first if credentials are set (works in any environment)
   const smtp = getSmtpTransport();
   if (smtp) {
     try {
@@ -96,7 +90,13 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     }
   }
 
-  // 2 — Resend REST API
+  // 2 — In development with no SMTP, skip to avoid noisy errors
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[EMAIL] Dev mode (no SMTP) — skipping Resend send of "${subject}" to ${to}`);
+    return;
+  }
+
+  // 3 — Resend REST API (production fallback)
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     console.warn(`[EMAIL] No SMTP or RESEND_API_KEY — skipping send to ${to}`);

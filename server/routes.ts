@@ -1597,16 +1597,9 @@ export async function registerRoutes(
       if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
       const { to } = req.body;
       const target = to || admin.email;
-      // Force production-mode email send for testing
-      const savedEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "production";
-      try {
-        const { sendOtpEmail: sendTest } = await import("./email");
-        await sendTest(target, "TEST-123456", false);
-        res.json({ ok: true, sentTo: target });
-      } finally {
-        process.env.NODE_ENV = savedEnv;
-      }
+      const { sendOtpEmail: sendTest } = await import("./email");
+      await sendTest(target, "TEST-123456", false);
+      res.json({ ok: true, sentTo: target });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

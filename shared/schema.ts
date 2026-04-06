@@ -240,7 +240,7 @@ export const WAEC_GRADE_WEIGHTS: Record<string, number> = {
 };
 
 export const CURRENCY_RATES = {
-  USD_TO_NGN_PAYMENT: 1460,
+  USD_TO_NGN_PAYMENT: 1480,
   USD_TO_NGN_PAYOUT: 1280,
 };
 

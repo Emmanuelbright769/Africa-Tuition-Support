@@ -1044,9 +1044,8 @@ export async function registerRoutes(
       await storage.createTransaction({
         userId,
         type: "withdrawal",
-        amountUsd: amount.toFixed(2),
+        amount: (-amount).toFixed(2),
         description: `Transfer to Trade Wallet — $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool`,
-        reference: tx.txHash ?? undefined,
       });
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
       res.json({
@@ -2015,7 +2014,7 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
-      const USD_TO_KOBO = 160000; // 1 USD = 1600 NGN = 160000 kobo
+      const USD_TO_KOBO = 148000; // 1 USD = 1480 NGN = 148000 kobo
       const amountKobo = Math.round(amount * USD_TO_KOBO);
       const reference = `TSIA-${userId}-${Date.now()}`;
       const response = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -2056,7 +2055,7 @@ export async function registerRoutes(
       });
       const data = await response.json() as any;
       if (!data.status || data.data?.status !== "success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment." });
-      const amountUsd = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / 160000).toFixed(2));
+      const amountUsd = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / 148000).toFixed(2));
       // Credit wallet
       await storage.updateWalletBalance(userId, amountUsd.toFixed(2));
       // Mark deposit as completed

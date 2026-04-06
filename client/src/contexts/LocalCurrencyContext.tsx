@@ -180,7 +180,7 @@ export function LocalCurrencyProvider({ children }: { children: ReactNode }) {
     const amount = typeof usd === "string" ? parseFloat(usd) : usd;
     if (isNaN(amount)) return currency ? `${currency.symbol}0` : "₦0";
     if (!currency) {
-      return `₦${Math.round(amount * 1600).toLocaleString("en-NG")}`;
+      return `₦${Math.round(amount * 1480).toLocaleString("en-NG")}`;
     }
     const converted = amount * currency.rate;
     const decimals = currency.code === "JPY" || currency.code === "KRW" || currency.code === "VND" || currency.code === "IDR" ? 0 : 0;

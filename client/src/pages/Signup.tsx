@@ -349,9 +349,6 @@ export default function Signup() {
                       </div>
                     )}
                     <form onSubmit={handleVerifyOtp} className="space-y-5">
-                      <p className="text-center text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg py-2 px-3">
-                        Not in your inbox? Check your <strong>Spam / Junk</strong> folder — it may have landed there.
-                      </p>
                       <div className="flex justify-center gap-3">
                         {otpDigits.map((digit, i) => (
                           <Input key={i} ref={el => { inputRefs.current[i] = el; }}

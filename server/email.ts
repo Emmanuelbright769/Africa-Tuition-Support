@@ -340,3 +340,177 @@ export async function sendPriceDropEmail(to: string, firstName: string, productT
   `);
   await sendEmail(to, subject, html);
 }
+
+// ─── New Sale (Seller) ────────────────────────────────────────────────────────
+
+export async function sendNewSaleEmail(to: string, firstName: string, productTitle: string, sellerReceives: string, orderId: number): Promise<void> {
+  const subject = `💰 New Sale! You earned $${sellerReceives}`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🛍️ You made a sale!</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, great news — someone just bought your listing.</p>
+    <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
+      <p style="color:#1a1a1a;font-weight:700;font-size:15px;margin:0 0 4px;">${productTitle}</p>
+      <p style="color:#6b7c72;font-size:12px;margin:0 0 12px;">Order #${orderId}</p>
+      <p style="color:#4a5e50;font-size:14px;margin:0;">You received <span style="color:#1a6b3c;font-weight:900;font-size:20px;">$${sellerReceives}</span> in your TSIA Personal Wallet (after platform commission).</p>
+    </div>
+    ${btn("https://tsiforafrica.com/dashboard", "View My Sales")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
+// ─── Bot Earnings ─────────────────────────────────────────────────────────────
+
+export async function sendBotEarningsEmail(to: string, firstName: string, earning: string, newBalance: string): Promise<void> {
+  const subject = `🤖 AI Bot Earnings — $${earning} credited to your Trade Wallet`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🤖 Bot Session Complete</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your AI Trading Bot has finished its 12-hour session.</p>
+    <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#4a5e50;font-size:14px;padding-bottom:10px;">Earnings (2% daily return)</td>
+          <td style="color:#1a6b3c;font-weight:900;font-size:20px;text-align:right;">+$${earning}</td>
+        </tr>
+        <tr>
+          <td style="color:#4a5e50;font-size:14px;">New Trade Wallet Balance</td>
+          <td style="color:#1a6b3c;font-weight:700;font-size:16px;text-align:right;">$${newBalance}</td>
+        </tr>
+      </table>
+    </div>
+    <p style="color:#6b7c72;font-size:13px;text-align:center;margin:0 0 20px;">Activate the bot again tomorrow (1:00 PM GMT) to keep compounding your returns.</p>
+    ${btn("https://tsiforafrica.com/dashboard", "View Trade Wallet")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
+// ─── Co-Affiliate Enrollment ──────────────────────────────────────────────────
+
+export async function sendCoAffiliateEnrollmentEmail(to: string, firstName: string, amountPaid: string, reserveCut: string): Promise<void> {
+  const subject = `✅ Co-Affiliate Enrolment Confirmed — Welcome to the Programme!`;
+  const html = baseTemplate(`
+    <h2 style="color:#c9a227;margin:0 0 8px;font-size:22px;">🎉 You're a Co-Affiliate!</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your TSIA Co-Affiliate / Initiator enrolment has been confirmed.</p>
+    <div style="background:#fffbf0;border:1px solid #f0d070;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#4a5e50;font-size:14px;padding-bottom:10px;">Amount Invested</td>
+          <td style="color:#c9a227;font-weight:900;font-size:18px;text-align:right;">$${amountPaid}</td>
+        </tr>
+        <tr>
+          <td style="color:#4a5e50;font-size:14px;">Strategic Reserve (20% ring-fenced)</td>
+          <td style="color:#6b7c72;font-size:14px;text-align:right;">$${reserveCut}</td>
+        </tr>
+      </table>
+    </div>
+    <p style="color:#4a5e50;font-size:14px;margin:0 0 24px;">Your portfolio share grows as the TSIA Trust Fund expands. You can track your share percentage and returns on your affiliate dashboard.</p>
+    ${btn("https://tsiforafrica.com/affiliate", "View My Portfolio")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
+// ─── Tour / Travel Booking ────────────────────────────────────────────────────
+
+export async function sendTourBookingEmail(to: string, firstName: string, bookingType: string, totalAmount: string, reference: string): Promise<void> {
+  const typeMap: Record<string, { emoji: string; label: string }> = {
+    hotel: { emoji: "🏨", label: "Hotel Booking" },
+    flight: { emoji: "✈️", label: "Flight Booking" },
+    car_hire: { emoji: "🚗", label: "Car Hire" },
+  };
+  const t = typeMap[bookingType] ?? { emoji: "🗺️", label: "Travel Booking" };
+  const subject = `${t.emoji} ${t.label} Confirmed — Ref: ${reference}`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">${t.emoji} Booking Confirmed!</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your ${t.label.toLowerCase()} has been confirmed and payment processed.</p>
+    <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#4a5e50;font-size:14px;padding-bottom:10px;">Booking Type</td>
+          <td style="color:#1a1a1a;font-weight:700;font-size:14px;text-align:right;">${t.label}</td>
+        </tr>
+        <tr>
+          <td style="color:#4a5e50;font-size:14px;padding-bottom:10px;">Reference</td>
+          <td style="color:#1a6b3c;font-weight:700;font-size:14px;text-align:right;">${reference}</td>
+        </tr>
+        <tr>
+          <td style="color:#4a5e50;font-size:14px;">Total Charged</td>
+          <td style="color:#1a6b3c;font-weight:900;font-size:20px;text-align:right;">$${totalAmount}</td>
+        </tr>
+      </table>
+    </div>
+    ${btn("https://tsiforafrica.com/dashboard", "View My Bookings")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
+// ─── QCE Savings Activated ────────────────────────────────────────────────────
+
+export async function sendQceActivationEmail(to: string, firstName: string, amount: string): Promise<void> {
+  const subject = `🏦 Your QCE Savings Account is Now Active!`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🏦 QCE Savings Activated</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your Quick Credit Eligibility (QCE) savings account is now active.</p>
+    <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
+      <p style="color:#1a1a1a;font-weight:700;font-size:15px;margin:0 0 4px;">Initial Deposit</p>
+      <p style="color:#1a6b3c;font-weight:900;font-size:28px;margin:0 0 16px;">$${amount}</p>
+      <p style="color:#4a5e50;font-size:14px;margin:0;">Contribute daily over <strong>90 days</strong> to build up to <strong>30% credit eligibility</strong>. Your Credit Portal is now unlocked — consistent savers qualify for larger loan amounts at lower rates.</p>
+    </div>
+    ${btn("https://tsiforafrica.com/dashboard", "Go to Credit Portal")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
+// ─── QCE Withdrawal ───────────────────────────────────────────────────────────
+
+export async function sendQceWithdrawalEmail(to: string, firstName: string, amount: string, newWalletBalance: string): Promise<void> {
+  const subject = `💸 QCE Savings Withdrawal — $${amount} returned to your Wallet`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">💸 QCE Withdrawal Processed</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your QCE savings withdrawal has been processed.</p>
+    <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#4a5e50;font-size:14px;padding-bottom:10px;">Amount Withdrawn</td>
+          <td style="color:#1a6b3c;font-weight:900;font-size:20px;text-align:right;">$${amount}</td>
+        </tr>
+        <tr>
+          <td style="color:#4a5e50;font-size:14px;">New Personal Wallet Balance</td>
+          <td style="color:#1a6b3c;font-weight:700;font-size:16px;text-align:right;">$${newWalletBalance}</td>
+        </tr>
+      </table>
+    </div>
+    <p style="color:#e67e22;font-size:13px;text-align:center;margin:0 0 20px;">Note: Withdrawing resets your QCE progress. Re-activate your savings to rebuild your credit eligibility.</p>
+    ${btn("https://tsiforafrica.com/dashboard", "View My Wallet")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
+// ─── New Arrival Alert ────────────────────────────────────────────────────────
+
+export async function sendNewArrivalEmail(to: string, firstName: string, category: string, productTitle: string, productId: number): Promise<void> {
+  const subject = `🆕 New Arrival in ${category}: "${productTitle}"`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🆕 New Arrival Alert</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, a new item just appeared in a category you follow.</p>
+    <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
+      <p style="color:#6b7c72;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px;">${category}</p>
+      <p style="color:#1a1a1a;font-weight:700;font-size:16px;margin:0;">${productTitle}</p>
+    </div>
+    ${btn(`https://tsiforafrica.com/dashboard#product-${productId}`, "View Product")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
+// ─── Referral Signup Notification ────────────────────────────────────────────
+
+export async function sendReferralSignupEmail(to: string, firstName: string, referredName: string, role: string): Promise<void> {
+  const subject = `👥 New Referral — ${referredName} just signed up!`;
+  const html = baseTemplate(`
+    <h2 style="color:#c9a227;margin:0 0 8px;font-size:22px;">👥 Referral Signup!</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, someone just joined TSIA using your referral link.</p>
+    <div style="background:#fffbf0;border:1px solid #f0d070;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
+      <p style="color:#4a5e50;font-size:14px;margin:0;"><strong>${referredName}</strong> has registered as a <strong>${role}</strong> on the TSIA platform. Commissions will be credited to your wallet when they activate and transact.</p>
+    </div>
+    ${btn("https://tsiforafrica.com/affiliate", "View My Referrals")}
+  `);
+  await sendEmail(to, subject, html);
+}

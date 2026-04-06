@@ -6,6 +6,9 @@ import {
   sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail,
   sendOrderUpdateEmail, sendLoanUpdateEmail, sendVerificationUpdateEmail,
   sendReferralCommissionEmail, sendPriceDropEmail,
+  sendNewSaleEmail, sendBotEarningsEmail, sendCoAffiliateEnrollmentEmail,
+  sendTourBookingEmail, sendQceActivationEmail, sendQceWithdrawalEmail,
+  sendNewArrivalEmail, sendReferralSignupEmail,
 } from "./email";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -128,6 +131,7 @@ export async function registerRoutes(
                   message: `${firstName} ${lastName} signed up using your referral link as a ${targetRole}.`,
                   data: { newUserId: u!.id, role: targetRole }, isRead: false,
                 });
+                sendReferralSignupEmail(referrer.email, referrer.firstName, `${firstName} ${lastName}`, targetRole).catch((err: any) => console.error("[EMAIL] Referral signup email failed:", err?.message ?? err));
               }
             } catch { /* non-critical */ }
           }
@@ -848,6 +852,9 @@ export async function registerRoutes(
         data: { amountPaid, reserveCut, shareLabel: (sharePercentage * 100).toFixed(6) + "%" },
         isRead: false,
       });
+      storage.getUser(userId).then(u => {
+        if (u) sendCoAffiliateEnrollmentEmail(u.email, u.firstName, amountPaid.toFixed(2), reserveCut.toFixed(2)).catch((err: any) => console.error("[EMAIL] Co-affiliate email failed:", err?.message ?? err));
+      });
 
       res.json({
         ...record,
@@ -1149,6 +1156,9 @@ export async function registerRoutes(
         message: `Your 12-hour bot session has ended. $${earning.toFixed(2)} (2% daily return) has been added to your Trade Wallet.`,
         data: { earning, newBalance: updatedWallet.tradeBalance },
         isRead: false,
+      });
+      storage.getUser(userId).then(u => {
+        if (u) sendBotEarningsEmail(u.email, u.firstName, earning.toFixed(2), parseFloat(updatedWallet.tradeBalance).toFixed(2)).catch((err: any) => console.error("[EMAIL] Bot earnings email failed:", err?.message ?? err));
       });
       res.json({
         earning: earning.toFixed(6),
@@ -2381,6 +2391,9 @@ export async function registerRoutes(
           if (subId === userId) continue;
           const notif = await storage.createNotification({ userId: subId, type: "new_arrival", title: "New Arrival", message: `A new item in ${cat}: "${prod.title}"`, relatedId: prod.id });
           pushToUser(subId, "notification", notif);
+          storage.getUser(subId).then(u => {
+            if (u) sendNewArrivalEmail(u.email, u.firstName, cat, prod.title, prod.id).catch((err: any) => console.error("[EMAIL] New arrival email failed:", err?.message ?? err));
+          });
         }
       } catch (_) {}
       res.json(prod);
@@ -2497,6 +2510,7 @@ export async function registerRoutes(
           storage.getUser(prod.sellerId),
         ]);
         if (buyerUser) sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, "confirmed", prod.title, order.id).catch((err: any) => console.error("[EMAIL] Order email failed:", err?.message ?? err));
+        if (sellerUser) sendNewSaleEmail(sellerUser.email, sellerUser.firstName, prod.title, sellerReceives.toFixed(2), order.id).catch((err: any) => console.error("[EMAIL] New sale email failed:", err?.message ?? err));
         const [buyerNotif, sellerNotif] = await Promise.all([
           storage.createNotification({
             userId,
@@ -3000,6 +3014,9 @@ export async function registerRoutes(
         data: { booking: booking.id, type, totalAmount, commission },
         isRead: false,
       });
+      storage.getUser(userId).then(u => {
+        if (u) sendTourBookingEmail(u.email, u.firstName, type, totalAmount.toFixed(2), reference).catch((err: any) => console.error("[EMAIL] Tour booking email failed:", err?.message ?? err));
+      });
 
       res.json({ ...booking, message: "Booking confirmed!" });
     } catch (e: any) {
@@ -3065,13 +3082,17 @@ export async function registerRoutes(
       // Send notification if first activation
       if (!qce.activated) {
         try {
-          await storage.createNotification({
+          const qceNotif = await storage.createNotification({
             userId,
             type: "qce_update",
             title: "QCE Savings Activated!",
             message: `Your Quick Credit Eligibility savings are now active with $${amount.toFixed(2)}. Keep contributing daily over 90 days to build up to 30% credit eligibility. Your Credit Portal is now unlocked.`,
             data: { balance: savings.balance, daysActive: savings.daysActive },
             isRead: false,
+          });
+          pushToUser(userId, "notification", qceNotif);
+          storage.getUser(userId).then(u => {
+            if (u) sendQceActivationEmail(u.email, u.firstName, amount.toFixed(2)).catch((err: any) => console.error("[EMAIL] QCE activation email failed:", err?.message ?? err));
           });
         } catch { /* non-critical */ }
       }
@@ -3095,6 +3116,22 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(userId);
       const newWalletBal = (parseFloat(wallet.balance) + amount).toFixed(2);
       await storage.updateWalletBalance(userId, newWalletBal);
+
+      // Notify user and send email
+      try {
+        const qceWdNotif = await storage.createNotification({
+          userId,
+          type: "qce_update",
+          title: "QCE Savings Withdrawn",
+          message: `$${amount.toFixed(2)} withdrawn from your QCE savings back to your Personal Wallet. Your new wallet balance is $${newWalletBal}.`,
+          data: { amount, newWalletBal },
+          isRead: false,
+        });
+        pushToUser(userId, "notification", qceWdNotif);
+        storage.getUser(userId).then(u => {
+          if (u) sendQceWithdrawalEmail(u.email, u.firstName, amount.toFixed(2), newWalletBal).catch((err: any) => console.error("[EMAIL] QCE withdrawal email failed:", err?.message ?? err));
+        });
+      } catch { /* non-critical */ }
 
       res.json({ savings, transaction, walletBalance: newWalletBal, message: "Withdrawal successful!" });
     } catch (e: any) { res.status(400).json({ message: e.message }); }

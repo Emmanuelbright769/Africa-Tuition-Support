@@ -1,9 +1,8 @@
 import nodemailer from "nodemailer";
 
 const FROM_NAME = "TSIA – SMAKEMGGOLD Ltd";
-// SMTP_FROM overrides FROM_EMAIL so you can send as noreply@tsiforafrica.com
-// even when your SMTP login (SMTP_USER) is a different address (e.g. Brevo account email)
 const FROM_EMAIL = process.env.SMTP_FROM || process.env.FROM_EMAIL || "noreply@tsiforafrica.com";
+const BREVO_API  = "https://api.brevo.com/v3/smtp/email";
 const RESEND_API = "https://api.resend.com/emails";
 
 function baseTemplate(content: string): string {
@@ -69,20 +68,44 @@ function getSmtpTransport(): nodemailer.Transporter | null {
     port: parseInt(process.env.SMTP_PORT || "587"),
     secure: process.env.SMTP_PORT === "465",
     auth: { user, pass },
-  });
+    // Force LOGIN/PLAIN — Brevo SMTP keys don't work with CRAM-MD5
+    authMethod: "PLAIN",
+    tls: { rejectUnauthorized: false },
+  } as any);
 }
 
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
-  // 1 — Always try SMTP first if credentials are set (works in any environment)
+  // 1 — Brevo REST API (works over HTTPS port 443, no domain ownership verification)
+  const brevoKey = process.env.BREVO_API_KEY;
+  if (brevoKey) {
+    try {
+      const senderEmail = process.env.BREVO_SENDER_EMAIL || FROM_EMAIL;
+      const res = await fetch(BREVO_API, {
+        method: "POST",
+        headers: { "api-key": brevoKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender:      { name: FROM_NAME, email: senderEmail },
+          to:          [{ email: to }],
+          subject,
+          htmlContent: html,
+        }),
+      });
+      const body = await res.text();
+      if (res.ok) {
+        console.log(`[EMAIL] Brevo ✓ "${subject}" → ${to}`);
+        return;
+      }
+      console.error(`[EMAIL] Brevo ${res.status} for ${to}: ${body}`);
+    } catch (err: any) {
+      console.error(`[EMAIL] Brevo error for ${to}: ${err.message}`);
+    }
+  }
+
+  // 2 — SMTP (nodemailer — requires outbound port 587/465)
   const smtp = getSmtpTransport();
   if (smtp) {
     try {
-      await smtp.sendMail({
-        from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
-        to,
-        subject,
-        html,
-      });
+      await smtp.sendMail({ from: `"${FROM_NAME}" <${FROM_EMAIL}>`, to, subject, html });
       console.log(`[EMAIL] SMTP ✓ "${subject}" → ${to}`);
       return;
     } catch (err: any) {
@@ -90,35 +113,29 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     }
   }
 
-  // 2 — In development with no SMTP, skip to avoid noisy errors
+  // 3 — In development with no provider, skip silently
   if (process.env.NODE_ENV !== "production") {
-    console.log(`[EMAIL] Dev mode (no SMTP) — skipping Resend send of "${subject}" to ${to}`);
+    console.log(`[EMAIL] Dev mode (no provider) — skipping "${subject}" to ${to}`);
     return;
   }
 
-  // 3 — Resend REST API (production fallback)
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    console.warn(`[EMAIL] No SMTP or RESEND_API_KEY — skipping send to ${to}`);
+  // 4 — Resend REST API (legacy fallback)
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) {
+    console.warn(`[EMAIL] No email provider configured — skipping send to ${to}`);
     return;
   }
-
-  const fromAddr = `${FROM_NAME} <${FROM_EMAIL}>`;
-  console.log(`[EMAIL] Sending via Resend: "${subject}" → ${to} (from: ${FROM_EMAIL})`);
-
   const res = await fetch(RESEND_API, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ from: fromAddr, to: [to], subject, html }),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+    body: JSON.stringify({ from: `${FROM_NAME} <${FROM_EMAIL}>`, to: [to], subject, html }),
   });
-
   const body = await res.text();
   if (!res.ok) {
     console.error(`[EMAIL] Resend ${res.status} for ${to}: ${body}`);
     throw new Error(`Resend ${res.status}: ${body}`);
-  } else {
-    console.log(`[EMAIL] Resend ✓ "${subject}" → ${to} | id: ${body}`);
   }
+  console.log(`[EMAIL] Resend ✓ "${subject}" → ${to}`);
 }
 
 // ─── OTP ──────────────────────────────────────────────────────────────────────

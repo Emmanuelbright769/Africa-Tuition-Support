@@ -146,6 +146,7 @@ export default function StudentDashboard() {
 
   const navigate = (section: Section) => {
     if (section === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
+    if (section === "wallet") { setMenuOpen(false); setLocation("/wallet"); return; }
     if (section !== "ecommerce") setOpenChatId(null);
     setActiveSection(section); setMenuOpen(false);
   };

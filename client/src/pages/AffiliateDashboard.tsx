@@ -401,6 +401,7 @@ export default function AffiliateDashboard() {
 
   const navigate = (s: Section) => {
     if (s === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
+    if (s === "wallet") { setMenuOpen(false); setLocation("/wallet"); return; }
     if (s !== "ecommerce") setOpenChatId(null);
     setActiveSection(s); setMenuOpen(false);
   };

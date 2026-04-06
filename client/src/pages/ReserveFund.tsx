@@ -13,6 +13,11 @@ type FundData = {
   totalDeposited: string;
   contributionRate: number;
   description: string;
+  walletFloorReserve: string;
+  walletsAtMin: number;
+  totalWallets: number;
+  minBalancePerWallet: number;
+  combinedReserve: string;
   updatedAt: string;
 };
 
@@ -161,11 +166,16 @@ export default function ReserveFund() {
     return () => clearInterval(t);
   }, [lastTick]);
 
-  const balance   = parseFloat(data?.totalBalance   ?? "0");
-  const deposited = parseFloat(data?.totalDeposited ?? "0");
-  const rate      = data?.contributionRate ?? 20;
-  const targetFund = 150_000_000 * 0.20;
-  const pct = Math.min((balance / Math.max(targetFund, 1)) * 100, 100);
+  const balance          = parseFloat(data?.totalBalance      ?? "0");
+  const deposited        = parseFloat(data?.totalDeposited    ?? "0");
+  const rate             = data?.contributionRate ?? 20;
+  const floorReserve     = parseFloat(data?.walletFloorReserve ?? "0");
+  const combinedReserve  = parseFloat(data?.combinedReserve    ?? "0");
+  const walletsAtMin     = data?.walletsAtMin     ?? 0;
+  const totalWallets     = data?.totalWallets     ?? 0;
+  const minPerWallet     = data?.minBalancePerWallet ?? 2;
+  const targetFund       = 150_000_000 * 0.20;
+  const pct = Math.min((combinedReserve / Math.max(targetFund, 1)) * 100, 100);
 
   const totals = commData?.totals;
   const chartData = commData?.chartData ?? [];
@@ -195,17 +205,28 @@ export default function ReserveFund() {
             </div>
 
             <div className="mb-2">
-              <p className="text-white/50 text-xs mb-1">20% Strategic Development Reserve</p>
+              <p className="text-white/50 text-xs mb-1">Combined Strategic Reserve (Trade + Wallet Floor)</p>
               <div className="text-4xl font-black text-white tracking-tight leading-none">
                 {isLoading ? (
                   <span className="animate-pulse">Loading…</span>
                 ) : (
-                  <AnimatedCounter value={balance} decimals={2} prefix="$" />
+                  <AnimatedCounter value={combinedReserve} decimals={2} prefix="$" />
                 )}
               </div>
+              {!isLoading && (
+                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                  <span className="text-white/50 text-[11px]">
+                    <span className="text-[#f0c040] font-bold">Trade 20%:</span> ${balance.toFixed(2)}
+                  </span>
+                  <span className="text-white/30 text-[11px]">+</span>
+                  <span className="text-white/50 text-[11px]">
+                    <span className="text-emerald-300 font-bold">Wallet Floor:</span> ${floorReserve.toFixed(2)}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center gap-4 mt-4">
+            <div className="flex items-center gap-4 mt-4 flex-wrap">
               <div>
                 <p className="text-white/40 text-[10px] uppercase tracking-wide">Total Deposited</p>
                 <p className="text-white/80 font-bold text-sm">
@@ -216,6 +237,11 @@ export default function ReserveFund() {
               <div>
                 <p className="text-white/40 text-[10px] uppercase tracking-wide">Reserve Rate</p>
                 <p className="text-[#f0c040] font-bold text-sm">{rate}% of every deposit</p>
+              </div>
+              <div className="w-px h-8 bg-white/20" />
+              <div>
+                <p className="text-white/40 text-[10px] uppercase tracking-wide">Wallet Floor</p>
+                <p className="text-emerald-300 font-bold text-sm">${minPerWallet} × {totalWallets} wallets</p>
               </div>
               <div className="w-px h-8 bg-white/20" />
               <div>
@@ -321,6 +347,31 @@ export default function ReserveFund() {
                     </div>
                   </div>
                 ))}
+
+                {/* $2 Wallet Floor Reserve — separate from trade deposit split */}
+                <div className="pt-2 border-t border-border mt-2">
+                  <div className="flex justify-between mb-1 items-center">
+                    <div>
+                      <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">$2 Wallet Floor Reserve</span>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Locked minimum balance per wallet · not from trade deposit split</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">${floorReserve.toFixed(2)}</span>
+                      <p className="text-[10px] text-muted-foreground">{walletsAtMin}/{totalWallets} wallets</p>
+                    </div>
+                  </div>
+                  <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-emerald-500 rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: totalWallets > 0 ? `${Math.min((walletsAtMin / totalWallets) * 100, 100)}%` : "0%" }}
+                      transition={{ duration: 1, delay: 0.3, ease: "easeOut" }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Every active wallet retains ${minPerWallet} at all times — forms a collective liquidity floor for the reserve.
+                  </p>
+                </div>
               </div>
             </motion.div>
           )}
@@ -446,6 +497,41 @@ export default function ReserveFund() {
             <p className="text-[10px] text-muted-foreground/60 mt-0.5">{s.sub}</p>
           </div>
         ))}
+      </div>
+
+      {/* ── $2 Wallet Floor Reserve detail card ──────────────────────── */}
+      <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-5" data-testid="card-wallet-floor-reserve">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <h4 className="font-bold text-sm text-emerald-800 dark:text-emerald-300">$2 Wallet Floor Reserve</h4>
+            </div>
+            <p className="text-[11px] text-emerald-700/70 dark:text-emerald-400/60 max-w-xs leading-relaxed">
+              Every TSIA wallet must retain a minimum of <strong>${minPerWallet}</strong>. This collective floor forms an always-available liquidity buffer that contributes to the overall reserve strength.
+            </p>
+          </div>
+          <div className="text-right shrink-0 ml-3">
+            <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">
+              ${isLoading ? "—" : floorReserve.toFixed(2)}
+            </p>
+            <p className="text-[10px] text-emerald-600/70 dark:text-emerald-400/60">{walletsAtMin} of {totalWallets} wallets funded</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-emerald-200 dark:border-emerald-800">
+          <div className="text-center">
+            <p className="text-base font-black text-emerald-700 dark:text-emerald-300">${minPerWallet}</p>
+            <p className="text-[9px] text-emerald-600/60 dark:text-emerald-400/50 uppercase tracking-wide">Per wallet</p>
+          </div>
+          <div className="text-center border-x border-emerald-200 dark:border-emerald-800">
+            <p className="text-base font-black text-emerald-700 dark:text-emerald-300">{totalWallets}</p>
+            <p className="text-[9px] text-emerald-600/60 dark:text-emerald-400/50 uppercase tracking-wide">Active wallets</p>
+          </div>
+          <div className="text-center">
+            <p className="text-base font-black text-emerald-700 dark:text-emerald-300">${(minPerWallet * totalWallets).toFixed(2)}</p>
+            <p className="text-[9px] text-emerald-600/60 dark:text-emerald-400/50 uppercase tracking-wide">Max potential</p>
+          </div>
+        </div>
       </div>
 
       {/* ── Refresh note ─────────────────────────────────────────────── */}

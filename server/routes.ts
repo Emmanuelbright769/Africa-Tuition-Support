@@ -1186,11 +1186,32 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const fund = await storage.getTradeReserveFund();
+
+      // Aggregate the $2 minimum balance locked across all active user wallets
+      const floorResult = await db.execute(sql`
+        SELECT
+          COUNT(*) FILTER (WHERE CAST(balance AS numeric) >= 2) AS wallets_at_min,
+          COUNT(*) AS total_wallets,
+          COALESCE(SUM(LEAST(CAST(balance AS numeric), 2)), 0) AS floor_reserve
+        FROM wallets
+      `);
+      const floorRow = (floorResult.rows[0] as any) ?? {};
+      const walletFloorReserve = parseFloat(floorRow.floor_reserve ?? "0");
+      const walletsAtMin       = parseInt(floorRow.wallets_at_min ?? "0", 10);
+      const totalWallets       = parseInt(floorRow.total_wallets ?? "0", 10);
+
+      const tradeReserve = parseFloat(fund.total_balance ?? "0");
+
       res.json({
         totalBalance: fund.total_balance ?? "0",
         totalDeposited: fund.total_deposited ?? "0",
         contributionRate: 20,
         description: "20% of every Global Trade Market deposit is ring-fenced into this strategic reserve.",
+        walletFloorReserve: walletFloorReserve.toFixed(2),
+        walletsAtMin,
+        totalWallets,
+        minBalancePerWallet: 2,
+        combinedReserve: (tradeReserve + walletFloorReserve).toFixed(2),
         updatedAt: new Date().toISOString(),
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

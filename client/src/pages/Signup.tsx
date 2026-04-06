@@ -100,6 +100,18 @@ export default function Signup() {
 
   const handlePickRole = (r: RoleChoice) => { setRoleChoice(r); setStep(1); };
 
+  const handleResendOtp = async () => {
+    setLoading(true);
+    try {
+      await requestOtp({ ...formData, country: getCountry(), role: roleChoice });
+      toast({ title: "Code Resent", description: "A new 6-digit code has been sent to your email. Check spam/junk if not in inbox." });
+    } catch {
+      toast({ title: "Resend failed", description: "Could not resend code. Please try again.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmitDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     if (diaspora && !diasporaCountry.trim()) {
@@ -337,6 +349,9 @@ export default function Signup() {
                       </div>
                     )}
                     <form onSubmit={handleVerifyOtp} className="space-y-5">
+                      <p className="text-center text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg py-2 px-3">
+                        Not in your inbox? Check your <strong>Spam / Junk</strong> folder — it may have landed there.
+                      </p>
                       <div className="flex justify-center gap-3">
                         {otpDigits.map((digit, i) => (
                           <Input key={i} ref={el => { inputRefs.current[i] = el; }}
@@ -350,9 +365,14 @@ export default function Signup() {
                       <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md" disabled={loading || otpDigits.join("").length !== 6} data-testid="button-verify-signup-otp">
                         {loading ? "Verifying..." : "Verify & Access Dashboard"}
                       </Button>
-                      <button type="button" onClick={() => setStep(1)} className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                        <ArrowLeft className="w-4 h-4" /> Go back
-                      </button>
+                      <div className="flex items-center justify-between text-sm">
+                        <button type="button" onClick={() => setStep(1)} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
+                          <ArrowLeft className="w-4 h-4" /> Go back
+                        </button>
+                        <button type="button" onClick={handleResendOtp} disabled={loading} className="text-primary font-medium hover:underline" data-testid="button-resend-signup-otp">
+                          Resend code
+                        </button>
+                      </div>
                     </form>
                   </CardContent>
                 </>

@@ -356,6 +356,9 @@ export default function Login() {
                           <KeyRound className="w-4 h-4" />
                           <span>Code sent to <strong className="text-foreground">{email}</strong></span>
                         </div>
+                        <p className="text-center text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg py-2 px-3">
+                          Not in your inbox? Check your <strong>Spam / Junk</strong> folder — it may have landed there.
+                        </p>
                         <div className="flex justify-center gap-3 mb-6">
                           {otpDigits.map((digit, i) => (
                             <Input

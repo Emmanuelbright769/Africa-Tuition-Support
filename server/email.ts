@@ -86,8 +86,12 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
         body: JSON.stringify({
           sender:      { name: FROM_NAME, email: senderEmail },
           to:          [{ email: to }],
+          replyTo:     { name: "TSIA Support", email: "support@tsiforafrica.com" },
           subject,
           htmlContent: html,
+          headers: {
+            "X-Mailer": "TSIA-Mailer/1.0",
+          },
         }),
       });
       const body = await res.text();

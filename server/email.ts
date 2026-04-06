@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 
-const FROM_NAME = "TSIA – SMAKEMGGOLD Ltd";
+const FROM_NAME = "TSIA";
 const FROM_EMAIL = process.env.SMTP_FROM || process.env.FROM_EMAIL || "noreply@tsiforafrica.com";
 const BREVO_API  = "https://api.brevo.com/v3/smtp/email";
 const RESEND_API = "https://api.resend.com/emails";
@@ -24,7 +24,7 @@ function baseTemplate(content: string): string {
               <div style="width:44px;height:44px;background:#c9a227;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:#fff;vertical-align:middle;">T</div>
               <span style="color:#fff;font-size:20px;font-weight:800;vertical-align:middle;margin-left:8px;">TSIA</span>
             </div>
-            <p style="color:rgba(255,255,255,0.75);font-size:12px;margin:6px 0 0;">SMAKEMGGOLD Ltd &nbsp;·&nbsp; RC: 1359954</p>
+            <p style="color:rgba(255,255,255,0.75);font-size:12px;margin:6px 0 0;">Tuition Support Initiative for Africa</p>
           </td>
         </tr>
         <!-- Body -->
@@ -36,7 +36,7 @@ function baseTemplate(content: string): string {
         <!-- Footer -->
         <tr>
           <td style="background:#f7f9f7;padding:20px 32px;text-align:center;border-top:1px solid #e5ede8;">
-            <p style="color:#9caa9f;font-size:11px;margin:0;">© ${new Date().getFullYear()} SMAKEMGGOLD Ltd · TSIA for Africa</p>
+            <p style="color:#9caa9f;font-size:11px;margin:0;">© ${new Date().getFullYear()} TSIA – Tuition Support Initiative for Africa</p>
             <p style="color:#b5c0b8;font-size:10px;margin:4px 0 0;">This is an automated message, please do not reply.</p>
           </td>
         </tr>

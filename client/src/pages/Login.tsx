@@ -46,7 +46,6 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
-  const [devOtp, setDevOtp] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const passwordRef = useRef<HTMLInputElement | null>(null);
   const { requestOtp, verifyOtp, adminLogin } = useAuth();
@@ -94,10 +93,7 @@ export default function Login() {
       const result = await requestOtp({ email, loginRole });
       if (result.otpSent) {
         setStep(2);
-        if (result.devOtp) {
-          setDevOtp(result.devOtp);
-        }
-        toast({ title: "OTP Sent", description: result.devOtp ? `Your code is: ${result.devOtp}` : "Check your email for the 6-digit code." });
+        toast({ title: "OTP Sent", description: "Check your email for the 6-digit code." });
       } else {
         toast({ title: "Error", description: result.error || "Could not send OTP.", variant: "destructive" });
       }
@@ -147,8 +143,7 @@ export default function Login() {
     try {
       const result = await requestOtp({ email, loginRole: loginRole || undefined });
       setOtpDigits(["", "", "", "", "", ""]);
-      if (result.devOtp) setDevOtp(result.devOtp);
-      toast({ title: "OTP Resent", description: result.devOtp ? `New code: ${result.devOtp}` : "A new code has been sent." });
+      toast({ title: "OTP Resent", description: "A new code has been sent to your email." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -361,13 +356,7 @@ export default function Login() {
                           <KeyRound className="w-4 h-4" />
                           <span>Code sent to <strong className="text-foreground">{email}</strong></span>
                         </div>
-                        {devOtp && (
-                          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-400 dark:border-amber-600 rounded-lg px-3 py-2 flex items-center justify-between gap-3" data-testid="banner-dev-otp">
-                            <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide leading-tight">Dev mode<br/>code:</p>
-                            <p className="text-base font-bold tracking-widest text-amber-800 dark:text-amber-300 font-mono">{devOtp}</p>
-                          </div>
-                        )}
-                                        <div className="flex justify-center gap-3 mb-6">
+                        <div className="flex justify-center gap-3 mb-6">
                           {otpDigits.map((digit, i) => (
                             <Input
                               key={i}

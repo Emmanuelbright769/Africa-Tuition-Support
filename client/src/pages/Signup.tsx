@@ -80,7 +80,6 @@ export default function Signup() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "", referralCode: "" });
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
-  const [devOtp, setDevOtp] = useState<string | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -112,8 +111,7 @@ export default function Signup() {
       const result = await requestOtp({ ...formData, country: getCountry(), role: roleChoice });
       if (!result.otpSent) throw new Error(result as any);
       setStep(2);
-      if (result.devOtp) setDevOtp(result.devOtp);
-      toast({ title: "OTP Sent", description: result.devOtp ? `Your code is: ${result.devOtp}` : "Check your email for the 6-digit verification code." });
+      toast({ title: "OTP Sent", description: "Check your email for the 6-digit verification code." });
     } catch (err: any) {
       toast({ title: "Signup failed", description: err.message || "Could not create account", variant: "destructive" });
     } finally {
@@ -336,12 +334,6 @@ export default function Signup() {
                       <div className="mb-4 flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
                         <CheckCircle2 className="w-4 h-4 text-amber-500 shrink-0" />
                         <p className="text-xs text-amber-700 dark:text-amber-300">Both accounts are set up — one code to verify both!</p>
-                      </div>
-                    )}
-                    {devOtp && (
-                      <div className="mb-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-400 dark:border-amber-600 rounded-lg px-3 py-2 flex items-center justify-between gap-3" data-testid="banner-dev-otp-signup">
-                        <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide leading-tight">Dev mode<br/>code:</p>
-                        <p className="text-base font-bold tracking-widest text-amber-800 dark:text-amber-300 font-mono">{devOtp}</p>
                       </div>
                     )}
                     <form onSubmit={handleVerifyOtp} className="space-y-5">

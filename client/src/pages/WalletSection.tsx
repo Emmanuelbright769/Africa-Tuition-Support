@@ -142,7 +142,7 @@ export default function WalletSection() {
       if (!amount || amount < 5) throw new Error("Minimum crypto deposit is $5");
       if (!cryptoTxHash.trim()) throw new Error("Transaction hash is required");
       const res = await apiRequest("POST", "/api/wallet/deposit", {
-        amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,
+        amountUsd: amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
@@ -399,19 +399,32 @@ export default function WalletSection() {
         </div>
       </motion.div>
 
-      {/* Info cards */}
+      {/* Payment method quick-access cards */}
       <motion.div variants={itemVariants} className="grid grid-cols-4 gap-2">
         {[
-          { icon: CreditCard, label: "Card",    desc: "Visa / MC",   color: "text-blue-600",   bg: "bg-blue-50 dark:bg-blue-900/20" },
-          { icon: Building2,  label: "Bank",    desc: "Transfer",    color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20" },
-          { icon: Smartphone, label: "USSD",    desc: "All nets",    color: "text-tsia-green", bg: "bg-green-50 dark:bg-green-900/20" },
-          { icon: Coins,      label: "Crypto",  desc: "USDT",        color: "text-amber-600",  bg: "bg-amber-50 dark:bg-amber-900/20" },
-        ].map(({ icon: Icon, label, desc, color, bg }) => (
-          <div key={label} className={`${bg} rounded-2xl p-2.5 text-center`}>
+          { icon: CreditCard, label: "Card",    desc: "Visa / MC",   color: "text-blue-600",   bg: "bg-blue-50 dark:bg-blue-900/20",   method: "paystack" as const },
+          { icon: Building2,  label: "Bank",    desc: "Transfer",    color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20", method: "paystack" as const },
+          { icon: Smartphone, label: "USSD",    desc: "All nets",    color: "text-tsia-green", bg: "bg-green-50 dark:bg-green-900/20",  method: "paystack" as const },
+          { icon: Coins,      label: "Crypto",  desc: "USDT",        color: "text-amber-600",  bg: "bg-amber-50 dark:bg-amber-900/20",  method: "crypto" as const },
+        ].map(({ icon: Icon, label, desc, color, bg, method }) => (
+          <button
+            key={label}
+            onClick={() => {
+              if (!walletKycDone && needsKyc) {
+                toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan to unlock funding.", variant: "destructive" }); return;
+              }
+              setFundMethod(method);
+              setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef("");
+              setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20");
+              setFundOpen(true);
+            }}
+            className={`${bg} rounded-2xl p-2.5 text-center hover:opacity-80 transition-opacity active:scale-95`}
+            data-testid={`btn-method-${label.toLowerCase()}`}
+          >
             <Icon className={`w-4 h-4 mx-auto mb-1 ${color}`} />
             <p className="text-[11px] font-bold">{label}</p>
             <p className="text-[9px] text-muted-foreground">{desc}</p>
-          </div>
+          </button>
         ))}
       </motion.div>
 

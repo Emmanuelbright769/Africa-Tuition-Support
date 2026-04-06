@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, TrendingUp, Zap, Globe, Lock, RefreshCw, Info, ChevronRight, ChevronDown } from "lucide-react";
+import { Shield, TrendingUp, Zap, Globe, Lock, RefreshCw, Info, ChevronRight, ChevronDown, BarChart3, Coins, Receipt } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  Area, AreaChart,
+} from "recharts";
 
 type FundData = {
   totalBalance: string;
@@ -11,6 +14,22 @@ type FundData = {
   contributionRate: number;
   description: string;
   updatedAt: string;
+};
+
+type CommissionData = {
+  chartData: {
+    month: string;
+    ecomCommission: number;
+    withdrawalFees: number;
+    affiliatePoolPaid: number;
+    netProfit: number;
+  }[];
+  totals: {
+    totalEcom: number;
+    totalFees: number;
+    totalPoolPaid: number;
+    totalNetProfit: number;
+  };
 };
 
 // ─── Animated number counter ───────────────────────────────────────────────
@@ -50,6 +69,25 @@ function PulseDot() {
       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
       <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
     </span>
+  );
+}
+
+// ─── Custom tooltip for commission chart ───────────────────────────────────
+function CommissionTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card border rounded-xl p-3 shadow-lg text-xs space-y-1.5 min-w-[180px]">
+      <p className="font-bold text-sm mb-2">{label}</p>
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: p.fill || p.color }} />
+            <span className="text-muted-foreground">{p.name}</span>
+          </div>
+          <span className="font-bold" style={{ color: p.fill || p.color }}>${p.value.toFixed(2)}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -97,16 +135,21 @@ export default function ReserveFund() {
   const [secondsAgo, setSecondsAgo] = useState(0);
   const [openFundItems, setOpenFundItems] = useState<Set<string>>(new Set());
   const [allocOpen, setAllocOpen] = useState(false);
+  const [commChartOpen, setCommChartOpen] = useState(true);
   const toggleFundItem = (key: string) => setOpenFundItems(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s; });
 
-  // Poll every 5 seconds
   const { data, isLoading } = useQuery<FundData>({
     queryKey: ["/api/reserve-fund/live"],
     refetchInterval: 5000,
     staleTime: 0,
   });
 
-  // Update "last refreshed" timer
+  const { data: commData } = useQuery<CommissionData>({
+    queryKey: ["/api/reserve-fund/commission-profits"],
+    refetchInterval: 30000,
+    staleTime: 15000,
+  });
+
   useEffect(() => {
     if (data?.updatedAt) setLastTick(Date.now());
   }, [data?.updatedAt]);
@@ -121,9 +164,16 @@ export default function ReserveFund() {
   const balance   = parseFloat(data?.totalBalance   ?? "0");
   const deposited = parseFloat(data?.totalDeposited ?? "0");
   const rate      = data?.contributionRate ?? 20;
-  // Hypothetical projection: assume fund grows at ~$150M target over 5 years
-  const targetFund = 150_000_000 * 0.20; // rough 20% reserve target
+  const targetFund = 150_000_000 * 0.20;
   const pct = Math.min((balance / Math.max(targetFund, 1)) * 100, 100);
+
+  const totals = commData?.totals;
+  const chartData = commData?.chartData ?? [];
+
+  // If no real data yet, show a placeholder stub row so chart renders
+  const displayChart = chartData.length > 0 ? chartData : [
+    { month: "—", ecomCommission: 0, withdrawalFees: 0, affiliatePoolPaid: 0, netProfit: 0 }
+  ];
 
   return (
     <div className="space-y-6">
@@ -131,13 +181,11 @@ export default function ReserveFund() {
       {/* ── Header card ──────────────────────────────────────────────── */}
       <div className="relative rounded-3xl overflow-hidden">
         <div className="bg-gradient-to-br from-[#1a5c38] via-[#0e3d25] to-[#1a2a0e] p-6 pb-8">
-          {/* Decorative orbs */}
           <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-white/5" />
           <div className="absolute top-8 right-8 w-24 h-24 rounded-full bg-white/5" />
           <div className="absolute -bottom-8 left-20 w-36 h-36 rounded-full bg-[#b8860b]/10" />
 
           <div className="relative z-10">
-            {/* Live badge */}
             <div className="flex items-center gap-2 mb-4">
               <PulseDot />
               <span className="text-white/70 text-xs font-semibold uppercase tracking-widest">Live Balance</span>
@@ -146,7 +194,6 @@ export default function ReserveFund() {
               </span>
             </div>
 
-            {/* Balance */}
             <div className="mb-2">
               <p className="text-white/50 text-xs mb-1">20% Strategic Development Reserve</p>
               <div className="text-4xl font-black text-white tracking-tight leading-none">
@@ -158,7 +205,6 @@ export default function ReserveFund() {
               </div>
             </div>
 
-            {/* Sub-stats row */}
             <div className="flex items-center gap-4 mt-4">
               <div>
                 <p className="text-white/40 text-[10px] uppercase tracking-wide">Total Deposited</p>
@@ -180,7 +226,6 @@ export default function ReserveFund() {
           </div>
         </div>
 
-        {/* Progress bar at the bottom of the card */}
         <div className="bg-[#0a2418] px-6 py-3 flex items-center gap-3">
           <span className="text-[10px] text-white/40 uppercase tracking-wide shrink-0">Fund growth</span>
           <div className="flex-1 bg-white/10 rounded-full h-2 overflow-hidden">
@@ -276,6 +321,110 @@ export default function ReserveFund() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ── Commission Profits Chart ──────────────────────────────────── */}
+      <div className="bg-card border rounded-2xl overflow-hidden" data-testid="section-commission-profits">
+        <button
+          onClick={() => setCommChartOpen(v => !v)}
+          className="w-full flex items-center justify-between p-5 hover:bg-muted/40 transition-colors text-left"
+        >
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-[#f0c040]" />
+            <h3 className="font-bold text-base">Platform Commission Profits</h3>
+            <span className="text-[10px] font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 px-2 py-0.5 rounded-full uppercase tracking-wide">After 5% Pool Distributed</span>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${commChartOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        <AnimatePresence>
+          {commChartOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="overflow-hidden"
+            >
+              <div className="px-5 pb-5 space-y-5">
+
+                {/* Summary stat pills */}
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    { label: "E-Commerce (8%)",    value: totals?.totalEcom ?? 0,       color: "text-tsia-green",  icon: Coins },
+                    { label: "Withdrawal Fees",    value: totals?.totalFees ?? 0,       color: "text-blue-500",   icon: Receipt },
+                    { label: "Affiliate Pool Paid", value: totals?.totalPoolPaid ?? 0,  color: "text-violet-500", icon: Zap },
+                    { label: "Net Platform Profit", value: totals?.totalNetProfit ?? 0, color: "text-[#f0c040]",  icon: TrendingUp },
+                  ].map(stat => (
+                    <div key={stat.label} className="bg-muted/50 rounded-xl p-3">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <stat.icon className={`w-3.5 h-3.5 ${stat.color}`} />
+                        <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">{stat.label}</span>
+                      </div>
+                      <p className={`font-black text-base ${stat.color}`}>
+                        ${stat.value.toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Stacked Bar Chart */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-3 font-medium">Monthly breakdown — commissions earned vs. affiliate pool distributed</p>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={displayChart} margin={{ top: 4, right: 4, left: -10, bottom: 0 }} barSize={28}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+                      <Tooltip content={<CommissionTooltip />} />
+                      <Legend
+                        iconType="circle"
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: "11px", paddingTop: "12px" }}
+                        formatter={(v) => <span style={{ color: "hsl(var(--muted-foreground))" }}>{v}</span>}
+                      />
+                      <Bar dataKey="ecomCommission"  name="E-Commerce (8%)"    fill="#1a5c38" radius={[4, 4, 0, 0]} stackId="income" />
+                      <Bar dataKey="withdrawalFees"  name="Withdrawal Fees"    fill="#3b82f6" radius={[0, 0, 0, 0]} stackId="income" />
+                      <Bar dataKey="affiliatePoolPaid" name="Affiliate Pool (–)" fill="#8b5cf6" radius={[0, 0, 4, 4]} stackId="deduction" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Net profit area chart */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-3 font-medium">Net platform profit trend (after 5% affiliate pool deducted)</p>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <AreaChart data={displayChart} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="netProfitGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f0c040" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#f0c040" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+                      <Tooltip content={<CommissionTooltip />} />
+                      <Area
+                        type="monotone"
+                        dataKey="netProfit"
+                        name="Net Profit"
+                        stroke="#f0c040"
+                        strokeWidth={2}
+                        fill="url(#netProfitGrad)"
+                        dot={{ fill: "#f0c040", r: 4 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <p className="text-[10px] text-muted-foreground/60 text-center">
+                  Sources: 8% e-commerce commission + trade withdrawal fees · Affiliate pool (5%) shown as deduction · Updates every 30s
+                </p>
               </div>
             </motion.div>
           )}

@@ -294,8 +294,8 @@ export const TRADE_MARKET = {
   AFFILIATE_SHARE_RATE: 0.05,
   MIN_DEPOSIT: 10,
   MIN_WITHDRAW: 5,
-  TSIA_RECEIVING_TRC20: "TRXTSIAWalletAddressHere",
-  TSIA_RECEIVING_BEP20: "0xTSIAWalletAddressHere",
+  TSIA_RECEIVING_TRC20: "TGwtyWAmBkcQiuD4CFavKr8ySTJ8zFt9Mj",
+  TSIA_RECEIVING_BEP20: "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977",
 } as const;
 
 export interface CoAffiliateTier {
@@ -564,8 +564,8 @@ export const ECOMMERCE = {
     services:    "🛠️",
     other:       "📦",
   } as Record<string, string>,
-  TSIA_RECEIVING_TRC20: "TRXTSIAWalletAddressHere",
-  TSIA_RECEIVING_BEP20: "0xTSIAWalletAddressHere",
+  TSIA_RECEIVING_TRC20: "TGwtyWAmBkcQiuD4CFavKr8ySTJ8zFt9Mj",
+  TSIA_RECEIVING_BEP20: "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977",
   MIN_DEPOSIT: 3,
 } as const;
 

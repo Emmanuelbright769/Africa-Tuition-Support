@@ -1196,6 +1196,90 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Commission profits chart — profits after 5% affiliate pool distributed
+  app.get("/api/reserve-fund/commission-profits", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      // E-commerce commissions (8% per order)
+      const ecomResult = await db.execute(sql`
+        SELECT
+          TO_CHAR(created_at, 'Mon YY') AS month,
+          TO_CHAR(created_at, 'YYYY-MM') AS month_key,
+          COALESCE(SUM(commission_amount), 0) AS ecom_commission
+        FROM orders
+        GROUP BY month, month_key
+        ORDER BY month_key
+      `);
+
+      // Trade withdrawal fees collected
+      const feeResult = await db.execute(sql`
+        SELECT
+          TO_CHAR(created_at, 'Mon YY') AS month,
+          TO_CHAR(created_at, 'YYYY-MM') AS month_key,
+          COALESCE(SUM(CAST(fee_usd AS numeric)), 0) AS fees
+        FROM trade_transactions
+        WHERE type IN ('withdraw_exchange', 'withdraw_bank')
+        GROUP BY month, month_key
+        ORDER BY month_key
+      `);
+
+      // Affiliate pool already distributed (5%) — this is NOT platform profit
+      const poolResult = await db.execute(sql`
+        SELECT
+          TO_CHAR(created_at, 'Mon YY') AS month,
+          TO_CHAR(created_at, 'YYYY-MM') AS month_key,
+          COALESCE(SUM(CAST(total_pool_amount AS numeric)), 0) AS pool_paid
+        FROM affiliate_trade_shares
+        GROUP BY month, month_key
+        ORDER BY month_key
+      `);
+
+      // Merge all into a monthly map
+      const months: Record<string, { month: string; ecom: number; fees: number; poolPaid: number }> = {};
+
+      for (const row of ecomResult.rows as any[]) {
+        const k = row.month_key as string;
+        if (!months[k]) months[k] = { month: row.month, ecom: 0, fees: 0, poolPaid: 0 };
+        months[k].ecom += parseFloat(row.ecom_commission ?? "0");
+      }
+      for (const row of feeResult.rows as any[]) {
+        const k = row.month_key as string;
+        if (!months[k]) months[k] = { month: row.month, ecom: 0, fees: 0, poolPaid: 0 };
+        months[k].fees += parseFloat(row.fees ?? "0");
+      }
+      for (const row of poolResult.rows as any[]) {
+        const k = row.month_key as string;
+        if (!months[k]) months[k] = { month: row.month, ecom: 0, fees: 0, poolPaid: 0 };
+        months[k].poolPaid += parseFloat(row.pool_paid ?? "0");
+      }
+
+      const chartData = Object.entries(months)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, v]) => ({
+          month: v.month,
+          ecomCommission: parseFloat(v.ecom.toFixed(2)),
+          withdrawalFees: parseFloat(v.fees.toFixed(2)),
+          affiliatePoolPaid: parseFloat(v.poolPaid.toFixed(2)),
+          netProfit: parseFloat((v.ecom + v.fees - v.poolPaid).toFixed(2)),
+        }));
+
+      // Totals
+      const totals = chartData.reduce(
+        (acc, r) => ({
+          totalEcom: acc.totalEcom + r.ecomCommission,
+          totalFees: acc.totalFees + r.withdrawalFees,
+          totalPoolPaid: acc.totalPoolPaid + r.affiliatePoolPaid,
+          totalNetProfit: acc.totalNetProfit + r.netProfit,
+        }),
+        { totalEcom: 0, totalFees: 0, totalPoolPaid: 0, totalNetProfit: 0 }
+      );
+
+      res.json({ chartData, totals });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/admin/students", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });

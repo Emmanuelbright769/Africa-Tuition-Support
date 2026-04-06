@@ -21,8 +21,8 @@ import BiometricVerification from "@/components/ui/BiometricVerification";
 
 // ── TSIA Receiving Wallet Addresses ───────────────────────────────────────────
 const TSIA_WALLETS = {
-  trc20: "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE",
-  bep20: "0x4B0897b0513FdBeEc7C469D9aF4fA6C0752aBea7",
+  trc20: "TGwtyWAmBkcQiuD4CFavKr8ySTJ8zFt9Mj",
+  bep20: "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977",
 };
 
 type WalletData = { id: number; userId: number; balance: string };

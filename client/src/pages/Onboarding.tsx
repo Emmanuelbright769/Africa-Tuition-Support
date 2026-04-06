@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ShieldAlert, CreditCard, Lock, FileText, CheckCircle2, Loader2,
   PartyPopper, XCircle, Wallet, ArrowRight, Share2, TrendingUp,
-  Gift, Tag, ChevronDown, ChevronUp, AlertTriangle
+  Gift, Tag, ChevronDown, ChevronUp, AlertTriangle, BadgeCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";

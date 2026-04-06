@@ -144,7 +144,7 @@ export default function Signup() {
       if (roleChoice === "both") {
         toast({ title: "Both accounts created!", description: "You now have a Student + Affiliate account. Use the switch button in your dashboard to toggle between them." });
       }
-      const dest = userData.role === "affiliate" ? "/affiliate-dashboard" : "/onboarding";
+      const dest = userData.role === "affiliate" ? "/affiliate-dashboard" : "/dashboard";
       if (userData.isNewUser) {
         setPendingNav(dest);
         setWelcomeOpen(true);

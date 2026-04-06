@@ -309,16 +309,16 @@ export default function StudentDashboard() {
                         <div className={`p-1.5 rounded-full ${isVerified ? 'bg-green-500/20 text-green-400' : showPendingApproval ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
                           {isVerified ? <CheckCircle2 className="w-5 h-5" /> : showPendingApproval ? <Hourglass className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
                         </div>
-                        {isVerified ? "Account Verified" : showPendingApproval ? "Pending Approval" : "Complete Onboarding"}
+                        {isVerified ? "Account Verified" : showPendingApproval ? "Pending Approval" : "Welcome to TSIA!"}
                       </h2>
                       <p className="text-slate-300 text-sm max-w-xl leading-relaxed mb-4">
                         {isVerified ? "Your documents are approved. Choose a sponsorship plan to begin receiving funding."
                           : showPendingApproval ? "Your application is under review by the TSIA team. You'll be notified within 24–48 hours."
-                          : "Please complete onboarding to submit your application."}
+                          : "Start by activating your wallet, then complete your verification (NIN + WAEC) to unlock sponsorship funding."}
                       </p>
                       {showGoToOnboarding && (
                         <Button onClick={() => setLocation("/onboarding")} className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold h-11 px-6" data-testid="button-go-onboarding">
-                          <ArrowUpRight className="w-4 h-4 mr-2" /> Go to Onboarding
+                          <ArrowUpRight className="w-4 h-4 mr-2" /> Complete Verification
                         </Button>
                       )}
                     </div>

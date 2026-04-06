@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ShieldAlert, CreditCard, Lock, FileText, CheckCircle2, Loader2,
   PartyPopper, XCircle, Wallet, ArrowRight, Share2, TrendingUp,
-  Gift, Tag, ChevronDown, ChevronUp
+  Gift, Tag, ChevronDown, ChevronUp, AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
@@ -240,10 +240,14 @@ export default function Onboarding() {
       {/* Top bar */}
       <div className="bg-card/80 backdrop-blur border-b sticky top-0 z-40">
         <div className="container mx-auto px-4 h-14 flex items-center justify-between">
-          <Link href="/"><a className="flex items-center gap-2">
-            <Logo variant="badge" height={28} />
-            <span className="text-sm font-bold text-muted-foreground hidden sm:block">TSIA Onboarding</span>
-          </a></Link>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setLocation("/dashboard")} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <ArrowRight className="w-4 h-4 rotate-180" /> Dashboard
+            </button>
+            <span className="text-muted-foreground/40">|</span>
+            <Logo variant="badge" height={26} />
+            <span className="text-sm font-bold text-muted-foreground hidden sm:block">Verification</span>
+          </div>
           <span className="text-xs font-semibold text-muted-foreground bg-muted px-3 py-1 rounded-full">
             {step <= 4 ? `Step ${displayStep} of ${totalSteps}` : "Complete"}
           </span>

@@ -101,6 +101,8 @@ export default function AffiliateDashboard() {
   const [trc20Input, setTrc20Input]     = useState("");
   const [bep20Input, setBep20Input]     = useState("");
   const [showTxHistory, setShowTxHistory] = useState(false);
+  const [fundTradeOpen, setFundTradeOpen] = useState(false);
+  const [fundTradeAmt, setFundTradeAmt]   = useState("");
 
   // Trade balance visibility (persisted)
   const [tradeBalanceHidden, setTradeBalanceHidden] = useState<boolean>(() => {
@@ -269,6 +271,27 @@ export default function AffiliateDashboard() {
       refetchLoanLimit(); refetchMyLoans();
     },
     onError: (err: any) => toast({ title: "Application failed", description: err.message, variant: "destructive" }),
+  });
+
+  const { data: personalWalletData } = useQuery<any>({ queryKey: ["/api/wallet"] });
+  const personalBalance = parseFloat(personalWalletData?.balance ?? "0");
+
+  const fundTradeMutation = useMutation({
+    mutationFn: async () => {
+      const amt = parseFloat(fundTradeAmt);
+      if (!amt || amt < 10) throw new Error("Minimum is $10");
+      const res = await apiRequest("POST", "/api/trade/fund-from-wallet", { amountUsd: amt });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: (data) => {
+      toast({ title: "Trade Wallet Funded! ✓", description: data.message, className: "border-tsia-green" });
+      setFundTradeOpen(false); setFundTradeAmt("");
+      refetchTradeWallet(); refetchTradeTxs();
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+    },
+    onError: (err: any) => toast({ title: "Transfer Failed", description: err.message, variant: "destructive" }),
   });
 
   const depositMutation = useMutation({
@@ -529,7 +552,13 @@ export default function AffiliateDashboard() {
                 <motion.div variants={itemVariants} className="bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-500 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full blur-3xl opacity-10 -mr-20 -mt-20 pointer-events-none"></div>
                   <div className="relative z-10">
-                    <h2 className="text-2xl font-bold mb-1">Welcome back, {user!.firstName}!</h2>
+                    <h2 className="text-2xl font-bold mb-1">
+                      {(() => {
+                        const h = new Date().getHours();
+                        const g = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+                        return `${g}, ${user!.firstName}!`;
+                      })()}
+                    </h2>
                     <p className="text-amber-100 text-sm mb-4">Your affiliate account is active. Share your code and start earning.</p>
                   </div>
                 </motion.div>
@@ -786,8 +815,8 @@ export default function AffiliateDashboard() {
                         </p>
                         {!tradeBalanceHidden && <p className="text-xs text-blue-500/70">≈ {formatAmount(tradeBalance)}</p>}
                       </div>
-                      <Button size="sm" onClick={() => navigate("wallet")} data-testid="button-goto-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
-                        <Wallet className="w-3.5 h-3.5 mr-1.5" /> Open Wallet
+                      <Button size="sm" onClick={() => setFundTradeOpen(true)} data-testid="button-fund-trade-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
+                        <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" /> Fund Trade Wallet
                       </Button>
                     </div>
                     {/* Earnings row — always visible */}
@@ -1593,6 +1622,44 @@ export default function AffiliateDashboard() {
             <Button variant="outline" onClick={() => setConnectOpen(false)}>Cancel</Button>
             <Button onClick={() => connectMutation.mutate()} disabled={connectMutation.isPending || (!trc20Input && !bep20Input)} data-testid="button-confirm-connect">
               {connectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2" />} Save Wallet(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fund Trade Wallet from Personal Wallet */}
+      <Dialog open={fundTradeOpen} onOpenChange={o => { setFundTradeOpen(o); if (!o) setFundTradeAmt(""); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><ArrowDownLeft className="w-5 h-5 text-blue-600" /> Fund Trade Wallet</DialogTitle>
+            <DialogDescription>Transfer from your Personal Wallet balance to your Trade Wallet.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Personal Wallet Balance</span>
+              <span className="font-bold text-blue-700 dark:text-blue-300">${personalBalance.toFixed(2)}</span>
+            </div>
+            <div>
+              <Label htmlFor="fund-trade-amt">Amount (USD)</Label>
+              <Input id="fund-trade-amt" type="number" min={10} step={0.01} placeholder="Min $10.00"
+                value={fundTradeAmt} onChange={e => setFundTradeAmt(e.target.value)}
+                className="mt-1 text-lg font-bold" data-testid="input-fund-trade-amt" />
+              {parseFloat(fundTradeAmt) >= 10 && (
+                <div className="mt-2 text-xs space-y-1 text-muted-foreground">
+                  <div className="flex justify-between"><span>Your trade wallet gets (75%)</span><span className="font-semibold text-green-600">${(parseFloat(fundTradeAmt) * 0.75).toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span>Reserve fund (20%)</span><span>${(parseFloat(fundTradeAmt) * 0.20).toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span>Affiliate pool (5%)</span><span>${(parseFloat(fundTradeAmt) * 0.05).toFixed(2)}</span></div>
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFundTradeOpen(false)}>Cancel</Button>
+            <Button onClick={() => fundTradeMutation.mutate()}
+              disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < 10}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold" data-testid="btn-confirm-fund-trade">
+              {fundTradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />}
+              Transfer ${parseFloat(fundTradeAmt || "0").toFixed(2)}
             </Button>
           </DialogFooter>
         </DialogContent>

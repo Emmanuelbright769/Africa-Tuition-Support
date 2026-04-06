@@ -997,6 +997,66 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Fund Trade Wallet from Personal Wallet balance ────────────────────────
+  app.post("/api/trade/fund-from-wallet", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { amountUsd } = req.body;
+      const amount = parseFloat(amountUsd);
+      if (isNaN(amount) || amount < TRADE_MARKET.MIN_DEPOSIT) {
+        return res.status(400).json({ message: `Minimum funding amount is $${TRADE_MARKET.MIN_DEPOSIT}.` });
+      }
+      // Check personal wallet balance
+      const personalWallet = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(personalWallet.balance);
+      const minBalance = 2; // keep $2 minimum in personal wallet
+      if (balance - amount < minBalance) {
+        return res.status(400).json({ message: `Insufficient personal wallet balance. You need at least $${(amount + minBalance).toFixed(2)} (keeping $${minBalance} minimum).` });
+      }
+      // Deduct from personal wallet
+      await storage.updateWalletBalance(userId, (-amount).toFixed(2));
+      // Allocations
+      const reserveCut = amount * TRADE_MARKET.RESERVE_FUND_RATE;      // 20%
+      const affiliateCut = amount * TRADE_MARKET.AFFILIATE_SHARE_RATE; // 5%
+      const userCredit = amount - reserveCut - affiliateCut;           // 75%
+      // Credit trade wallet
+      await storage.getOrCreateTradeWallet(userId);
+      const tx = await storage.createTradeTransaction({
+        userId,
+        type: "deposit",
+        walletType: "trc20",
+        amountUsd: amount.toFixed(6),
+        feeUsd: "0.000000",
+        reserveFundDeduction: reserveCut.toFixed(6),
+        affiliateShareDeduction: affiliateCut.toFixed(6),
+        netAmount: userCredit.toFixed(6),
+        txHash: `INTERNAL-${userId}-${Date.now()}`,
+        status: "completed",
+        note: `Funded from Personal Wallet — 75% credited, 20% reserve, 5% affiliate pool`,
+      });
+      await storage.updateTradeBalance(userId, userCredit.toFixed(6));
+      await storage.addToReserveFund(reserveCut.toFixed(6));
+      const affiliateCount = await storage.getAffiliateCount();
+      const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
+      await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+      // Log transaction in personal wallet history
+      await storage.createTransaction({
+        userId,
+        type: "withdrawal",
+        amountUsd: amount.toFixed(2),
+        description: `Transfer to Trade Wallet — $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool`,
+        reference: tx.txHash ?? undefined,
+      });
+      const tradeWallet = await storage.getOrCreateTradeWallet(userId);
+      res.json({
+        message: `$${userCredit.toFixed(2)} credited to your Trade Wallet (75% of $${amount.toFixed(2)})`,
+        newTradeBalance: tradeWallet.tradeBalance,
+        breakdown: { deposited: amount, reserveFund: reserveCut, affiliatePool: affiliateCut, creditedToYou: userCredit },
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/trade/withdraw", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

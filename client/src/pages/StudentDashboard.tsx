@@ -305,6 +305,9 @@ export default function StudentDashboard() {
                   <div className="absolute top-0 right-0 w-64 h-64 bg-primary rounded-full blur-3xl opacity-20 -mr-20 -mt-20 pointer-events-none"></div>
                   <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
                     <div>
+                      <p className="text-slate-400 text-sm font-medium mb-1">
+                        {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}, {user.firstName} 👋
+                      </p>
                       <h2 className="text-2xl font-bold mb-2 flex items-center gap-3">
                         <div className={`p-1.5 rounded-full ${isVerified ? 'bg-green-500/20 text-green-400' : showPendingApproval ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
                           {isVerified ? <CheckCircle2 className="w-5 h-5" /> : showPendingApproval ? <Hourglass className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 
-const WHATSAPP_NUMBER = "2348012345678";
+const WHATSAPP_NUMBER = "447552647146";
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
 const STORAGE_KEY = "tsia_ai_chat_history";
 
@@ -127,7 +127,7 @@ const KB: { patterns: RegExp[]; response: string }[] = [
   // ─── Contact / Support ───────────────────────────────────────────────
   {
     patterns: [/contact|support|help|team|staff|human|person|agent|speak|whatsapp|call|email.*team/i],
-    response: `i'd love to help further! for issues needing our team's direct attention:\n\n📱 **whatsapp support** — click "talk to TSIA team" below to chat with us directly\n⏰ available monday–friday, 9am–6pm (WAT)\n\n📧 **contact form** — visit /contact to send a formal inquiry\n\n🧭 **office:** Port Harcourt, Rivers State, Nigeria\n🏢 **company:** SMAKEMGGOLD Ltd (RC: 1359954)\n\nour team responds within 2–4 hours on business days.`,
+    response: `i'd love to help further! for issues needing our team's direct attention:\n\n📱 **whatsapp / call** — +447552647146 — or click "talk to TSIA team" below to open whatsapp directly\n⏰ available monday–friday, 9am–6pm (GMT)\n\n📧 **email** — support@tsia.africa — response within 24 hours\n\n📋 **contact form** — visit /contact to send a formal inquiry\n\nour team responds within 2–4 hours on business days.`,
   },
 
   // ─── Admin / Admin Panel ─────────────────────────────────────────────

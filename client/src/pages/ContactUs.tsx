@@ -43,7 +43,7 @@ export default function ContactUs() {
             <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-16">
               {[
                 { icon: Mail, title: "Email", detail: "support@tsia.africa", sub: "General inquiries & support", color: "text-blue-600 bg-blue-100 dark:bg-blue-900/30" },
-                { icon: Phone, title: "Phone", detail: "+44 20 7946 0000", sub: "Mon - Fri, 9am - 5pm GMT", color: "text-green-600 bg-green-100 dark:bg-green-900/30" },
+                { icon: Phone, title: "Phone / WhatsApp", detail: "+447552647146", sub: "Mon - Fri, 9am - 5pm GMT", color: "text-green-600 bg-green-100 dark:bg-green-900/30" },
                 { icon: MapPin, title: "Office", detail: "Canary Wharf, London", sub: "United Kingdom", color: "text-purple-600 bg-purple-100 dark:bg-purple-900/30" },
               ].map((item, i) => (
                 <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.15 }}

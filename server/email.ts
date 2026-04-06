@@ -1,7 +1,9 @@
 import nodemailer from "nodemailer";
 
 const FROM_NAME = "TSIA – SMAKEMGGOLD Ltd";
-const FROM_EMAIL = process.env.FROM_EMAIL || "noreply@tsiforafrica.com";
+// SMTP_FROM overrides FROM_EMAIL so you can send as noreply@tsiforafrica.com
+// even when your SMTP login (SMTP_USER) is a different address (e.g. Brevo account email)
+const FROM_EMAIL = process.env.SMTP_FROM || process.env.FROM_EMAIL || "noreply@tsiforafrica.com";
 const RESEND_API = "https://api.resend.com/emails";
 
 function baseTemplate(content: string): string {
@@ -82,7 +84,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
   if (smtp) {
     try {
       await smtp.sendMail({
-        from: `"${FROM_NAME}" <${process.env.SMTP_USER}>`,
+        from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
         to,
         subject,
         html,

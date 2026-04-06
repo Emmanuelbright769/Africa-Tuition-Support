@@ -51,3 +51,6 @@ mockupState = "FULLSTACK"
 [userenv.shared]
 FROM_EMAIL = "noreply@tsiforafrica.com"
 DEMO_MODE = "true"
+SMTP_HOST = "smtp-relay.brevo.com"
+SMTP_PORT = "587"
+SMTP_FROM = "noreply@tsiforafrica.com"

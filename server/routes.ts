@@ -2302,27 +2302,40 @@ export async function registerRoutes(
     if (user?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
       const deposit = await storage.updateWalletDeposit(parseInt(req.params.id), { status: "completed" });
-      // Credit user wallet
+      const gross = parseFloat(deposit.amountUsd);
+      // 75% → user wallet, 20% → reserve fund, 5% → affiliate pool
+      const reserveCut   = parseFloat((gross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));   // 20%
+      const affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2)); // 5%
+      const userCredit   = parseFloat((gross - reserveCut - affiliateCut).toFixed(2));         // 75%
+      // Credit user wallet (75%)
       const wallet = await storage.getOrCreateWallet(deposit.userId);
-      const newBalance = (parseFloat(wallet.balance) + parseFloat(deposit.amountUsd)).toFixed(2);
+      const newBalance = (parseFloat(wallet.balance) + userCredit).toFixed(2);
       await storage.updateWalletBalance(deposit.userId, newBalance);
+      // Reserve fund (20%)
+      await storage.addToReserveFund(reserveCut.toFixed(6));
+      // Affiliate pool (5%) — recorded to shared affiliate pool
+      try {
+        const affiliateCount = await storage.getAffiliateCount();
+        const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
+        await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+      } catch { /* non-critical */ }
       // Notify user
       try {
         const depUser = await storage.getUser(deposit.userId);
         if (depUser) {
-          sendWalletCreditEmail(depUser.email, depUser.firstName, parseFloat(deposit.amountUsd).toFixed(2), newBalance).catch((err: any) => console.error("[EMAIL] Wallet credit email failed:", err?.message ?? err));
+          sendWalletCreditEmail(depUser.email, depUser.firstName, userCredit.toFixed(2), newBalance).catch((err: any) => console.error("[EMAIL] Wallet credit email failed:", err?.message ?? err));
         }
         const walletNotif = await storage.createNotification({
           userId: deposit.userId,
           type: "wallet_credit",
-          title: "Wallet Credited",
-          message: `$${parseFloat(deposit.amountUsd).toFixed(2)} has been confirmed and credited to your TSIA Personal Wallet.`,
-          data: { depositId: deposit.id, amount: deposit.amountUsd },
+          title: "Wallet Credited ✓",
+          message: `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet. $${reserveCut.toFixed(2)} (20%) to Reserve Fund, $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`,
+          data: { depositId: deposit.id, gross, userCredit, reserveCut, affiliateCut, newBalance },
           isRead: false,
         });
         pushToUser(deposit.userId, "notification", walletNotif);
       } catch { /* non-critical */ }
-      res.json({ success: true });
+      res.json({ success: true, breakdown: { gross, userCredit, reserveCut, affiliateCut, newBalance } });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

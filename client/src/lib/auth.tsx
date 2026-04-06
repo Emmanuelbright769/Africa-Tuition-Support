@@ -15,6 +15,7 @@ type AuthUser = {
   phone?: string;
   country?: string;
   affiliateCode?: string;
+  isNewUser?: boolean;
 };
 
 type AuthContextType = {

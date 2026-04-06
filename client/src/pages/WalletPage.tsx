@@ -529,6 +529,35 @@ export default function WalletPage() {
                         )}
                       </div>
 
+                      {/* Fee / distribution breakdown */}
+                      {parseFloat(cryptoAmount) >= 5 && (() => {
+                        const gross = parseFloat(cryptoAmount);
+                        const reserve = parseFloat((gross * 0.20).toFixed(2));
+                        const pool    = parseFloat((gross * 0.05).toFixed(2));
+                        const credit  = parseFloat((gross - reserve - pool).toFixed(2));
+                        return (
+                          <div className="bg-muted/50 border border-border rounded-xl p-3 space-y-2">
+                            <p className="text-xs font-semibold text-foreground mb-1">Distribution Breakdown</p>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-tsia-green" /> Credited to your wallet (75%)</span>
+                              <span className="font-bold text-tsia-green">${credit.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground flex items-center gap-1"><Shield className="w-3 h-3 text-blue-500" /> Strategic Reserve Fund (20%)</span>
+                              <span className="font-medium text-blue-600">${reserve.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground flex items-center gap-1"><Coins className="w-3 h-3 text-amber-500" /> Affiliate Pool (5%)</span>
+                              <span className="font-medium text-amber-600">${pool.toFixed(2)}</span>
+                            </div>
+                            <div className="border-t border-border pt-2 flex justify-between text-xs font-semibold">
+                              <span>Total deposited</span>
+                              <span>${gross.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Tx hash */}
                       <div>
                         <Label htmlFor="crypto-txhash">Transaction Hash / ID</Label>

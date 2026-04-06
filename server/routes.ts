@@ -842,7 +842,7 @@ export async function registerRoutes(
 
       await storage.createNotification({
         userId,
-        type: "wallet",
+        type: "system",
         title: "Trust Fund Enrolment Confirmed",
         message: `You've joined the Co-Affiliate programme. $${reserveCut.toFixed(2)} (20%) has been ring-fenced into the Strategic Reserve Fund.`,
         data: { amountPaid, reserveCut, shareLabel: (sharePercentage * 100).toFixed(6) + "%" },
@@ -2877,7 +2877,7 @@ export async function registerRoutes(
 
       await storage.createNotification({
         userId,
-        type: "wallet",
+        type: "system",
         title: `${type === "hotel" ? "Hotel" : type === "car_hire" ? "Car Hire" : "Flight"} Booking Confirmed`,
         message: `Your booking is confirmed. $${totalAmount.toFixed(2)} charged, ref: ${reference}.`,
         data: { booking: booking.id, type, totalAmount, commission },

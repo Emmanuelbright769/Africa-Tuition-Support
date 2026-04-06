@@ -208,16 +208,6 @@ export default function AffiliateDashboard() {
     }
   }, [activeSection]);
 
-  // Wallet activation popup for new/unfunded users
-  const [activationPopupOpen, setActivationPopupOpen] = useState(false);
-  useEffect(() => {
-    if (!personalWalletData) return;
-    const dismissed = localStorage.getItem("tsia_wallet_activation_dismissed_" + user?.id);
-    if (!dismissed && parseFloat(personalWalletData.balance ?? "0") === 0) {
-      setActivationPopupOpen(true);
-    }
-  }, [personalWalletData, user?.id]);
-
   // Welcome wallet walkthrough
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [walkthroughStep, setWalkthroughStep] = useState(0);
@@ -283,8 +273,18 @@ export default function AffiliateDashboard() {
     onError: (err: any) => toast({ title: "Application failed", description: err.message, variant: "destructive" }),
   });
 
-  const { data: personalWalletData } = useQuery<any>({ queryKey: ["/api/wallet"] });
+  const { data: personalWalletData, refetch: refetchPersonalWallet } = useQuery<any>({ queryKey: ["/api/wallet"], refetchInterval: 6000 });
   const personalBalance = parseFloat(personalWalletData?.balance ?? "0");
+
+  // Wallet activation popup — placed AFTER personalWalletData declaration to avoid TDZ
+  const [activationPopupOpen, setActivationPopupOpen] = useState(false);
+  useEffect(() => {
+    if (!personalWalletData) return;
+    const dismissed = localStorage.getItem("tsia_wallet_activation_dismissed_" + user?.id);
+    if (!dismissed && parseFloat(personalWalletData.balance ?? "0") === 0) {
+      setActivationPopupOpen(true);
+    }
+  }, [personalWalletData, user?.id]);
 
   const fundTradeMutation = useMutation({
     mutationFn: async () => {

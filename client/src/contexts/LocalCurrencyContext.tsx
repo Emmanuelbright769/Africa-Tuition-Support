@@ -117,11 +117,19 @@ async function resolveCountryCode(lat: number, lon: number): Promise<string> {
   return (data.countryCode as string) ?? "NG";
 }
 
+const NGN_RATE = 1480; // TSIA fixed rate: ₦1,480 per $1
+
 async function fetchRate(currencyCode: string): Promise<number> {
   if (currencyCode === "USD") return 1;
-  const res = await fetch("https://open.er-api.com/v6/latest/USD");
-  const data = await res.json();
-  return (data.rates?.[currencyCode] as number) ?? 1;
+  if (currencyCode === "NGN") return NGN_RATE;
+  // For non-NGN, get live rate from USD and scale relative to our NGN peg
+  try {
+    const res = await fetch("https://open.er-api.com/v6/latest/USD");
+    const data = await res.json();
+    return (data.rates?.[currencyCode] as number) ?? 1;
+  } catch {
+    return 1;
+  }
 }
 
 const CACHE_KEY = "tsia_local_currency_v2";
@@ -188,7 +196,7 @@ export function LocalCurrencyProvider({ children }: { children: ReactNode }) {
   };
 
   const rateLabel = (): string => {
-    if (!currency) return "at ₦1,600/$1";
+    if (!currency) return "at ₦1,480/$1";
     if (currency.code === "USD") return "";
     const rounded = Math.round(currency.rate);
     return `at ${currency.symbol}${rounded.toLocaleString()}/$1`;

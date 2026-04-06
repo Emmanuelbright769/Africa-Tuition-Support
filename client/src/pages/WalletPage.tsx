@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -81,12 +81,27 @@ export default function WalletPage() {
   const [kycShowBiometric, setKycShowBiometric]       = useState(false);
   const [kycSubmitting, setKycSubmitting]             = useState(false);
 
-  // ── Queries ─────────────────────────────────────────────────────────────
+  // ── Queries (real-time: poll every 5s + SSE invalidation) ───────────────
   const { data: verification, refetch: refetchVerification } = useQuery<any>({ queryKey: ["/api/verification/status"] });
-  const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
-  const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"] });
-  const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"] });
-  const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
+  const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"], refetchInterval: 5000, staleTime: 3000 });
+  const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 10000 });
+  const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"], refetchInterval: 10000 });
+  const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 15000 });
+
+  // SSE: immediately refetch when server pushes a wallet_credit / wallet_activation event
+  useEffect(() => {
+    const es = new EventSource("/api/events", { withCredentials: true });
+    es.addEventListener("notification", (e: MessageEvent) => {
+      try {
+        const n = JSON.parse(e.data);
+        if (n?.type === "wallet_credit" || n?.type === "wallet_activation") {
+          refetchWallet();
+          refetchDeposits();
+        }
+      } catch {}
+    });
+    return () => es.close();
+  }, []);
 
   const balance = parseFloat(wallet?.balance ?? "0");
   const walletKycDone = verification?.biometricVerified === true;

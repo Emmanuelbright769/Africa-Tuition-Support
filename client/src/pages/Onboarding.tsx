@@ -10,7 +10,7 @@ import {
   Gift, Tag, ChevronDown, ChevronUp, AlertTriangle, BadgeCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { Logo } from "@/components/ui/Logo";
@@ -704,7 +704,11 @@ export default function Onboarding() {
                     <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Next step: Activate your Wallet</p>
                     <p className="text-xs text-blue-700 dark:text-blue-400">Head to the <strong>Wallet</strong> section in your dashboard to complete BVN verification, GPS location, and face scan — required to fund and transact.</p>
                   </div>
-                  <Button onClick={() => setLocation("/dashboard")} className="h-12 px-8 text-base font-semibold w-full" data-testid="button-go-dashboard">
+                  <Button onClick={() => {
+                    queryClient.invalidateQueries({ queryKey: ["/api/verification/status"] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+                    setLocation("/dashboard");
+                  }} className="h-12 px-8 text-base font-semibold w-full" data-testid="button-go-dashboard">
                     Go to Dashboard <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </div>

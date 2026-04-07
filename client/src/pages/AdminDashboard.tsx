@@ -14,7 +14,8 @@ import {
   Users, DollarSign, Search, CheckCircle2, AlertCircle, TrendingUp, Building2,
   Wallet, FileText, LogOut, ArrowRight, BarChart2, ShoppingBag, Share2,
   ArrowLeftRight, Bell, Landmark, XCircle, AlertTriangle, RefreshCw,
-  ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package
+  ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
+  Trash2, Edit, MessageSquare, Coins, PlusCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -82,6 +83,8 @@ const NAV = [
   { id: "transactions",  icon: ArrowLeftRight, label: "Transactions" },
   { id: "ecommerce",     icon: ShoppingBag,    label: "E-commerce" },
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
+  { id: "deposits",      icon: Coins,          label: "Deposits" },
+  { id: "messages",     icon: MessageSquare,  label: "Forum Messages" },
   { id: "notifications", icon: Bell,           label: "Notifications" },
 ];
 
@@ -103,6 +106,13 @@ export default function AdminDashboard() {
   const [notifyMsg, setNotifyMsg] = useState("");
   const [notifyRole, setNotifyRole] = useState("all");
   const [txFilter, setTxFilter] = useState("all");
+  const [editBalanceDialog, setEditBalanceDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
+  const [editBalanceAmount, setEditBalanceAmount] = useState("");
+  const [editBalanceNote, setEditBalanceNote] = useState("");
+  const [creditAffiliateDialog, setCreditAffiliateDialog] = useState<{ open: boolean; affiliate: any }>({ open: false, affiliate: null });
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditNote, setCreditNote] = useState("");
+  const [deleteUserDialog, setDeleteUserDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
 
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -117,6 +127,8 @@ export default function AdminDashboard() {
   const { data: allTransactions = [] }     = useQuery({ queryKey: ["/api/admin/transactions-all"], enabled: activeTab === "transactions" });
   const { data: ecommerceStats }           = useQuery({ queryKey: ["/api/admin/ecommerce-stats"], enabled: activeTab === "ecommerce" });
   const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade" });
+  const { data: allDeposits = [] }         = useQuery({ queryKey: ["/api/admin/wallet-deposits"], enabled: activeTab === "deposits" });
+  const { data: allMessages = [] }         = useQuery({ queryKey: ["/api/admin/messages"], enabled: activeTab === "messages" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
   const verifyMutation = useMutation({
@@ -177,6 +189,72 @@ export default function AdminDashboard() {
       setNotifyTitle("");
       setNotifyMsg("");
       toast({ title: "Notification Sent ✓", description: data?.sent ? `Sent to ${data.sent} users.` : "Notification delivered." });
+    },
+  });
+
+  const editBalanceMutation = useMutation({
+    mutationFn: async ({ id, balance, note }: { id: number; balance: string; note: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${id}/wallet`, { balance, note });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
+      setEditBalanceDialog({ open: false, user: null });
+      setEditBalanceAmount("");
+      setEditBalanceNote("");
+      toast({ title: "Wallet Updated ✓", description: "User wallet balance has been updated." });
+    },
+  });
+
+  const creditAffiliateMutation = useMutation({
+    mutationFn: async ({ id, amount, note }: { id: number; amount: string; note: string }) => {
+      const res = await apiRequest("POST", `/api/admin/affiliates/${id}/credit`, { amount, note });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/affiliates-all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
+      setCreditAffiliateDialog({ open: false, affiliate: null });
+      setCreditAmount("");
+      setCreditNote("");
+      toast({ title: "Affiliate Credited ✓", description: "Funds added to affiliate wallet." });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/users/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
+      setDeleteUserDialog({ open: false, user: null });
+      toast({ title: "User Deleted", description: "User account has been permanently removed." });
+    },
+  });
+
+  const confirmDepositMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/admin/wallet-deposit/${id}/confirm`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/wallet-deposits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
+      toast({ title: "Deposit Confirmed ✓", description: "Wallet funded and user notified." });
+    },
+  });
+
+  const deleteMessageMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/messages/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/messages"] });
+      toast({ title: "Message Deleted", description: "Forum post removed." });
     },
   });
 
@@ -584,7 +662,7 @@ export default function AdminDashboard() {
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Tier</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Joined</TableHead>
-                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Notify</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -603,9 +681,17 @@ export default function AdminDashboard() {
                             <TableCell className="font-semibold text-sm">{fmtUSD(u.wallet?.balance)}</TableCell>
                             <TableCell className="text-xs text-slate-500">{fmtDate(u.createdAt)}</TableCell>
                             <TableCell className="text-right px-6">
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setNotifyTarget(u); setNotifyDialog(true); }}>
-                                <Bell className="w-3 h-3 mr-1" /> Notify
-                              </Button>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setNotifyTarget(u); setNotifyDialog(true); }} data-testid={`button-notify-user-${u.id}`}>
+                                  <Bell className="w-3 h-3 mr-1" /> Notify
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => { setEditBalanceDialog({ open: true, user: u }); setEditBalanceAmount(u.wallet?.balance || "0"); setEditBalanceNote(""); }} data-testid={`button-edit-wallet-${u.id}`}>
+                                  <Edit className="w-3 h-3 mr-1" /> Wallet
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeleteUserDialog({ open: true, user: u })} data-testid={`button-delete-user-${u.id}`}>
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -635,7 +721,7 @@ export default function AdminDashboard() {
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Trade Wallet</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Joined</TableHead>
-                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Notify</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -662,9 +748,14 @@ export default function AdminDashboard() {
                             <TableCell className="text-sm text-slate-600">{fmtUSD(a.tradeWallet?.balance)}</TableCell>
                             <TableCell className="text-xs text-slate-500">{fmtDate(a.createdAt)}</TableCell>
                             <TableCell className="text-right px-6">
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setNotifyTarget(a); setNotifyDialog(true); }}>
-                                <Bell className="w-3 h-3 mr-1" /> Notify
-                              </Button>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-tsia-green border-tsia-green/30 hover:bg-tsia-green/5" onClick={() => { setCreditAffiliateDialog({ open: true, affiliate: a }); setCreditAmount(""); setCreditNote(""); }} data-testid={`button-credit-affiliate-${a.id}`}>
+                                  <PlusCircle className="w-3 h-3 mr-1" /> Credit
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setNotifyTarget(a); setNotifyDialog(true); }} data-testid={`button-notify-affiliate-${a.id}`}>
+                                  <Bell className="w-3 h-3 mr-1" /> Notify
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -828,6 +919,108 @@ export default function AdminDashboard() {
                             </TableCell>
                             <TableCell className="text-xs text-slate-500 max-w-xs truncate">{t.description || "—"}</TableCell>
                             <TableCell className="text-xs text-slate-500">{fmtDate(t.createdAt)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════════ DEPOSITS ═══════════════════════════════ */}
+            {activeTab === "deposits" && (
+              <motion.div key="deposits" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base">Wallet Deposits</CardTitle>
+                    <CardDescription>All crypto and fiat deposits. Approve pending crypto deposits here.</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Type</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Tx Hash</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Date</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(allDeposits as any[]).length === 0 ? (
+                          <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-500">No deposits yet.</TableCell></TableRow>
+                        ) : (allDeposits as any[]).map((d: any) => (
+                          <TableRow key={d.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6">
+                              <div className="font-medium text-sm text-slate-900">{d.userName}</div>
+                              <div className="text-xs text-slate-500">{d.userEmail}</div>
+                            </TableCell>
+                            <TableCell className="font-bold text-sm">{fmtUSD(d.amountUsd)}</TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs uppercase">{d.walletType || "crypto"}</Badge></TableCell>
+                            <TableCell className="font-mono text-xs text-slate-500 max-w-[120px] truncate">{d.txHash || "—"}</TableCell>
+                            <TableCell><StatusBadge status={d.status} /></TableCell>
+                            <TableCell className="text-xs text-slate-500">{fmtDate(d.createdAt)}</TableCell>
+                            <TableCell className="text-right px-6">
+                              {d.status === "pending" ? (
+                                <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" disabled={confirmDepositMutation.isPending} onClick={() => confirmDepositMutation.mutate(d.id)} data-testid={`button-confirm-deposit-${d.id}`}>
+                                  <CheckCircle2 className="w-3 h-3 mr-1" /> Confirm
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════════ MESSAGES ═══════════════════════════════ */}
+            {activeTab === "messages" && (
+              <motion.div key="messages" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base">Forum Messages</CardTitle>
+                    <CardDescription>Latest 500 forum posts. Delete inappropriate content.</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Author</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Topic</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Message</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Likes</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Date</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(allMessages as any[]).length === 0 ? (
+                          <TableRow><TableCell colSpan={6} className="text-center py-10 text-slate-500">No messages yet.</TableCell></TableRow>
+                        ) : (allMessages as any[]).map((m: any) => (
+                          <TableRow key={m.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6">
+                              <div className="font-medium text-sm text-slate-900">{m.authorName}</div>
+                              <div className="text-xs text-slate-500">{m.authorEmail}</div>
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-600 max-w-[140px] truncate">{m.topicTitle}</TableCell>
+                            <TableCell className="text-sm text-slate-700 max-w-[260px]">
+                              <p className="line-clamp-2">{m.content}</p>
+                            </TableCell>
+                            <TableCell className="text-sm">{m.likeCount ?? 0}</TableCell>
+                            <TableCell className="text-xs text-slate-500">{fmtDate(m.createdAt)}</TableCell>
+                            <TableCell className="text-right px-6">
+                              <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50" disabled={deleteMessageMutation.isPending} onClick={() => deleteMessageMutation.mutate(m.id)} data-testid={`button-delete-message-${m.id}`}>
+                                <Trash2 className="w-3 h-3 mr-1" /> Delete
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1045,6 +1238,93 @@ export default function AdminDashboard() {
               data-testid={`button-loan-${loanDialog.action}`}
             >
               {loanStatusMutation.isPending ? "Processing..." : loanDialog.action === "active" ? "Approve & Credit Wallet" : "Reject Application"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit wallet balance dialog */}
+      <Dialog open={editBalanceDialog.open} onOpenChange={open => { if (!open) { setEditBalanceDialog({ open: false, user: null }); setEditBalanceAmount(""); setEditBalanceNote(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Wallet Balance</DialogTitle>
+            <DialogDescription>Set the wallet balance directly for this user. This will override the current balance.</DialogDescription>
+          </DialogHeader>
+          {editBalanceDialog.user && (
+            <div className="space-y-4 py-2">
+              <div className="bg-slate-50 border rounded-xl p-3 text-sm">
+                <strong>{editBalanceDialog.user.firstName} {editBalanceDialog.user.lastName}</strong>
+                <p className="text-slate-500 text-xs mt-0.5">{editBalanceDialog.user.email} · Current balance: {fmtUSD(editBalanceDialog.user.wallet?.balance)}</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="font-semibold">New Balance (USD) <span className="text-red-400">*</span></Label>
+                <Input type="number" min="0" step="0.01" placeholder="e.g. 150.00" className="h-10 bg-muted/30" value={editBalanceAmount} onChange={e => setEditBalanceAmount(e.target.value)} data-testid="input-edit-balance" />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-semibold">Note (optional)</Label>
+                <Input placeholder="Reason for adjustment" className="h-10 bg-muted/30" value={editBalanceNote} onChange={e => setEditBalanceNote(e.target.value)} data-testid="input-edit-balance-note" />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setEditBalanceDialog({ open: false, user: null }); setEditBalanceAmount(""); setEditBalanceNote(""); }}>Cancel</Button>
+            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!editBalanceAmount || editBalanceMutation.isPending} onClick={() => editBalanceMutation.mutate({ id: editBalanceDialog.user?.id, balance: editBalanceAmount, note: editBalanceNote })} data-testid="button-confirm-edit-balance">
+              {editBalanceMutation.isPending ? "Updating..." : <><Edit className="w-4 h-4 mr-2" /> Set Balance</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Credit affiliate dialog */}
+      <Dialog open={creditAffiliateDialog.open} onOpenChange={open => { if (!open) { setCreditAffiliateDialog({ open: false, affiliate: null }); setCreditAmount(""); setCreditNote(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Credit Affiliate Wallet</DialogTitle>
+            <DialogDescription>Add funds directly to this affiliate's wallet. Amount is added to current balance.</DialogDescription>
+          </DialogHeader>
+          {creditAffiliateDialog.affiliate && (
+            <div className="space-y-4 py-2">
+              <div className="bg-slate-50 border rounded-xl p-3 text-sm">
+                <strong>{creditAffiliateDialog.affiliate.firstName} {creditAffiliateDialog.affiliate.lastName}</strong>
+                <p className="text-slate-500 text-xs mt-0.5">{creditAffiliateDialog.affiliate.email} · Current balance: {fmtUSD(creditAffiliateDialog.affiliate.wallet?.balance)}</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="font-semibold">Credit Amount (USD) <span className="text-red-400">*</span></Label>
+                <Input type="number" min="0.01" step="0.01" placeholder="e.g. 50.00" className="h-10 bg-muted/30" value={creditAmount} onChange={e => setCreditAmount(e.target.value)} data-testid="input-credit-amount" />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-semibold">Note (optional)</Label>
+                <Input placeholder="e.g. Bonus payout, correction" className="h-10 bg-muted/30" value={creditNote} onChange={e => setCreditNote(e.target.value)} data-testid="input-credit-note" />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setCreditAffiliateDialog({ open: false, affiliate: null }); setCreditAmount(""); setCreditNote(""); }}>Cancel</Button>
+            <Button className="bg-tsia-green hover:bg-tsia-green/90" disabled={!creditAmount || parseFloat(creditAmount) <= 0 || creditAffiliateMutation.isPending} onClick={() => creditAffiliateMutation.mutate({ id: creditAffiliateDialog.affiliate?.id, amount: creditAmount, note: creditNote })} data-testid="button-confirm-credit">
+              {creditAffiliateMutation.isPending ? "Crediting..." : <><PlusCircle className="w-4 h-4 mr-2" /> Credit Wallet</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete user confirm dialog */}
+      <Dialog open={deleteUserDialog.open} onOpenChange={open => { if (!open) setDeleteUserDialog({ open: false, user: null }); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete User Account</DialogTitle>
+            <DialogDescription>This will permanently delete the user and all their data. This action cannot be undone.</DialogDescription>
+          </DialogHeader>
+          {deleteUserDialog.user && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm space-y-1 my-2">
+              <p className="font-semibold text-red-800">{deleteUserDialog.user.firstName} {deleteUserDialog.user.lastName}</p>
+              <p className="text-red-600">{deleteUserDialog.user.email}</p>
+              <p className="text-red-500 text-xs">Wallet balance: {fmtUSD(deleteUserDialog.user.wallet?.balance)}</p>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteUserDialog({ open: false, user: null })}>Cancel</Button>
+            <Button variant="destructive" disabled={deleteUserMutation.isPending} onClick={() => deleteUserMutation.mutate(deleteUserDialog.user?.id)} data-testid="button-confirm-delete-user">
+              {deleteUserMutation.isPending ? "Deleting..." : <><Trash2 className="w-4 h-4 mr-2" /> Permanently Delete</>}
             </Button>
           </DialogFooter>
         </DialogContent>

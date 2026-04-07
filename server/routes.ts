@@ -14,7 +14,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, users, loans, transactions, tradeTransactions, orders, wallets, verifications, coAffiliates } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, users, loans, transactions, tradeTransactions, orders, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -688,28 +688,30 @@ export async function registerRoutes(
         return res.json({ valid: true, bvn, message: "BVN format validated (live lookup pending key).", demo: true });
       }
 
-      // ninverify.ng BVN lookup
-      const verifyRes = await fetch("https://api.ninverify.ng/api/v1/bvn", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({ bvn }),
-      });
-
-      const raw = await verifyRes.text();
-      let verifyData: any;
-      try { verifyData = JSON.parse(raw); } catch {
-        console.error("[BVN] ninverify returned non-JSON:", raw.slice(0, 200));
-        return res.status(502).json({ message: "BVN verification service unavailable. Please try again later." });
-      }
-
-      if (!verifyRes.ok || verifyData.status === false) {
-        return res.status(400).json({
-          message: verifyData?.message || "BVN could not be verified. Please check the number and try again.",
+      // ninverify.ng BVN lookup — fall back to format-only if API is unreachable
+      let verifyData: any = null;
+      try {
+        const verifyRes = await fetch("https://api.ninverify.ng/api/v1/bvn", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
+          body: JSON.stringify({ bvn }),
+          signal: AbortSignal.timeout(10000),
         });
+        const raw = await verifyRes.text();
+        try { verifyData = JSON.parse(raw); } catch { /* non-JSON response */ }
+        if (verifyData && (!verifyRes.ok || verifyData.status === false)) {
+          return res.status(400).json({
+            message: verifyData?.message || "BVN could not be verified. Please check the number and try again.",
+          });
+        }
+      } catch (fetchErr: any) {
+        console.warn("[BVN] ninverify.ng unreachable — falling back to format-only validation:", fetchErr?.message);
+        // Fall back: accept valid-format BVN and continue
+        return res.json({ valid: true, bvn, message: "BVN accepted (format validated). Proceeding.", demo: true });
       }
 
       const bvnData = verifyData.data || verifyData;
@@ -1864,6 +1866,94 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  // ─── ADMIN: Edit user wallet balance (set directly) ─────────────────────────
+  app.patch("/api/admin/users/:id/wallet", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const targetId = parseInt(req.params.id);
+      const { balance, note } = req.body;
+      const newBal = parseFloat(balance);
+      if (isNaN(newBal) || newBal < 0) return res.status(400).json({ message: "Invalid balance amount" });
+      await storage.getOrCreateWallet(targetId);
+      await storage.updateWalletBalance(targetId, newBal.toFixed(2));
+      // Record as admin adjustment transaction
+      await storage.createTransaction({ userId: targetId, type: "deposit", amount: newBal.toFixed(2), description: note ? `Admin adjustment: ${note}` : "Admin wallet balance adjustment" });
+      const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Updated", message: `Your TSIA wallet balance has been updated to $${newBal.toFixed(2)} by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
+      pushToUser(targetId, "notification", notif);
+      res.json({ success: true, newBalance: newBal.toFixed(2) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── ADMIN: Credit affiliate wallet ──────────────────────────────────────────
+  app.post("/api/admin/affiliates/:id/credit", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const targetId = parseInt(req.params.id);
+      const { amount, note } = req.body;
+      const credit = parseFloat(amount);
+      if (isNaN(credit) || credit <= 0) return res.status(400).json({ message: "Invalid amount" });
+      const wallet = await storage.getOrCreateWallet(targetId);
+      const newBal = (parseFloat(wallet.balance) + credit).toFixed(2);
+      await storage.updateWalletBalance(targetId, newBal);
+      await storage.createTransaction({ userId: targetId, type: "deposit", amount: credit.toFixed(2), description: note ? `Admin credit: ${note}` : "Admin credit" });
+      const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Credited ✓", message: `$${credit.toFixed(2)} has been added to your wallet by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
+      pushToUser(targetId, "notification", notif);
+      res.json({ success: true, credited: credit.toFixed(2), newBalance: newBal });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── ADMIN: All wallet deposits (for crypto approval) ────────────────────────
+  app.get("/api/admin/wallet-deposits", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const rows = await db
+        .select({ id: walletDeposits.id, userId: walletDeposits.userId, amountUsd: walletDeposits.amountUsd, txHash: walletDeposits.txHash, walletType: walletDeposits.walletType, status: walletDeposits.status, createdAt: walletDeposits.createdAt, userEmail: users.email, userName: sql<string>`${users.firstName} || ' ' || ${users.lastName}` })
+        .from(walletDeposits)
+        .innerJoin(users, eq(walletDeposits.userId, users.id))
+        .orderBy(desc(walletDeposits.createdAt));
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── ADMIN: All forum messages ───────────────────────────────────────────────
+  app.get("/api/admin/messages", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const rows = await db
+        .select({ id: forumPosts.id, topicId: forumPosts.topicId, content: forumPosts.content, likeCount: forumPosts.likeCount, createdAt: forumPosts.createdAt, authorId: forumPosts.authorId, authorName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`, authorEmail: users.email, topicTitle: forumTopics.title })
+        .from(forumPosts)
+        .innerJoin(users, eq(forumPosts.authorId, users.id))
+        .innerJoin(forumTopics, eq(forumPosts.topicId, forumTopics.id))
+        .orderBy(desc(forumPosts.createdAt))
+        .limit(500);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── ADMIN: Delete forum message ─────────────────────────────────────────────
+  app.delete("/api/admin/messages/:id", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      await db.delete(forumPosts).where(eq(forumPosts.id, parseInt(req.params.id)));
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ─── ADMIN: All affiliates ───────────────────────────────────────────────────

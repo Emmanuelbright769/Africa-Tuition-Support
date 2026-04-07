@@ -40,6 +40,7 @@ type WalletData      = { id: number; userId: number; balance: string };
 type DepositRecord   = { id: number; amountUsd: string; txHash: string; walletType: string; status: string; createdAt: string };
 type TransferRecord  = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord      = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
+type TxRecord        = { id: number; type: string; amount: string; fee: string; paymentMethod: string | null; description: string; createdAt: string };
 
 const SERVICE_LABELS: Record<string, string> = {
   electricity: "Electricity", internet: "Internet", airtime: "Airtime",
@@ -79,7 +80,7 @@ export default function WalletPage() {
   const [withdrawTermsAccepted, setWithdrawTermsAccepted] = useState(false);
 
   // ── History ─────────────────────────────────────────────────────────────
-  const [historyTab, setHistoryTab] = useState<"deposits" | "sent" | "received" | "bills">("deposits");
+  const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "sent" | "received" | "bills">("ledger");
 
   // ── KYC state ───────────────────────────────────────────────────────────
   const [kycBvn, setKycBvn]                   = useState("");
@@ -97,6 +98,7 @@ export default function WalletPage() {
   const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 10000 });
   const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"], refetchInterval: 10000 });
   const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 15000 });
+  const { data: txLedger = [] }  = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 10000 });
 
   // SSE: immediately refetch when server pushes a wallet_credit / wallet_activation event
   useEffect(() => {
@@ -619,15 +621,64 @@ export default function WalletPage() {
           <motion.div initial="hidden" animate="visible" variants={fade}>
             <h3 className="font-bold text-sm mb-3">Transaction History</h3>
             <div className="flex bg-muted/40 rounded-2xl p-1 text-xs mb-4 overflow-x-auto gap-0.5">
-              {(["deposits", "sent", "received", "bills"] as const).map(tab => (
+              {(["ledger", "deposits", "sent", "received", "bills"] as const).map(tab => (
                 <button key={tab} onClick={() => setHistoryTab(tab)}
                   className={`flex-1 py-2 rounded-xl font-semibold capitalize transition-all whitespace-nowrap px-2 ${historyTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
-                  {tab === "sent" ? "Sent" : tab === "received" ? "Received" : tab === "deposits" ? "Deposits" : "Bills"}
+                  {tab === "ledger" ? "All" : tab === "sent" ? "Sent" : tab === "received" ? "Received" : tab === "deposits" ? "Deposits" : "Bills"}
                 </button>
               ))}
             </div>
 
             <div className="space-y-2">
+              {historyTab === "ledger" && (txLedger.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <Receipt className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No transactions yet</p>
+                </div>
+              ) : [...txLedger].reverse().map(tx => {
+                const amt = parseFloat(tx.amount);
+                const fee = parseFloat(tx.fee ?? "0");
+                const isCredit = amt > 0;
+                const typeLabel: Record<string,string> = {
+                  deposit: "Deposit", withdrawal: "Withdrawal", transfer: "Transfer",
+                  bill: "Bill Payment", trade_transfer: "Trade Fund", loan: "Loan",
+                  admin_credit: "Admin Credit", admin_adjustment: "Admin Adj.",
+                  verification_fee: "Verification Fee", sponsorship_credit: "Sponsorship",
+                  vat_deduction: "VAT",
+                };
+                const methodLabel: Record<string,string> = {
+                  squad: "Squad by GTco", paystack: "Card / Bank", wallet: "Wallet",
+                  bank_transfer: "Bank Transfer", admin: "Admin", crypto: "Crypto",
+                };
+                return (
+                  <div key={tx.id} data-testid={`tx-row-${tx.id}`} className="bg-card rounded-2xl px-4 py-3 border">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isCredit ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
+                          {isCredit ? <ArrowDownLeft className="w-4 h-4 text-tsia-green" /> : <ArrowUpRight className="w-4 h-4 text-red-500" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm">{typeLabel[tx.type] ?? tx.type}</p>
+                          <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">{tx.description}</p>
+                          <p className="text-[10px] text-muted-foreground">{methodLabel[tx.paymentMethod ?? ""] ?? tx.paymentMethod ?? "Wallet"} · {new Date(tx.createdAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 ml-2">
+                        <p className={`font-bold text-sm ${isCredit ? "text-tsia-green" : "text-red-500"}`}>
+                          {isCredit ? "+" : ""}${Math.abs(amt).toFixed(2)}
+                        </p>
+                        {fee > 0 && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Fee: ${fee.toFixed(2)}</p>
+                        )}
+                        {fee === 0 && (
+                          <p className="text-[10px] text-muted-foreground">No fee</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }))}
+
               {historyTab === "deposits" && (deposits.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <Receipt className="w-8 h-8 mx-auto mb-2 opacity-30" />

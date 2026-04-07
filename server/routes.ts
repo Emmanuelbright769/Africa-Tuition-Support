@@ -839,6 +839,8 @@ export async function registerRoutes(
         userId,
         type: "verification_fee",
         amount: `-${totalCharged.toFixed(2)}`,
+        fee: serviceCharge.toFixed(2),
+        paymentMethod: "wallet",
         description: `Portal verification fee ($${portalFee.toFixed(2)}) + service charge ($${serviceCharge.toFixed(2)}) = $${totalCharged.toFixed(2)} (₦${ngnEquivalent.toLocaleString()})`,
       });
 
@@ -937,13 +939,10 @@ export async function registerRoutes(
       await storage.updateWalletBalance(userId, (parseFloat(wallet.balance) - withdrawAmount).toFixed(2));
       await storage.createTransaction({
         userId, type: "withdrawal",
-        amount: (-netAmountUsd).toFixed(2),
-        description: `Withdrawal $${netAmountUsd.toFixed(2)} (₦${netAmountNgn.toLocaleString()}) to bank`,
-      });
-      await storage.createTransaction({
-        userId, type: "vat_deduction",
-        amount: (-vatAmount).toFixed(2),
-        description: `7.5% VAT on $${withdrawAmount.toFixed(2)} withdrawal`,
+        amount: (-withdrawAmount).toFixed(2),
+        fee: vatAmount.toFixed(2),
+        paymentMethod: "bank_transfer",
+        description: `Withdrawal $${netAmountUsd.toFixed(2)} net (₦${netAmountNgn.toLocaleString()}) — 7.5% VAT: $${vatAmount.toFixed(2)}`,
       });
 
       const updated = await storage.getOrCreateWallet(userId);
@@ -1384,11 +1383,14 @@ export async function registerRoutes(
       const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
       await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
       // Log transaction in personal wallet history
+      const platformFee = reserveCut + affiliateCut;
       await storage.createTransaction({
         userId,
-        type: "withdrawal",
+        type: "trade_transfer",
         amount: (-amount).toFixed(2),
-        description: `Transfer to Trade Wallet — $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool`,
+        fee: platformFee.toFixed(2),
+        paymentMethod: "wallet",
+        description: `Trade Wallet funding — $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool | Platform fee: $${platformFee.toFixed(2)} (25%)`,
       });
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
       res.json({
@@ -1755,6 +1757,8 @@ export async function registerRoutes(
       await storage.createTransaction({
         userId: disbursement.userId, type: "sponsorship_credit",
         amount: disbursement.amount,
+        fee: "0.00",
+        paymentMethod: "wallet",
         description: `Sponsorship payout $${disbursement.amount} (₦${(parseFloat(disbursement.amount) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()})`,
       });
 
@@ -1882,7 +1886,7 @@ export async function registerRoutes(
       await storage.getOrCreateWallet(targetId);
       await storage.updateWalletBalance(targetId, newBal.toFixed(2));
       // Record as admin adjustment transaction
-      await storage.createTransaction({ userId: targetId, type: "deposit", amount: newBal.toFixed(2), description: note ? `Admin adjustment: ${note}` : "Admin wallet balance adjustment" });
+      await storage.createTransaction({ userId: targetId, type: "admin_adjustment", amount: newBal.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin adjustment: ${note}` : "Admin wallet balance adjustment" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Updated", message: `Your TSIA wallet balance has been updated to $${newBal.toFixed(2)} by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
       pushToUser(targetId, "notification", notif);
       res.json({ success: true, newBalance: newBal.toFixed(2) });
@@ -1903,7 +1907,7 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(targetId);
       const newBal = (parseFloat(wallet.balance) + credit).toFixed(2);
       await storage.updateWalletBalance(targetId, newBal);
-      await storage.createTransaction({ userId: targetId, type: "deposit", amount: credit.toFixed(2), description: note ? `Admin credit: ${note}` : "Admin credit" });
+      await storage.createTransaction({ userId: targetId, type: "admin_credit", amount: credit.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin credit: ${note}` : "Admin credit" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Credited ✓", message: `$${credit.toFixed(2)} has been added to your wallet by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
       pushToUser(targetId, "notification", notif);
       res.json({ success: true, credited: credit.toFixed(2), newBalance: newBal });
@@ -2022,8 +2026,10 @@ export async function registerRoutes(
         const loanWallet = await storage.getOrCreateWallet(loan.userId);
         await storage.updateWalletBalance(loan.userId, (parseFloat(loanWallet.balance) + parseFloat(loan.amountUsd)).toFixed(2));
         await storage.createTransaction({
-          userId: loan.userId, type: "sponsorship_credit",
+          userId: loan.userId, type: "loan",
           amount: loan.amountUsd,
+          fee: "0.00",
+          paymentMethod: "wallet",
           description: `Loan disbursed: $${loan.amountUsd} (${loan.userRole} loan)`,
         });
         const loanApprNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Disbursed", message: `Your $${loan.amountUsd} loan has been approved and credited to your wallet.`, data: { loanId: loan.id }, isRead: false });
@@ -2534,7 +2540,7 @@ export async function registerRoutes(
         } catch { /* non-critical */ }
       }
       // Record credited transaction
-      await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), description: `Wallet funded via Squad (${transactionRef})` });
+      await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), fee: "0.00", paymentMethod: "squad", description: `Wallet funded via Squad (${transactionRef})` });
       // Mark deposit record as completed
       if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
       // Push live notification
@@ -2568,7 +2574,7 @@ export async function registerRoutes(
             const newBal = (parseFloat(wl.balance) + amountUsd).toFixed(2);
             await storage.updateWalletBalance(userId, newBal);
             if (!wl.activated && parseFloat(newBal) >= 5) await storage.activateWallet(userId);
-            await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), description: `Wallet funded via Squad webhook (${ref})` });
+            await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), fee: "0.00", paymentMethod: "squad", description: `Wallet funded via Squad webhook (${ref})` });
             await storage.updateWalletDeposit(allDeposits.id, { status: "completed" });
             const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${amountUsd.toFixed(2)} credited via Squad`, data: { ref }, isRead: false });
             pushToUser(userId, "notification", notif);
@@ -2659,7 +2665,7 @@ export async function registerRoutes(
       // Mark deposit as completed
       if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
       // Record transaction (for complete history)
-      await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), description: `Wallet funded via Paystack (${reference})` });
+      await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), fee: "0.00", paymentMethod: "paystack", description: `Wallet funded via Paystack (${reference})` });
       const psNotif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, data: { reference }, isRead: false });
       pushToUser(userId, "notification", psNotif);
       res.json({ message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd });
@@ -2854,6 +2860,9 @@ export async function registerRoutes(
       await storage.updateWalletBalance(recipientId, (recipientBalance + amount).toFixed(2));
       // Record transfer
       await storage.createWalletTransfer({ senderId: userId, recipientId, amount, note });
+      // Record transaction entries for both parties
+      await storage.createTransaction({ userId, type: "transfer", amount: (-amount).toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `P2P transfer to ${recipient.firstName} ${recipient.lastName}${note ? ` — ${note}` : ""}` });
+      await storage.createTransaction({ userId: recipientId, type: "transfer", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `P2P transfer from ${(await storage.getUser(userId))?.firstName ?? "User"}${note ? ` — ${note}` : ""}` });
       res.json({ message: `$${amount.toFixed(2)} sent to ${recipient.firstName} ${recipient.lastName} successfully` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2881,6 +2890,7 @@ export async function registerRoutes(
       await storage.updateWalletBalance(userId, (balance - amount).toFixed(2));
       const reference = `TSIA-BILL-${service.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
       await storage.createBillPayment({ userId, service, amount, reference });
+      await storage.createTransaction({ userId, type: "bill", amount: (-amount).toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `${service} bill payment${note ? ` — ${note}` : ""} | Ref: ${reference}` });
       res.json({ message: `${service} bill of $${amount.toFixed(2)} paid successfully. Ref: ${reference}` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2949,6 +2959,15 @@ export async function registerRoutes(
           }
         } catch { /* non-critical */ }
       }
+      // Record transaction (platform fee = 25%: 20% reserve + 5% affiliate)
+      await storage.createTransaction({
+        userId: deposit.userId,
+        type: "deposit",
+        amount: userCredit.toFixed(2),
+        fee: (reserveCut + affiliateCut).toFixed(2),
+        paymentMethod: deposit.walletType ?? "crypto",
+        description: `Crypto deposit confirmed — $${gross.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool`,
+      });
       // ─────────────────────────────────────────────────────────────────────────
       // Notify user
       try {

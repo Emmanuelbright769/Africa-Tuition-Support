@@ -7,7 +7,7 @@ export const roleEnum = pgEnum("role", ["student", "admin", "affiliate"]);
 export const coAffiliateStatusEnum = pgEnum("co_affiliate_status", ["active", "pending", "cancelled"]);
 export const verificationStatusEnum = pgEnum("verification_status", ["pending", "verified", "rejected"]);
 export const tierEnum = pgEnum("tier", ["platinum", "gold", "silver", "none"]);
-export const transactionTypeEnum = pgEnum("transaction_type", ["verification_fee", "sponsorship_credit", "withdrawal", "vat_deduction"]);
+export const transactionTypeEnum = pgEnum("transaction_type", ["verification_fee", "sponsorship_credit", "withdrawal", "vat_deduction", "deposit", "transfer", "bill", "trade_transfer", "loan", "admin_credit", "admin_adjustment"]);
 export const disbursementStatusEnum = pgEnum("disbursement_status", ["pending", "approved", "rejected", "completed"]);
 export const tradeWalletTypeEnum = pgEnum("trade_wallet_type", ["trc20", "bep20"]);
 export const tradeTransactionTypeEnum = pgEnum("trade_transaction_type", ["deposit", "withdraw_exchange", "withdraw_bank", "bot_earning"]);
@@ -93,6 +93,8 @@ export const transactions = pgTable("transactions", {
   userId: integer("user_id").notNull().references(() => users.id),
   type: transactionTypeEnum("type").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  fee: decimal("fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  paymentMethod: text("payment_method"),
   description: text("description").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -28,12 +28,18 @@ export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Step 1 — NIN
-  const [nin, setNin] = useState("");
-  const [ninVerifying, setNinVerifying] = useState(false);
-  const [ninVerified, setNinVerified] = useState(false);
-  const [ninData, setNinData] = useState<any>(null);
-  const [ninError, setNinError] = useState("");
+  // Step 1 — Identity document (multi-type)
+  const [idType, setIdType] = useState("nin");
+  const [idNumber, setIdNumber] = useState("");
+  const [idLastName, setIdLastName] = useState(""); // required for passport
+  const [idVerifying, setIdVerifying] = useState(false);
+  const [idVerified, setIdVerified] = useState(false);
+  const [idData, setIdData] = useState<any>(null);
+  const [idError, setIdError] = useState("");
+
+  // legacy aliases kept for non-Step-1 code that still references `nin`/`ninVerified`
+  const nin = idNumber;
+  const ninVerified = idVerified;
 
   // Step 2 — WAEC
   const [waecReg, setWaecReg] = useState("");
@@ -71,32 +77,45 @@ export default function Onboarding() {
   const allGradesFilled = allSubjectsSelected.length === 5 && allSubjectsSelected.every(s => grades[s]);
   const allElectivesSelected = electives.filter(Boolean).length === 3;
 
-  // ── NIN ───────────────────────────────────────────────────────────
-  const handleVerifyNin = async () => {
-    if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) {
-      setNinError("Please enter exactly 11 digits."); return;
-    }
-    setNinError("");
-    setNinVerifying(true);
+  // ── ID type config ──────────────────────────────────────────────────────
+  const ID_OPTIONS = [
+    { value: "nin",             label: "National Identity Number (NIN)",      hint: "11-digit NIN",                    numeric: true,  len: [11, 11] },
+    { value: "bvn",             label: "Bank Verification Number (BVN)",      hint: "11-digit BVN",                    numeric: true,  len: [11, 11] },
+    { value: "voters_card",     label: "Voter's Card / PVC (VIN)",            hint: "Voter Identification Number",     numeric: false, len: [10, 25] },
+    { value: "drivers_license", label: "Driver's License",                    hint: "e.g. ABC00000AA00",               numeric: false, len: [8,  20] },
+    { value: "passport",        label: "International Passport",              hint: "Passport number (e.g. A12345678)", numeric: false, len: [6,  15] },
+    { value: "national_id",     label: "National ID / Residence Permit",      hint: "National ID or residence card number", numeric: false, len: [5, 30] },
+  ];
+  const currentIdOpt = ID_OPTIONS.find(o => o.value === idType) || ID_OPTIONS[0];
+  const isIdReady = idNumber.length >= currentIdOpt.len[0] && idNumber.length <= currentIdOpt.len[1] &&
+    (!currentIdOpt.numeric || /^\d+$/.test(idNumber)) &&
+    (idType !== "passport" || idLastName.trim().length >= 2);
+
+  // ── Verify identity document ────────────────────────────────────────────
+  const handleVerifyId = async () => {
+    if (!isIdReady) { setIdError(`Please enter a valid ${currentIdOpt.label}.`); return; }
+    setIdError("");
+    setIdVerifying(true);
     try {
-      const res = await apiRequest("POST", "/api/verification/validate-nin", { nin });
+      const res = await apiRequest("POST", "/api/verification/validate-id", {
+        idType, idNumber: idNumber.trim(), lastName: idLastName.trim(),
+      });
       const data = await res.json();
-      setNinData(data);
-      setNinVerified(true);
-      toast({ title: "NIN Verified ✓", description: data.demo ? "Format validated (live NIMC check enabled with API key)." : "Your NIN has been confirmed via the NIMC database." });
+      if (!res.ok) throw new Error(data.message || "Verification failed");
+      setIdData(data);
+      setIdVerified(true);
+      toast({ title: `${currentIdOpt.label} Verified ✓`, description: data.demo ? "Format validated — live database check active." : `Confirmed via ${currentIdOpt.label} database.` });
     } catch (err: any) {
-      let msg = "NIN verification failed.";
-      try { const d = await err.json?.(); msg = d?.message || msg; } catch {}
-      setNinError(msg);
+      setIdError(err.message || "Verification failed. Please check your details.");
     } finally {
-      setNinVerifying(false);
+      setIdVerifying(false);
     }
   };
 
   const handleProceedToWaec = async () => {
-    if (!ninVerified) { toast({ title: "Error", description: "Please verify your NIN first.", variant: "destructive" }); return; }
+    if (!idVerified) { toast({ title: "Error", description: "Please verify your identity document first.", variant: "destructive" }); return; }
     try {
-      await apiRequest("POST", "/api/verification/identity", { nin });
+      await apiRequest("POST", "/api/verification/identity", { idType, idNumber: idNumber.trim() });
       setStep(2);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -263,7 +282,7 @@ export default function Onboarding() {
         <div className="w-full max-w-2xl">
           <AnimatePresence mode="wait">
 
-            {/* ── STEP 1: NIN ── */}
+            {/* ── STEP 1: Identity Document ── */}
             {step === 1 && (
               <motion.div key="s1" {...slide} className="bg-card rounded-3xl shadow-2xl border overflow-hidden">
                 <div className="bg-gradient-to-r from-tsia-green/10 to-transparent p-8 pb-0">
@@ -271,46 +290,86 @@ export default function Onboarding() {
                     <ShieldAlert className="w-8 h-8" />
                   </div>
                   <h2 className="text-3xl font-bold mb-2">Identity Verification</h2>
-                  <p className="text-muted-foreground text-lg mb-8">Enter your 11-digit NIN. We'll verify it against the NIMC database instantly.</p>
+                  <p className="text-muted-foreground text-lg mb-8">Select your ID type and enter your details. We'll verify instantly.</p>
                 </div>
-                <div className="p-8 pt-6 space-y-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="nin" className="text-base font-semibold">National Identification Number (NIN)</Label>
+                <div className="p-8 pt-6 space-y-5">
+
+                  {/* ID type dropdown */}
+                  <div className="space-y-2">
+                    <Label className="text-base font-semibold">Document Type</Label>
+                    <Select value={idType} onValueChange={v => { setIdType(v); setIdNumber(""); setIdLastName(""); setIdVerified(false); setIdData(null); setIdError(""); }} disabled={idVerified} data-testid="select-id-type">
+                      <SelectTrigger className="h-12 bg-muted/30 text-base" data-testid="trigger-id-type">
+                        <SelectValue placeholder="Select document type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ID_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value} data-testid={`option-id-${opt.value}`}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {(idType === "passport" || idType === "national_id" || idType === "drivers_license") && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        Supported for all nationalities — including Nigerians living abroad.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Passport: last name field */}
+                  {idType === "passport" && (
+                    <div className="space-y-2">
+                      <Label className="text-base font-semibold">Last Name (as on passport)</Label>
+                      <Input
+                        placeholder="Enter your surname"
+                        className="h-12 bg-muted/30"
+                        value={idLastName}
+                        onChange={e => { setIdLastName(e.target.value); setIdVerified(false); setIdData(null); }}
+                        disabled={idVerified}
+                        data-testid="input-id-lastname"
+                      />
+                    </div>
+                  )}
+
+                  {/* ID number input */}
+                  <div className="space-y-2">
+                    <Label className="text-base font-semibold">{currentIdOpt.label}</Label>
                     <div className="flex gap-3">
                       <div className="flex-1 relative">
                         <Input
-                          id="nin"
-                          placeholder="Enter your 11-digit NIN"
-                          className={`h-12 text-lg pr-10 bg-muted/30 tracking-widest font-mono ${ninVerified ? 'border-green-500 bg-green-50/50 dark:bg-green-900/10' : ninError ? 'border-destructive' : ''}`}
-                          value={nin}
-                          maxLength={11}
-                          onChange={e => { setNin(e.target.value.replace(/\D/g, "")); setNinError(""); setNinVerified(false); setNinData(null); }}
-                          disabled={ninVerified}
-                          data-testid="input-nin"
+                          placeholder={currentIdOpt.hint}
+                          className={`h-12 text-base pr-10 bg-muted/30 tracking-wider font-mono ${idVerified ? 'border-green-500 bg-green-50/50 dark:bg-green-900/10' : idError ? 'border-destructive' : ''}`}
+                          value={idNumber}
+                          maxLength={currentIdOpt.len[1]}
+                          onChange={e => {
+                            const v = currentIdOpt.numeric ? e.target.value.replace(/\D/g, "") : e.target.value.toUpperCase();
+                            setIdNumber(v); setIdError(""); setIdVerified(false); setIdData(null);
+                          }}
+                          disabled={idVerified}
+                          data-testid="input-id-number"
                         />
-                        {ninVerified && <CheckCircle2 className="w-5 h-5 text-green-500 absolute right-3 top-1/2 -translate-y-1/2" />}
+                        {idVerified && <CheckCircle2 className="w-5 h-5 text-green-500 absolute right-3 top-1/2 -translate-y-1/2" />}
                       </div>
                       <Button
-                        onClick={handleVerifyNin}
-                        disabled={ninVerifying || ninVerified || nin.length !== 11}
-                        className={`h-12 px-5 font-semibold ${ninVerified ? 'bg-green-600 hover:bg-green-700' : ''}`}
-                        data-testid="button-verify-nin"
+                        onClick={handleVerifyId}
+                        disabled={idVerifying || idVerified || !isIdReady}
+                        className={`h-12 px-5 font-semibold ${idVerified ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                        data-testid="button-verify-id"
                       >
-                        {ninVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : ninVerified ? "Verified" : "Verify"}
+                        {idVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : idVerified ? "Verified ✓" : "Verify"}
                       </Button>
                     </div>
-                    {ninError && (
+                    {idError && (
                       <p className="text-sm text-destructive flex items-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4" /> {ninError}
+                        <AlertTriangle className="w-4 h-4" /> {idError}
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                      <Lock className="w-3.5 h-3.5 text-green-600" /> Verified securely via NIMC • Data encrypted end-to-end
+                      <Lock className="w-3.5 h-3.5 text-green-600" /> Verified securely via ninverify.ng • Data encrypted end-to-end
                     </p>
                   </div>
 
                   <AnimatePresence>
-                    {ninVerified && ninData && (
+                    {idVerified && idData && (
                       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                         className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl p-5">
                         <div className="flex items-center gap-3 mb-3">
@@ -319,23 +378,24 @@ export default function Onboarding() {
                           </div>
                           <div>
                             <p className="font-bold text-green-800 dark:text-green-300">Identity Confirmed</p>
-                            <p className="text-xs text-green-700 dark:text-green-400">{ninData.demo ? "Format verified — live NIMC lookup active with API key" : "Matched against NIMC national database"}</p>
+                            <p className="text-xs text-green-700 dark:text-green-400">{idData.demo ? "Format verified — live lookup active" : `Matched against ${currentIdOpt.label} database`}</p>
                           </div>
                         </div>
-                        {ninData.data?.firstName && (
+                        {idData.data?.firstName && (
                           <div className="grid grid-cols-2 gap-2 text-sm">
-                            <div><span className="text-muted-foreground">Name:</span> <span className="font-semibold">{ninData.data.firstName} {ninData.data.lastName}</span></div>
-                            {ninData.data.gender && <div><span className="text-muted-foreground">Gender:</span> <span className="font-semibold capitalize">{ninData.data.gender}</span></div>}
+                            <div><span className="text-muted-foreground">Name:</span> <span className="font-semibold">{idData.data.firstName} {idData.data.lastName}</span></div>
+                            {idData.data.gender && <div><span className="text-muted-foreground">Gender:</span> <span className="font-semibold capitalize">{idData.data.gender}</span></div>}
+                            {idData.data.dateOfBirth && <div><span className="text-muted-foreground">DOB:</span> <span className="font-semibold">{idData.data.dateOfBirth}</span></div>}
                           </div>
                         )}
                       </motion.div>
                     )}
                   </AnimatePresence>
 
-                  {ninVerifying && (
+                  {idVerifying && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
                       <div className="space-y-2">
-                        {["Connecting to NIMC database...", "Validating NIN number...", "Retrieving identity record..."].map((msg, i) => (
+                        {[`Connecting to ${currentIdOpt.label} database...`, "Validating document number...", "Retrieving identity record..."].map((msg, i) => (
                           <div key={i} className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
                             <Loader2 className="w-3.5 h-3.5 animate-spin" /> {msg}
                           </div>
@@ -344,7 +404,7 @@ export default function Onboarding() {
                     </motion.div>
                   )}
 
-                  <Button onClick={handleProceedToWaec} className="w-full h-14 text-lg font-semibold shadow-md" disabled={!ninVerified} data-testid="button-identity-next">
+                  <Button onClick={handleProceedToWaec} className="w-full h-14 text-lg font-semibold shadow-md" disabled={!idVerified} data-testid="button-identity-next">
                     Continue to WAEC Validation <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </div>

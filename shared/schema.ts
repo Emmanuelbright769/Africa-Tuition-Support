@@ -42,6 +42,7 @@ export const verifications = pgTable("verifications", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").notNull().references(() => users.id),
   nin: text("nin"),
+  idType: text("id_type").default("nin"),
   waecRegNumber: text("waec_reg_number"),
   waecYear: text("waec_year"),
   waecSubjects: text("waec_subjects"),

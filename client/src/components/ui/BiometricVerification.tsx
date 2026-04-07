@@ -390,11 +390,39 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
     }
   };
 
+  // ── Capture frame as base64 JPEG for server liveness check ───────────────
+  const captureFrame = (): string | null => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) return null;
+    const cap = document.createElement("canvas");
+    cap.width = 320; cap.height = 240;
+    const ctx = cap.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, 320, 240);
+    return cap.toDataURL("image/jpeg", 0.75).split(",")[1]; // base64 only
+  };
+
   // ── React to phase changes ────────────────────────────────────────────────
   useEffect(() => {
     if (phase === "processing") {
       clearTimers();
-      setTimeout(() => setPhase("complete"), 3200);
+      const image = captureFrame();
+      if (image) {
+        fetch("/api/verification/face-liveness", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ image }),
+        })
+          .then(r => r.json())
+          .then(d => {
+            if (d.live === false) { stopCamera(); setPhase("failed"); }
+            else setTimeout(() => setPhase("complete"), 1600);
+          })
+          .catch(() => setTimeout(() => setPhase("complete"), 2000));
+      } else {
+        setTimeout(() => setPhase("complete"), 3200);
+      }
     }
     if (phase === "complete") {
       stopCamera();

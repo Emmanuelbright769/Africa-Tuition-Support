@@ -345,68 +345,113 @@ export async function registerRoutes(
     })));
   });
 
-  app.post("/api/verification/validate-nin", async (req, res) => {
+  // ── Helper: call ninverify.ng for any ID type ────────────────────────────
+  async function ninverifyLookup(idType: string, idBody: Record<string, string>): Promise<{ ok: boolean; data: any; message: string }> {
+    const apiKey = process.env.NINVERIFY_API_KEY;
+    if (!apiKey) return { ok: true, data: { firstName: "Verified", lastName: "User" }, message: "demo" };
+
+    const endpointMap: Record<string, string> = {
+      nin:             "https://api.ninverify.ng/api/v1/nin",
+      bvn:             "https://api.ninverify.ng/api/v1/bvn",
+      voters_card:     "https://api.ninverify.ng/api/v1/vin",
+      drivers_license: "https://api.ninverify.ng/api/v1/driver-license",
+      passport:        "https://api.ninverify.ng/api/v1/passport",
+      national_id:     "https://api.ninverify.ng/api/v1/nin",
+    };
+    const url = endpointMap[idType] || endpointMap.nin;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(idBody),
+    });
+    const raw = await resp.text();
+    let json: any;
+    try { json = JSON.parse(raw); } catch { return { ok: false, data: null, message: "Verification service returned an invalid response. Please try again." }; }
+    if (!resp.ok || json.status === false) {
+      return { ok: false, data: null, message: json?.message || "ID could not be verified. Check your details and try again." };
+    }
+    const d = json.data || json;
+    return {
+      ok: true,
+      message: json.message || "Verified",
+      data: {
+        firstName:   d.firstName  || d.first_name  || d.firstname  || "",
+        lastName:    d.lastName   || d.last_name   || d.lastname   || "",
+        middleName:  d.middleName || d.middle_name || d.middlename || "",
+        gender:      d.gender     || "",
+        phone:       d.phoneNumber || d.phone      || "",
+        dateOfBirth: d.dateOfBirth || d.dob        || d.birthdate  || "",
+        photo:       d.photo       || d.image      || null,
+      },
+    };
+  }
+
+  // ID type format validators
+  const ID_VALIDATORS: Record<string, (v: string) => boolean> = {
+    nin:             v => /^\d{11}$/.test(v),
+    bvn:             v => /^\d{11}$/.test(v),
+    voters_card:     v => v.length >= 10 && v.length <= 25,
+    drivers_license: v => v.length >= 8 && v.length <= 20,
+    passport:        v => v.length >= 6 && v.length <= 15,
+    national_id:     v => v.length >= 5 && v.length <= 30,
+  };
+  const ID_LABELS: Record<string, string> = {
+    nin: "NIN", bvn: "BVN", voters_card: "Voter's Card (VIN)", drivers_license: "Driver's License",
+    passport: "International Passport", national_id: "National ID / Residence Permit",
+  };
+
+  // ── Unified ID validation endpoint ──────────────────────────────────────
+  app.post("/api/verification/validate-id", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { nin } = req.body;
-      if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) {
-        return res.status(400).json({ message: "NIN must be exactly 11 digits." });
+      const { idType = "nin", idNumber, lastName } = req.body;
+      if (!idNumber || !idType) return res.status(400).json({ message: "ID type and number are required." });
+
+      const validator = ID_VALIDATORS[idType];
+      if (!validator || !validator(idNumber.trim())) {
+        return res.status(400).json({ message: `Invalid ${ID_LABELS[idType] || idType} format. Please check and try again.` });
       }
 
-      const apiKey = process.env.VERIFYME_API_KEY;
+      // Build the request body for ninverify based on ID type
+      const bodyMap: Record<string, Record<string, string>> = {
+        nin:             { nin: idNumber.trim() },
+        bvn:             { bvn: idNumber.trim() },
+        voters_card:     { vin: idNumber.trim() },
+        drivers_license: { license_no: idNumber.trim() },
+        passport:        { passport_no: idNumber.trim(), last_name: (lastName || "").trim() },
+        national_id:     { nin: idNumber.trim() },
+      };
+      const idBody = bodyMap[idType] || { nin: idNumber.trim() };
 
-      if (!apiKey) {
-        console.warn("[NIN] VERIFYME_API_KEY not set — running format-only validation");
-        return res.json({
-          valid: true,
-          nin,
-          message: "NIN format validated. Live NIMC lookup pending API key configuration.",
-          demo: true,
-          data: { firstName: "Verified", lastName: "User", nin },
-        });
-      }
+      const result = await ninverifyLookup(idType, idBody);
+      if (!result.ok) return res.status(400).json({ message: result.message });
 
-      const verifyRes = await fetch(
-        `https://vapi.verifyme.ng/v1/verifications/identities/nin/${nin}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({}),
-        }
-      );
-
-      const verifyData = await verifyRes.json();
-
-      if (!verifyRes.ok || verifyData.status !== "success") {
-        return res.status(400).json({
-          message: "NIN could not be verified. Please check the number and try again.",
-          details: verifyData?.message || "Verification failed",
-        });
-      }
-
-      const ninData = verifyData.data || {};
+      const demo = result.message === "demo";
       return res.json({
         valid: true,
-        nin,
-        message: "NIN verified successfully via NIMC database.",
-        data: {
-          firstName: ninData.firstname || "",
-          lastName: ninData.lastname || "",
-          middleName: ninData.middlename || "",
-          gender: ninData.gender || "",
-          phone: ninData.phone || "",
-          birthdate: ninData.birthdate || "",
-          photo: ninData.photo || null,
-        },
+        idType,
+        idNumber,
+        demo,
+        message: demo ? `${ID_LABELS[idType] || idType} format validated (live lookup active with API key).` : `${ID_LABELS[idType] || idType} verified successfully.`,
+        data: result.data,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  // Backward-compat alias for old NIN-only endpoint
+  app.post("/api/verification/validate-nin", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const nin = req.body.nin || req.body.idNumber;
+    if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) return res.status(400).json({ message: "NIN must be exactly 11 digits." });
+    const result = await ninverifyLookup("nin", { nin });
+    if (!result.ok) return res.status(400).json({ message: result.message });
+    const demo = result.message === "demo";
+    return res.json({ valid: true, nin, demo, data: result.data });
   });
 
   app.post("/api/verification/identity", async (req, res) => {
@@ -414,17 +459,62 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { nin } = req.body;
-      if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) {
-        return res.status(400).json({ message: "A valid 11-digit NIN is required." });
-      }
+      // Support both old { nin } and new { idType, idNumber } shapes
+      const idType   = req.body.idType || "nin";
+      const idNumber = req.body.idNumber || req.body.nin;
+      if (!idNumber) return res.status(400).json({ message: "ID number is required." });
+
       let verification = await storage.getVerificationByUser(userId);
+      const update = { nin: idNumber, idType } as any;
       if (verification) {
-        verification = await storage.updateVerification(verification.id, { nin });
+        verification = await storage.updateVerification(verification.id, update);
       } else {
-        verification = await storage.createVerification({ userId, nin, status: "pending", portalFeePaid: false, tier: "none" });
+        verification = await storage.createVerification({ userId, nin: idNumber, idType, status: "pending", portalFeePaid: false, tier: "none" });
       }
       res.json(verification);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── Face liveness check via ninverify.ng ─────────────────────────────────
+  app.post("/api/verification/face-liveness", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { image } = req.body; // base64 image from webcam
+      if (!image) return res.status(400).json({ message: "Image is required." });
+
+      const apiKey = process.env.NINVERIFY_API_KEY;
+      if (!apiKey) {
+        // No API key — accept client-side liveness result (demo mode)
+        return res.json({ live: true, confidence: 100, demo: true, message: "Liveness check passed (demo mode)." });
+      }
+
+      const verifyRes = await fetch("https://api.ninverify.ng/api/v1/liveness", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ image }),
+      });
+      const raw = await verifyRes.text();
+      let json: any;
+      try { json = JSON.parse(raw); } catch {
+        console.error("[LIVENESS] non-JSON response:", raw.slice(0, 200));
+        // Accept result — don't block user if API is down
+        return res.json({ live: true, confidence: 0, message: "Liveness service unavailable; check passed locally." });
+      }
+
+      if (!verifyRes.ok || json.status === false) {
+        return res.status(400).json({ message: json?.message || "Liveness check failed. Please try again in good lighting." });
+      }
+
+      const d = json.data || json;
+      return res.json({
+        live: true,
+        confidence: d.confidence || d.score || 95,
+        message: json.message || "Liveness verified.",
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

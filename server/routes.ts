@@ -914,7 +914,12 @@ export async function registerRoutes(
   app.get("/api/wallet", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const wallet = await storage.getOrCreateWallet(userId);
+    let wallet = await storage.getOrCreateWallet(userId);
+    // Self-heal: activate wallets that already have >= $5 but were never activated
+    // (can happen if balance was set before the activated column existed)
+    if (!wallet.activated && parseFloat(wallet.balance) >= 5) {
+      wallet = await storage.activateWallet(userId);
+    }
     const balanceUsd = parseFloat(wallet.balance);
     const balanceNgn = balanceUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
     res.json({ ...wallet, balanceNgn: balanceNgn.toFixed(2) });

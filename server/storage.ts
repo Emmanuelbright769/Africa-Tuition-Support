@@ -232,7 +232,108 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteUserById(id: number): Promise<void> {
-    await db.delete(users).where(eq(users.id, id));
+    // Must delete all related records in dependency order before removing the user
+    await db.transaction(async (tx) => {
+      // 1. ecommerce chat messages (depend on chats, not directly on user)
+      await tx.execute(sql`
+        DELETE FROM ecommerce_chat_messages
+        WHERE chat_id IN (
+          SELECT id FROM ecommerce_chats WHERE buyer_id = ${id} OR seller_id = ${id}
+        )
+      `);
+      // 2. ecommerce chats
+      await tx.delete(ecommerceChats).where(
+        or(eq(ecommerceChats.buyerId, id), eq(ecommerceChats.sellerId, id))
+      );
+      // 3. product ratings (depends on products)
+      await tx.delete(productRatings).where(eq(productRatings.userId, id));
+      // Also delete ratings for products owned by this seller
+      await tx.execute(sql`
+        DELETE FROM product_ratings WHERE product_id IN (SELECT id FROM products WHERE seller_id = ${id})
+      `);
+      // 4. price alerts
+      await tx.delete(priceAlerts).where(eq(priceAlerts.userId, id));
+      // 5. orders where user is buyer or seller
+      await tx.delete(orders).where(
+        or(eq(orders.buyerId, id), eq(orders.sellerId, id))
+      );
+      // Also delete any orders for products sold by this user (from other buyers)
+      await tx.execute(sql`
+        DELETE FROM orders WHERE product_id IN (SELECT id FROM products WHERE seller_id = ${id})
+      `);
+      // 6. products (seller)
+      await tx.delete(products).where(eq(products.sellerId, id));
+      // 7. call sessions
+      await tx.delete(callSessions).where(
+        or(eq(callSessions.callerId, id), eq(callSessions.calleeId, id))
+      );
+      // 8. category subscriptions
+      await tx.delete(categorySubscriptions).where(eq(categorySubscriptions.userId, id));
+      // 9. bill payments
+      await tx.delete(billPayments).where(eq(billPayments.userId, id));
+      // 10. wallet transfers
+      await tx.delete(walletTransfers).where(
+        or(eq(walletTransfers.senderId, id), eq(walletTransfers.recipientId, id))
+      );
+      // 11. transactions
+      await tx.delete(transactions).where(eq(transactions.userId, id));
+      // 12. disbursements
+      await tx.delete(disbursements).where(eq(disbursements.userId, id));
+      // 13. wallet deposits
+      await tx.delete(walletDeposits).where(eq(walletDeposits.userId, id));
+      // 14. trade transactions
+      await tx.delete(tradeTransactions).where(eq(tradeTransactions.userId, id));
+      // 15. qce transactions
+      await tx.delete(qceTransactions).where(eq(qceTransactions.userId, id));
+      // 16. qce savings
+      await tx.delete(qceSavings).where(eq(qceSavings.userId, id));
+      // 17. trade wallets
+      await tx.delete(tradeWallets).where(eq(tradeWallets.userId, id));
+      // 18. wallets
+      await tx.delete(wallets).where(eq(wallets.userId, id));
+      // 19. verifications
+      await tx.delete(verifications).where(eq(verifications.userId, id));
+      // 20. notifications
+      await tx.delete(notifications).where(eq(notifications.userId, id));
+      // 21. co-affiliates
+      await tx.delete(coAffiliates).where(eq(coAffiliates.userId, id));
+      // 22. cohort codes (used_by reference)
+      await tx.execute(sql`UPDATE cohort_codes SET used_by_user_id = NULL WHERE used_by_user_id = ${id}`);
+      // 23. sponsorship plans
+      await tx.delete(sponsorshipPlans).where(eq(sponsorshipPlans.userId, id));
+      // 24. tenancy payments (depend on leases)
+      await tx.execute(sql`
+        DELETE FROM tenancy_payments WHERE lease_id IN (
+          SELECT id FROM tenancy_leases WHERE tenant_id = ${id}
+        )
+      `);
+      // 25. tenancy leases (as tenant)
+      await tx.delete(tenancyLeases).where(eq(tenancyLeases.tenantId, id));
+      // 26. landlord properties (tenancy_leases referencing these are already gone)
+      await tx.execute(sql`
+        DELETE FROM tenancy_payments WHERE lease_id IN (
+          SELECT id FROM tenancy_leases WHERE property_id IN (SELECT id FROM landlord_properties WHERE owner_id = ${id})
+        )
+      `);
+      await tx.execute(sql`
+        DELETE FROM tenancy_leases WHERE property_id IN (SELECT id FROM landlord_properties WHERE owner_id = ${id})
+      `);
+      await tx.delete(landlordProperties).where(eq(landlordProperties.ownerId, id));
+      // 27. forum posts
+      await tx.delete(forumPosts).where(eq(forumPosts.authorId, id));
+      // 28. forum topics
+      await tx.delete(forumTopics).where(eq(forumTopics.authorId, id));
+      // 29. file uploads
+      await tx.delete(fileUploads).where(eq(fileUploads.userId, id));
+      // 30. loans
+      await tx.delete(loans).where(eq(loans.userId, id));
+      // 31. otp codes
+      await tx.delete(otpCodes).where(eq(otpCodes.userId, id));
+      // 32. tour bookings
+      await tx.delete(tourBookings).where(eq(tourBookings.userId, id));
+      // 33. finally delete the user
+      await tx.delete(users).where(eq(users.id, id));
+    });
   }
 
   async getUser(id: number): Promise<User | undefined> {

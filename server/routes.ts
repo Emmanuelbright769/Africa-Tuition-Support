@@ -2658,6 +2658,10 @@ export async function registerRoutes(
       }
       // Mark deposit as completed
       if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
+      // Record transaction (for complete history)
+      await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), description: `Wallet funded via Paystack (${reference})` });
+      const psNotif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, data: { reference }, isRead: false });
+      pushToUser(userId, "notification", psNotif);
       res.json({ message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2898,6 +2902,12 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (user?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
+      // ── IDEMPOTENCY GUARD: prevent double-crediting already-confirmed deposits ──
+      const [existingDeposit] = await db.select().from(walletDeposits).where(eq(walletDeposits.id, parseInt(req.params.id)));
+      if (!existingDeposit) return res.status(404).json({ message: "Deposit not found" });
+      if (existingDeposit.status === "completed") {
+        return res.status(409).json({ message: "This deposit has already been confirmed and credited. Re-confirming is not allowed to prevent duplicate credits." });
+      }
       const deposit = await storage.updateWalletDeposit(parseInt(req.params.id), { status: "completed" });
       const gross = parseFloat(deposit.amountUsd);
       // 75% → user wallet, 20% → reserve fund, 5% → affiliate pool

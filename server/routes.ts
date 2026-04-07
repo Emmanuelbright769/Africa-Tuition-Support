@@ -2370,7 +2370,126 @@ export async function registerRoutes(
   });
 
   // ─── WALLET DEPOSIT (for students & all users to fund main wallet) ───────────
-  // ── Paystack: initialize payment ──────────────────────────────────────────
+
+  // ── Squad by GTco: initiate inline payment ────────────────────────────────
+  app.post("/api/wallet/squad/initiate", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { amountUsd } = req.body;
+    const amount = parseFloat(amountUsd);
+    if (!amount || amount < 1) return res.status(400).json({ message: "Minimum funding amount is $1" });
+    const secretKey = process.env.SQUAD_SECRET_KEY;
+    const publicKey = process.env.SQUAD_PUBLIC_KEY;
+    if (!secretKey || !publicKey) return res.status(500).json({ message: "Payment gateway not configured. Please contact support." });
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const USD_TO_KOBO = 148000; // 1 USD = ₦1,480 = 148,000 kobo
+      const amountKobo = Math.round(amount * USD_TO_KOBO);
+      const transactionRef = `TSIA-${userId}-${Date.now()}`;
+      // Save pending deposit record
+      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: transactionRef, walletType: "squad", status: "pending" });
+      res.json({ transactionRef, amountKobo, amountNgn: (amount * 1480).toFixed(2), publicKey, email: user.email, firstName: user.firstName, lastName: user.lastName });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Squad by GTco: verify & credit wallet ─────────────────────────────────
+  app.post("/api/wallet/squad/verify", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { transactionRef } = req.body;
+    if (!transactionRef) return res.status(400).json({ message: "Transaction reference is required" });
+    const secretKey = process.env.SQUAD_SECRET_KEY;
+    if (!secretKey) return res.status(500).json({ message: "Payment gateway not configured" });
+    // Determine environment from key prefix
+    const isLive = secretKey.startsWith("sk_");
+    const baseUrl = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+    try {
+      // Check not already credited
+      const deposits = await storage.getWalletDepositsByUser(userId);
+      const existing = deposits.find((d: any) => d.txHash === transactionRef);
+      if (existing && existing.status === "completed") return res.status(400).json({ message: "This payment has already been credited to your wallet." });
+      // Verify with Squad API
+      const response = await fetch(`${baseUrl}/transaction/verify/${encodeURIComponent(transactionRef)}`, {
+        headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" },
+      });
+      const data = await response.json() as any;
+      if (!data.success || data.data?.transaction_status !== "Success") {
+        return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment." });
+      }
+      // Amount in kobo → USD
+      const amountKoboFromSquad = data.data?.transaction_amount ?? 0;
+      const amountUsd = parseFloat(existing?.amountUsd ?? (amountKoboFromSquad / 148000).toFixed(2));
+      // Credit wallet
+      const squadWallet = await storage.getOrCreateWallet(userId);
+      const newBalance = (parseFloat(squadWallet.balance) + amountUsd).toFixed(2);
+      await storage.updateWalletBalance(userId, newBalance);
+      // Activate wallet on first funding ≥ $5
+      if (!squadWallet.activated && parseFloat(newBalance) >= 5) {
+        try {
+          await storage.activateWallet(userId);
+          const sqUser = await storage.getUser(userId);
+          if (sqUser?.referredBy) {
+            const sqReferrer = await storage.getUserByAffiliateCode(sqUser.referredBy);
+            if (sqReferrer) {
+              const refN = await storage.createNotification({
+                userId: sqReferrer.id, type: "referral_activated",
+                title: "Referral Activated 🎉",
+                message: `${sqUser.firstName} ${sqUser.lastName.charAt(0)}. (one of your referrals) has activated their TSIA wallet. Your referral commission is now active!`,
+                data: { referredUserId: sqUser.id }, isRead: false,
+              });
+              pushToUser(sqReferrer.id, "notification", refN);
+            }
+          }
+        } catch { /* non-critical */ }
+      }
+      // Record credited transaction
+      await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), description: `Wallet funded via Squad (${transactionRef})` });
+      // Mark deposit record as completed
+      if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
+      // Push live notification
+      const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, data: { transactionRef }, isRead: false });
+      pushToUser(userId, "notification", notif);
+      res.json({ message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Squad webhook (async payment notification) ────────────────────────────
+  app.post("/api/webhook/squad", async (req, res) => {
+    // Squad sends: { Event: "charge_completed", data: { transaction_ref, transaction_status, transaction_amount, ... } }
+    try {
+      const { Event, data } = req.body;
+      if (Event === "charge_completed" && data?.transaction_status === "Success") {
+        const ref = data.transaction_ref as string;
+        // Find the pending deposit by txHash
+        const allDeposits = await (storage as any).db?.query?.walletDeposits?.findFirst?.({ where: (t: any, { eq }: any) => eq(t.txHash, ref) });
+        if (allDeposits && allDeposits.status !== "completed") {
+          const secretKey = process.env.SQUAD_SECRET_KEY ?? "";
+          const isLive = secretKey.startsWith("sk_");
+          const baseUrl = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+          const verRes = await fetch(`${baseUrl}/transaction/verify/${encodeURIComponent(ref)}`, {
+            headers: { Authorization: `Bearer ${secretKey}` },
+          });
+          const verData = await verRes.json() as any;
+          if (verData.success && verData.data?.transaction_status === "Success") {
+            const userId = allDeposits.userId;
+            const amountUsd = parseFloat(allDeposits.amountUsd);
+            const wl = await storage.getOrCreateWallet(userId);
+            const newBal = (parseFloat(wl.balance) + amountUsd).toFixed(2);
+            await storage.updateWalletBalance(userId, newBal);
+            if (!wl.activated && parseFloat(newBal) >= 5) await storage.activateWallet(userId);
+            await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), description: `Wallet funded via Squad webhook (${ref})` });
+            await storage.updateWalletDeposit(allDeposits.id, { status: "completed" });
+            const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${amountUsd.toFixed(2)} credited via Squad`, data: { ref }, isRead: false });
+            pushToUser(userId, "notification", notif);
+          }
+        }
+      }
+    } catch { /* webhook errors must not crash the server */ }
+    res.sendStatus(200);
+  });
+
+  // ── Paystack: initialize payment (legacy – kept for backward compat) ───────
   app.post("/api/wallet/paystack/initialize", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });

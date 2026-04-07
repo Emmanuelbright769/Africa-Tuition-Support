@@ -1,4 +1,16 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+
+// Squad inline widget type
+declare global {
+  interface Window {
+    squad: new (config: {
+      onClose: () => void; onLoad: () => void; onSuccess: (data: any) => void;
+      key: string; email: string; amount: number; currency_code: string;
+      transaction_ref: string; payment_channels?: string[];
+      metadata?: Record<string, unknown>;
+    }) => { setup: () => void; open: () => void };
+  }
+}
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -54,11 +66,9 @@ export default function WalletPage() {
 
   // ── Fund state ──────────────────────────────────────────────────────────
   const [fundOpen, setFundOpen]         = useState(false);
-  const [fundMethod, setFundMethod]     = useState<"paystack" | "crypto">("paystack");
+  const [fundMethod, setFundMethod]     = useState<"squad" | "crypto">("squad");
   const [fundAmount, setFundAmount]     = useState("");
-  const [fundStep, setFundStep]         = useState<"amount" | "pending">("amount");
-  const [pendingRef, setPendingRef]     = useState("");
-  const [verifyRef, setVerifyRef]       = useState("");
+  const [squadLoading, setSquadLoading] = useState(false);
   const [cryptoNetwork, setCryptoNetwork] = useState<"trc20" | "bep20">("trc20");
   const [cryptoAmount, setCryptoAmount]   = useState("");
   const [cryptoTxHash, setCryptoTxHash]   = useState("");
@@ -112,52 +122,83 @@ export default function WalletPage() {
   const youGet = parseFloat(withdrawAmount || "0") - vatAmt;
 
   // ── Open fund section ────────────────────────────────────────────────────
-  const openFund = (method: "paystack" | "crypto" = "paystack") => {
+  const openFund = (method: "squad" | "crypto" = "squad") => {
     if (!walletKycDone && needsKyc) {
       toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan to unlock funding.", variant: "destructive" });
       return;
     }
     setFundMethod(method);
-    setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef("");
+    setFundAmount("");
     setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20");
     setFundOpen(true);
     setTimeout(() => fundRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   };
 
-  // ── Mutations ────────────────────────────────────────────────────────────
-  const initPaystackMutation = useMutation({
-    mutationFn: async () => {
-      const amount = parseFloat(fundAmount);
-      if (!amount || amount < 1) throw new Error("Minimum funding amount is $1");
-      const res = await apiRequest("POST", "/api/wallet/paystack/initialize", { amountUsd: amount });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message);
-      return d as { authorization_url: string; reference: string };
-    },
-    onSuccess: (d) => {
-      setPendingRef(d.reference); setVerifyRef(d.reference); setFundStep("pending");
-      window.open(d.authorization_url, "_blank", "width=600,height=700,noopener");
-    },
-    onError: (e: any) => toast({ title: "Could not start payment", description: e.message, variant: "destructive" }),
-  });
+  // ── Helper: load Squad widget script once ─────────────────────────────────
+  const loadSquadScript = useCallback((): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (window.squad) return resolve();
+      const existing = document.getElementById("squad-widget-js");
+      if (existing) { existing.addEventListener("load", () => resolve()); return; }
+      const s = document.createElement("script");
+      s.id = "squad-widget-js";
+      s.src = "https://checkout.squadco.com/widget/squad.min.js";
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Could not load payment widget. Please check your connection."));
+      document.head.appendChild(s);
+    });
+  }, []);
 
-  const verifyMutation = useMutation({
-    mutationFn: async () => {
-      const ref = verifyRef.trim() || pendingRef;
-      if (!ref) throw new Error("No reference found");
-      const res = await apiRequest("POST", "/api/wallet/paystack/verify", { reference: ref });
+  // ── Squad pay: initiate → open modal → auto-verify on success ────────────
+  const openSquadModal = useCallback(async () => {
+    const amount = parseFloat(fundAmount);
+    if (!amount || amount < 1) { toast({ title: "Enter a valid amount", description: "Minimum funding is $1.", variant: "destructive" }); return; }
+    setSquadLoading(true);
+    try {
+      // 1. Load Squad script
+      await loadSquadScript();
+      // 2. Initiate transaction on backend — gets ref, amount in kobo, and public key
+      const res = await apiRequest("POST", "/api/wallet/squad/initiate", { amountUsd: amount });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.message);
-      return d as { message: string; amountUsd: number };
-    },
-    onSuccess: (d) => {
-      toast({ title: "Wallet funded! 🎉", description: d.message, className: "border-tsia-green" });
-      refetchWallet(); refetchDeposits();
-      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      setFundOpen(false); setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef("");
-    },
-    onError: (e: any) => toast({ title: "Verification failed", description: e.message, variant: "destructive" }),
-  });
+      if (!res.ok) throw new Error(d.message ?? "Could not start payment");
+      const { transactionRef, amountKobo, publicKey, email, firstName, lastName } = d as {
+        transactionRef: string; amountKobo: number; publicKey: string; email: string; firstName: string; lastName: string;
+      };
+      // 3. Open Squad inline modal
+      const squadInstance = new window.squad({
+        key: publicKey,
+        email,
+        amount: amountKobo,
+        currency_code: "NGN",
+        transaction_ref: transactionRef,
+        payment_channels: ["card", "bank", "ussd", "transfer"],
+        metadata: { customer_name: `${firstName} ${lastName}`, platform: "TSIA" },
+        onLoad: () => setSquadLoading(false),
+        onClose: () => setSquadLoading(false),
+        onSuccess: async (data: any) => {
+          // 4. Auto-verify the payment
+          const ref = data?.transaction_ref ?? transactionRef;
+          try {
+            const vRes = await apiRequest("POST", "/api/wallet/squad/verify", { transactionRef: ref });
+            const vd = await vRes.json();
+            if (!vRes.ok) throw new Error(vd.message);
+            toast({ title: "Wallet funded! 🎉", description: vd.message, className: "border-tsia-green" });
+            refetchWallet(); refetchDeposits();
+            queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+            setFundOpen(false); setFundAmount("");
+          } catch (ve: any) {
+            toast({ title: "Payment received — verification pending", description: ve.message ?? "Your funds will be credited shortly.", variant: "destructive" });
+          }
+        },
+      });
+      squadInstance.setup();
+      squadInstance.open();
+    } catch (e: any) {
+      setSquadLoading(false);
+      toast({ title: "Payment error", description: e.message, variant: "destructive" });
+    }
+  }, [fundAmount, loadSquadScript, toast, refetchWallet, refetchDeposits]);
 
   const cryptoDepositMutation = useMutation({
     mutationFn: async () => {
@@ -365,7 +406,7 @@ export default function WalletPage() {
                   <p className="text-white/50 text-xs mb-1">Available balance · 7.5% VAT on withdrawals</p>
                   <p className="text-white/40 text-[10px] mb-5">Minimum $2 must remain in wallet at all times</p>
                   <div className="grid grid-cols-2 gap-3">
-                    <Button onClick={() => openFund("paystack")} className="h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl" data-testid="btn-fund-wallet">
+                    <Button onClick={() => openFund("squad")} className="h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl" data-testid="btn-fund-wallet">
                       <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
                     </Button>
                     <Button onClick={() => {
@@ -383,9 +424,9 @@ export default function WalletPage() {
           {/* ── Payment method cards ─────────────────────────────────────────── */}
           <motion.div initial="hidden" animate="visible" variants={fade} className="grid grid-cols-4 gap-2">
             {[
-              { icon: CreditCard, label: "Card",   desc: "Visa / MC",  color: "text-blue-600",   bg: "bg-blue-50 dark:bg-blue-900/20",    method: "paystack" as const },
-              { icon: Building2,  label: "Bank",   desc: "Transfer",   color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20", method: "paystack" as const },
-              { icon: Smartphone, label: "USSD",   desc: "All nets",   color: "text-tsia-green", bg: "bg-green-50 dark:bg-green-900/20",   method: "paystack" as const },
+              { icon: CreditCard, label: "Card",   desc: "Visa / MC",  color: "text-blue-600",   bg: "bg-blue-50 dark:bg-blue-900/20",    method: "squad" as const },
+              { icon: Building2,  label: "Bank",   desc: "Transfer",   color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20", method: "squad" as const },
+              { icon: Smartphone, label: "USSD",   desc: "All nets",   color: "text-tsia-green", bg: "bg-green-50 dark:bg-green-900/20",   method: "squad" as const },
               { icon: Coins,      label: "Crypto", desc: "USDT",       color: "text-amber-600",  bg: "bg-amber-50 dark:bg-amber-900/20",   method: "crypto" as const },
             ].map(({ icon: Icon, label, desc, color, bg, method }) => (
               <button key={label} onClick={() => openFund(method)}
@@ -424,9 +465,9 @@ export default function WalletPage() {
                 <div className="p-5 space-y-5">
                   {/* Method tabs */}
                   <div className="flex bg-muted/40 rounded-2xl p-1">
-                    <button onClick={() => { setFundMethod("paystack"); setFundStep("amount"); }}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${fundMethod === "paystack" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
-                      data-testid="btn-fund-method-paystack">
+                    <button onClick={() => setFundMethod("squad")}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${fundMethod === "squad" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+                      data-testid="btn-fund-method-squad">
                       <CreditCard className="w-4 h-4" /> Card / Bank / USSD
                     </button>
                     <button onClick={() => setFundMethod("crypto")}
@@ -436,68 +477,42 @@ export default function WalletPage() {
                     </button>
                   </div>
 
-                  {/* ── PAYSTACK TAB ── */}
-                  {fundMethod === "paystack" && (
+                  {/* ── SQUAD TAB ── */}
+                  {fundMethod === "squad" && (
                     <div className="space-y-4">
-                      {fundStep === "amount" ? (
-                        <>
-                          <div className="flex gap-2 justify-center">
-                            {[{ icon: CreditCard, label: "Card" }, { icon: Building2, label: "Bank" }, { icon: Smartphone, label: "USSD" }, { icon: Banknote, label: "Mobile" }].map(({ icon: Icon, label }) => (
-                              <div key={label} className="flex flex-col items-center gap-1 bg-muted/50 rounded-xl p-2.5 flex-1">
-                                <Icon className="w-5 h-5 text-tsia-green" />
-                                <span className="text-[10px] text-muted-foreground font-semibold">{label}</span>
-                              </div>
-                            ))}
+                      {/* Accepted channels */}
+                      <div className="flex gap-2 justify-center">
+                        {[{ icon: CreditCard, label: "Card" }, { icon: Building2, label: "Bank" }, { icon: Smartphone, label: "USSD" }, { icon: Banknote, label: "Transfer" }].map(({ icon: Icon, label }) => (
+                          <div key={label} className="flex flex-col items-center gap-1 bg-muted/50 rounded-xl p-2.5 flex-1">
+                            <Icon className="w-5 h-5 text-tsia-green" />
+                            <span className="text-[10px] text-muted-foreground font-semibold">{label}</span>
                           </div>
-                          <div>
-                            <Label htmlFor="fund-amount">Amount (USD)</Label>
-                            <Input id="fund-amount" type="number" min={1} step={0.01} placeholder="e.g. 10.00"
-                              value={fundAmount} onChange={e => setFundAmount(e.target.value)}
-                              className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
-                            {parseFloat(fundAmount) > 0 && (
-                              <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
-                            )}
-                          </div>
-                          <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">
-                            <Shield className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-                            <p className="text-xs text-blue-700 dark:text-blue-300">Payments processed securely via Paystack. You'll be redirected to complete payment.</p>
-                          </div>
-                          <Button className="w-full h-12 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold"
-                            onClick={() => initPaystackMutation.mutate()}
-                            disabled={initPaystackMutation.isPending || !fundAmount || parseFloat(fundAmount) < 1}
-                            data-testid="btn-init-paystack">
-                            {initPaystackMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                            {initPaystackMutation.isPending ? "Loading…" : "Proceed to Payment"}
-                          </Button>
-                        </>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4 text-center">
-                            <ExternalLink className="w-8 h-8 text-tsia-green mx-auto mb-2" />
-                            <p className="font-bold text-sm">Payment page opened in a new tab</p>
-                            <p className="text-xs text-muted-foreground mt-1">Complete the payment there, then click <strong>Verify Payment</strong> below.</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Payment Reference</Label>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Input value={verifyRef} onChange={e => setVerifyRef(e.target.value)} placeholder="Auto-filled from payment" className="font-mono text-xs" data-testid="input-verify-ref" />
-                              <button onClick={() => { navigator.clipboard.writeText(verifyRef); toast({ title: "Copied" }); }} className="p-2 rounded-lg hover:bg-muted transition-colors shrink-0">
-                                <Copy className="w-4 h-4 text-muted-foreground" />
-                              </button>
-                            </div>
-                          </div>
-                          <Button className="w-full h-12 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold"
-                            onClick={() => verifyMutation.mutate()}
-                            disabled={verifyMutation.isPending || !(verifyRef.trim() || pendingRef)}
-                            data-testid="btn-verify-payment">
-                            {verifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                            {verifyMutation.isPending ? "Verifying…" : "Verify Payment"}
-                          </Button>
-                          <button onClick={() => { setPendingRef(""); setVerifyRef(""); setFundStep("amount"); }} className="text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-center">
-                            ← Start a new payment
-                          </button>
-                        </div>
-                      )}
+                        ))}
+                      </div>
+                      <div>
+                        <Label htmlFor="fund-amount">Amount (USD)</Label>
+                        <Input id="fund-amount" type="number" min={1} step={0.01} placeholder="e.g. 10.00"
+                          value={fundAmount} onChange={e => setFundAmount(e.target.value)}
+                          className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
+                        {parseFloat(fundAmount) > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            ≈ ₦{(parseFloat(fundAmount) * 1480).toLocaleString()} NGN &nbsp;·&nbsp; {formatAmount(parseFloat(fundAmount))} {rateLabel()}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
+                        <Shield className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <p className="text-xs text-emerald-800 dark:text-emerald-200">
+                          Secured by <strong>Squad by GTco</strong> — pay with card, bank transfer, USSD or instant bank debit. No redirect needed.
+                        </p>
+                      </div>
+                      <Button className="w-full h-12 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold"
+                        onClick={openSquadModal}
+                        disabled={squadLoading || !fundAmount || parseFloat(fundAmount) < 1}
+                        data-testid="btn-pay-squad">
+                        {squadLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CreditCard className="w-4 h-4 mr-2" />}
+                        {squadLoading ? "Opening secure checkout…" : `Pay ${parseFloat(fundAmount) > 0 ? `$${parseFloat(fundAmount).toFixed(2)}` : "Now"}`}
+                      </Button>
                     </div>
                   )}
 
@@ -621,8 +636,8 @@ export default function WalletPage() {
               ) : deposits.map(d => (
                 <div key={d.id} className="flex items-center justify-between bg-card rounded-2xl px-4 py-3 border">
                   <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${d.walletType === "paystack" ? "bg-blue-50 dark:bg-blue-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
-                      {d.walletType === "paystack" ? <CreditCard className="w-4 h-4 text-blue-600" /> : <Coins className="w-4 h-4 text-amber-600" />}
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${(d.walletType === "squad" || d.walletType === "paystack") ? "bg-blue-50 dark:bg-blue-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
+                      {(d.walletType === "squad" || d.walletType === "paystack") ? <CreditCard className="w-4 h-4 text-blue-600" /> : <Coins className="w-4 h-4 text-amber-600" />}
                     </div>
                     <div>
                       <p className="font-semibold text-sm">${parseFloat(d.amountUsd).toFixed(2)}</p>

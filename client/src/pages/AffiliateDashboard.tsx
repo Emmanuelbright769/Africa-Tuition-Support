@@ -139,25 +139,17 @@ export default function AffiliateDashboard() {
     } catch { return null; }
   });
   const [ukNow, setUkNow] = useState(() => new Date());
+  // Guard ref: declared here (with all other refs/state) so it is initialized before any function references it
+  const botCompletingRef = useRef(false);
+
   const botActive = botActivatedAt !== null && (Date.now() - botActivatedAt) < 12 * 3600 * 1000;
   const botMinsRemaining = botActivatedAt ? Math.max(0, Math.floor((botActivatedAt + 12 * 3600000 - Date.now()) / 60000)) : 0;
   const botHoursLeft = Math.floor(botMinsRemaining / 60);
   const botMinsLeft = botMinsRemaining % 60;
 
-  // Activate bot
-  const activateBot = () => {
-    const now = Date.now();
-    setBotActivatedAt(now);
-    try { localStorage.setItem("tsia_bot_activated_at", String(now)); } catch {}
-    toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It will auto-deactivate in 12 hours and credit your 2% earnings.", className: "border-green-500" });
-  };
-
-  // Guard against duplicate completes running at the same time
-  const botCompletingRef = useRef(false);
-
   // Complete a bot session — credits proportional earnings based on actual trading hours
   const completeBotSession = async (isAutoOff: boolean, overrideActivatedAt?: number) => {
-    if (botCompletingRef.current) return; // prevent double-fire
+    if (botCompletingRef.current) return;
     botCompletingRef.current = true;
     const sessionStart = overrideActivatedAt ?? botActivatedAt;
     setBotActivatedAt(null);
@@ -188,19 +180,29 @@ export default function AffiliateDashboard() {
     }
   };
 
+  // Activate bot
+  const activateBot = () => {
+    const now = Date.now();
+    setBotActivatedAt(now);
+    try { localStorage.setItem("tsia_bot_activated_at", String(now)); } catch {}
+    toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It will auto-deactivate in 12 hours and credit your 2% earnings.", className: "border-green-500" });
+  };
+
   const deactivateBot = () => completeBotSession(false);
 
-  // On mount: if bot was running but the session already expired while the user was away, complete it immediately
+  // On mount: if a previous session expired while the user was away, settle it immediately
   useEffect(() => {
+    let cancelled = false;
     const stored = localStorage.getItem("tsia_bot_activated_at");
     if (!stored) return;
     const startedAt = parseInt(stored, 10);
     if (Number.isFinite(startedAt) && (Date.now() - startedAt) >= 12 * 3600 * 1000) {
-      // Session has already expired — settle it right now with the original start time
-      completeBotSession(true, startedAt);
+      // Delay by one tick so all component state is fully committed before calling async work
+      setTimeout(() => { if (!cancelled) completeBotSession(true, startedAt); }, 0);
     }
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount only
+  }, []);
 
   // Auto-deactivate bot + 30-min warning clock
   useEffect(() => {

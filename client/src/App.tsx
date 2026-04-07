@@ -26,22 +26,37 @@ import TermsAndConditions from "@/pages/TermsAndConditions";
 import WalletPage from "@/pages/WalletPage";
 import { AiAssistant } from "@/components/AiAssistant";
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null; componentStack: string | null }
+> {
   constructor(props: { children: ReactNode }) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, componentStack: null };
   }
   static getDerivedStateFromError(error: Error) {
     return { error };
+  }
+  componentDidCatch(error: Error, info: { componentStack: string }) {
+    this.setState({ componentStack: info.componentStack });
+    console.error("[ErrorBoundary] Crash:", error.message, "\nComponent stack:", info.componentStack, "\nError stack:", error.stack);
   }
   render() {
     if (this.state.error) {
       return (
         <div style={{ padding: 40, fontFamily: "monospace", background: "#1a1a2e", color: "#e94560", minHeight: "100vh" }}>
           <h2 style={{ fontSize: 22, marginBottom: 16, color: "#f5a623" }}>App Crashed — Runtime Error</h2>
-          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", background: "#16213e", padding: 20, borderRadius: 8, color: "#e0e0e0" }}>
-            {this.state.error.message}{"\n\n"}{this.state.error.stack}
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", background: "#16213e", padding: 20, borderRadius: 8, color: "#e0e0e0", fontSize: 12 }}>
+            {this.state.error.message}{"\n\n"}
+            {this.state.componentStack ? `Component Stack:${this.state.componentStack}\n\n` : ""}
+            {this.state.error.stack}
           </pre>
+          <button
+            onClick={() => { this.setState({ error: null, componentStack: null }); window.location.reload(); }}
+            style={{ marginTop: 24, padding: "10px 24px", background: "#f5a623", color: "#1a1a2e", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 14 }}
+          >
+            Reload App
+          </button>
         </div>
       );
     }

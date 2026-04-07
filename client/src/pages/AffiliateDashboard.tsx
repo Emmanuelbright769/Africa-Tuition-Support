@@ -603,21 +603,6 @@ export default function AffiliateDashboard() {
             {/* ── OVERVIEW ── */}
             {activeSection === "overview" && (
               <>
-                {/* Wallet gate banner */}
-                {!walletActivated && (
-                  <motion.div variants={itemVariants} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <div className="w-10 h-10 bg-amber-100 dark:bg-amber-800/50 rounded-full flex items-center justify-center shrink-0">
-                      <Wallet className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA Personal Wallet with a minimum of <strong>$5</strong> to access trade markets, referral commissions, e-commerce, loans, and all other platform services.</p>
-                    </div>
-                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate-affiliate">
-                      Fund Wallet
-                    </Button>
-                  </motion.div>
-                )}
                 <motion.div variants={itemVariants} className="bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-500 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full blur-3xl opacity-10 -mr-20 -mt-20 pointer-events-none"></div>
                   <div className="relative z-10">
@@ -631,6 +616,22 @@ export default function AffiliateDashboard() {
                     <p className="text-amber-100 text-sm mb-4">Your affiliate account is active. Share your code and start earning.</p>
                   </div>
                 </motion.div>
+
+                {/* Wallet gate banner — shown below greeting when wallet not yet activated */}
+                {!walletActivated && (
+                  <motion.div variants={itemVariants} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="w-10 h-10 bg-amber-100 dark:bg-amber-800/50 rounded-full flex items-center justify-center shrink-0">
+                      <Wallet className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA Personal Wallet with a minimum of <strong>$5</strong> to access all platform services.</p>
+                    </div>
+                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate-affiliate">
+                      Fund Wallet
+                    </Button>
+                  </motion.div>
+                )}
 
                 {/* Stats */}
                 <div className="grid sm:grid-cols-3 gap-5">

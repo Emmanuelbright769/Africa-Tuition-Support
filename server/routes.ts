@@ -1459,16 +1459,36 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Called by the frontend when the bot session completes (12h elapsed) — credits 2% of balance
+  // Called by the frontend when the bot session ends — credits proportional earnings based on actual trading hours
   app.post("/api/trade/bot/complete", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      // activatedAt is the timestamp (ms) when the bot was started
+      const { activatedAt } = req.body as { activatedAt?: number };
+
       const wallet = await storage.getOrCreateTradeWallet(userId);
       const balance = parseFloat(wallet.tradeBalance);
       if (balance <= 0) return res.status(400).json({ message: "No balance to earn from." });
-      const earning = parseFloat((balance * 0.02).toFixed(6)); // 2% daily return
-      if (earning <= 0) return res.status(400).json({ message: "Earning too small." });
+
+      // Compute proportional earning: max 2% at 12h, prorated for shorter sessions
+      const BOT_MAX_MS      = 12 * 3600 * 1000; // 12 hours in ms
+      const BOT_FULL_RATE   = 0.02;              // 2% for a full 12-hour session
+      let elapsedMs = BOT_MAX_MS;                // default to full session if no timestamp sent
+      if (activatedAt && Number.isFinite(activatedAt)) {
+        elapsedMs = Math.min(Date.now() - activatedAt, BOT_MAX_MS);
+        elapsedMs = Math.max(elapsedMs, 0);
+      }
+      const fraction = elapsedMs / BOT_MAX_MS;           // 0.0 – 1.0
+      const rate     = BOT_FULL_RATE * fraction;          // proportional rate
+      const earning  = parseFloat((balance * rate).toFixed(6));
+
+      const elapsedHours   = (elapsedMs / 3600000).toFixed(1);
+      const ratePercent    = (rate * 100).toFixed(4);
+
+      if (earning <= 0) return res.status(400).json({ message: "Earning too small to credit." });
+
       await storage.createTradeTransaction({
         userId,
         type: "bot_earning",
@@ -1480,15 +1500,15 @@ export async function registerRoutes(
         netAmount: earning.toFixed(6),
         txHash: null,
         status: "completed",
-        note: `Bot session completed — 2% return on $${balance.toFixed(2)}`,
+        note: `Bot session: ${elapsedHours}h traded → ${ratePercent}% return on $${balance.toFixed(2)}`,
       });
       const updatedWallet = await storage.creditBotEarnings(userId, earning.toFixed(6));
       await storage.createNotification({
         userId,
         type: "trade",
         title: "Bot Session Complete — Earnings Credited",
-        message: `Your 12-hour bot session has ended. $${earning.toFixed(2)} (2% daily return) has been added to your Trade Wallet.`,
-        data: { earning, newBalance: updatedWallet.tradeBalance },
+        message: `Your trading bot session (${elapsedHours}h) has ended. $${earning.toFixed(4)} (${ratePercent}% return) has been added to your Trade Wallet.`,
+        data: { earning, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance },
         isRead: false,
       });
       storage.getUser(userId).then(u => {
@@ -1496,6 +1516,8 @@ export async function registerRoutes(
       });
       res.json({
         earning: earning.toFixed(6),
+        elapsedHours,
+        ratePercent,
         newBalance: updatedWallet.tradeBalance,
         totalBotEarnings: updatedWallet.totalBotEarnings,
       });

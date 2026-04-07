@@ -152,21 +152,30 @@ export default function AffiliateDashboard() {
     toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It will auto-deactivate in 12 hours and credit your 2% earnings.", className: "border-green-500" });
   };
 
-  // Complete a bot session — credits 2% to wallet, then clears state
-  const completeBotSession = async (isAutoOff: boolean) => {
+  // Guard against duplicate completes running at the same time
+  const botCompletingRef = useRef(false);
+
+  // Complete a bot session — credits proportional earnings based on actual trading hours
+  const completeBotSession = async (isAutoOff: boolean, overrideActivatedAt?: number) => {
+    if (botCompletingRef.current) return; // prevent double-fire
+    botCompletingRef.current = true;
+    const sessionStart = overrideActivatedAt ?? botActivatedAt;
     setBotActivatedAt(null);
     try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
     try {
-      const r = await apiRequest("POST", "/api/trade/bot/complete");
+      const r = await apiRequest("POST", "/api/trade/bot/complete", { activatedAt: sessionStart });
       if (r.ok) {
         const data = await r.json();
         queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trade/transactions"] });
+        const earnStr = `$${parseFloat(data.earning).toFixed(4)}`;
+        const pct     = data.ratePercent ? `${data.ratePercent}%` : "2%";
+        const hrs     = data.elapsedHours ? `${data.elapsedHours}h` : "12h";
         toast({
           title: isAutoOff ? "Bot Session Complete — Earnings Credited!" : "Bot Stopped",
           description: isAutoOff
-            ? `$${parseFloat(data.earning).toFixed(2)} (2% return) has been added to your Trade Wallet.`
-            : `Session ended. Your updated balance is $${parseFloat(data.newBalance).toFixed(2)}.`,
+            ? `${earnStr} (${pct} for ${hrs} of trading) has been added to your Trade Wallet.`
+            : `Session ended after ${hrs}. ${earnStr} (${pct}) credited to your Trade Wallet.`,
           className: "border-tsia-green",
         });
       } else {
@@ -174,10 +183,24 @@ export default function AffiliateDashboard() {
       }
     } catch {
       if (isAutoOff) toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours.", variant: "destructive" });
+    } finally {
+      botCompletingRef.current = false;
     }
   };
 
   const deactivateBot = () => completeBotSession(false);
+
+  // On mount: if bot was running but the session already expired while the user was away, complete it immediately
+  useEffect(() => {
+    const stored = localStorage.getItem("tsia_bot_activated_at");
+    if (!stored) return;
+    const startedAt = parseInt(stored, 10);
+    if (Number.isFinite(startedAt) && (Date.now() - startedAt) >= 12 * 3600 * 1000) {
+      // Session has already expired — settle it right now with the original start time
+      completeBotSession(true, startedAt);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount only
 
   // Auto-deactivate bot + 30-min warning clock
   useEffect(() => {
@@ -186,7 +209,7 @@ export default function AffiliateDashboard() {
       setUkNow(now);
       // Auto-off after 12 h
       if (botActivatedAt && (Date.now() - botActivatedAt) >= 12 * 3600 * 1000) {
-        completeBotSession(true);
+        completeBotSession(true, botActivatedAt);
       }
       // 30-min pre-1PM UK warning
       const ukHour = parseInt(now.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));

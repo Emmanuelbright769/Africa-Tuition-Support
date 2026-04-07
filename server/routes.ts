@@ -1552,12 +1552,12 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const fund = await storage.getTradeReserveFund();
 
-      // Aggregate the $2 minimum balance locked across all active user wallets
+      // Aggregate the $2 minimum balance locked across activated wallets only
       const floorResult = await db.execute(sql`
         SELECT
-          COUNT(*) FILTER (WHERE CAST(balance AS numeric) >= 2) AS wallets_at_min,
-          COUNT(*) AS total_wallets,
-          COALESCE(SUM(LEAST(CAST(balance AS numeric), 2)), 0) AS floor_reserve
+          COUNT(*) FILTER (WHERE activated = true AND CAST(balance AS numeric) >= 2) AS wallets_at_min,
+          COUNT(*) FILTER (WHERE activated = true) AS total_wallets,
+          COALESCE(SUM(LEAST(CAST(balance AS numeric), 2)) FILTER (WHERE activated = true), 0) AS floor_reserve
         FROM wallets
       `);
       const floorRow = (floorResult.rows[0] as any) ?? {};

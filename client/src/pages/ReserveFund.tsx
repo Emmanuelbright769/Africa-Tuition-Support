@@ -241,7 +241,7 @@ export default function ReserveFund() {
               <div className="w-px h-8 bg-white/20" />
               <div>
                 <p className="text-white/40 text-[10px] uppercase tracking-wide">Wallet Floor</p>
-                <p className="text-emerald-300 font-bold text-sm">${minPerWallet} × {totalWallets} wallets</p>
+                <p className="text-emerald-300 font-bold text-sm">${isLoading ? "—" : floorReserve.toFixed(2)}</p>
               </div>
               <div className="w-px h-8 bg-white/20" />
               <div>

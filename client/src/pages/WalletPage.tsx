@@ -641,7 +641,9 @@ export default function WalletPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-sm">${parseFloat(d.amountUsd).toFixed(2)}</p>
-                      <p className="text-[10px] text-muted-foreground">{d.walletType?.toUpperCase()} · {new Date(d.createdAt).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {d.walletType === "squad" ? "Squad by GTco" : d.walletType === "paystack" ? "Card / Bank" : d.walletType?.toUpperCase()} · {new Date(d.createdAt).toLocaleDateString()}
+                      </p>
                     </div>
                   </div>
                   {statusBadge(d.status)}

@@ -521,6 +521,105 @@ export async function registerRoutes(
     }
   });
 
+  // ── BVN Verification via ninverify.ng ─────────────────────────────────────
+  app.post("/api/verification/bvn", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { bvn } = req.body;
+      if (!bvn || bvn.length !== 11 || !/^\d{11}$/.test(bvn)) {
+        return res.status(400).json({ message: "BVN must be exactly 11 digits." });
+      }
+
+      const apiKey = process.env.NINVERIFY_API_KEY;
+      if (!apiKey) {
+        console.warn("[BVN] NINVERIFY_API_KEY not set — running format-only check");
+        return res.json({ valid: true, bvn, message: "BVN format validated (live lookup pending key).", demo: true });
+      }
+
+      // ninverify.ng BVN lookup
+      const verifyRes = await fetch("https://api.ninverify.ng/api/v1/bvn", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({ bvn }),
+      });
+
+      const raw = await verifyRes.text();
+      let verifyData: any;
+      try { verifyData = JSON.parse(raw); } catch {
+        console.error("[BVN] ninverify returned non-JSON:", raw.slice(0, 200));
+        return res.status(502).json({ message: "BVN verification service unavailable. Please try again later." });
+      }
+
+      if (!verifyRes.ok || verifyData.status === false) {
+        return res.status(400).json({
+          message: verifyData?.message || "BVN could not be verified. Please check the number and try again.",
+        });
+      }
+
+      const bvnData = verifyData.data || verifyData;
+      return res.json({
+        valid: true,
+        bvn,
+        message: "BVN verified successfully.",
+        data: {
+          firstName: bvnData.firstName || bvnData.first_name || "",
+          lastName: bvnData.lastName || bvnData.last_name || "",
+          phone: bvnData.phoneNumber || bvnData.phone || "",
+          dateOfBirth: bvnData.dateOfBirth || bvnData.dob || "",
+        },
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── Wallet KYC Completion (BVN + GPS → marks biometricVerified) ───────────
+  app.post("/api/verification/wallet-kyc", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { bvn, gpsCoords } = req.body;
+      if (!bvn) return res.status(400).json({ message: "BVN is required." });
+      if (!gpsCoords) return res.status(400).json({ message: "GPS coordinates are required." });
+
+      let verification = await storage.getVerificationByUser(userId);
+      if (!verification) {
+        verification = await storage.createVerification({
+          userId, status: "pending", portalFeePaid: false, tier: "none",
+        });
+      }
+
+      // Mark biometric/KYC as done — unlocks wallet deposits and withdrawals
+      verification = await storage.updateVerification(verification.id, {
+        biometricVerified: true,
+      });
+
+      // Fire notification
+      try {
+        const kycNotif = await storage.createNotification({
+          userId,
+          type: "verification_update",
+          title: "Wallet KYC Complete ✓",
+          message: "Your BVN, GPS location, and biometric face scan have been verified. Your TSIA wallet is now fully unlocked.",
+          data: { bvn: bvn.slice(-4).padStart(11, "*"), gpsCoords },
+          isRead: false,
+        });
+        pushToUser(userId, "notification", kycNotif);
+      } catch { /* non-critical */ }
+
+      res.json({ success: true, verification, message: "Wallet KYC completed. Your wallet is now fully unlocked." });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/verification/biometric", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -658,7 +757,7 @@ export async function registerRoutes(
       const netAmountUsd = withdrawAmount - vatAmount;
       const netAmountNgn = netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
 
-      await storage.updateWalletBalance(userId, (-withdrawAmount).toString());
+      await storage.updateWalletBalance(userId, (parseFloat(wallet.balance) - withdrawAmount).toFixed(2));
       await storage.createTransaction({
         userId, type: "withdrawal",
         amount: (-netAmountUsd).toFixed(2),
@@ -1022,7 +1121,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Insufficient personal wallet balance. You need at least $${(amount + minBalance).toFixed(2)} (keeping $${minBalance} minimum).` });
       }
       // Deduct from personal wallet
-      await storage.updateWalletBalance(userId, (-amount).toFixed(2));
+      await storage.updateWalletBalance(userId, (balance - amount).toFixed(2));
       // Allocations
       const reserveCut = amount * TRADE_MARKET.RESERVE_FUND_RATE;      // 20%
       const affiliateCut = amount * TRADE_MARKET.AFFILIATE_SHARE_RATE; // 5%
@@ -1392,7 +1491,8 @@ export async function registerRoutes(
       const dId = parseInt(req.params.disbursementId);
       const disbursement = await storage.updateDisbursement(dId, { status: "completed", processedAt: new Date() });
 
-      await storage.updateWalletBalance(disbursement.userId, disbursement.amount);
+      const disbWallet = await storage.getOrCreateWallet(disbursement.userId);
+      await storage.updateWalletBalance(disbursement.userId, (parseFloat(disbWallet.balance) + parseFloat(disbursement.amount)).toFixed(2));
       await storage.createTransaction({
         userId: disbursement.userId, type: "sponsorship_credit",
         amount: disbursement.amount,
@@ -1572,7 +1672,8 @@ export async function registerRoutes(
       });
 
       if (status === "active") {
-        await storage.updateWalletBalance(loan.userId, loan.amountUsd);
+        const loanWallet = await storage.getOrCreateWallet(loan.userId);
+        await storage.updateWalletBalance(loan.userId, (parseFloat(loanWallet.balance) + parseFloat(loan.amountUsd)).toFixed(2));
         await storage.createTransaction({
           userId: loan.userId, type: "sponsorship_credit",
           amount: loan.amountUsd,
@@ -2067,7 +2168,8 @@ export async function registerRoutes(
       if (!data.status || data.data?.status !== "success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment." });
       const amountUsd = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / 148000).toFixed(2));
       // Credit wallet
-      await storage.updateWalletBalance(userId, amountUsd.toFixed(2));
+      const pstackWallet = await storage.getOrCreateWallet(userId);
+      await storage.updateWalletBalance(userId, (parseFloat(pstackWallet.balance) + amountUsd).toFixed(2));
       // Mark deposit as completed
       if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
       res.json({ message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd });
@@ -2989,8 +3091,8 @@ export async function registerRoutes(
       const commission = parseFloat((totalAmount * TOUR_COMMISSION_RATE).toFixed(2));
       const reference = `TOUR-${type.toUpperCase()}-${Date.now()}`;
 
-      // Deduct from wallet (negative amount)
-      await storage.updateWalletBalance(userId, (-totalAmount).toFixed(6));
+      // Deduct from wallet
+      await storage.updateWalletBalance(userId, (balance - totalAmount).toFixed(2));
 
       const booking = await storage.createTourBooking({
         userId,

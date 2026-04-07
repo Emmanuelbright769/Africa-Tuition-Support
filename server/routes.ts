@@ -920,37 +920,108 @@ export async function registerRoutes(
     res.json({ ...wallet, balanceNgn: balanceNgn.toFixed(2) });
   });
 
+  // ── Nigerian bank account lookup via Squad ───────────────────────────────
+  app.post("/api/bank/lookup", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { bank_code, account_number } = req.body;
+      if (!bank_code || !account_number) return res.status(400).json({ message: "bank_code and account_number required" });
+      const secretKey = process.env.SQUAD_SECRET_KEY;
+      const r = await fetch("https://api.squadco.com/bank/account/lookup", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ bank_code, account_number }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await r.json() as any;
+      if (data.success) {
+        res.json({ success: true, accountName: data.data?.account_name ?? data.data?.AccountName });
+      } else {
+        res.status(400).json({ message: data.message ?? "Account lookup failed — check details" });
+      }
+    } catch (e: any) { res.status(500).json({ message: e.message ?? "Bank lookup error" }); }
+  });
+
   app.post("/api/wallet/withdraw", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { amount } = req.body;
+      const { amount, bankCode, accountNumber, accountName } = req.body;
+      if (!bankCode || !accountNumber || !accountName) {
+        return res.status(400).json({ message: "Bank details required: bankCode, accountNumber, accountName" });
+      }
+
       const wallet = await storage.getOrCreateWallet(userId);
       const withdrawAmount = parseFloat(amount);
+      const MIN_BALANCE = 2; // always keep $2 in wallet
       if (withdrawAmount <= 0 || withdrawAmount > parseFloat(wallet.balance)) {
         return res.status(400).json({ message: "Insufficient balance" });
+      }
+      if (parseFloat(wallet.balance) - withdrawAmount < MIN_BALANCE) {
+        return res.status(400).json({ message: `You must keep a minimum of $${MIN_BALANCE} in your wallet` });
       }
 
       const vatAmount = withdrawAmount * 0.075;
       const netAmountUsd = withdrawAmount - vatAmount;
       const netAmountNgn = netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
+      const transferRef = `TSIA-WD-${userId}-${Date.now()}`;
 
+      // ── Attempt Squad Transfer (payout to Nigerian bank) ──────────────────
+      const secretKey = process.env.SQUAD_SECRET_KEY;
+      let squadSuccess = false;
+      let squadMsg = "";
+      try {
+        const squadRes = await fetch("https://api.squadco.com/payout/initiate", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transaction_reference: transferRef,
+            amount: Math.round(netAmountNgn), // Squad Transfer amount in NGN (naira)
+            bank_code: bankCode,
+            account_number: accountNumber,
+            account_name: accountName,
+            currency_id: "NGN",
+            narration: `TSIA Wallet Withdrawal | Ref: ${transferRef}`,
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const squadData = await squadRes.json() as any;
+        if (squadData.success) {
+          squadSuccess = true;
+        } else {
+          squadMsg = squadData.message ?? "Squad transfer failed";
+        }
+      } catch (fetchErr: any) {
+        squadMsg = fetchErr.message ?? "Network error during transfer";
+      }
+
+      if (!squadSuccess) {
+        return res.status(502).json({ message: `Bank transfer failed: ${squadMsg}. Please try again or contact support.` });
+      }
+
+      // ── Deduct wallet and record transaction ──────────────────────────────
       await storage.updateWalletBalance(userId, (parseFloat(wallet.balance) - withdrawAmount).toFixed(2));
       await storage.createTransaction({
         userId, type: "withdrawal",
         amount: (-withdrawAmount).toFixed(2),
         fee: vatAmount.toFixed(2),
         paymentMethod: "bank_transfer",
-        description: `Withdrawal $${netAmountUsd.toFixed(2)} net (₦${netAmountNgn.toLocaleString()}) — 7.5% VAT: $${vatAmount.toFixed(2)}`,
+        description: `Withdrawal ₦${Math.round(netAmountNgn).toLocaleString()} to ${accountName} (${accountNumber}) — 7.5% VAT: $${vatAmount.toFixed(2)} | Ref: ${transferRef}`,
       });
+
+      const user = await storage.getUser(userId);
+      const wdNotif = await storage.createNotification({ userId, type: "wallet_credit", title: "Withdrawal Initiated ✓", message: `₦${Math.round(netAmountNgn).toLocaleString()} has been sent to ${accountName} (${accountNumber}). Processing within 24h.`, data: { ref: transferRef }, isRead: false });
+      pushToUser(userId, "notification", wdNotif);
 
       const updated = await storage.getOrCreateWallet(userId);
       res.json({
         wallet: updated,
         vatAmount: vatAmount.toFixed(2),
         netAmount: netAmountUsd.toFixed(2),
-        netAmountNgn: netAmountNgn.toFixed(2),
+        netAmountNgn: Math.round(netAmountNgn).toFixed(0),
+        transferRef,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -1883,8 +1954,10 @@ export async function registerRoutes(
       const { balance, note } = req.body;
       const newBal = parseFloat(balance);
       if (isNaN(newBal) || newBal < 0) return res.status(400).json({ message: "Invalid balance amount" });
-      await storage.getOrCreateWallet(targetId);
+      const curWal = await storage.getOrCreateWallet(targetId);
       await storage.updateWalletBalance(targetId, newBal.toFixed(2));
+      // Auto-activate wallet if balance reaches $5 minimum
+      if (!curWal.activated && newBal >= 5) await storage.activateWallet(targetId);
       // Record as admin adjustment transaction
       await storage.createTransaction({ userId: targetId, type: "admin_adjustment", amount: newBal.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin adjustment: ${note}` : "Admin wallet balance adjustment" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Updated", message: `Your TSIA wallet balance has been updated to $${newBal.toFixed(2)} by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
@@ -1907,6 +1980,8 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(targetId);
       const newBal = (parseFloat(wallet.balance) + credit).toFixed(2);
       await storage.updateWalletBalance(targetId, newBal);
+      // Auto-activate wallet if balance now meets $5 minimum
+      if (!wallet.activated && parseFloat(newBal) >= 5) await storage.activateWallet(targetId);
       await storage.createTransaction({ userId: targetId, type: "admin_credit", amount: credit.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin credit: ${note}` : "Admin credit" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Credited ✓", message: `$${credit.toFixed(2)} has been added to your wallet by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
       pushToUser(targetId, "notification", notif);

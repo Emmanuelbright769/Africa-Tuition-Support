@@ -86,6 +86,8 @@ export const wallets = pgTable("wallets", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").notNull().references(() => users.id).unique(),
   balance: decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  activated: boolean("activated").notNull().default(false),
+  activatedAt: timestamp("activated_at"),
 });
 
 export const transactions = pgTable("transactions", {

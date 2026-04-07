@@ -47,6 +47,30 @@ const SERVICE_LABELS: Record<string, string> = {
   betting: "Betting", bank_transfer: "Bank Transfer", education: "Education",
 };
 
+const NG_BANKS = [
+  { code: "044", name: "Access Bank" },
+  { code: "023", name: "Citibank Nigeria" },
+  { code: "050", name: "Ecobank Nigeria" },
+  { code: "070", name: "Fidelity Bank" },
+  { code: "011", name: "First Bank of Nigeria" },
+  { code: "214", name: "FCMB (First City Monument Bank)" },
+  { code: "058", name: "GTBank (Guaranty Trust Bank)" },
+  { code: "301", name: "Jaiz Bank" },
+  { code: "082", name: "Keystone Bank" },
+  { code: "090267", name: "Kuda Bank (MFB)" },
+  { code: "100004", name: "OPay Digital Services" },
+  { code: "076", name: "Polaris Bank" },
+  { code: "221", name: "Stanbic IBTC Bank" },
+  { code: "232", name: "Sterling Bank" },
+  { code: "100033", name: "PalmPay" },
+  { code: "50515", name: "Moniepoint MFB" },
+  { code: "032", name: "Union Bank" },
+  { code: "033", name: "United Bank for Africa (UBA)" },
+  { code: "035", name: "Wema Bank" },
+  { code: "057", name: "Zenith Bank" },
+  { code: "566", name: "VFD Microfinance Bank" },
+];
+
 const fade = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
 export default function WalletPage() {
@@ -78,6 +102,11 @@ export default function WalletPage() {
   const [withdrawOpen, setWithdrawOpen]         = useState(false);
   const [withdrawAmount, setWithdrawAmount]     = useState("");
   const [withdrawTermsAccepted, setWithdrawTermsAccepted] = useState(false);
+  const [wdBankCode, setWdBankCode]             = useState("");
+  const [wdAcctNumber, setWdAcctNumber]         = useState("");
+  const [wdAcctName, setWdAcctName]             = useState("");
+  const [wdLookupLoading, setWdLookupLoading]   = useState(false);
+  const [wdStep, setWdStep]                     = useState<"bank" | "amount">("bank");
 
   // ── History ─────────────────────────────────────────────────────────────
   const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "sent" | "received" | "bills">("ledger");
@@ -221,19 +250,41 @@ export default function WalletPage() {
     onError: (e: any) => toast({ title: "Submission failed", description: e.message, variant: "destructive" }),
   });
 
+  const handleBankLookup = async () => {
+    if (!wdBankCode || wdAcctNumber.length !== 10) {
+      toast({ title: "Enter a valid 10-digit account number and select a bank", variant: "destructive" }); return;
+    }
+    setWdLookupLoading(true);
+    setWdAcctName("");
+    try {
+      const res = await apiRequest("POST", "/api/bank/lookup", { bank_code: wdBankCode, account_number: wdAcctNumber });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      setWdAcctName(d.accountName ?? "");
+      toast({ title: "Account verified ✓", description: d.accountName, className: "border-tsia-green" });
+    } catch (e: any) {
+      toast({ title: "Lookup failed", description: e.message, variant: "destructive" });
+    } finally { setWdLookupLoading(false); }
+  };
+
   const withdrawMutation = useMutation({
     mutationFn: async () => {
       const amount = parseFloat(withdrawAmount);
       if (!amount || amount <= 0) throw new Error("Enter a valid amount");
       if (amount > balance) throw new Error("Insufficient balance");
-      const res = await apiRequest("POST", "/api/wallet/withdraw", { amount, bankAccount: "local" });
+      if (!wdBankCode || !wdAcctNumber || !wdAcctName) throw new Error("Verify your bank account first");
+      const res = await apiRequest("POST", "/api/wallet/withdraw", {
+        amount, bankCode: wdBankCode, accountNumber: wdAcctNumber, accountName: wdAcctName,
+      });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
       return d;
     },
-    onSuccess: () => {
-      toast({ title: "Withdrawal request submitted", description: "Your withdrawal will be processed within 24 hours.", className: "border-blue-500" });
-      refetchWallet(); setWithdrawOpen(false); setWithdrawAmount(""); setWithdrawTermsAccepted(false);
+    onSuccess: (d: any) => {
+      toast({ title: "Withdrawal Initiated ✓", description: `₦${parseInt(d.netAmountNgn).toLocaleString()} is being sent to your bank. Processing within 24h.`, className: "border-tsia-green" });
+      refetchWallet();
+      setWithdrawOpen(false); setWithdrawAmount(""); setWithdrawTermsAccepted(false);
+      setWdBankCode(""); setWdAcctNumber(""); setWdAcctName(""); setWdStep("bank");
     },
     onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
@@ -768,50 +819,95 @@ export default function WalletPage() {
       </main>
 
       {/* ── Withdraw Dialog ──────────────────────────────────────────────────── */}
-      <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
+      <Dialog open={withdrawOpen} onOpenChange={open => { setWithdrawOpen(open); if (!open) { setWdStep("bank"); setWdAcctName(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-blue-500" /> Withdraw Funds</DialogTitle>
-            <DialogDescription>7.5% VAT is deducted from all withdrawals per UK tax law.</DialogDescription>
+            <DialogDescription>
+              {wdStep === "bank" ? "Enter your Nigerian bank details to receive funds." : "7.5% VAT is deducted. Funds sent directly via bank transfer."}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label htmlFor="wd-amount">Amount (USD)</Label>
-              <Input id="wd-amount" type="number" min={1} step={0.01} placeholder="0.00"
-                value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
-                className="mt-1 text-lg font-bold" data-testid="input-withdraw-amount" />
-              {parseFloat(withdrawAmount) > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(withdrawAmount))} {rateLabel()}</p>
+
+          {wdStep === "bank" && (
+            <div className="space-y-4 py-2">
+              <div>
+                <Label htmlFor="wd-bank">Bank</Label>
+                <select id="wd-bank" value={wdBankCode} onChange={e => { setWdBankCode(e.target.value); setWdAcctName(""); }}
+                  className="w-full mt-1 border rounded-xl px-3 py-2 bg-background text-sm" data-testid="select-bank">
+                  <option value="">— Select bank —</option>
+                  {NG_BANKS.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="wd-acct">Account Number</Label>
+                <Input id="wd-acct" type="text" inputMode="numeric" maxLength={10} placeholder="10-digit number"
+                  value={wdAcctNumber} onChange={e => { setWdAcctNumber(e.target.value.replace(/\D/g, "")); setWdAcctName(""); }}
+                  className="mt-1" data-testid="input-account-number" />
+              </div>
+              {wdAcctName && (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl px-4 py-3">
+                  <p className="text-xs text-muted-foreground">Verified Account Name</p>
+                  <p className="font-bold text-tsia-green text-sm mt-0.5">{wdAcctName}</p>
+                </div>
               )}
+              <Button className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white font-bold"
+                onClick={handleBankLookup} disabled={wdLookupLoading || !wdBankCode || wdAcctNumber.length !== 10}
+                data-testid="btn-verify-account">
+                {wdLookupLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                {wdAcctName ? "Re-verify Account" : "Verify Account"}
+              </Button>
+              <DialogFooter className="pt-0">
+                <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                  disabled={!wdAcctName} onClick={() => setWdStep("amount")} data-testid="btn-next-to-amount">
+                  Next → Amount
+                </Button>
+              </DialogFooter>
             </div>
-            {parseFloat(withdrawAmount) > 0 && (
-              <div className="bg-muted rounded-2xl p-4 border space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Withdrawal</span><span className="font-medium">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
-                <div className="flex justify-between text-red-500"><span>VAT (7.5%)</span><span>−${vatAmt.toFixed(2)}</span></div>
-                <div className="flex justify-between font-bold border-t pt-2 mt-1">
-                  <span>You Receive</span>
-                  <div className="text-right">
-                    <span className="text-tsia-green">${youGet.toFixed(2)}</span>
-                    <p className="text-[11px] text-muted-foreground font-normal">≈ {formatAmount(youGet)}</p>
+          )}
+
+          {wdStep === "amount" && (
+            <div className="space-y-4 py-2">
+              <div className="bg-muted/60 rounded-2xl px-4 py-3 text-sm">
+                <p className="text-xs text-muted-foreground mb-1">Sending to</p>
+                <p className="font-bold">{wdAcctName}</p>
+                <p className="text-muted-foreground text-xs">{wdAcctNumber} · {NG_BANKS.find(b => b.code === wdBankCode)?.name}</p>
+              </div>
+              <div>
+                <Label htmlFor="wd-amount">Amount (USD)</Label>
+                <Input id="wd-amount" type="number" min={1} step={0.01} placeholder="0.00"
+                  value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
+                  className="mt-1 text-lg font-bold" data-testid="input-withdraw-amount" />
+              </div>
+              {parseFloat(withdrawAmount) > 0 && (
+                <div className="bg-muted rounded-2xl p-4 border space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Withdrawal</span><span className="font-medium">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
+                  <div className="flex justify-between text-red-500"><span>VAT (7.5%)</span><span>−${vatAmt.toFixed(2)}</span></div>
+                  <div className="flex justify-between font-bold border-t pt-2 mt-1">
+                    <span>You Receive</span>
+                    <div className="text-right">
+                      <span className="text-tsia-green">₦{Math.round(youGet * 1280).toLocaleString()}</span>
+                      <p className="text-[11px] text-muted-foreground font-normal">(${youGet.toFixed(2)} @ ₦1,280/$)</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-            {parseFloat(withdrawAmount) > balance && (
-              <p className="text-xs text-red-500 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Insufficient balance (have ${balance.toFixed(2)})</p>
-            )}
-            <TermsCheckbox checked={withdrawTermsAccepted} onCheckedChange={setWithdrawTermsAccepted} context="withdrawal" />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
-              onClick={() => withdrawMutation.mutate()}
-              disabled={withdrawMutation.isPending || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > balance || !withdrawTermsAccepted}
-              data-testid="btn-confirm-withdraw">
-              {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Confirm Withdrawal
-            </Button>
-          </DialogFooter>
+              )}
+              {parseFloat(withdrawAmount) > balance && (
+                <p className="text-xs text-red-500 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Insufficient balance (have ${balance.toFixed(2)})</p>
+              )}
+              <TermsCheckbox checked={withdrawTermsAccepted} onCheckedChange={setWithdrawTermsAccepted} context="withdrawal" />
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setWdStep("bank")}>← Back</Button>
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                  onClick={() => withdrawMutation.mutate()}
+                  disabled={withdrawMutation.isPending || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > balance || !withdrawTermsAccepted}
+                  data-testid="btn-confirm-withdraw">
+                  {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Confirm Withdrawal
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

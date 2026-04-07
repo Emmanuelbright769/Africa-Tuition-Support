@@ -345,35 +345,77 @@ export async function registerRoutes(
     })));
   });
 
-  // ── Helper: call ninverify.ng for any ID type ────────────────────────────
+  // ── Helper: verify any Nigerian ID via Prembly (prembly.com) ─────────────
+  // Prembly supports NIN, BVN, VIN, Driver's License, Passport, and Liveness.
+  // Set PREMBLY_API_KEY and PREMBLY_APP_ID in secrets to enable live lookups.
   async function ninverifyLookup(idType: string, idBody: Record<string, string>): Promise<{ ok: boolean; data: any; message: string }> {
-    const apiKey = process.env.NINVERIFY_API_KEY;
-    if (!apiKey) return { ok: true, data: { firstName: "Verified", lastName: "User" }, message: "demo" };
+    const apiKey = process.env.PREMBLY_API_KEY;
+    const appId  = process.env.PREMBLY_APP_ID || "tsia";
 
+    if (!apiKey) {
+      // No key configured — block verification instead of silently accepting
+      return { ok: false, data: null, message: "Identity verification service is not configured. Please contact support." };
+    }
+
+    // Prembly endpoint map — https://api.prembly.com/identitypass/verification/
     const endpointMap: Record<string, string> = {
-      nin:             "https://api.ninverify.ng/api/v1/nin",
-      bvn:             "https://api.ninverify.ng/api/v1/bvn",
-      voters_card:     "https://api.ninverify.ng/api/v1/vin",
-      drivers_license: "https://api.ninverify.ng/api/v1/driver-license",
-      passport:        "https://api.ninverify.ng/api/v1/passport",
-      national_id:     "https://api.ninverify.ng/api/v1/nin",
+      nin:             "https://api.prembly.com/identitypass/verification/nin",
+      bvn:             "https://api.prembly.com/identitypass/verification/bvn",
+      voters_card:     "https://api.prembly.com/identitypass/verification/vin",
+      drivers_license: "https://api.prembly.com/identitypass/verification/drivers_license",
+      passport:        "https://api.prembly.com/identitypass/verification/passport",
+      national_id:     "https://api.prembly.com/identitypass/verification/nin",
     };
-    const url = endpointMap[idType] || endpointMap.nin;
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(idBody),
-    });
+
+    // Prembly body field map — all use "number" for the primary ID
+    const bodyMap: Record<string, Record<string, string>> = {
+      nin:             { number: idBody.nin             || "" },
+      bvn:             { number: idBody.bvn             || "" },
+      voters_card:     { number: idBody.vin             || "" },
+      drivers_license: { number: idBody.license_no      || "" },
+      passport:        { number: idBody.passport_no     || "", last_name: idBody.last_name || "" },
+      national_id:     { number: idBody.nin             || "" },
+    };
+
+    const url  = endpointMap[idType] || endpointMap.nin;
+    const body = bodyMap[idType]     || { number: Object.values(idBody)[0] || "" };
+
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "x-api-key":     apiKey,
+          "app-id":        appId,
+          "Content-Type":  "application/json",
+          "Accept":        "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch (err: any) {
+      console.error("[KYC] Network error:", err.message);
+      return { ok: false, data: null, message: "Verification service is temporarily unreachable. Please try again shortly." };
+    }
+
     const raw = await resp.text();
     let json: any;
-    try { json = JSON.parse(raw); } catch { return { ok: false, data: null, message: "Verification service returned an invalid response. Please try again." }; }
-    if (!resp.ok || json.status === false) {
-      return { ok: false, data: null, message: json?.message || "ID could not be verified. Check your details and try again." };
+    try { json = JSON.parse(raw); } catch {
+      console.error("[KYC] Non-JSON response:", raw.slice(0, 200));
+      return { ok: false, data: null, message: "Verification service returned an unexpected response. Please try again." };
     }
+
+    console.log(`[KYC] ${idType} → HTTP ${resp.status} | status=${json.status} | detail=${json.detail || json.message || ""}`);
+
+    if (!resp.ok || json.status === false) {
+      const errMsg = json?.detail || json?.message || "ID could not be verified. Please check your details and try again.";
+      return { ok: false, data: null, message: errMsg };
+    }
+
     const d = json.data || json;
     return {
       ok: true,
-      message: json.message || "Verified",
+      message: json.detail || json.message || "Verified",
       data: {
         firstName:   d.firstName  || d.first_name  || d.firstname  || "",
         lastName:    d.lastName   || d.last_name   || d.lastname   || "",
@@ -477,43 +519,61 @@ export async function registerRoutes(
     }
   });
 
-  // ── Face liveness check via ninverify.ng ─────────────────────────────────
+  // ── Face liveness check via Prembly ──────────────────────────────────────
   app.post("/api/verification/face-liveness", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { image } = req.body; // base64 image from webcam
+      const { image } = req.body; // base64 JPEG from webcam
       if (!image) return res.status(400).json({ message: "Image is required." });
 
-      const apiKey = process.env.NINVERIFY_API_KEY;
+      const apiKey = process.env.PREMBLY_API_KEY;
+      const appId  = process.env.PREMBLY_APP_ID || "tsia";
+
       if (!apiKey) {
-        // No API key — accept client-side liveness result (demo mode)
-        return res.json({ live: true, confidence: 100, demo: true, message: "Liveness check passed (demo mode)." });
+        // No API configured — pass liveness locally (client-side checks already ran)
+        console.warn("[LIVENESS] PREMBLY_API_KEY not set — accepting client-side liveness result");
+        return res.json({ live: true, confidence: 0, demo: true, message: "Liveness accepted (API key not yet configured)." });
       }
 
-      const verifyRes = await fetch("https://api.ninverify.ng/api/v1/liveness", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ image }),
-      });
+      let verifyRes: Response;
+      try {
+        verifyRes = await fetch("https://api.prembly.com/identitypass/verification/liveness_check", {
+          method: "POST",
+          headers: {
+            "x-api-key":    apiKey,
+            "app-id":       appId,
+            "Content-Type": "application/json",
+            "Accept":       "application/json",
+          },
+          body: JSON.stringify({ image }),
+          signal: AbortSignal.timeout(20000),
+        });
+      } catch (netErr: any) {
+        console.error("[LIVENESS] Network error:", netErr.message);
+        // Don't block user if liveness API is unreachable — fallback pass
+        return res.json({ live: true, confidence: 0, message: "Liveness service temporarily unavailable; check passed locally." });
+      }
+
       const raw = await verifyRes.text();
       let json: any;
       try { json = JSON.parse(raw); } catch {
         console.error("[LIVENESS] non-JSON response:", raw.slice(0, 200));
-        // Accept result — don't block user if API is down
-        return res.json({ live: true, confidence: 0, message: "Liveness service unavailable; check passed locally." });
+        return res.json({ live: true, confidence: 0, message: "Liveness service returned unexpected response; check passed locally." });
       }
 
+      console.log(`[LIVENESS] HTTP ${verifyRes.status} | status=${json.status} | detail=${json.detail || json.message || ""}`);
+
       if (!verifyRes.ok || json.status === false) {
-        return res.status(400).json({ message: json?.message || "Liveness check failed. Please try again in good lighting." });
+        return res.status(400).json({ message: json?.detail || json?.message || "Face liveness check failed. Please ensure good lighting and try again." });
       }
 
       const d = json.data || json;
       return res.json({
         live: true,
         confidence: d.confidence || d.score || 95,
-        message: json.message || "Liveness verified.",
+        message: json.detail || json.message || "Liveness verified.",
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });

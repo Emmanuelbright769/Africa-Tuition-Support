@@ -801,6 +801,28 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Fee already paid" });
       }
 
+      // ── Batch enrollment check ──────────────────────────────────────────────
+      const BATCH_MAX = 15; // server-side only; never sent to client
+      let batch = await storage.getCurrentBatch();
+
+      if (batch && batch.status === "closed") {
+        // Batch is full — tell user when next batch opens (without revealing batch size)
+        const reopens = batch.nextOpenAt
+          ? new Date(batch.nextOpenAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+          : "soon";
+        return res.status(409).json({
+          code: "BATCH_CLOSED",
+          message: `The current enrollment batch is complete. The next batch opens on ${reopens}. You can still access all other platform features while you wait.`,
+          nextOpenAt: batch.nextOpenAt,
+        });
+      }
+
+      if (!batch) {
+        // First-ever enrollment — create batch 1
+        batch = await storage.createBatch(1);
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
       const portalFee = 3.00;
       const serviceCharge = 0.30;
       const totalCharged = portalFee + serviceCharge;
@@ -817,6 +839,9 @@ export async function registerRoutes(
         amount: `-${totalCharged.toFixed(2)}`,
         description: `Portal verification fee ($${portalFee.toFixed(2)}) + service charge ($${serviceCharge.toFixed(2)}) = $${totalCharged.toFixed(2)} (₦${ngnEquivalent.toLocaleString()})`,
       });
+
+      // Increment batch enrollment (may auto-close batch if max reached)
+      await storage.incrementBatchEnrollment(batch.id, BATCH_MAX);
 
       res.json(verification);
     } catch (e: any) {
@@ -980,6 +1005,30 @@ export async function registerRoutes(
     res.json(plan || null);
   });
 
+  // Batch enrollment status — never exposes max batch size or current count to client
+  app.get("/api/sponsorship/batch-status", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const batch = await storage.getCurrentBatch();
+      if (!batch) {
+        // No batch yet — enrollment is open (will create on first fee payment)
+        return res.json({ status: "open", nextOpenAt: null, enrolled: false });
+      }
+
+      // Check if this user already paid their fee (i.e. enrolled in any batch)
+      const verification = await storage.getVerificationByUser(userId);
+      const enrolled = !!(verification?.portalFeePaid);
+
+      if (batch.status === "open") {
+        return res.json({ status: "open", nextOpenAt: null, enrolled });
+      }
+      // Batch is closed — return when it re-opens
+      return res.json({ status: "closed", nextOpenAt: batch.nextOpenAt, enrolled });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/currency-rates", (_req, res) => {
     res.json(CURRENCY_RATES);
   });
@@ -998,6 +1047,42 @@ export async function registerRoutes(
         joinedAt: r.createdAt,
       })),
     });
+  });
+
+  // Affiliate referral growth stats — includes wallet-activation split
+  app.get("/api/affiliate/referral-stats", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const [allReferrals, activatedReferrals] = await Promise.all([
+        storage.getReferralsByCode(user.affiliateCode || ""),
+        storage.getActivatedReferralsByCode(user.affiliateCode || ""),
+      ]);
+
+      const totalReferred = allReferrals.length;
+      const activeCount   = activatedReferrals.length;
+      const pendingCount  = totalReferred - activeCount;
+
+      // Commission note: affiliates earn from the trade pool & co-affiliate share;
+      // active referrals are those whose wallets are funded ($5+).
+      res.json({
+        totalReferred,
+        activeCount,        // referred users who activated & funded wallet
+        pendingCount,       // referred users who joined but haven't funded yet
+        commissionNote: "Commission is earned once each referred member activates and funds their TSIA wallet.",
+        referrals: allReferrals.map(r => {
+          const isActive = activatedReferrals.some(a => a.id === r.id);
+          return {
+            name: `${r.firstName} ${r.lastName.charAt(0)}.`,
+            joinedAt: r.createdAt,
+            status: isActive ? "active" : "pending",
+          };
+        }),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   app.get("/api/co-affiliate/program", async (req, res) => {
@@ -2319,7 +2404,27 @@ export async function registerRoutes(
       const amountUsd = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / 148000).toFixed(2));
       // Credit wallet
       const pstackWallet = await storage.getOrCreateWallet(userId);
-      await storage.updateWalletBalance(userId, (parseFloat(pstackWallet.balance) + amountUsd).toFixed(2));
+      const psNewBalance = (parseFloat(pstackWallet.balance) + amountUsd).toFixed(2);
+      await storage.updateWalletBalance(userId, psNewBalance);
+      // Activate wallet on first funding ≥ $5
+      if (!pstackWallet.activated && parseFloat(psNewBalance) >= 5) {
+        try {
+          await storage.activateWallet(userId);
+          const psUser = await storage.getUser(userId);
+          if (psUser?.referredBy) {
+            const psReferrer = await storage.getUserByAffiliateCode(psUser.referredBy);
+            if (psReferrer) {
+              const refN = await storage.createNotification({
+                userId: psReferrer.id, type: "referral_activated",
+                title: "Referral Activated 🎉",
+                message: `${psUser.firstName} ${psUser.lastName.charAt(0)}. (one of your referrals) has activated their TSIA wallet. Your referral commission is now active!`,
+                data: { referredUserId: psUser.id }, isRead: false,
+              });
+              pushToUser(psReferrer.id, "notification", refN);
+            }
+          }
+        } catch { /* non-critical */ }
+      }
       // Mark deposit as completed
       if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
       res.json({ message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd });
@@ -2580,6 +2685,30 @@ export async function registerRoutes(
         const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
         await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
       } catch { /* non-critical */ }
+      // ── Wallet activation: activate if balance reaches $5 for the first time ──
+      const WALLET_ACTIVATION_MIN = 5;
+      if (!wallet.activated && parseFloat(newBalance) >= WALLET_ACTIVATION_MIN) {
+        try {
+          await storage.activateWallet(deposit.userId);
+          // If user was referred by an affiliate, notify that affiliate commission is now unlocked
+          const depUserForRef = await storage.getUser(deposit.userId);
+          if (depUserForRef?.referredBy) {
+            const referrer = await storage.getUserByAffiliateCode(depUserForRef.referredBy);
+            if (referrer) {
+              const refNotif = await storage.createNotification({
+                userId: referrer.id,
+                type: "referral_activated",
+                title: "Referral Activated 🎉",
+                message: `${depUserForRef.firstName} ${depUserForRef.lastName.charAt(0)}. (one of your referrals) has activated their TSIA wallet. Your referral commission is now active!`,
+                data: { referredUserId: depUserForRef.id },
+                isRead: false,
+              });
+              pushToUser(referrer.id, "notification", refNotif);
+            }
+          }
+        } catch { /* non-critical */ }
+      }
+      // ─────────────────────────────────────────────────────────────────────────
       // Notify user
       try {
         const depUser = await storage.getUser(deposit.userId);

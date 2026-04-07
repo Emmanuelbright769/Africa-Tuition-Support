@@ -848,6 +848,19 @@ export const insertCohortCodeSchema = createInsertSchema(cohortCodes).omit({ id:
 export type InsertCohortCode = z.infer<typeof insertCohortCodeSchema>;
 export type CohortCode = typeof cohortCodes.$inferSelect;
 
+// ─── SPONSORSHIP BATCHES ─────────────────────────────────────────────────────
+// Tracks enrollment windows. Max per batch is server-side only — never exposed.
+export const sponsorshipBatches = pgTable("sponsorship_batches", {
+  id:              integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  batchNumber:     integer("batch_number").notNull(),
+  status:          text("status").notNull().default("open"),   // "open" | "closed"
+  enrollmentCount: integer("enrollment_count").notNull().default(0),
+  openedAt:        timestamp("opened_at").defaultNow().notNull(),
+  closedAt:        timestamp("closed_at"),
+  nextOpenAt:      timestamp("next_open_at"),                  // closedAt + 30 days
+});
+export type SponsorshipBatch = typeof sponsorshipBatches.$inferSelect;
+
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [
   { id: "binance", name: "Binance", specialty: "Crypto & Futures", rating: 4.9, minDeposit: 10, fee: "0.1%", description: "World's largest crypto exchange with deep liquidity." },

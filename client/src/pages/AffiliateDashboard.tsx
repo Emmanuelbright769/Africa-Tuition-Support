@@ -275,6 +275,8 @@ export default function AffiliateDashboard() {
 
   const { data: personalWalletData, refetch: refetchPersonalWallet } = useQuery<any>({ queryKey: ["/api/wallet"], refetchInterval: 6000 });
   const personalBalance = parseFloat(personalWalletData?.balance ?? "0");
+  const walletActivated = personalWalletData?.activated === true;
+  const { data: referralStats } = useQuery<any>({ queryKey: ["/api/affiliate/referral-stats"], enabled: walletActivated });
 
   // Wallet activation popup — placed AFTER personalWalletData declaration to avoid TDZ
   const [activationPopupOpen, setActivationPopupOpen] = useState(false);
@@ -557,9 +559,42 @@ export default function AffiliateDashboard() {
         <AnimatePresence mode="wait">
           <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
+            {/* ── WALLET GATE ── */}
+            {!walletActivated && activeSection !== "overview" && (
+              <motion.div variants={itemVariants} className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+                <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
+                  <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />
+                </div>
+                <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
+                <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
+                  Fund your TSIA Personal Wallet with a minimum of <strong>$5</strong> to unlock trade markets, referral commissions, e-commerce, loans, and all platform services.
+                </p>
+                <Button size="lg" className="bg-primary text-primary-foreground font-bold px-8" onClick={() => setLocation("/wallet")} data-testid="button-wallet-gate-activate-affiliate">
+                  <Wallet className="w-4 h-4 mr-2" />
+                  Fund & Activate Wallet
+                </Button>
+                <p className="text-xs text-muted-foreground mt-4">Minimum deposit: $5 · Activates immediately on confirmation</p>
+              </motion.div>
+            )}
+
             {/* ── OVERVIEW ── */}
             {activeSection === "overview" && (
               <>
+                {/* Wallet gate banner */}
+                {!walletActivated && (
+                  <motion.div variants={itemVariants} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="w-10 h-10 bg-amber-100 dark:bg-amber-800/50 rounded-full flex items-center justify-center shrink-0">
+                      <Wallet className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA Personal Wallet with a minimum of <strong>$5</strong> to access trade markets, referral commissions, e-commerce, loans, and all other platform services.</p>
+                    </div>
+                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate-affiliate">
+                      Fund Wallet
+                    </Button>
+                  </motion.div>
+                )}
                 <motion.div variants={itemVariants} className="bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-500 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full blur-3xl opacity-10 -mr-20 -mt-20 pointer-events-none"></div>
                   <div className="relative z-10">
@@ -688,7 +723,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── TRADE MARKET ── */}
-            {activeSection === "trade" && (
+            {activeSection === "trade" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Global Trade Market</h2>
@@ -880,13 +915,13 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── WALLET ── */}
-            {activeSection === "wallet" && <WalletSection />}
+            {activeSection === "wallet" && walletActivated && <WalletSection />}
 
             {/* ── QCE ── */}
-            {activeSection === "qce" && <QCESection />}
+            {activeSection === "qce" && walletActivated && <QCESection />}
 
             {/* ── TRUST FUND ── */}
-            {activeSection === "trust_fund" && (
+            {activeSection === "trust_fund" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Co-Affiliate / Initiator Programme</h2>
@@ -1142,14 +1177,14 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── E-COMMERCE ── */}
-            {activeSection === "ecommerce" && (
+            {activeSection === "ecommerce" && walletActivated && (
               <motion.div variants={itemVariants}>
                 <EcommerceSection initialOpenChatId={openChatId} />
               </motion.div>
             )}
 
             {/* ── EMERGENCY RESPONSE ── */}
-            {activeSection === "emergency_response" && (
+            {activeSection === "emergency_response" && walletActivated && (
               <motion.div variants={itemVariants} className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
@@ -1209,14 +1244,14 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── COMMUNITY FORUM ── */}
-            {activeSection === "forum" && (
+            {activeSection === "forum" && walletActivated && (
               <motion.div variants={itemVariants}>
                 <ForumSection userSection="affiliate" />
               </motion.div>
             )}
 
             {/* ── STRATEGIC RESERVE FUND ── */}
-            {activeSection === "reserve_fund" && (
+            {activeSection === "reserve_fund" && walletActivated && (
               <motion.div variants={itemVariants}>
                 <div className="mb-5">
                   <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -1229,14 +1264,14 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── FINTECH HUB ── */}
-            {activeSection === "fintech" && (
+            {activeSection === "fintech" && walletActivated && (
               <motion.div variants={itemVariants}>
                 <FinancialHub />
               </motion.div>
             )}
 
             {/* ── LOAN ── */}
-            {activeSection === "loan" && (
+            {activeSection === "loan" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Business loan</h2>
@@ -1425,7 +1460,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── TENANCY ── */}
-            {activeSection === "tenancy" && (
+            {activeSection === "tenancy" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Tenancy business</h2>
@@ -1514,31 +1549,92 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── REFERRALS ── */}
-            {activeSection === "referrals" && (
+            {activeSection === "referrals" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Your Referrals</h2>
-                  <p className="text-muted-foreground text-sm mb-6">Students who signed up using your referral code.</p>
+                  <h2 className="text-2xl font-bold mb-1">Referral Growth Dashboard</h2>
+                  <p className="text-muted-foreground text-sm mb-6">Track your referred members and commission status.</p>
                 </motion.div>
+
+                {/* Growth stats cards */}
+                <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Card className="border-0 shadow-md bg-gradient-to-br from-tsia-green/10 to-tsia-green/5">
+                    <CardContent className="pt-5 pb-5">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 bg-tsia-green/20 rounded-lg flex items-center justify-center">
+                          <Users className="w-5 h-5 text-tsia-green" />
+                        </div>
+                        <p className="text-sm text-muted-foreground font-medium">Total Referred</p>
+                      </div>
+                      <p className="text-3xl font-bold" data-testid="text-total-referred">{referralStats?.totalReferred ?? referrals.length}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Members who used your code</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-0 shadow-md bg-gradient-to-br from-green-100/80 to-green-50 dark:from-green-900/20 dark:to-green-900/10">
+                    <CardContent className="pt-5 pb-5">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 bg-green-200 dark:bg-green-800/40 rounded-lg flex items-center justify-center">
+                          <CheckCircle2 className="w-5 h-5 text-green-700 dark:text-green-400" />
+                        </div>
+                        <p className="text-sm text-muted-foreground font-medium">Active (Wallet Funded)</p>
+                      </div>
+                      <p className="text-3xl font-bold text-green-700 dark:text-green-400" data-testid="text-active-referrals">{referralStats?.activeCount ?? 0}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Commission unlocked for these</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-0 shadow-md bg-gradient-to-br from-amber-100/80 to-amber-50 dark:from-amber-900/20 dark:to-amber-900/10">
+                    <CardContent className="pt-5 pb-5">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 bg-amber-200 dark:bg-amber-800/40 rounded-lg flex items-center justify-center">
+                          <Clock className="w-5 h-5 text-amber-700 dark:text-amber-400" />
+                        </div>
+                        <p className="text-sm text-muted-foreground font-medium">Pending (Not Yet Funded)</p>
+                      </div>
+                      <p className="text-3xl font-bold text-amber-700 dark:text-amber-400" data-testid="text-pending-referrals">{referralStats?.pendingCount ?? 0}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Commission activates on funding</p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {/* Commission note */}
+                <motion.div variants={itemVariants}>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 flex items-start gap-3">
+                    <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                    <p className="text-sm text-blue-800 dark:text-blue-300">
+                      {referralStats?.commissionNote ?? "Commission is earned once each referred member activates and funds their TSIA wallet."}
+                    </p>
+                  </div>
+                </motion.div>
+
+                {/* Referral list */}
                 <motion.div variants={itemVariants}>
                   <Card className="shadow-md border-0">
                     <CardContent className="pt-6">
-                      {referrals.length === 0 ? (
+                      {(referralStats?.referrals ?? referrals).length === 0 ? (
                         <div className="text-center py-16">
                           <Users className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
                           <p className="text-sm text-muted-foreground font-medium">No referrals yet</p>
-                          <p className="text-xs text-muted-foreground mt-1">Share your referral link to start earning</p>
+                          <p className="text-xs text-muted-foreground mt-1">Share your referral link to start earning commissions</p>
                           <Button className="mt-4" onClick={() => navigate("overview")} variant="outline">Copy your link</Button>
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          {referrals.map((r: any, i: number) => (
+                          {(referralStats?.referrals ?? referrals.map((r: any) => ({ ...r, status: "pending" }))).map((r: any, i: number) => (
                             <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-muted/50 border" data-testid={`row-referral-${i}`}>
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center"><span className="text-sm font-bold text-primary">{r.name?.charAt(0) || "?"}</span></div>
-                                <div><p className="font-medium text-sm">{r.name}</p><p className="text-xs text-muted-foreground">Joined {new Date(r.joinedAt).toLocaleDateString()}</p></div>
+                                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                                  <span className="text-sm font-bold text-primary">{r.name?.charAt(0) || "?"}</span>
+                                </div>
+                                <div>
+                                  <p className="font-medium text-sm">{r.name}</p>
+                                  <p className="text-xs text-muted-foreground">Joined {new Date(r.joinedAt).toLocaleDateString()}</p>
+                                </div>
                               </div>
-                              <Badge variant="outline" className="text-xs">Referred</Badge>
+                              <Badge className={r.status === "active"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"}>
+                                {r.status === "active" ? "Active" : "Pending"}
+                              </Badge>
                             </div>
                           ))}
                         </div>

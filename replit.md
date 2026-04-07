@@ -10,6 +10,13 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - **Routing**: wouter (frontend), Express (backend)
 - **File Uploads**: multer (memory storage → base64 in DB)
 
+## Recent Updates (Session 9)
+- **Wallet Activation Gate**: All platform features (trade, QCE, e-commerce, forum, loans, sponsorship plans, etc.) locked until wallet is funded with ≥$5; `activated` flag on wallets table set via `activateWallet()` storage method triggered from admin deposit confirm and Paystack verify; both StudentDashboard and AffiliateDashboard show gate overlay on locked sections; overview always visible with amber activation banner
+- **Sponsorship Batch System**: New `sponsorship_batches` DB table (created via direct SQL); max 15 students per batch (server-side constant only, never exposed to client); `getCurrentBatch`, `createBatch`, `incrementBatchEnrollment` storage methods; `POST /api/verification/pay-fee` checks batch status before allowing payment — returns `{ code: "BATCH_CLOSED", nextOpenAt }` when full; batch auto-closes and sets `nextOpenAt = closedAt + 30 days` when max reached; `GET /api/sponsorship/batch-status` returns `{ status, nextOpenAt, enrolled }` — never exposes count or limit; Sponsorship Plans section shows "Batch Complete" banner with reopen date when closed
+- **Affiliate Referral Growth Dashboard**: New `GET /api/affiliate/referral-stats` endpoint returns total/active/pending counts + per-referral status; `getActivatedReferralsByCode()` storage method joins wallets table to filter wallet-activated referrals; Referrals section redesigned with 3 stat cards (Total/Active/Pending), commission note banner, and per-referral Active/Pending badges; referralStats query enabled only when wallet activated
+- **Commission gating**: When admin confirms deposit or Paystack verifies payment, if wallet crosses $5 threshold for first time: `activateWallet()` is called + if user was referred, their referrer receives a `referral_activated` in-app notification pushed via SSE
+- **Wallet API**: `/api/wallet` already returns full wallet object including `activated` field; dashboards use `walletData?.activated === true` to derive gate state
+
 ## Recent Updates (Session 8)
 - **WhatsApp-style read ticks**: Chat messages now show single grey ✓ (sent) or double blue ✓✓ (read) in MessageBubble; `isRead` column added to `ecommerce_chat_messages` table; `markChatMessagesRead` storage method + `PATCH /api/chats/:chatId/read` route; auto-marks messages as read when chat is opened
 - **Chat inbox sort**: Conversations now sorted by most recent message time (not creation time); `getUserChats` returns `lastMessageAt` and sorts descending

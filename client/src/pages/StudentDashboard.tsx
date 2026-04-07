@@ -75,6 +75,9 @@ export default function StudentDashboard() {
   const { data: loanLimit, refetch: refetchLoanLimit } = useQuery<any>({ queryKey: ["/api/loans/limit"] });
   const { data: myLoans = [], refetch: refetchMyLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"] });
   const { data: walletData } = useQuery<any>({ queryKey: ["/api/wallet"] });
+  const { data: batchStatus } = useQuery<any>({ queryKey: ["/api/sponsorship/batch-status"] });
+
+  const walletActivated = walletData?.activated === true;
 
   const [activationPopupOpen, setActivationPopupOpen] = useState(false);
   useEffect(() => {
@@ -309,9 +312,47 @@ export default function StudentDashboard() {
             className="space-y-6"
           >
 
+            {/* ── WALLET GATE: blocks all sections except overview when wallet not yet funded ── */}
+            {!walletActivated && activeSection !== "overview" && (
+              <motion.div variants={itemVariants} className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+                <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
+                  <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />
+                </div>
+                <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
+                <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
+                  To access this feature, you need to activate your TSIA Personal Wallet by funding it with a minimum of <strong>$5</strong>. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
+                </p>
+                <Button
+                  size="lg"
+                  className="bg-primary text-primary-foreground font-bold px-8"
+                  onClick={() => setLocation("/wallet")}
+                  data-testid="button-wallet-gate-activate"
+                >
+                  <Wallet className="w-4 h-4 mr-2" />
+                  Fund & Activate Wallet
+                </Button>
+                <p className="text-xs text-muted-foreground mt-4">Minimum deposit: $5 · Activates immediately on confirmation</p>
+              </motion.div>
+            )}
+
             {/* ── OVERVIEW ── */}
             {activeSection === "overview" && (
               <>
+                {/* Wallet gate banner — shown in overview when not yet activated */}
+                {!walletActivated && (
+                  <motion.div variants={itemVariants} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="w-10 h-10 bg-amber-100 dark:bg-amber-800/50 rounded-full flex items-center justify-center shrink-0">
+                      <Wallet className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA Personal Wallet with a minimum of <strong>$5</strong> to access sponsorship, loans, e-commerce, forums, and all other platform services.</p>
+                    </div>
+                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate">
+                      Fund Wallet
+                    </Button>
+                  </motion.div>
+                )}
                 <motion.div variants={itemVariants} className="bg-slate-900 dark:bg-slate-800 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-primary rounded-full blur-3xl opacity-20 -mr-20 -mt-20 pointer-events-none"></div>
                   <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
@@ -446,13 +487,13 @@ export default function StudentDashboard() {
             )}
 
             {/* ── WALLET ── */}
-            {activeSection === "wallet" && <WalletSection />}
+            {activeSection === "wallet" && walletActivated && <WalletSection />}
 
             {/* ── QCE ── */}
-            {activeSection === "qce" && <QCESection />}
+            {activeSection === "qce" && walletActivated && <QCESection />}
 
             {/* ── PLANS ── */}
-            {activeSection === "plans" && (
+            {activeSection === "plans" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Sponsorship Plans</h2>
@@ -460,7 +501,7 @@ export default function StudentDashboard() {
                     const planAge = plan?.createdAt ? Math.floor((Date.now() - new Date(plan.createdAt).getTime()) / 86400000) : 0;
                     const planDaysLeft = plan ? Math.max(0, 365 - planAge) : 0;
                     return (
-                      <p className="text-muted-foreground text-sm mb-6">
+                      <p className="text-muted-foreground text-sm mb-4">
                         {plan && planDaysLeft > 0
                           ? `Active ${plan.planYears}-year plan. You can switch plans in ${planDaysLeft} day(s).`
                           : plan && planDaysLeft === 0
@@ -471,6 +512,20 @@ export default function StudentDashboard() {
                       </p>
                     );
                   })()}
+                  {/* Batch status banner */}
+                  {batchStatus?.status === "closed" && !batchStatus?.enrolled && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 mb-5 flex items-start gap-3">
+                      <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-blue-900 dark:text-blue-200 text-sm">Current Enrollment Batch Complete</p>
+                        <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">
+                          The current enrollment batch is complete. The next batch opens on{" "}
+                          <strong>{batchStatus.nextOpenAt ? new Date(batchStatus.nextOpenAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "a later date"}</strong>.
+                          You can still use all other platform features in the meantime.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
                 <motion.div variants={itemVariants}>
                   <div className="grid sm:grid-cols-3 gap-5">
@@ -515,7 +570,7 @@ export default function StudentDashboard() {
             )}
 
             {/* ── ACTIVITY ── */}
-            {activeSection === "activity" && (
+            {activeSection === "activity" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Activity</h2>
@@ -563,14 +618,14 @@ export default function StudentDashboard() {
             )}
 
             {/* ── E-COMMERCE ── */}
-            {activeSection === "ecommerce" && (
+            {activeSection === "ecommerce" && walletActivated && (
               <motion.div variants={itemVariants}>
                 <EcommerceSection initialOpenChatId={openChatId} />
               </motion.div>
             )}
 
             {/* ── EMERGENCY RESPONSE ── */}
-            {activeSection === "emergency_response" && (
+            {activeSection === "emergency_response" && walletActivated && (
               <motion.div variants={itemVariants} className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
@@ -630,14 +685,14 @@ export default function StudentDashboard() {
             )}
 
             {/* ── COMMUNITY FORUM ── */}
-            {activeSection === "forum" && (
+            {activeSection === "forum" && walletActivated && (
               <motion.div variants={itemVariants}>
                 <ForumSection userSection="student" />
               </motion.div>
             )}
 
             {/* ── STRATEGIC RESERVE FUND ── */}
-            {activeSection === "reserve_fund" && (
+            {activeSection === "reserve_fund" && walletActivated && (
               <motion.div variants={itemVariants}>
                 <div className="mb-5">
                   <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -650,14 +705,14 @@ export default function StudentDashboard() {
             )}
 
             {/* ── FINTECH HUB ── */}
-            {activeSection === "fintech" && (
+            {activeSection === "fintech" && walletActivated && (
               <motion.div variants={itemVariants}>
                 <FinancialHub />
               </motion.div>
             )}
 
             {/* ── STUDENT LOAN ── */}
-            {activeSection === "loan" && (
+            {activeSection === "loan" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Student loan programme</h2>

@@ -11,7 +11,7 @@ import {
   notifications, callSessions, forumTopics, forumPosts,
   qceSavings, qceTransactions,
   priceAlerts, categorySubscriptions,
-  sponsorCohorts, cohortCodes,
+  sponsorCohorts, cohortCodes, sponsorshipBatches,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -44,6 +44,7 @@ import {
   type PriceAlert, type CategorySubscription,
   type SponsorCohort, type InsertSponsorCohort,
   type CohortCode,
+  type SponsorshipBatch,
   TRADE_MARKET, ECOMMERCE, QCE, calculateQceEligibility,
 } from "@shared/schema";
 
@@ -210,6 +211,17 @@ export interface IStorage {
   getSponsorCohortById(id: number): Promise<(SponsorCohort & { codes: CohortCode[] }) | undefined>;
   validateSponsorCode(code: string): Promise<{ valid: boolean; cohortName?: string; reason?: string }>;
   useSponsorCode(code: string, userId: number): Promise<void>;
+
+  // Sponsorship Batches
+  getCurrentBatch(): Promise<SponsorshipBatch | null>;
+  createBatch(batchNumber: number): Promise<SponsorshipBatch>;
+  incrementBatchEnrollment(id: number, maxSize: number): Promise<{ batch: SponsorshipBatch; wasClosed: boolean }>;
+
+  // Wallet activation
+  activateWallet(userId: number): Promise<WalletRecord>;
+
+  // Referral stats (activated vs pending)
+  getActivatedReferralsByCode(affiliateCode: string): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1192,6 +1204,69 @@ export class DatabaseStorage implements IStorage {
           .where(eq(verifications.id, verification.id));
       }
     });
+  }
+
+  // ─── Sponsorship Batches ────────────────────────────────────────────────────
+  async getCurrentBatch(): Promise<SponsorshipBatch | null> {
+    // Return open batch first, then most recent closed batch if none open
+    const [open] = await db.select().from(sponsorshipBatches)
+      .where(eq(sponsorshipBatches.status, "open"))
+      .orderBy(desc(sponsorshipBatches.id))
+      .limit(1);
+    if (open) return open;
+    const [closed] = await db.select().from(sponsorshipBatches)
+      .where(eq(sponsorshipBatches.status, "closed"))
+      .orderBy(desc(sponsorshipBatches.id))
+      .limit(1);
+    return closed ?? null;
+  }
+
+  async createBatch(batchNumber: number): Promise<SponsorshipBatch> {
+    const [batch] = await db.insert(sponsorshipBatches)
+      .values({ batchNumber, status: "open", enrollmentCount: 0, openedAt: new Date() })
+      .returning();
+    return batch;
+  }
+
+  async incrementBatchEnrollment(id: number, maxSize: number): Promise<{ batch: SponsorshipBatch; wasClosed: boolean }> {
+    const [updated] = await db.update(sponsorshipBatches)
+      .set({ enrollmentCount: sql`${sponsorshipBatches.enrollmentCount} + 1` })
+      .where(eq(sponsorshipBatches.id, id))
+      .returning();
+
+    if (updated.enrollmentCount >= maxSize) {
+      const closedAt = new Date();
+      const nextOpenAt = new Date(closedAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const [closed] = await db.update(sponsorshipBatches)
+        .set({ status: "closed", closedAt, nextOpenAt })
+        .where(eq(sponsorshipBatches.id, id))
+        .returning();
+      return { batch: closed, wasClosed: true };
+    }
+    return { batch: updated, wasClosed: false };
+  }
+
+  // ─── Wallet activation ──────────────────────────────────────────────────────
+  async activateWallet(userId: number): Promise<WalletRecord> {
+    const [wallet] = await db.update(wallets)
+      .set({ activated: true, activatedAt: new Date() })
+      .where(and(eq(wallets.userId, userId), eq(wallets.activated, false)))
+      .returning();
+    if (!wallet) {
+      const [existing] = await db.select().from(wallets).where(eq(wallets.userId, userId));
+      return existing;
+    }
+    return wallet;
+  }
+
+  // ─── Referral stats ─────────────────────────────────────────────────────────
+  async getActivatedReferralsByCode(affiliateCode: string): Promise<User[]> {
+    // Returns users referred by this code who have an activated wallet
+    const referred = await db.select({ u: users })
+      .from(users)
+      .innerJoin(wallets, eq(wallets.userId, users.id))
+      .where(and(eq(users.referredBy, affiliateCode), eq(wallets.activated, true)));
+    return referred.map(r => r.u);
   }
 }
 

@@ -15,7 +15,7 @@ import {
   Wallet, FileText, LogOut, ArrowRight, BarChart2, ShoppingBag, Share2,
   ArrowLeftRight, Bell, Landmark, XCircle, AlertTriangle, RefreshCw,
   ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
-  Trash2, Edit, MessageSquare, Coins, PlusCircle
+  Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -85,8 +85,10 @@ const NAV = [
   { id: "ecommerce",     icon: ShoppingBag,    label: "E-commerce" },
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
   { id: "deposits",      icon: Coins,          label: "Deposits" },
+  { id: "reserve",      icon: ShieldCheck,    label: "Str. Reserve" },
+  { id: "trustfunders", icon: Award,          label: "Trust Funders" },
   { id: "messages",     icon: MessageSquare,  label: "Forum Messages" },
-  { id: "notifications", icon: Bell,           label: "Notifications" },
+  { id: "notifications", icon: Bell,          label: "Notifications" },
 ];
 
 // ─── AdminDashboard ───────────────────────────────────────────────────────────
@@ -130,6 +132,9 @@ export default function AdminDashboard() {
   const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade" });
   const { data: allDeposits = [] }         = useQuery({ queryKey: ["/api/admin/wallet-deposits"], enabled: activeTab === "deposits" });
   const { data: allMessages = [] }         = useQuery({ queryKey: ["/api/admin/messages"], enabled: activeTab === "messages" });
+  const { data: reserveFundData }          = useQuery({ queryKey: ["/api/reserve-fund/live"], enabled: activeTab === "reserve" });
+  const { data: reserveProfitData }        = useQuery({ queryKey: ["/api/reserve-fund/commission-profits"], enabled: activeTab === "reserve" });
+  const { data: allTrustFunders = [] }     = useQuery({ queryKey: ["/api/admin/co-affiliates"], enabled: activeTab === "trustfunders" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
   const verifyMutation = useMutation({
@@ -281,6 +286,30 @@ export default function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/wallet-deposits"] });
       toast({ title: "Deposit Deleted", description: "Record removed from the system." });
+    },
+    onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
+  });
+
+  const updateTrustFunderStatusMutation = useMutation({
+    mutationFn: async ({ userId, status }: { userId: number; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/co-affiliate/${userId}/status`, { status });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/co-affiliates"] });
+      toast({ title: "Status Updated", description: "Trust Funder status changed." });
+    },
+    onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
+  });
+
+  const deleteTrustFunderMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/co-affiliate/${userId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/co-affiliates"] });
+      toast({ title: "Trust Funder Deleted", description: "Co-affiliate record removed." });
     },
     onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
   });
@@ -1029,6 +1058,158 @@ export default function AdminDashboard() {
                             </TableCell>
                           </TableRow>
                         ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════ STRATEGIC RESERVE ═══════════════════════════ */}
+            {activeTab === "reserve" && (
+              <motion.div key="reserve" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
+                {/* Balance cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {[
+                    { label: "Trade Reserve Balance", value: fmtUSD((reserveFundData as any)?.totalBalance), icon: ShieldCheck, color: "text-tsia-green" },
+                    { label: "Total Deposited (Trade)", value: fmtUSD((reserveFundData as any)?.totalDeposited), icon: TrendingUp, color: "text-blue-600" },
+                    { label: "Wallet Floor Reserve", value: fmtUSD((reserveFundData as any)?.walletFloorReserve), icon: Wallet, color: "text-purple-600" },
+                    { label: "Combined Reserve", value: fmtUSD((reserveFundData as any)?.combinedReserve), icon: Building2, color: "text-amber-600" },
+                  ].map(s => (
+                    <Card key={s.label} className="border-0 shadow-sm p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <s.icon className={`w-4 h-4 ${s.color}`} />
+                        <p className="text-xs text-slate-500">{s.label}</p>
+                      </div>
+                      <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+                    </Card>
+                  ))}
+                </div>
+                {/* Wallet floor detail */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-tsia-green" /> Wallet Floor Reserve Detail</CardTitle>
+                    <CardDescription>$2 minimum locked in {(reserveFundData as any)?.walletsAtMin ?? 0} of {(reserveFundData as any)?.totalWallets ?? 0} activated wallets</CardDescription>
+                  </CardHeader>
+                  <CardContent className="py-4 px-6">
+                    <div className="flex flex-wrap gap-6 text-sm">
+                      <div><p className="text-xs text-slate-500">Activated Wallets</p><p className="font-bold text-slate-900">{(reserveFundData as any)?.totalWallets ?? 0}</p></div>
+                      <div><p className="text-xs text-slate-500">Wallets at Min</p><p className="font-bold text-slate-900">{(reserveFundData as any)?.walletsAtMin ?? 0}</p></div>
+                      <div><p className="text-xs text-slate-500">Min per Wallet</p><p className="font-bold text-slate-900">${(reserveFundData as any)?.minBalancePerWallet ?? 2}</p></div>
+                      <div><p className="text-xs text-slate-500">Floor Reserve Total</p><p className="font-bold text-tsia-green">{fmtUSD((reserveFundData as any)?.walletFloorReserve)}</p></div>
+                      <div><p className="text-xs text-slate-500">Trade Reserve Rate</p><p className="font-bold text-slate-900">{(reserveFundData as any)?.contributionRate ?? 20}%</p></div>
+                    </div>
+                  </CardContent>
+                </Card>
+                {/* Commission profits */}
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base">Platform Commission Profits</CardTitle>
+                    <CardDescription>E-commerce commissions + withdrawal fees, minus affiliate pool payouts</CardDescription>
+                  </CardHeader>
+                  {(reserveProfitData as any)?.totals && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 border-b bg-slate-50">
+                      {[
+                        { label: "E-com Commissions", value: fmtUSD((reserveProfitData as any).totals.totalEcom), color: "text-blue-600" },
+                        { label: "Withdrawal Fees", value: fmtUSD((reserveProfitData as any).totals.totalFees), color: "text-purple-600" },
+                        { label: "Affiliate Pool Paid", value: fmtUSD((reserveProfitData as any).totals.totalPoolPaid), color: "text-amber-600" },
+                        { label: "Net Profit", value: fmtUSD((reserveProfitData as any).totals.totalNetProfit), color: "text-tsia-green" },
+                      ].map(s => (
+                        <div key={s.label} className="px-6 py-4 border-r last:border-0">
+                          <p className="text-xs text-slate-500">{s.label}</p>
+                          <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Month</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">E-com Commission</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Withdrawal Fees</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Pool Paid Out</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide text-right px-6">Net Profit</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {((reserveProfitData as any)?.chartData ?? []).length === 0 ? (
+                          <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-500">No profit data yet.</TableCell></TableRow>
+                        ) : ((reserveProfitData as any)?.chartData ?? []).map((r: any, i: number) => (
+                          <TableRow key={i} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6 font-medium text-sm">{r.month}</TableCell>
+                            <TableCell className="text-blue-600 font-semibold text-sm">{fmtUSD(r.ecomCommission)}</TableCell>
+                            <TableCell className="text-purple-600 font-semibold text-sm">{fmtUSD(r.withdrawalFees)}</TableCell>
+                            <TableCell className="text-amber-600 text-sm">{fmtUSD(r.affiliatePoolPaid)}</TableCell>
+                            <TableCell className={`text-right px-6 font-bold text-sm ${r.netProfit >= 0 ? "text-tsia-green" : "text-red-500"}`}>{fmtUSD(r.netProfit)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════ TRUST FUNDERS ═══════════════════════════════ */}
+            {activeTab === "trustfunders" && (
+              <motion.div key="trustfunders" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base flex items-center gap-2"><Award className="w-4 h-4 text-amber-500" /> Trust Funders (Co-Affiliates)</CardTitle>
+                    <CardDescription>{(allTrustFunders as any[]).length} registered trust funders — investors backing the affiliate programme</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Name / Email</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Tier</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Invested</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Share %</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Joined</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(allTrustFunders as any[]).length === 0 ? (
+                          <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-500">No trust funders yet.</TableCell></TableRow>
+                        ) : (allTrustFunders as any[]).map((tf: any) => {
+                          const tier = tf.investmentCategory >= 500 ? "Elite" : tf.investmentCategory >= 300 ? "Growth" : "Starter";
+                          const tierColor = tier === "Elite" ? "bg-slate-800 text-white" : tier === "Growth" ? "bg-amber-100 text-amber-800 border-amber-200" : "bg-blue-50 text-blue-700 border-blue-200";
+                          const isActive = tf.status === "active";
+                          return (
+                            <TableRow key={tf.id} className="hover:bg-slate-50/50">
+                              <TableCell className="px-6">
+                                <p className="font-medium text-sm text-slate-900">{tf.userName}</p>
+                                <p className="text-xs text-slate-500">{tf.userEmail}</p>
+                              </TableCell>
+                              <TableCell><Badge variant="outline" className={`text-xs ${tierColor}`}>{tier}</Badge></TableCell>
+                              <TableCell className="font-bold text-sm">{fmtUSD(tf.amountPaid)}</TableCell>
+                              <TableCell className="text-sm font-mono">{parseFloat(tf.sharePercentage).toFixed(4)}%</TableCell>
+                              <TableCell><StatusBadge status={tf.status} /></TableCell>
+                              <TableCell className="text-xs text-slate-500">{fmtDate(tf.createdAt)}</TableCell>
+                              <TableCell className="text-right px-6">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button size="sm" variant="outline" className={`h-7 text-xs ${isActive ? "border-red-300 text-red-600 hover:bg-red-50" : "border-tsia-green/30 text-tsia-green hover:bg-tsia-green/5"}`}
+                                    disabled={updateTrustFunderStatusMutation.isPending}
+                                    onClick={() => updateTrustFunderStatusMutation.mutate({ userId: tf.userId, status: isActive ? "cancelled" : "active" })}
+                                    data-testid={`button-toggle-trustfunder-${tf.id}`}>
+                                    {isActive ? <><ToggleRight className="w-3 h-3 mr-1" /> Cancel</> : <><ToggleLeft className="w-3 h-3 mr-1" /> Activate</>}
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                                    disabled={deleteTrustFunderMutation.isPending}
+                                    onClick={() => { if (window.confirm(`Delete trust funder record for ${tf.userName}? This cannot be undone.`)) deleteTrustFunderMutation.mutate(tf.userId); }}
+                                    data-testid={`button-delete-trustfunder-${tf.id}`}>
+                                    <Trash2 className="w-3 h-3 mr-1" /> Delete
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>

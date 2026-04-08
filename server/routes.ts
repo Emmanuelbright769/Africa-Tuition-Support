@@ -1801,6 +1801,48 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── ADMIN: All Co-Affiliates (Trust Funders) ───────────────────────────────
+  app.get("/api/admin/co-affiliates", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (user?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const all = await storage.getAllCoAffiliates();
+      const enriched = await Promise.all(all.map(async (ca) => {
+        const u = await storage.getUser(ca.userId);
+        return { ...ca, userName: u ? `${u.firstName} ${u.lastName}` : "Unknown", userEmail: u?.email ?? "—" };
+      }));
+      res.json(enriched);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: update co-affiliate status
+  app.patch("/api/admin/co-affiliate/:userId/status", async (req, res) => {
+    const adminId = (req.session as any)?.userId;
+    if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+    const admin = await storage.getUser(adminId);
+    if (admin?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const { status } = req.body;
+      if (!["active", "pending", "cancelled"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+      const updated = await storage.updateCoAffiliate(parseInt(req.params.userId), { status });
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: delete co-affiliate record
+  app.delete("/api/admin/co-affiliate/:userId", async (req, res) => {
+    const adminId = (req.session as any)?.userId;
+    if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+    const admin = await storage.getUser(adminId);
+    if (admin?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      await db.delete(coAffiliates).where(eq(coAffiliates.userId, parseInt(req.params.userId)));
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/admin/students", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });

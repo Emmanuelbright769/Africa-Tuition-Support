@@ -1594,6 +1594,28 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Loss-day helpers ────────────────────────────────────────────────────────
+  function getISOWeekNumber(date: Date): number {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  }
+  function getLossDaysForWeek(weekNum: number): Set<number> {
+    // Returns 2 distinct ISO weekday numbers (1=Mon … 7=Sun) deterministically per week
+    const d1 = ((weekNum * 7 + 3) % 7) + 1;
+    let d2   = ((weekNum * 13 + 11) % 7) + 1;
+    if (d2 === d1) d2 = (d2 % 7) + 1;
+    return new Set([d1, d2]);
+  }
+  function getLossRateForDay(weekNum: number, isoDay: number): number {
+    // Deterministic loss rate between 0.5% and 1.5%
+    const seed = (weekNum * 37 + isoDay * 17) % 100;
+    return 0.005 + seed / 10000; // 0.005 → 0.0149
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   // Called by the frontend when the bot session ends — credits proportional earnings based on actual trading hours
   app.post("/api/trade/bot/complete", async (req, res) => {
     try {
@@ -1607,20 +1629,68 @@ export async function registerRoutes(
       const balance = parseFloat(wallet.tradeBalance);
       if (balance <= 0) return res.status(400).json({ message: "No balance to earn from." });
 
-      // Compute proportional earning: max 2% at 12h, prorated for shorter sessions
-      const BOT_MAX_MS      = 12 * 3600 * 1000; // 12 hours in ms
-      const BOT_FULL_RATE   = 0.02;              // 2% for a full 12-hour session
-      let elapsedMs = BOT_MAX_MS;                // default to full session if no timestamp sent
+      // ── Determine if today (UK time) is a loss day ───────────────────────
+      const nowUK   = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" }));
+      const isoWeek = getISOWeekNumber(nowUK);
+      const isoDay  = nowUK.getDay() === 0 ? 7 : nowUK.getDay(); // Sun=0 → 7; Mon=1…Sat=6 stays
+      const lossDays = getLossDaysForWeek(isoWeek);
+      const isLossDay = lossDays.has(isoDay);
+
+      // ── Compute session duration ─────────────────────────────────────────
+      const BOT_MAX_MS    = 12 * 3600 * 1000;
+      const BOT_FULL_RATE = 0.02;
+      let elapsedMs = BOT_MAX_MS;
       if (activatedAt && Number.isFinite(activatedAt)) {
         elapsedMs = Math.min(Date.now() - activatedAt, BOT_MAX_MS);
         elapsedMs = Math.max(elapsedMs, 0);
       }
-      const fraction = elapsedMs / BOT_MAX_MS;           // 0.0 – 1.0
-      const rate     = BOT_FULL_RATE * fraction;          // proportional rate
-      const earning  = parseFloat((balance * rate).toFixed(6));
+      const fraction     = elapsedMs / BOT_MAX_MS;
+      const elapsedHours = (elapsedMs / 3600000).toFixed(1);
 
-      const elapsedHours   = (elapsedMs / 3600000).toFixed(1);
-      const ratePercent    = (rate * 100).toFixed(4);
+      if (isLossDay) {
+        // ── LOSS DAY: deduct from balance, do not touch totalBotEarnings ──
+        const lossRate   = getLossRateForDay(isoWeek, isoDay) * fraction;
+        const lossAmount = parseFloat((balance * lossRate).toFixed(6));
+        const ratePercent = (lossRate * 100).toFixed(4);
+
+        if (lossAmount <= 0) return res.json({ earning: "0", elapsedHours, ratePercent: "0", newBalance: wallet.tradeBalance, totalBotEarnings: wallet.totalBotEarnings, isLossDay: true });
+
+        await storage.createTradeTransaction({
+          userId,
+          type: "bot_earning",
+          walletType: null,
+          amountUsd: (-lossAmount).toFixed(6),
+          feeUsd: "0.000000",
+          reserveFundDeduction: "0.000000",
+          affiliateShareDeduction: "0.000000",
+          netAmount: (-lossAmount).toFixed(6),
+          txHash: null,
+          status: "completed",
+          note: `Bot session (loss day): ${elapsedHours}h traded → -${ratePercent}% on $${balance.toFixed(2)}`,
+        });
+        const updatedWallet = await storage.applyBotLoss(userId, lossAmount.toFixed(6));
+        await storage.createNotification({
+          userId,
+          type: "trade",
+          title: "Bot Session — Market Loss",
+          message: `Your trading bot session (${elapsedHours}h) resulted in a market loss of $${lossAmount.toFixed(4)} (-${ratePercent}%). This reflects real market conditions.`,
+          data: { loss: lossAmount, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance },
+          isRead: false,
+        });
+        return res.json({
+          earning: (-lossAmount).toFixed(6),
+          elapsedHours,
+          ratePercent: `-${ratePercent}`,
+          newBalance: updatedWallet.tradeBalance,
+          totalBotEarnings: updatedWallet.totalBotEarnings,
+          isLossDay: true,
+        });
+      }
+
+      // ── PROFIT DAY ───────────────────────────────────────────────────────
+      const rate    = BOT_FULL_RATE * fraction;
+      const earning = parseFloat((balance * rate).toFixed(6));
+      const ratePercent = (rate * 100).toFixed(4);
 
       if (earning <= 0) return res.status(400).json({ message: "Earning too small to credit." });
 
@@ -1655,6 +1725,7 @@ export async function registerRoutes(
         ratePercent,
         newBalance: updatedWallet.tradeBalance,
         totalBotEarnings: updatedWallet.totalBotEarnings,
+        isLossDay: false,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

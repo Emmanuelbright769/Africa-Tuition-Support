@@ -171,7 +171,7 @@ export default function AffiliateDashboard() {
   const botHoursLeft = Math.floor(botMinsRemaining / 60);
   const botMinsLeft = botMinsRemaining % 60;
 
-  // Complete a bot session — credits proportional earnings based on actual trading hours
+  // Complete a bot session — credits proportional earnings or applies a loss based on actual trading hours
   const completeBotSession = async (isAutoOff: boolean, overrideActivatedAt?: number) => {
     if (botCompletingRef.current) return;
     botCompletingRef.current = true;
@@ -184,16 +184,26 @@ export default function AffiliateDashboard() {
         const data = await r.json();
         queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trade/transactions"] });
-        const earnStr = `$${parseFloat(data.earning).toFixed(4)}`;
-        const pct     = data.ratePercent ? `${data.ratePercent}%` : "2%";
-        const hrs     = data.elapsedHours ? `${data.elapsedHours}h` : "12h";
-        toast({
-          title: isAutoOff ? "Bot Session Complete — Earnings Credited!" : "Bot Stopped",
-          description: isAutoOff
-            ? `${earnStr} (${pct} for ${hrs} of trading) has been added to your Trade Wallet.`
-            : `Session ended after ${hrs}. ${earnStr} (${pct}) credited to your Trade Wallet.`,
-          className: "border-tsia-green",
-        });
+        const hrs = data.elapsedHours ? `${data.elapsedHours}h` : "12h";
+        if (data.isLossDay) {
+          const lossStr = `$${Math.abs(parseFloat(data.earning)).toFixed(4)}`;
+          const pct     = data.ratePercent ?? "";
+          toast({
+            title: "Bot Session — Market Loss",
+            description: `Today's market conditions resulted in a loss of ${lossStr} (${pct}) after ${hrs} of trading. This reflects real market volatility.`,
+            variant: "destructive",
+          });
+        } else {
+          const earnStr = `$${parseFloat(data.earning).toFixed(4)}`;
+          const pct     = data.ratePercent ? `${data.ratePercent}%` : "2%";
+          toast({
+            title: isAutoOff ? "Bot Session Complete — Earnings Credited!" : "Bot Stopped",
+            description: isAutoOff
+              ? `${earnStr} (${pct} for ${hrs} of trading) has been added to your Trade Wallet.`
+              : `Session ended after ${hrs}. ${earnStr} (${pct}) credited to your Trade Wallet.`,
+            className: "border-tsia-green",
+          });
+        }
       } else {
         if (isAutoOff) toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours.", variant: "destructive" });
       }
@@ -209,7 +219,7 @@ export default function AffiliateDashboard() {
     const now = Date.now();
     setBotActivatedAt(now);
     try { localStorage.setItem("tsia_bot_activated_at", String(now)); } catch {}
-    toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It will auto-deactivate in 12 hours and credit your 2% earnings.", className: "border-green-500" });
+    toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It runs for up to 12 hours and reflects real market conditions — some sessions may result in a loss.", className: "border-green-500" });
   };
 
   const deactivateBot = () => completeBotSession(false);

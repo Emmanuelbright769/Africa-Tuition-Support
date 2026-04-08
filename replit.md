@@ -65,7 +65,7 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - Digital wallet with 7.5% VAT on bank withdrawals
 - Affiliate program (separate from students) with own signup, dashboard, referral codes
 - Co-Affiliate/Initiator Programme: 1M investor cap, 3 tiers ($100/$200/$500), +20% price per 150k milestone, lifetime 5% TSIA profit share proportional to category
-- Co-Affiliate routes: GET /api/co-affiliate/program, GET /api/co-affiliate/my-info, POST /api/co-affiliate/subscribe
+- Co-Affiliate routes: GET /api/co-affiliate/program, GET /api/co-affiliate/my-info, POST /api/co-affiliate/subscribe, POST /api/co-affiliate/withdraw (withdraw available earnings to Personal Wallet; tracks withdrawnAmount per user in DB)
 - Student loan programme: active for verified students; Platinum=$200, Gold=$150, Silver=$100 limit; 10%/yr flat; 6/12/18-month terms; eligibility check, live calculator, application form, loan history
 - Affiliate business loan: active when referralCount>0 or tradeBalance>0; base $500 + $50/referral + 50% tradeBalance × co-affiliate multiplier (max $5k); 15%/yr flat; 6/12/24-month terms
 - Loan API routes: GET /api/loans/limit, GET /api/loans/my-loans, POST /api/loans/apply

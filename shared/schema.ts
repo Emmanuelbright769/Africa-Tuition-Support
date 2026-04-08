@@ -116,6 +116,7 @@ export const coAffiliates = pgTable("co_affiliates", {
   investmentCategory: integer("investment_category").notNull(),
   amountPaid: decimal("amount_paid", { precision: 10, scale: 2 }).notNull(),
   sharePercentage: decimal("share_percentage", { precision: 14, scale: 10 }).notNull(),
+  withdrawnAmount: decimal("withdrawn_amount", { precision: 14, scale: 6 }).notNull().default("0"),
   status: coAffiliateStatusEnum("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

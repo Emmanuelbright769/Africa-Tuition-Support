@@ -93,6 +93,7 @@ export interface IStorage {
   getCoAffiliateCount(): Promise<number>;
   getAllCoAffiliates(): Promise<CoAffiliate[]>;
   updateCoAffiliate(userId: number, data: Partial<InsertCoAffiliate>): Promise<CoAffiliate>;
+  recordCoAffiliateWithdrawal(userId: number, amount: string): Promise<CoAffiliate>;
   getTotalCoAffiliateFund(): Promise<number>;
   getTotalAffiliatePool(): Promise<number>;
 
@@ -523,6 +524,14 @@ export class DatabaseStorage implements IStorage {
 
   async updateCoAffiliate(userId: number, data: Partial<InsertCoAffiliate>): Promise<CoAffiliate> {
     const [updated] = await db.update(coAffiliates).set({ ...data, updatedAt: new Date() }).where(eq(coAffiliates.userId, userId)).returning();
+    return updated;
+  }
+
+  async recordCoAffiliateWithdrawal(userId: number, amount: string): Promise<CoAffiliate> {
+    const [updated] = await db.update(coAffiliates)
+      .set({ withdrawnAmount: sql`withdrawn_amount + ${amount}::decimal` })
+      .where(eq(coAffiliates.userId, userId))
+      .returning();
     return updated;
   }
 

@@ -1197,7 +1197,9 @@ export async function registerRoutes(
       const totalAffiliatePool = await storage.getTotalAffiliatePool();
       const sharePercentage = parseFloat(record.sharePercentage);
       const myProfit = totalAffiliatePool * sharePercentage;
-      res.json({ ...record, myProfit: myProfit.toFixed(6), totalAffiliatePool: totalAffiliatePool.toFixed(2) });
+      const alreadyWithdrawn = parseFloat(record.withdrawnAmount ?? "0");
+      const myAvailable = Math.max(0, myProfit - alreadyWithdrawn);
+      res.json({ ...record, myProfit: myProfit.toFixed(6), myAvailable: myAvailable.toFixed(6), totalAffiliatePool: totalAffiliatePool.toFixed(2) });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -1334,6 +1336,57 @@ export async function registerRoutes(
         shareLabel: (newSharePercentage * 100).toFixed(6) + "%",
         message: `Successfully upgraded to ${cat === 500 ? "Elite" : cat === 300 ? "Growth" : "Starter"} tier!`,
       });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Co-Affiliate: withdraw available earnings to Personal Wallet
+  app.post("/api/co-affiliate/withdraw", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const record = await storage.getCoAffiliateByUser(userId);
+      if (!record) return res.status(404).json({ message: "You are not enrolled in the Trust Fund." });
+      if (record.status !== "active") return res.status(400).json({ message: "Your Trust Fund account is not active." });
+
+      const totalAffiliatePool = await storage.getTotalAffiliatePool();
+      const sharePercentage = parseFloat(record.sharePercentage);
+      const myProfit = totalAffiliatePool * sharePercentage;
+      const alreadyWithdrawn = parseFloat(record.withdrawnAmount ?? "0");
+      const available = parseFloat((myProfit - alreadyWithdrawn).toFixed(6));
+
+      if (available <= 0) return res.status(400).json({ message: "No available earnings to withdraw at this time." });
+
+      // Credit Personal Wallet
+      const wallet = await storage.getOrCreateWallet(userId);
+      const newBalance = (parseFloat(wallet.balance) + available).toFixed(2);
+      await storage.updateWalletBalance(userId, newBalance);
+
+      // Record withdrawal
+      await storage.recordCoAffiliateWithdrawal(userId, available.toFixed(6));
+
+      // Create transaction record
+      await storage.createTransaction({
+        userId,
+        type: "admin_credit",
+        amount: available.toFixed(2),
+        fee: "0.00",
+        paymentMethod: "trust_fund",
+        description: `Trust Fund earnings withdrawal — ${(sharePercentage * 100).toFixed(6)}% share of $${totalAffiliatePool.toFixed(2)} pool`,
+      });
+
+      // Notification
+      await storage.createNotification({
+        userId,
+        type: "wallet_credit",
+        title: "Trust Fund Withdrawal Successful",
+        message: `$${available.toFixed(4)} from your Trust Fund earnings has been credited to your TSIA Personal Wallet.`,
+        data: { amount: available, newBalance },
+        isRead: false,
+      });
+
+      res.json({ available: available.toFixed(6), newWalletBalance: newBalance });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

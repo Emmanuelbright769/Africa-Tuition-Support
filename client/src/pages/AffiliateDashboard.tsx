@@ -15,7 +15,7 @@ import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
 import {
   Copy, Users, Share2, LogOut, Sun, Moon, Monitor, TrendingUp, Link2,
   Banknote, Clock, Crown, Sparkles, CheckCircle2, AlertCircle, Loader2,
-  Target, BarChart3, Infinity, Star, Wallet, ArrowUpRight, ArrowDownLeft,
+  Target, BarChart3, Infinity, Star, Wallet, ArrowUpRight, ArrowDownLeft, ArrowDownToLine,
   ShoppingBag, ChevronDown, ChevronUp, Shield, Zap, Globe,
   Menu, X, LayoutDashboard, ChevronRight, ShoppingCart, Tag, MessageSquareText,
   Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink,
@@ -95,9 +95,10 @@ export default function AffiliateDashboard() {
   const [servicesExpanded, setServicesExpanded] = useState(false);
   const [openChatId, setOpenChatId] = useState<number | null>(null);
 
-  const [subscribeOpen, setSubscribeOpen]       = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
-  const [eliteCustomAmount, setEliteCustomAmount] = useState("500");
+  const [subscribeOpen, setSubscribeOpen]               = useState(false);
+  const [selectedCategory, setSelectedCategory]         = useState<number | null>(null);
+  const [eliteCustomAmount, setEliteCustomAmount]       = useState("500");
+  const [trustFundWithdrawOpen, setTrustFundWithdrawOpen] = useState(false);
   const [depositOpen, setDepositOpen]   = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [connectOpen, setConnectOpen]   = useState(false);
@@ -357,6 +358,22 @@ export default function AffiliateDashboard() {
     onError: (err: any) => toast({ title: "Enrollment Failed", description: err.message, variant: "destructive" }),
   });
 
+  const trustFundWithdrawMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/co-affiliate/withdraw", {});
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Withdrawal Successful!", description: `$${parseFloat(data.available).toFixed(4)} has been credited to your Personal Wallet.`, className: "border-tsia-green" });
+      setTrustFundWithdrawOpen(false);
+      refetchMyCoAff();
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+    },
+    onError: (err: any) => toast({ title: "Withdrawal Failed", description: err.message, variant: "destructive" }),
+  });
+
   const applyLoanMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/loans/apply", { amountUsd: parseFloat(loanAmount), termMonths: loanTerm, purpose: loanPurpose });
@@ -528,6 +545,8 @@ export default function AffiliateDashboard() {
   const isEnrolled         = !!myCoAff;
   const myCategory         = myCoAff ? Number(myCoAff.investmentCategory) : null;
   const myProfit           = myCoAff ? parseFloat(myCoAff.myProfit ?? "0") : 0;
+  const myAvailable        = myCoAff ? parseFloat(myCoAff.myAvailable ?? "0") : 0;
+  const myWithdrawn        = myCoAff ? parseFloat(myCoAff.withdrawnAmount ?? "0") : 0;
   const myAmountPaid       = myCoAff ? parseFloat(myCoAff.amountPaid) : 0;
   const mySharePct         = myCoAff ? (parseFloat(myCoAff.sharePercentage) * 100).toFixed(6) : "0";
   const tradeBalance   = parseFloat(tradeWallet?.tradeBalance ?? "0");
@@ -1209,6 +1228,33 @@ export default function AffiliateDashboard() {
                           <p className="text-xs text-muted-foreground mt-1">from ${parseFloat(myCoAff.totalAffiliatePool ?? "0").toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total profit pool</p>
                         </div>
 
+                        {/* Available vs withdrawn */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 text-center">
+                            <p className="text-xs text-muted-foreground mb-0.5">Available to Withdraw</p>
+                            <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-my-available">
+                              ${myAvailable.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border bg-muted/40 p-3 text-center">
+                            <p className="text-xs text-muted-foreground mb-0.5">Already Withdrawn</p>
+                            <p className="text-lg font-bold text-foreground" data-testid="text-my-withdrawn">
+                              ${myWithdrawn.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Withdraw to Wallet button */}
+                        <Button
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                          disabled={myAvailable <= 0 || trustFundWithdrawMutation.isPending}
+                          onClick={() => setTrustFundWithdrawOpen(true)}
+                          data-testid="button-trust-fund-withdraw"
+                        >
+                          <ArrowDownToLine className="w-4 h-4 mr-2" />
+                          {myAvailable > 0 ? `Withdraw $${myAvailable.toFixed(4)} to Wallet` : "No Earnings Available Yet"}
+                        </Button>
+
                         {/* My investment details */}
                         <div className="grid grid-cols-3 gap-3 text-center">
                           <div className="rounded-lg bg-muted/50 p-3">
@@ -1783,6 +1829,53 @@ export default function AffiliateDashboard() {
       </main>
 
       {/* ── DIALOGS ── */}
+
+      {/* Trust Fund Earnings Withdrawal */}
+      <Dialog open={trustFundWithdrawOpen} onOpenChange={setTrustFundWithdrawOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowDownToLine className="w-5 h-5 text-emerald-600" /> Withdraw Trust Fund Earnings
+            </DialogTitle>
+            <DialogDescription>
+              This will transfer your available earnings directly into your TSIA Personal Wallet.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Amount to Withdraw</p>
+              <p className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
+                ${myAvailable.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+              </p>
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1.5 bg-muted/50 rounded-lg p-3">
+              <div className="flex justify-between">
+                <span>Your profit share</span>
+                <span className="font-medium">{mySharePct}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Total affiliate pool</span>
+                <span className="font-medium">${parseFloat(myCoAff?.totalAffiliatePool ?? "0").toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between border-t pt-1.5">
+                <span>Previously withdrawn</span>
+                <span className="font-medium">${myWithdrawn.toLocaleString("en-US", { minimumFractionDigits: 4 })}</span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setTrustFundWithdrawOpen(false)} disabled={trustFundWithdrawMutation.isPending}>Cancel</Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => trustFundWithdrawMutation.mutate()}
+              disabled={trustFundWithdrawMutation.isPending}
+              data-testid="button-confirm-trust-withdraw"
+            >
+              {trustFundWithdrawMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing...</> : "Confirm Withdrawal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Subscribe to Trust Fund */}
       <Dialog open={subscribeOpen} onOpenChange={setSubscribeOpen}>

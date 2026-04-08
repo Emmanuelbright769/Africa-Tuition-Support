@@ -786,12 +786,15 @@ export default function AdminDashboard() {
                             <TableCell className="text-sm text-slate-600">{fmtUSD(a.tradeWallet?.balance)}</TableCell>
                             <TableCell className="text-xs text-slate-500">{fmtDate(a.createdAt)}</TableCell>
                             <TableCell className="text-right px-6">
-                              <div className="flex items-center justify-end gap-1">
+                              <div className="flex items-center justify-end gap-1 flex-wrap">
                                 <Button size="sm" variant="outline" className="h-7 text-xs text-tsia-green border-tsia-green/30 hover:bg-tsia-green/5" onClick={() => { setCreditAffiliateDialog({ open: true, affiliate: a }); setCreditAmount(""); setCreditNote(""); }} data-testid={`button-credit-affiliate-${a.id}`}>
                                   <PlusCircle className="w-3 h-3 mr-1" /> Credit
                                 </Button>
                                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setNotifyTarget(a); setNotifyDialog(true); }} data-testid={`button-notify-affiliate-${a.id}`}>
                                   <Bell className="w-3 h-3 mr-1" /> Notify
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50" disabled={deleteUserMutation.isPending} onClick={() => setDeleteUserDialog({ open: true, user: a })} data-testid={`button-delete-affiliate-${a.id}`}>
+                                  <Trash2 className="w-3 h-3 mr-1" /> Delete
                                 </Button>
                               </div>
                             </TableCell>

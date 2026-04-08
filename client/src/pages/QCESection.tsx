@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   PiggyBank, TrendingUp, Lock, Unlock, Info, ArrowDownLeft, ArrowUpRight,
   CheckCircle2, Clock, Zap, ShieldCheck, BarChart3, Loader2, RefreshCw,
-  CalendarDays, DollarSign, History
+  CalendarDays, DollarSign, History, ChevronDown, ChevronUp
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
@@ -106,6 +106,7 @@ export default function QCESection() {
   const creditPortalUnlocked = savings?.creditPortalUnlocked ?? false;
   const maxWithdraw = Math.max(qceBalance - QCE.MIN_BALANCE, 0);
   const canWithdraw = qceBalance > QCE.MIN_BALANCE;
+  const [showDetails, setShowDetails] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -262,6 +263,20 @@ export default function QCESection() {
             </Button>
           </motion.div>
 
+          {/* Show / Hide Details toggle */}
+          <motion.div variants={itemVariants} initial="hidden" animate="visible">
+            <button
+              onClick={() => setShowDetails(v => !v)}
+              className="w-full flex items-center justify-center gap-2 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="btn-qce-toggle-details"
+            >
+              {showDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              {showDetails ? "Hide details" : "Show details"}
+            </button>
+          </motion.div>
+
+          {/* Credit Portal + Minimum Balance (collapsible) */}
+          {showDetails && (<>
           {/* Credit Portal */}
           <motion.div variants={itemVariants} initial="hidden" animate="visible">
             <Card className={`shadow-md border-0 ${creditPortalUnlocked ? "border-l-4 border-l-tsia-green" : "border-l-4 border-l-muted"}`} data-testid="card-credit-portal">
@@ -343,11 +358,12 @@ export default function QCESection() {
               <p>A minimum of <strong>${QCE.MIN_BALANCE}</strong> must always remain in your QCE savings. You can withdraw the rest at any time — your withdrawal will be sent straight back to your Personal Wallet.</p>
             </div>
           </motion.div>
+          </>)}
         </>
       )}
 
       {/* Transaction History */}
-      {isActivated && transactions.length > 0 && (
+      {isActivated && showDetails && transactions.length > 0 && (
         <motion.div variants={itemVariants} initial="hidden" animate="visible">
           <Card className="shadow-md border-0">
             <CardHeader className="pb-3">

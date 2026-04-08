@@ -138,51 +138,12 @@ export default function QCESection() {
         </div>
       </motion.div>
 
-      {/* How it works — shown before activation */}
+      {/* Activate prompt — shown before activation */}
       {!isActivated && (
         <motion.div variants={itemVariants} initial="hidden" animate="visible">
-          <Card className="border-2 border-dashed border-tsia-green/30 bg-gradient-to-br from-green-50/60 to-emerald-50/40 dark:from-green-950/20 dark:to-emerald-950/10">
-            <CardContent className="pt-6 pb-5 space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
-                  <Info className="w-5 h-5 text-tsia-green" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-foreground">What is QCE?</h3>
-                  <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-                    Quick Credit Eligibility is your personal savings builder on TSIA. By contributing from your Personal Wallet and maintaining consistent daily activity over <strong>90 days</strong>, you build a credit score of up to <strong>30%</strong> — unlocking the ability to access loans and credit lines.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  { icon: DollarSign, color: "text-tsia-green", bg: "bg-tsia-green/10", title: "Activate with $5", desc: "Fund your QCE savings with a minimum of $5 from your Personal Wallet." },
-                  { icon: CalendarDays, color: "text-blue-600", bg: "bg-blue-100 dark:bg-blue-900/30", title: "90-Day Journey", desc: "Your daily wallet activity counts toward your eligibility score over 90 days." },
-                  { icon: TrendingUp, color: "text-purple-600", bg: "bg-purple-100 dark:bg-purple-900/30", title: "Up to 30% Credit", desc: "Complete the period to unlock full 30% credit eligibility for loans." },
-                ].map((item) => (
-                  <div key={item.title} className="flex gap-3 p-3 rounded-xl bg-white/70 dark:bg-card/50 border border-border/50">
-                    <div className={`w-9 h-9 rounded-xl ${item.bg} flex items-center justify-center shrink-0`}>
-                      <item.icon className={`w-4 h-4 ${item.color}`} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-foreground">{item.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-200 flex gap-2 items-start">
-                <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                <p>A minimum balance of <strong>${QCE.MIN_BALANCE}</strong> must always remain in your QCE savings to keep the system running seamlessly. You can withdraw the rest at any time.</p>
-              </div>
-
-              <Button onClick={() => setContributeOpen(true)} className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-activate-qce">
-                <Zap className="w-4 h-4 mr-2" /> Activate QCE Savings — min $5
-              </Button>
-            </CardContent>
-          </Card>
+          <Button onClick={() => setContributeOpen(true)} className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-activate-qce">
+            <Zap className="w-4 h-4 mr-2" /> Activate QCE Savings — min $5
+          </Button>
         </motion.div>
       )}
 

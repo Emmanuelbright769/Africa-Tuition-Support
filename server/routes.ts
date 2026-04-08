@@ -1477,11 +1477,45 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Transfer trade earnings → Personal Wallet (no fee, instant) ──────────
+  app.post("/api/trade/transfer-to-wallet", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { amountUsd } = req.body;
+      const amount = parseFloat(amountUsd);
+      if (isNaN(amount) || amount < 1) return res.status(400).json({ message: "Minimum transfer is $1." });
+      const tradeWallet = await storage.getOrCreateTradeWallet(userId);
+      if (parseFloat(tradeWallet.tradeBalance) < amount) {
+        return res.status(400).json({ message: `Insufficient trade balance. Available: $${parseFloat(tradeWallet.tradeBalance).toFixed(2)}` });
+      }
+      // Deduct from trade wallet
+      await storage.updateTradeBalance(userId, (-amount).toFixed(6));
+      await storage.createTradeTransaction({
+        userId, type: "withdraw_exchange", walletType: null,
+        amountUsd: amount.toFixed(6), feeUsd: "0.000000",
+        reserveFundDeduction: "0.000000", affiliateShareDeduction: "0.000000",
+        netAmount: amount.toFixed(6), txHash: null, status: "completed",
+        note: `Transferred $${amount.toFixed(2)} to Personal Wallet`,
+      });
+      // Credit personal wallet
+      const personalWallet = await storage.getOrCreateWallet(userId);
+      const newPersonalBal = (parseFloat(personalWallet.balance) + amount).toFixed(2);
+      await storage.updateWalletBalance(userId, newPersonalBal);
+      if (!personalWallet.activated && parseFloat(newPersonalBal) >= 5) await storage.activateWallet(userId);
+      await storage.createTransaction({ userId, type: "deposit", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "internal", description: `Transfer from Trade Wallet — $${amount.toFixed(2)}` });
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Trade Transfer Complete ✓", message: `$${amount.toFixed(2)} from your Trade Wallet has been credited to your Personal Wallet.`, data: {}, isRead: false });
+      pushToUser(userId, "notification", notif);
+      const updatedTrade = await storage.getOrCreateTradeWallet(userId);
+      res.json({ newTradeBalance: updatedTrade.tradeBalance, newPersonalBalance: newPersonalBal, transferred: amount.toFixed(2) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/trade/withdraw", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { amountUsd, withdrawalType, walletType, bankAccountName } = req.body;
+      const { amountUsd, withdrawalType, walletType, bankCode, accountNumber, accountName } = req.body;
       const amount = parseFloat(amountUsd);
       if (isNaN(amount) || amount < TRADE_MARKET.MIN_WITHDRAW) {
         return res.status(400).json({ message: `Minimum withdrawal is $${TRADE_MARKET.MIN_WITHDRAW}.` });
@@ -1489,33 +1523,59 @@ export async function registerRoutes(
       if (!["withdraw_exchange", "withdraw_bank"].includes(withdrawalType)) {
         return res.status(400).json({ message: "withdrawalType must be withdraw_exchange or withdraw_bank." });
       }
+      if (withdrawalType === "withdraw_bank" && (!bankCode || !accountNumber || !accountName)) {
+        return res.status(400).json({ message: "Bank details required for bank withdrawal: bankCode, accountNumber, accountName." });
+      }
       const feeRate = withdrawalType === "withdraw_bank" ? TRADE_MARKET.FEE_BANK_WITHDRAW : TRADE_MARKET.FEE_EXCHANGE_WITHDRAW;
       const fee = amount * feeRate;
-      const affiliateCut = amount * TRADE_MARKET.AFFILIATE_SHARE_RATE; // 5% on withdrawal too
+      const affiliateCut = amount * TRADE_MARKET.AFFILIATE_SHARE_RATE;
       const netPayout = amount - fee - affiliateCut;
 
-      await storage.getOrCreateTradeWallet(userId);
       const wallet = await storage.getOrCreateTradeWallet(userId);
       const currentBalance = parseFloat(wallet.tradeBalance);
       if (currentBalance < amount) {
         return res.status(400).json({ message: `Insufficient balance. Available: $${currentBalance.toFixed(2)}` });
       }
 
+      // ── For bank withdrawals: call Squad payout API ───────────────────────
+      if (withdrawalType === "withdraw_bank") {
+        const netNgn = netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT; // ₦1,280/$
+        const transferRef = `TSIA-TWD-${userId}-${Date.now()}`;
+        const secretKey = process.env.SQUAD_SECRET_KEY;
+        let squadSuccess = false, squadMsg = "";
+        try {
+          const squadRes = await fetch("https://api.squadco.com/payout/initiate", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transaction_reference: transferRef,
+              amount: Math.round(netNgn),
+              bank_code: bankCode,
+              account_number: accountNumber,
+              account_name: accountName,
+              currency_id: "NGN",
+              narration: `TSIA Trade Withdrawal | Ref: ${transferRef}`,
+            }),
+            signal: AbortSignal.timeout(15000),
+          });
+          const squadData = await squadRes.json() as any;
+          squadSuccess = !!squadData.success;
+          if (!squadSuccess) squadMsg = squadData.message ?? "Squad transfer failed";
+        } catch (fetchErr: any) { squadMsg = fetchErr.message ?? "Network error"; }
+        if (!squadSuccess) {
+          return res.status(502).json({ message: `Bank transfer failed: ${squadMsg}. Please try again or contact support.` });
+        }
+      }
+
       const txType = withdrawalType === "withdraw_bank" ? "withdraw_bank" : "withdraw_exchange";
       const tx = await storage.createTradeTransaction({
-        userId,
-        type: txType,
-        walletType: walletType || null,
-        amountUsd: amount.toFixed(6),
-        feeUsd: fee.toFixed(6),
-        reserveFundDeduction: "0.000000",
-        affiliateShareDeduction: affiliateCut.toFixed(6),
-        netAmount: netPayout.toFixed(6),
-        txHash: null,
-        status: "completed",
+        userId, type: txType, walletType: walletType || null,
+        amountUsd: amount.toFixed(6), feeUsd: fee.toFixed(6),
+        reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
+        netAmount: netPayout.toFixed(6), txHash: null, status: "completed",
         note: withdrawalType === "withdraw_bank"
-          ? `Bank withdrawal — 8% fee + 5% affiliate pool`
-          : `Exchange wallet withdrawal — 5% fee + 5% affiliate pool`,
+          ? `Bank withdrawal ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} → ${accountName} (${accountNumber}) — 8% fee + 5% pool`
+          : `Exchange withdrawal — 5% fee + 5% affiliate pool`,
       });
 
       await storage.updateTradeBalance(userId, (-amount).toFixed(6));
@@ -1524,16 +1584,11 @@ export async function registerRoutes(
       await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
 
       const updatedWallet = await storage.getOrCreateTradeWallet(userId);
+      const wdNotif = await storage.createNotification({ userId, type: "wallet_credit", title: "Trade Withdrawal Initiated ✓", message: withdrawalType === "withdraw_bank" ? `₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} is being sent to ${accountName}. Processing within 24h.` : `$${netPayout.toFixed(2)} withdrawal to exchange wallet initiated.`, data: {}, isRead: false });
+      pushToUser(userId, "notification", wdNotif);
       res.json({
-        transaction: tx,
-        newBalance: updatedWallet.tradeBalance,
-        breakdown: {
-          requested: amount,
-          fee: fee,
-          feeRate: `${(feeRate * 100).toFixed(0)}%`,
-          affiliatePool: affiliateCut,
-          netPayout: netPayout,
-        },
+        transaction: tx, newBalance: updatedWallet.tradeBalance,
+        breakdown: { requested: amount, fee, feeRate: `${(feeRate * 100).toFixed(0)}%`, affiliatePool: affiliateCut, netPayout },
         message: "Withdrawal processed.",
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

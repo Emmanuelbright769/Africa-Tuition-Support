@@ -41,6 +41,20 @@ import ForumSection from "./ForumSection";
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
+const NIGERIAN_BANKS = [
+  { code: "044", name: "Access Bank" }, { code: "023", name: "Citibank Nigeria" },
+  { code: "050", name: "Ecobank Nigeria" }, { code: "070", name: "Fidelity Bank" },
+  { code: "011", name: "First Bank of Nigeria" }, { code: "214", name: "FCMB" },
+  { code: "058", name: "GTBank" }, { code: "301", name: "Jaiz Bank" },
+  { code: "082", name: "Keystone Bank" }, { code: "090267", name: "Kuda Bank (MFB)" },
+  { code: "100004", name: "OPay Digital Services" }, { code: "076", name: "Polaris Bank" },
+  { code: "221", name: "Stanbic IBTC Bank" }, { code: "232", name: "Sterling Bank" },
+  { code: "100033", name: "PalmPay" }, { code: "50515", name: "Moniepoint MFB" },
+  { code: "032", name: "Union Bank" }, { code: "033", name: "UBA" },
+  { code: "035", name: "Wema Bank" }, { code: "057", name: "Zenith Bank" },
+  { code: "566", name: "VFD Microfinance Bank" },
+];
+
 const TIER_STYLES: Record<string, { bg: string; border: string; text: string; badge: string; icon: string }> = {
   "100": { bg: "bg-blue-50 dark:bg-blue-900/20",    border: "border-blue-200 dark:border-blue-800",    text: "text-blue-700 dark:text-blue-300",    badge: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",    icon: "🥉" },
   "300": { bg: "bg-purple-50 dark:bg-purple-900/20", border: "border-purple-200 dark:border-purple-800", text: "text-purple-700 dark:text-purple-300", badge: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300", icon: "🥈" },
@@ -95,9 +109,15 @@ export default function AffiliateDashboard() {
   const [depositWallet, setDepositWallet] = useState<"trc20"|"bep20">("trc20");
   const [depositTxHash, setDepositTxHash] = useState("");
   const [withdrawAmt, setWithdrawAmt]   = useState("");
-  const [withdrawType, setWithdrawType] = useState<"withdraw_exchange"|"withdraw_bank">("withdraw_exchange");
+  const [withdrawType, setWithdrawType] = useState<"transfer_wallet"|"withdraw_exchange"|"withdraw_bank">("transfer_wallet");
   const [withdrawWalletType, setWithdrawWalletType] = useState<"trc20"|"bep20">("trc20");
   const [withdrawTradeTermsAccepted, setWithdrawTradeTermsAccepted] = useState(false);
+  // Bank details for trade bank withdrawal (Squad payout)
+  const [tradeBankCode, setTradeBankCode] = useState("");
+  const [tradeAcctNumber, setTradeAcctNumber] = useState("");
+  const [tradeAcctName, setTradeAcctName] = useState("");
+  const [tradeLookupLoading, setTradeLookupLoading] = useState(false);
+  const [tradeBankStep, setTradeBankStep] = useState<"bank"|"amount">("bank");
   const [trc20Input, setTrc20Input]     = useState("");
   const [bep20Input, setBep20Input]     = useState("");
   const [showTxHistory, setShowTxHistory] = useState(false);
@@ -142,7 +162,11 @@ export default function AffiliateDashboard() {
   // Guard ref: declared here (with all other refs/state) so it is initialized before any function references it
   const botCompletingRef = useRef(false);
 
-  const botActive = botActivatedAt !== null && (Date.now() - botActivatedAt) < 12 * 3600 * 1000;
+  // Determine if we're inside the trading window (1PM–1AM GMT)
+  const ukHourNow = parseInt(ukNow.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
+  const isInTradingWindow = ukHourNow >= 13 || ukHourNow < 1;
+  // Bot is active only while: started, <12h elapsed, AND within the 1PM–1AM trading window
+  const botActive = botActivatedAt !== null && (Date.now() - botActivatedAt) < 12 * 3600 * 1000 && isInTradingWindow;
   const botMinsRemaining = botActivatedAt ? Math.max(0, Math.floor((botActivatedAt + 12 * 3600000 - Date.now()) / 60000)) : 0;
   const botHoursLeft = Math.floor(botMinsRemaining / 60);
   const botMinsLeft = botMinsRemaining % 60;
@@ -190,15 +214,22 @@ export default function AffiliateDashboard() {
 
   const deactivateBot = () => completeBotSession(false);
 
-  // On mount: if a previous session expired while the user was away, settle it immediately
+  // On mount: settle any expired/overdue session (12h elapsed OR window already closed)
   useEffect(() => {
     let cancelled = false;
     const stored = localStorage.getItem("tsia_bot_activated_at");
     if (!stored) return;
     const startedAt = parseInt(stored, 10);
-    if (Number.isFinite(startedAt) && (Date.now() - startedAt) >= 12 * 3600 * 1000) {
-      // Delay by one tick so all component state is fully committed before calling async work
-      setTimeout(() => { if (!cancelled) completeBotSession(true, startedAt); }, 0);
+    if (Number.isFinite(startedAt)) {
+      const nowMs = Date.now();
+      const elapsed12h = (nowMs - startedAt) >= 12 * 3600 * 1000;
+      const nowDate = new Date(nowMs);
+      const ukH = parseInt(nowDate.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
+      const windowOpen = ukH >= 13 || ukH < 1;
+      if (elapsed12h || !windowOpen) {
+        // Delay by one tick so all component state is fully committed before calling async work
+        setTimeout(() => { if (!cancelled) completeBotSession(true, startedAt); }, 0);
+      }
     }
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,13 +240,15 @@ export default function AffiliateDashboard() {
     const interval = setInterval(() => {
       const now = new Date();
       setUkNow(now);
-      // Auto-off after 12 h
-      if (botActivatedAt && (Date.now() - botActivatedAt) >= 12 * 3600 * 1000) {
-        completeBotSession(true, botActivatedAt);
-      }
-      // 30-min pre-1PM UK warning
       const ukHour = parseInt(now.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
       const ukMinute = now.getMinutes();
+      const windowOpen = ukHour >= 13 || ukHour < 1;
+      // Auto-off after 12h elapsed OR once the 1AM GMT window closes
+      if (botActivatedAt && ((Date.now() - botActivatedAt) >= 12 * 3600 * 1000 || !windowOpen)) {
+        completeBotSession(true, botActivatedAt);
+        return;
+      }
+      // 30-min pre-1PM UK window-open reminder
       if (ukHour === 12 && ukMinute === 30 && !botActive) {
         if (Notification.permission === "granted") {
           new Notification("TSIA Trade Market", { body: "30 minutes until 1:00 PM — Time to activate your Trading Bot!", icon: "/favicon.ico" });
@@ -344,22 +377,51 @@ export default function AffiliateDashboard() {
     onError: (err: any) => toast({ title: "Deposit Failed", description: err.message, variant: "destructive" }),
   });
 
+  const transferToWalletMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/trade/transfer-to-wallet", { amountUsd: parseFloat(withdrawAmt) });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Transfer Complete ✓", description: `$${parseFloat(data.transferred).toFixed(2)} moved to your Personal Wallet instantly.`, className: "border-tsia-green" });
+      setWithdrawOpen(false); setWithdrawAmt(""); setWithdrawTradeTermsAccepted(false);
+      refetchTradeWallet(); queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+    },
+    onError: (err: any) => toast({ title: "Transfer Failed", description: err.message, variant: "destructive" }),
+  });
+
   const withdrawMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/trade/withdraw", {
         amountUsd: parseFloat(withdrawAmt),
         withdrawalType: withdrawType,
         walletType: withdrawType === "withdraw_exchange" ? withdrawWalletType : undefined,
+        ...(withdrawType === "withdraw_bank" ? { bankCode: tradeBankCode, accountNumber: tradeAcctNumber, accountName: tradeAcctName } : {}),
       });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
     onSuccess: (data) => {
       toast({ title: "Withdrawal Processed ✓", description: `$${parseFloat(data.breakdown.netPayout).toFixed(2)} will be sent. Fee: ${data.breakdown.feeRate}` });
-      setWithdrawOpen(false); setWithdrawAmt("");
+      setWithdrawOpen(false); setWithdrawAmt(""); setWithdrawTradeTermsAccepted(false);
+      setTradeBankCode(""); setTradeAcctNumber(""); setTradeAcctName(""); setTradeBankStep("bank");
       refetchTradeWallet(); refetchTradeTxs();
     },
     onError: (err: any) => toast({ title: "Withdrawal Failed", description: err.message, variant: "destructive" }),
   });
+
+  const tradeAccountLookup = async () => {
+    if (!tradeBankCode || tradeAcctNumber.length !== 10) return;
+    setTradeLookupLoading(true); setTradeAcctName("");
+    try {
+      const res = await apiRequest("POST", "/api/bank/lookup", { bankCode: tradeBankCode, accountNumber: tradeAcctNumber });
+      const data = await res.json();
+      if (res.ok && data.accountName) { setTradeAcctName(data.accountName); setTradeBankStep("amount"); }
+      else toast({ title: "Account Not Found", description: data.message || "Check account number and bank.", variant: "destructive" });
+    } catch { toast({ title: "Lookup Failed", description: "Network error. Try again.", variant: "destructive" }); }
+    finally { setTradeLookupLoading(false); }
+  };
 
   const connectMutation = useMutation({
     mutationFn: async () => {
@@ -887,9 +949,14 @@ export default function AffiliateDashboard() {
                         </p>
                         {!tradeBalanceHidden && <p className="text-xs text-blue-500/70">≈ {formatAmount(tradeBalance)}</p>}
                       </div>
-                      <Button size="sm" onClick={() => setFundTradeOpen(true)} data-testid="button-fund-trade-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
-                        <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" /> Fund Trade Wallet
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setWithdrawOpen(true)} data-testid="button-trade-withdraw" className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300">
+                          <ArrowUpRight className="w-3.5 h-3.5 mr-1.5" /> Withdraw
+                        </Button>
+                        <Button size="sm" onClick={() => setFundTradeOpen(true)} data-testid="button-fund-trade-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
+                          <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" /> Fund
+                        </Button>
+                      </div>
                     </div>
                     {/* Earnings row — always visible */}
                     <div className="bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3 flex items-center justify-between">
@@ -1845,73 +1912,170 @@ export default function AffiliateDashboard() {
       </Dialog>
 
       {/* Withdraw */}
-      <Dialog open={withdrawOpen} onOpenChange={v => { setWithdrawOpen(v); if (!v) { setWithdrawAmt(""); setWithdrawTradeTermsAccepted(false); } }}>
+      <Dialog open={withdrawOpen} onOpenChange={v => {
+        setWithdrawOpen(v);
+        if (!v) { setWithdrawAmt(""); setWithdrawTradeTermsAccepted(false); setTradeBankCode(""); setTradeAcctNumber(""); setTradeAcctName(""); setTradeBankStep("bank"); }
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-blue-600" /> Withdraw from Trade Wallet</DialogTitle>
             <DialogDescription>Balance: <strong>${tradeBalance.toFixed(2)}</strong> <span className="text-muted-foreground">(≈ {formatAmount(tradeBalance)})</span></DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {/* Method selector */}
             <div className="space-y-2">
               <Label>Withdrawal Method</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => setWithdrawType("withdraw_exchange")}
-                  className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all text-center ${withdrawType === "withdraw_exchange" ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
-                  <Globe className="w-4 h-4 mx-auto mb-1" /> Exchange<br /><span className="text-xs font-normal">5% fee</span>
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => { setWithdrawType("transfer_wallet"); setTradeBankStep("bank"); }}
+                  className={`p-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-center ${withdrawType === "transfer_wallet" ? 'border-tsia-green bg-tsia-green/10 text-tsia-green' : 'border-muted hover:border-muted-foreground'}`}>
+                  <Wallet className="w-4 h-4 mx-auto mb-1" /> Personal<br />Wallet<br /><span className="font-normal opacity-70">No fee</span>
                 </button>
-                <button onClick={() => setWithdrawType("withdraw_bank")}
-                  className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all text-center ${withdrawType === "withdraw_bank" ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
-                  <Banknote className="w-4 h-4 mx-auto mb-1" /> Bank<br /><span className="text-xs font-normal">8% fee</span>
+                <button onClick={() => { setWithdrawType("withdraw_bank"); setTradeBankStep("bank"); setWithdrawAmt(""); }}
+                  className={`p-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-center ${withdrawType === "withdraw_bank" ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
+                  <Banknote className="w-4 h-4 mx-auto mb-1" /> Bank<br />Transfer<br /><span className="font-normal opacity-70">8% fee</span>
+                </button>
+                <button onClick={() => { setWithdrawType("withdraw_exchange"); setTradeBankStep("bank"); setWithdrawAmt(""); }}
+                  className={`p-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-center ${withdrawType === "withdraw_exchange" ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
+                  <Globe className="w-4 h-4 mx-auto mb-1" /> Exchange<br />Wallet<br /><span className="font-normal opacity-70">5% fee</span>
                 </button>
               </div>
             </div>
-            {withdrawType === "withdraw_exchange" && (
-              <div className="space-y-2">
-                <Label>Network</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(["trc20", "bep20"] as const).map(n => (
-                    <button key={n} onClick={() => setWithdrawWalletType(n)}
-                      className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all ${withdrawWalletType === n ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
-                      {n.toUpperCase()}
-                    </button>
-                  ))}
+
+            {/* Transfer to Personal Wallet */}
+            {withdrawType === "transfer_wallet" && (
+              <>
+                <div className="bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3 text-xs text-tsia-green font-medium">
+                  Instant transfer — no fees charged. Funds appear in your Personal Wallet immediately.
                 </div>
-              </div>
+                <div className="space-y-2">
+                  <Label>Amount (USD)</Label>
+                  <Input type="number" min={1} max={tradeBalance} placeholder="Min $1.00" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
+                  {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
+                </div>
+              </>
             )}
-            <div className="space-y-2">
-              <Label>Amount (USD)</Label>
-              <Input type="number" min={TRADE_MARKET.MIN_WITHDRAW} max={tradeBalance} placeholder={`Min $${TRADE_MARKET.MIN_WITHDRAW}`} value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-withdraw-amount" />
-              {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
-            </div>
-            {withdrawAmt && parseFloat(withdrawAmt) >= TRADE_MARKET.MIN_WITHDRAW && parseFloat(withdrawAmt) <= tradeBalance && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs space-y-1">
-                {(() => {
-                  const amt = parseFloat(withdrawAmt);
-                  const fee = amt * (withdrawType === "withdraw_bank" ? 0.08 : 0.05);
-                  const pool = amt * 0.05;
-                  const net = amt - fee - pool;
-                  return <>
-                    <p className="font-semibold text-blue-800 dark:text-blue-300">Payout Preview</p>
-                    <p>Platform fee ({withdrawType === "withdraw_bank" ? "8%" : "5%"}): <strong>-${fee.toFixed(2)}</strong></p>
-                    <p>Affiliate Pool (5%): <strong>-${pool.toFixed(2)}</strong></p>
-                    <p className="font-bold text-blue-700 dark:text-blue-300">Net payout: ${net.toFixed(2)} <span className="font-normal text-muted-foreground">(≈ {formatAmount(net)})</span></p>
-                  </>;
-                })()}
-              </div>
+
+            {/* Bank withdrawal — Step 1: bank details */}
+            {withdrawType === "withdraw_bank" && tradeBankStep === "bank" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Select Bank</Label>
+                  <select value={tradeBankCode} onChange={e => { setTradeBankCode(e.target.value); setTradeAcctName(""); }}
+                    className="w-full h-11 rounded-xl border border-border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none">
+                    <option value="" disabled>— Choose bank —</option>
+                    {NIGERIAN_BANKS.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Number</Label>
+                  <Input maxLength={10} placeholder="10-digit NUBAN" value={tradeAcctNumber}
+                    onChange={e => { setTradeAcctNumber(e.target.value.replace(/\D/g, "").slice(0, 10)); setTradeAcctName(""); }}
+                    data-testid="input-trade-acct-number" />
+                </div>
+                {tradeAcctName && (
+                  <div className="flex items-center gap-2 bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3">
+                    <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Account verified</p>
+                      <p className="font-bold text-sm">{tradeAcctName}</p>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
-            <TermsCheckbox
-              checked={withdrawTradeTermsAccepted}
-              onCheckedChange={setWithdrawTradeTermsAccepted}
-              context="withdrawal"
-            />
+
+            {/* Bank withdrawal — Step 2: amount */}
+            {withdrawType === "withdraw_bank" && tradeBankStep === "amount" && (
+              <>
+                <div className="bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3 text-sm flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0" />
+                  <div><p className="text-xs text-muted-foreground">Sending to</p><p className="font-bold">{tradeAcctName} · {tradeAcctNumber}</p></div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Amount (USD)</Label>
+                  <Input type="number" min={TRADE_MARKET.MIN_WITHDRAW} max={tradeBalance} placeholder={`Min $${TRADE_MARKET.MIN_WITHDRAW}`} value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-withdraw-amount" />
+                  {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
+                </div>
+                {withdrawAmt && parseFloat(withdrawAmt) >= TRADE_MARKET.MIN_WITHDRAW && parseFloat(withdrawAmt) <= tradeBalance && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs space-y-1">
+                    {(() => {
+                      const amt = parseFloat(withdrawAmt); const fee = amt * 0.08; const pool = amt * 0.05;
+                      const net = amt - fee - pool; const netNgn = Math.round(net * 1280);
+                      return <>
+                        <p className="font-semibold text-blue-800 dark:text-blue-300">Payout Preview</p>
+                        <p>Platform fee (8%): <strong>-${fee.toFixed(2)}</strong></p>
+                        <p>Affiliate Pool (5%): <strong>-${pool.toFixed(2)}</strong></p>
+                        <p className="font-bold text-blue-700 dark:text-blue-300">Net: ${net.toFixed(2)} ≈ <span className="text-emerald-600">₦{netNgn.toLocaleString()}</span></p>
+                      </>;
+                    })()}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Exchange withdrawal */}
+            {withdrawType === "withdraw_exchange" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Network</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["trc20", "bep20"] as const).map(n => (
+                      <button key={n} onClick={() => setWithdrawWalletType(n)}
+                        className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all ${withdrawWalletType === n ? 'border-primary bg-primary/10 text-primary' : 'border-muted hover:border-muted-foreground'}`}>
+                        {n.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Amount (USD)</Label>
+                  <Input type="number" min={TRADE_MARKET.MIN_WITHDRAW} max={tradeBalance} placeholder={`Min $${TRADE_MARKET.MIN_WITHDRAW}`} value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-withdraw-amount" />
+                  {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
+                </div>
+                {withdrawAmt && parseFloat(withdrawAmt) >= TRADE_MARKET.MIN_WITHDRAW && parseFloat(withdrawAmt) <= tradeBalance && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs space-y-1">
+                    {(() => {
+                      const amt = parseFloat(withdrawAmt); const fee = amt * 0.05; const pool = amt * 0.05; const net = amt - fee - pool;
+                      return <>
+                        <p className="font-semibold text-blue-800 dark:text-blue-300">Payout Preview</p>
+                        <p>Platform fee (5%): <strong>-${fee.toFixed(2)}</strong></p>
+                        <p>Affiliate Pool (5%): <strong>-${pool.toFixed(2)}</strong></p>
+                        <p className="font-bold text-blue-700 dark:text-blue-300">Net: ${net.toFixed(2)} <span className="font-normal text-muted-foreground">(≈ {formatAmount(net)})</span></p>
+                      </>;
+                    })()}
+                  </div>
+                )}
+              </>
+            )}
+
+            {(withdrawType !== "withdraw_bank" || tradeBankStep === "amount") && (
+              <TermsCheckbox checked={withdrawTradeTermsAccepted} onCheckedChange={setWithdrawTradeTermsAccepted} context="withdrawal" />
+            )}
           </div>
           <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
-            <Button onClick={() => withdrawMutation.mutate()}
-              disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < TRADE_MARKET.MIN_WITHDRAW || parseFloat(withdrawAmt) > tradeBalance || !withdrawTradeTermsAccepted}
-              data-testid="button-confirm-withdraw">
-              {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />} Confirm Withdrawal
-            </Button>
+            {/* Step 1 for bank: verify account */}
+            {withdrawType === "withdraw_bank" && tradeBankStep === "bank" && (
+              <Button onClick={tradeAccountLookup} disabled={tradeLookupLoading || !tradeBankCode || tradeAcctNumber.length !== 10} data-testid="button-verify-trade-account">
+                {tradeLookupLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />} Verify Account
+              </Button>
+            )}
+            {/* Transfer to wallet */}
+            {withdrawType === "transfer_wallet" && (
+              <Button onClick={() => transferToWalletMutation.mutate()}
+                disabled={transferToWalletMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 1 || parseFloat(withdrawAmt) > tradeBalance || !withdrawTradeTermsAccepted}
+                className="bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-transfer-to-wallet">
+                {transferToWalletMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Wallet className="w-4 h-4 mr-2" />} Transfer Now
+              </Button>
+            )}
+            {/* Bank or exchange withdrawal */}
+            {(withdrawType === "withdraw_bank" && tradeBankStep === "amount") || withdrawType === "withdraw_exchange" ? (
+              <Button onClick={() => withdrawMutation.mutate()}
+                disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < TRADE_MARKET.MIN_WITHDRAW || parseFloat(withdrawAmt) > tradeBalance || !withdrawTradeTermsAccepted}
+                data-testid="button-confirm-withdraw">
+                {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />} Confirm Withdrawal
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

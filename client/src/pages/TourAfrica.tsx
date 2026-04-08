@@ -12,7 +12,7 @@ import {
   MapPin, Car, Package, Clock, Star, Navigation,
   Truck, Globe, Phone, ArrowRight, LayoutDashboard,
   Hotel, Plane, CheckCircle2, Calendar, Users, Loader2,
-  Wallet, AlertCircle, History, Tag,
+  Wallet, AlertCircle, History, Tag, Link, Shield, Zap, CarFront,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
@@ -25,16 +25,17 @@ import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
-type TourSection = "overview" | "dispatch" | "etaxi" | "hotel" | "car_hire" | "flight" | "bookings";
+type TourSection = "overview" | "dispatch" | "etaxi" | "hotel" | "car_hire" | "flight" | "car_connect" | "bookings";
 
 const TOUR_NAV: { id: TourSection; label: string; icon: any; badge?: string }[] = [
-  { id: "overview",  label: "Overview",         icon: LayoutDashboard },
-  { id: "hotel",     label: "Hotel Reservation", icon: Hotel },
-  { id: "car_hire",  label: "Car Hire",          icon: Car },
-  { id: "flight",    label: "Flight Booking",    icon: Plane },
-  { id: "dispatch",  label: "Dispatch",          icon: Package,  badge: "Coming Soon" },
-  { id: "etaxi",     label: "E-Taxi",            icon: Car,      badge: "Coming Soon" },
-  { id: "bookings",  label: "My Bookings",       icon: History },
+  { id: "overview",     label: "Overview",         icon: LayoutDashboard },
+  { id: "hotel",        label: "Hotel Reservation", icon: Hotel },
+  { id: "car_hire",     label: "Car Hire",          icon: Car },
+  { id: "flight",       label: "Flight Booking",    icon: Plane },
+  { id: "car_connect",  label: "Car Connect",       icon: CarFront, badge: "New" },
+  { id: "dispatch",     label: "Dispatch",          icon: Package,  badge: "Coming Soon" },
+  { id: "etaxi",        label: "E-Taxi",            icon: Car,      badge: "Coming Soon" },
+  { id: "bookings",     label: "My Bookings",       icon: History },
 ];
 
 export default function TourAfrica() {
@@ -58,6 +59,15 @@ export default function TourAfrica() {
   // Flight form state
   const [flightForm, setFlightForm] = useState({ from: "", to: "", departDate: "", returnDate: "", passengers: "1", class: "Economy", ticketPrice: "" });
   const [flightConfirmOpen, setFlightConfirmOpen] = useState(false);
+
+  // Car Connect state
+  const [carConnectTab, setCarConnectTab] = useState<"browse" | "register">("browse");
+  const [ccForm, setCcForm] = useState({ make: "", model: "", year: "", seats: "4", dailyRate: "", city: "", phone: "", description: "" });
+  const [ccConnectOpen, setCcConnectOpen] = useState(false);
+  const [ccSelectedCar, setCcSelectedCar] = useState<null | { name: string; city: string; rate: string; owner: string }>(null);
+  const [ccConfirmOpen, setCcConfirmOpen] = useState(false);
+  const [ccBookingDate, setCcBookingDate] = useState("");
+  const [ccBookingDays, setCcBookingDays] = useState("1");
 
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -241,6 +251,7 @@ export default function TourAfrica() {
                     { id: "hotel" as TourSection, icon: Hotel, title: "Hotel Reservation", desc: "Find and book hotels, lodges, and guesthouses across Africa.", color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20", border: "border-purple-200 dark:border-purple-800", live: true },
                     { id: "car_hire" as TourSection, icon: Car, title: "Car Hire", desc: "Hire self-drive or chauffeured vehicles for local and inter-city trips.", color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-900/20", border: "border-blue-200 dark:border-blue-800", live: true },
                     { id: "flight" as TourSection, icon: Plane, title: "Flight Booking", desc: "Book direct and connecting flights to any African destination.", color: "text-sky-600", bg: "bg-sky-50 dark:bg-sky-900/20", border: "border-sky-200 dark:border-sky-800", live: true },
+                    { id: "car_connect" as TourSection, icon: CarFront, title: "Car Connect", desc: "Peer-to-peer vehicle sharing — register your car or connect with a nearby vehicle owner.", color: "text-teal-600", bg: "bg-teal-50 dark:bg-teal-900/20", border: "border-teal-200 dark:border-teal-800", live: true },
                     { id: "dispatch" as TourSection, icon: Package, title: "Dispatch", desc: "Send packages and parcels to any location across Africa.", color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-900/20", border: "border-amber-200 dark:border-amber-800", live: false },
                     { id: "etaxi" as TourSection, icon: Car, title: "E-Taxi", desc: "Book verified, rated drivers for city rides and airport transfers.", color: "text-green-600", bg: "bg-green-50 dark:bg-green-900/20", border: "border-green-200 dark:border-green-800", live: false },
                   ].map(service => (
@@ -543,7 +554,251 @@ export default function TourAfrica() {
               </>
             )}
 
-            {/* ── DISPATCH ── */}
+            {/* ── CAR CONNECT ── */}
+            {activeSection === "car_connect" && (
+              <>
+                <motion.div variants={itemVariants}>
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className="w-10 h-10 bg-teal-100 dark:bg-teal-900/30 rounded-xl flex items-center justify-center">
+                      <CarFront className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold leading-tight">Car Connect</h2>
+                      <p className="text-muted-foreground text-sm">Peer-to-peer vehicle sharing across Africa</p>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Tab switcher */}
+                <motion.div variants={itemVariants}>
+                  <div className="flex gap-2 p-1 bg-muted rounded-xl w-fit">
+                    <button onClick={() => setCarConnectTab("browse")}
+                      className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${carConnectTab === "browse" ? "bg-white dark:bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      data-testid="tab-cc-browse">
+                      Find a Car
+                    </button>
+                    <button onClick={() => setCarConnectTab("register")}
+                      className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${carConnectTab === "register" ? "bg-white dark:bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      data-testid="tab-cc-register">
+                      Register My Car
+                    </button>
+                  </div>
+                </motion.div>
+
+                {carConnectTab === "browse" && (
+                  <>
+                    <motion.div variants={itemVariants}>
+                      <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-2xl p-4 flex items-start gap-3">
+                        <Shield className="w-5 h-5 text-teal-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-teal-800 dark:text-teal-300 text-sm">Verified TSIA Members Only</p>
+                          <p className="text-xs text-teal-700 dark:text-teal-400 mt-0.5">All vehicle owners are verified TSIA members. Payments go through your wallet for full protection.</p>
+                        </div>
+                      </div>
+                    </motion.div>
+                    <motion.div variants={itemVariants}>
+                      <p className="text-sm font-semibold text-muted-foreground mb-3">Available Vehicles</p>
+                      <div className="space-y-3">
+                        {[
+                          { id: 1, make: "Toyota", model: "Corolla", year: "2020", seats: 5, dailyRate: "$45", city: "Lagos, Nigeria", owner: "Chukwuemeka A.", rating: 4.9, trips: 34, img: "🚗", color: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800" },
+                          { id: 2, make: "Honda", model: "CR-V", year: "2021", seats: 7, dailyRate: "$60", city: "Abuja, Nigeria", owner: "Fatima B.", rating: 5.0, trips: 18, img: "🚙", color: "bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800" },
+                          { id: 3, make: "Hyundai", model: "Elantra", year: "2019", seats: 5, dailyRate: "$38", city: "Nairobi, Kenya", owner: "James K.", rating: 4.8, trips: 52, img: "🏎️", color: "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800" },
+                          { id: 4, make: "Ford", model: "Ranger (4x4)", year: "2022", seats: 5, dailyRate: "$75", city: "Accra, Ghana", owner: "Kwame A.", rating: 4.7, trips: 12, img: "🛻", color: "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800" },
+                          { id: 5, make: "Kia", model: "Sportage", year: "2020", seats: 5, dailyRate: "$55", city: "Port Harcourt, Nigeria", owner: "Sandra O.", rating: 4.9, trips: 27, img: "🚘", color: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" },
+                        ].map(car => (
+                          <Card key={car.id} className={`border-2 ${car.color.split(" ").slice(2).join(" ")} shadow-sm`}>
+                            <CardContent className="p-4">
+                              <div className="flex items-start gap-4">
+                                <div className={`w-14 h-14 ${car.color.split(" ").slice(0, 2).join(" ")} rounded-2xl flex items-center justify-center text-3xl shrink-0`}>
+                                  {car.img}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                                    <div>
+                                      <p className="font-bold text-base">{car.year} {car.make} {car.model}</p>
+                                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                        <MapPin className="w-3 h-3" /> {car.city}
+                                      </p>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      <p className="font-bold text-teal-700 dark:text-teal-300 text-lg">{car.dailyRate}</p>
+                                      <p className="text-[11px] text-muted-foreground">per day</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {car.seats} seats</span>
+                                    <span className="flex items-center gap-1"><Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {car.rating} ({car.trips} trips)</span>
+                                    <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-teal-500" /> Verified</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-3">
+                                    <p className="text-xs text-muted-foreground">Owner: <span className="font-semibold text-foreground">{car.owner}</span></p>
+                                    <Button size="sm" className="ml-auto bg-teal-600 hover:bg-teal-700 text-white text-xs"
+                                      onClick={() => { setCcSelectedCar({ name: `${car.year} ${car.make} ${car.model}`, city: car.city, rate: car.dailyRate, owner: car.owner }); setCcConfirmOpen(true); }}
+                                      data-testid={`btn-connect-car-${car.id}`}>
+                                      <Link className="w-3 h-3 mr-1" /> Connect
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+
+                {carConnectTab === "register" && (
+                  <>
+                    <motion.div variants={itemVariants}>
+                      <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-2xl p-4 flex items-start gap-3">
+                        <Zap className="w-5 h-5 text-teal-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-teal-800 dark:text-teal-300 text-sm">Earn from your car</p>
+                          <p className="text-xs text-teal-700 dark:text-teal-400 mt-0.5">Register your vehicle and earn in USD. Payments are credited directly to your TSIA wallet.</p>
+                        </div>
+                      </div>
+                    </motion.div>
+                    <motion.div variants={itemVariants}>
+                      <Card className="shadow-md border-2 border-teal-200 dark:border-teal-800">
+                        <CardHeader>
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <CarFront className="w-4 h-4 text-teal-600" /> Vehicle Registration
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label>Make</Label>
+                              <Input placeholder="e.g. Toyota" value={ccForm.make} onChange={e => setCcForm(f => ({ ...f, make: e.target.value }))} data-testid="input-cc-make" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Model</Label>
+                              <Input placeholder="e.g. Corolla" value={ccForm.model} onChange={e => setCcForm(f => ({ ...f, model: e.target.value }))} data-testid="input-cc-model" />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label>Year</Label>
+                              <Input type="number" min="2000" max="2025" placeholder="e.g. 2022" value={ccForm.year} onChange={e => setCcForm(f => ({ ...f, year: e.target.value }))} data-testid="input-cc-year" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Seats</Label>
+                              <select value={ccForm.seats} onChange={e => setCcForm(f => ({ ...f, seats: e.target.value }))}
+                                className="w-full h-10 rounded-lg border border-border bg-card px-3 text-sm focus:outline-none"
+                                data-testid="select-cc-seats">
+                                {["2","4","5","6","7","8"].map(n => <option key={n}>{n}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label>Daily Rate (USD)</Label>
+                              <Input type="number" min="10" placeholder="e.g. 45" value={ccForm.dailyRate} onChange={e => setCcForm(f => ({ ...f, dailyRate: e.target.value }))} data-testid="input-cc-rate" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Your City</Label>
+                              <Input placeholder="e.g. Lagos, Nigeria" value={ccForm.city} onChange={e => setCcForm(f => ({ ...f, city: e.target.value }))} data-testid="input-cc-city" />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>WhatsApp / Phone</Label>
+                            <Input placeholder="+234 80..." value={ccForm.phone} onChange={e => setCcForm(f => ({ ...f, phone: e.target.value }))} data-testid="input-cc-phone" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>Description (optional)</Label>
+                            <Input placeholder="e.g. AC, Bluetooth, clean interior, available weekends" value={ccForm.description} onChange={e => setCcForm(f => ({ ...f, description: e.target.value }))} data-testid="input-cc-description" />
+                          </div>
+                          <Button
+                            className="w-full bg-teal-600 hover:bg-teal-700 text-white"
+                            disabled={!ccForm.make || !ccForm.model || !ccForm.year || !ccForm.dailyRate || !ccForm.city || !ccForm.phone}
+                            onClick={() => setCcConnectOpen(true)}
+                            data-testid="btn-cc-register">
+                            <CarFront className="w-4 h-4 mr-2" /> Register Vehicle
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  </>
+                )}
+
+                {/* Connect/Book dialog */}
+                <Dialog open={ccConfirmOpen} onOpenChange={v => { setCcConfirmOpen(v); if (!v) setCcSelectedCar(null); }}>
+                  <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2"><Link className="w-4 h-4 text-teal-600" /> Connect with Car Owner</DialogTitle>
+                      <DialogDescription>Choose your booking dates and confirm your request.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      {ccSelectedCar && (
+                        <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-xl p-3">
+                          <p className="font-bold text-sm">{ccSelectedCar.name}</p>
+                          <p className="text-xs text-muted-foreground">{ccSelectedCar.city} · Owner: {ccSelectedCar.owner}</p>
+                          <p className="text-sm font-semibold text-teal-700 dark:text-teal-300 mt-1">{ccSelectedCar.rate} / day</p>
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        <Label>Start Date</Label>
+                        <Input type="date" value={ccBookingDate} min={new Date().toISOString().split("T")[0]} onChange={e => setCcBookingDate(e.target.value)} data-testid="input-cc-date" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Number of Days</Label>
+                        <Input type="number" min="1" max="30" value={ccBookingDays} onChange={e => setCcBookingDays(e.target.value)} data-testid="input-cc-days" />
+                      </div>
+                      {ccSelectedCar && ccBookingDate && ccBookingDays && (
+                        <div className="bg-muted rounded-xl p-3 text-sm space-y-1">
+                          <p className="flex justify-between"><span className="text-muted-foreground">Rate</span><span>{ccSelectedCar.rate}/day × {ccBookingDays} days</span></p>
+                          <p className="flex justify-between font-bold">
+                            <span>Total</span>
+                            <span className="text-teal-700 dark:text-teal-300">${(parseFloat(ccSelectedCar.rate.replace("$","")) * parseInt(ccBookingDays || "1")).toFixed(2)}</span>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setCcConfirmOpen(false)}>Cancel</Button>
+                      <Button
+                        className="bg-teal-600 hover:bg-teal-700 text-white"
+                        disabled={!ccBookingDate || !ccBookingDays}
+                        onClick={() => {
+                          if (!ccSelectedCar) return;
+                          const total = parseFloat(ccSelectedCar.rate.replace("$", "")) * parseInt(ccBookingDays || "1");
+                          bookMutation.mutate({ type: "car_connect", details: { ...ccSelectedCar, startDate: ccBookingDate, days: parseInt(ccBookingDays) }, amount: total });
+                          setCcConfirmOpen(false); setCcSelectedCar(null); setCcBookingDate(""); setCcBookingDays("1");
+                        }}
+                        data-testid="btn-cc-confirm-connect">
+                        {bookMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Link className="w-4 h-4 mr-2" />} Confirm & Connect
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Register success dialog */}
+                <Dialog open={ccConnectOpen} onOpenChange={setCcConnectOpen}>
+                  <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-teal-600" /> Vehicle Registration</DialogTitle>
+                      <DialogDescription>Your {ccForm.year} {ccForm.make} {ccForm.model} will be listed for {ccForm.dailyRate}/day in {ccForm.city}.</DialogDescription>
+                    </DialogHeader>
+                    <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-xl p-4 text-sm space-y-1.5 my-2">
+                      <p className="font-semibold text-teal-800 dark:text-teal-300 mb-2">What happens next:</p>
+                      <p className="flex items-start gap-2 text-xs text-teal-700 dark:text-teal-400"><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> TSIA verifies your vehicle within 24h</p>
+                      <p className="flex items-start gap-2 text-xs text-teal-700 dark:text-teal-400"><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Your listing goes live on Car Connect</p>
+                      <p className="flex items-start gap-2 text-xs text-teal-700 dark:text-teal-400"><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> Earnings are paid directly to your TSIA wallet</p>
+                    </div>
+                    <DialogFooter>
+                      <Button className="w-full bg-teal-600 hover:bg-teal-700 text-white" onClick={() => {
+                        toast({ title: "Vehicle Registration Submitted ✓", description: `Your ${ccForm.make} ${ccForm.model} has been submitted for verification. We'll notify you within 24h.`, className: "border-teal-500" });
+                        setCcConnectOpen(false); setCcForm({ make: "", model: "", year: "", seats: "4", dailyRate: "", city: "", phone: "", description: "" });
+                      }} data-testid="btn-cc-confirm-register">
+                        Got it — Submit Registration
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
+
             {activeSection === "dispatch" && (
               <>
                 <motion.div variants={itemVariants}>
@@ -611,10 +866,10 @@ export default function TourAfrica() {
                       ) : (
                         <div className="space-y-4">
                           {(bookings as any[]).map((b: any) => {
-                            const typeIcon = b.type === "hotel" ? Hotel : b.type === "car_hire" ? Car : Plane;
+                            const typeIcon = b.type === "hotel" ? Hotel : b.type === "car_hire" ? Car : b.type === "car_connect" ? CarFront : Plane;
                             const TypeIcon = typeIcon;
-                            const typeLabel = b.type === "hotel" ? "Hotel" : b.type === "car_hire" ? "Car Hire" : "Flight";
-                            const typeColor = b.type === "hotel" ? "text-purple-600 bg-purple-50 dark:bg-purple-900/20" : b.type === "car_hire" ? "text-blue-600 bg-blue-50 dark:bg-blue-900/20" : "text-sky-600 bg-sky-50 dark:bg-sky-900/20";
+                            const typeLabel = b.type === "hotel" ? "Hotel" : b.type === "car_hire" ? "Car Hire" : b.type === "car_connect" ? "Car Connect" : "Flight";
+                            const typeColor = b.type === "hotel" ? "text-purple-600 bg-purple-50 dark:bg-purple-900/20" : b.type === "car_hire" ? "text-blue-600 bg-blue-50 dark:bg-blue-900/20" : b.type === "car_connect" ? "text-teal-600 bg-teal-50 dark:bg-teal-900/20" : "text-sky-600 bg-sky-50 dark:bg-sky-900/20";
                             const details = b.details as any;
                             return (
                               <div key={b.id} className="flex items-start gap-4 p-4 rounded-xl border" data-testid={`booking-${b.id}`}>
@@ -633,6 +888,7 @@ export default function TourAfrica() {
                                     {b.type === "hotel" && `${details?.city} · ${details?.hotelName} · ${details?.nights || 1} night(s)`}
                                     {b.type === "car_hire" && `${details?.pickupCity} → ${details?.dropoffCity} · ${details?.carType} · ${details?.days || 1} day(s)`}
                                     {b.type === "flight" && `${details?.from} → ${details?.to} · ${details?.passengers} pax · ${details?.class}`}
+                                    {b.type === "car_connect" && `${details?.name} · ${details?.city} · ${details?.days || 1} day(s) · Owner: ${details?.owner}`}
                                   </p>
                                   <div className="flex items-center justify-between mt-2">
                                     <span className="text-xs text-muted-foreground">{new Date(b.createdAt).toLocaleDateString()}</span>

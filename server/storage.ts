@@ -171,6 +171,7 @@ export interface IStorage {
   getWalletDepositsByUser(userId: number): Promise<WalletDeposit[]>;
   getPendingWalletDeposits(): Promise<(WalletDeposit & { user: User })[]>;
   updateWalletDeposit(id: number, data: Partial<WalletDeposit>): Promise<WalletDeposit>;
+  deleteWalletDeposit(id: number): Promise<void>;
 
   // Fintech: P2P Transfers
   createWalletTransfer(data: { senderId: number; recipientId: number; amount: number; note?: string }): Promise<WalletTransfer>;
@@ -1029,6 +1030,10 @@ export class DatabaseStorage implements IStorage {
   async updateWalletDeposit(id: number, data: Partial<WalletDeposit>): Promise<WalletDeposit> {
     const [d] = await db.update(walletDeposits).set(data as any).where(eq(walletDeposits.id, id)).returning();
     return d;
+  }
+
+  async deleteWalletDeposit(id: number): Promise<void> {
+    await db.delete(walletDeposits).where(eq(walletDeposits.id, id));
   }
 
   // ── Fintech: P2P Transfers ──────────────────────────────────────────────

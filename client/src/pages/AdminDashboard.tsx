@@ -38,6 +38,7 @@ function StatusBadge({ status }: { status: string }) {
     completed: "bg-green-100 text-green-700 border-green-200",
     delivered: "bg-green-100 text-green-700 border-green-200",
     cancelled: "bg-red-100 text-red-700 border-red-200",
+    declined: "bg-red-100 text-red-700 border-red-200",
   };
   return <Badge variant="outline" className={`capitalize text-xs ${map[status] ?? "bg-slate-100 text-slate-600"}`}>{status || "—"}</Badge>;
 }
@@ -245,6 +246,43 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
       toast({ title: "Deposit Confirmed ✓", description: "Wallet funded and user notified." });
     },
+    onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
+  });
+
+  const declineDepositMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/admin/wallet-deposit/${id}/decline`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/wallet-deposits"] });
+      toast({ title: "Deposit Declined", description: "User has been notified." });
+    },
+    onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
+  });
+
+  const pendingDepositMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/admin/wallet-deposit/${id}/pending`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/wallet-deposits"] });
+      toast({ title: "Reverted to Pending", description: "Deposit is now pending review." });
+    },
+    onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
+  });
+
+  const deleteDepositMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/wallet-deposit/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/wallet-deposits"] });
+      toast({ title: "Deposit Deleted", description: "Record removed from the system." });
+    },
+    onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
   });
 
   const deleteMessageMutation = useMutation({
@@ -964,13 +1002,27 @@ export default function AdminDashboard() {
                             <TableCell><StatusBadge status={d.status} /></TableCell>
                             <TableCell className="text-xs text-slate-500">{fmtDate(d.createdAt)}</TableCell>
                             <TableCell className="text-right px-6">
-                              {d.status === "pending" ? (
-                                <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" disabled={confirmDepositMutation.isPending} onClick={() => confirmDepositMutation.mutate(d.id)} data-testid={`button-confirm-deposit-${d.id}`}>
-                                  <CheckCircle2 className="w-3 h-3 mr-1" /> Confirm
+                              <div className="flex items-center justify-end gap-1 flex-wrap">
+                                {d.status === "pending" && (<>
+                                  <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" disabled={confirmDepositMutation.isPending} onClick={() => confirmDepositMutation.mutate(d.id)} data-testid={`button-confirm-deposit-${d.id}`}>
+                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Confirm
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="h-7 text-xs border-amber-400 text-amber-700 hover:bg-amber-50" disabled={declineDepositMutation.isPending} onClick={() => declineDepositMutation.mutate(d.id)} data-testid={`button-decline-deposit-${d.id}`}>
+                                    <XCircle className="w-3 h-3 mr-1" /> Decline
+                                  </Button>
+                                </>)}
+                                {d.status === "declined" && (
+                                  <Button size="sm" variant="outline" className="h-7 text-xs" disabled={pendingDepositMutation.isPending} onClick={() => pendingDepositMutation.mutate(d.id)} data-testid={`button-pending-deposit-${d.id}`}>
+                                    <Clock className="w-3 h-3 mr-1" /> Pending
+                                  </Button>
+                                )}
+                                {d.status === "completed" && (
+                                  <span className="text-xs text-slate-400 italic mr-1">Confirmed</span>
+                                )}
+                                <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50" disabled={deleteDepositMutation.isPending} onClick={() => { if (window.confirm(`Delete this deposit record (ID: ${d.id})? This cannot be undone.`)) deleteDepositMutation.mutate(d.id); }} data-testid={`button-delete-deposit-${d.id}`}>
+                                  <Trash2 className="w-3 h-3 mr-1" /> Delete
                                 </Button>
-                              ) : (
-                                <span className="text-xs text-slate-400">—</span>
-                              )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}

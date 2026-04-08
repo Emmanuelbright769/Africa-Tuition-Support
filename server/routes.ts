@@ -3124,6 +3124,64 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Admin: decline wallet deposit
+  app.post("/api/admin/wallet-deposit/:id/decline", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (user?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const [existing] = await db.select().from(walletDeposits).where(eq(walletDeposits.id, parseInt(req.params.id)));
+      if (!existing) return res.status(404).json({ message: "Deposit not found" });
+      if (existing.status === "completed") return res.status(409).json({ message: "Cannot decline an already-confirmed deposit." });
+      await storage.updateWalletDeposit(parseInt(req.params.id), { status: "declined" } as any);
+      try {
+        const depUser = await storage.getUser(existing.userId);
+        if (depUser) {
+          const notif = await storage.createNotification({
+            userId: depUser.id,
+            type: "deposit",
+            title: "Deposit Declined",
+            message: `Your deposit of $${existing.amountUsd} has been declined by the admin. Please contact support if you believe this is an error.`,
+            data: { depositId: existing.id },
+            isRead: false,
+          });
+          pushToUser(depUser.id, "notification", notif);
+        }
+      } catch { /* non-critical */ }
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: revert deposit back to pending
+  app.post("/api/admin/wallet-deposit/:id/pending", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (user?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const [existing] = await db.select().from(walletDeposits).where(eq(walletDeposits.id, parseInt(req.params.id)));
+      if (!existing) return res.status(404).json({ message: "Deposit not found" });
+      if (existing.status === "completed") return res.status(409).json({ message: "Cannot revert a completed deposit to pending — this would desync the wallet balance." });
+      await storage.updateWalletDeposit(parseInt(req.params.id), { status: "pending" } as any);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Admin: delete wallet deposit record
+  app.delete("/api/admin/wallet-deposit/:id", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (user?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const [existing] = await db.select().from(walletDeposits).where(eq(walletDeposits.id, parseInt(req.params.id)));
+      if (!existing) return res.status(404).json({ message: "Deposit not found" });
+      await storage.deleteWalletDeposit(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── E-COMMERCE PRODUCTS ────────────────────────────────────────────────────
   app.get("/api/products", async (req, res) => {
     try {

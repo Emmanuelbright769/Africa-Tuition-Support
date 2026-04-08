@@ -100,6 +100,7 @@ export interface IStorage {
   getOrCreateTradeWallet(userId: number): Promise<TradeWallet>;
   updateTradeWalletAddresses(userId: number, trc20?: string, bep20?: string): Promise<TradeWallet>;
   updateTradeBalance(userId: number, delta: string): Promise<TradeWallet>;
+  setBotActivatedAt(userId: number, ts: Date | null): Promise<TradeWallet>;
   creditBotEarnings(userId: number, earningAmount: string): Promise<TradeWallet>;
   applyBotLoss(userId: number, lossAmount: string): Promise<TradeWallet>;
   createTradeTransaction(tx: InsertTradeTransaction): Promise<TradeTransaction>;
@@ -558,11 +559,20 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async setBotActivatedAt(userId: number, ts: Date | null): Promise<TradeWallet> {
+    const [updated] = await db.update(tradeWallets)
+      .set({ botActivatedAt: ts, updatedAt: new Date() })
+      .where(eq(tradeWallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
   async creditBotEarnings(userId: number, earningAmount: string): Promise<TradeWallet> {
     const [updated] = await db.update(tradeWallets)
       .set({
         tradeBalance: sql`trade_balance + ${earningAmount}::decimal`,
         totalBotEarnings: sql`total_bot_earnings + ${earningAmount}::decimal`,
+        botActivatedAt: null,
         updatedAt: new Date(),
       })
       .where(eq(tradeWallets.userId, userId))
@@ -574,6 +584,7 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(tradeWallets)
       .set({
         tradeBalance: sql`GREATEST(trade_balance - ${lossAmount}::decimal, 0)`,
+        botActivatedAt: null,
         updatedAt: new Date(),
       })
       .where(eq(tradeWallets.userId, userId))

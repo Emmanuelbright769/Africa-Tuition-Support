@@ -1616,16 +1616,37 @@ export async function registerRoutes(
   }
   // ────────────────────────────────────────────────────────────────────────────
 
+  // Called by the frontend when the user activates the bot — persists start time in the DB
+  app.post("/api/trade/bot/activate", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const wallet = await storage.getOrCreateTradeWallet(userId);
+      if (parseFloat(wallet.tradeBalance) <= 0) return res.status(400).json({ message: "No trade balance." });
+      const now = new Date();
+      const updated = await storage.setBotActivatedAt(userId, now);
+      res.json({ botActivatedAt: updated.botActivatedAt });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Called by the frontend when the bot session ends — credits proportional earnings based on actual trading hours
   app.post("/api/trade/bot/complete", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      // activatedAt is the timestamp (ms) when the bot was started
-      const { activatedAt } = req.body as { activatedAt?: number };
+      // activatedAt is the timestamp (ms) when the bot was started — fall back to DB value if missing
+      const { activatedAt: clientActivatedAt } = req.body as { activatedAt?: number };
+      const wallet0 = await storage.getOrCreateTradeWallet(userId);
+      // Determine the actual session start: prefer client-provided timestamp, fall back to DB
+      let activatedAt: number | undefined = clientActivatedAt && Number.isFinite(clientActivatedAt) ? clientActivatedAt : undefined;
+      if (!activatedAt && wallet0.botActivatedAt) {
+        activatedAt = new Date(wallet0.botActivatedAt).getTime();
+      }
 
-      const wallet = await storage.getOrCreateTradeWallet(userId);
+      const wallet = wallet0;
       const balance = parseFloat(wallet.tradeBalance);
       if (balance <= 0) return res.status(400).json({ message: "No balance to earn from." });
 

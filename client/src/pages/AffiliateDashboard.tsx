@@ -176,11 +176,12 @@ export default function AffiliateDashboard() {
     if (botCompletingRef.current) return;
     botCompletingRef.current = true;
     const sessionStart = overrideActivatedAt ?? botActivatedAt;
-    setBotActivatedAt(null);
-    try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
     try {
       const r = await apiRequest("POST", "/api/trade/bot/complete", { activatedAt: sessionStart });
       if (r.ok) {
+        // Only clear client-side session after confirmed server success
+        setBotActivatedAt(null);
+        try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
         const data = await r.json();
         queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trade/transactions"] });
@@ -205,21 +206,36 @@ export default function AffiliateDashboard() {
           });
         }
       } else {
-        if (isAutoOff) toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours.", variant: "destructive" });
+        // Keep session alive client-side so it retries on next page load / re-auth
+        if (isAutoOff) toast({ title: "Bot Session Pending", description: "Could not reach the server right now. Your session is saved and will complete when you return.", variant: "destructive" });
       }
     } catch {
-      if (isAutoOff) toast({ title: "Trading Bot Deactivated", description: "The bot has automatically turned off after 12 hours.", variant: "destructive" });
+      // Keep session alive — network error, will retry
+      if (isAutoOff) toast({ title: "Bot Session Pending", description: "Network error. Your bot session is saved and will complete automatically.", variant: "destructive" });
     } finally {
       botCompletingRef.current = false;
     }
   };
 
-  // Activate bot
-  const activateBot = () => {
-    const now = Date.now();
-    setBotActivatedAt(now);
-    try { localStorage.setItem("tsia_bot_activated_at", String(now)); } catch {}
-    toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It runs for up to 12 hours and reflects real market conditions — some sessions may result in a loss.", className: "border-green-500" });
+  // Activate bot — persists start time to DB so it survives server restarts/redeployments
+  const activateBot = async () => {
+    try {
+      const r = await apiRequest("POST", "/api/trade/bot/activate", {});
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        toast({ title: "Activation Failed", description: (err as any).message ?? "Could not start the bot.", variant: "destructive" });
+        return;
+      }
+      const data = await r.json();
+      // Use the server-confirmed timestamp so client & DB are in sync
+      const serverTs = data.botActivatedAt ? new Date(data.botActivatedAt).getTime() : Date.now();
+      setBotActivatedAt(serverTs);
+      try { localStorage.setItem("tsia_bot_activated_at", String(serverTs)); } catch {}
+      queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
+      toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It runs for up to 12 hours and reflects real market conditions — some sessions may result in a loss.", className: "border-green-500" });
+    } catch {
+      toast({ title: "Activation Failed", description: "Network error — please try again.", variant: "destructive" });
+    }
   };
 
   const deactivateBot = () => completeBotSession(false);
@@ -268,6 +284,20 @@ export default function AffiliateDashboard() {
     }, 30000); // every 30 seconds
     return () => clearInterval(interval);
   }, [botActivatedAt, botActive]);
+
+  // Sync bot session from DB when wallet data loads — handles server restarts where localStorage is gone
+  const tradeWalletRaw = useQuery({ queryKey: ["/api/trade/wallet"] }).data as any;
+  useEffect(() => {
+    if (!tradeWalletRaw?.botActivatedAt) return;
+    const dbTs = new Date(tradeWalletRaw.botActivatedAt).getTime();
+    if (!Number.isFinite(dbTs)) return;
+    // Only restore if we don't already have a session tracked locally (avoids overwriting active session)
+    if (!botActivatedAt) {
+      setBotActivatedAt(dbTs);
+      try { localStorage.setItem("tsia_bot_activated_at", String(dbTs)); } catch {}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradeWalletRaw?.botActivatedAt]);
 
   // Request notification permission when entering trade section
   useEffect(() => {

@@ -127,6 +127,7 @@ export const tradeWallets = pgTable("trade_wallets", {
   bep20Address: text("bep20_address"),
   tradeBalance: decimal("trade_balance", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   totalBotEarnings: decimal("total_bot_earnings", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  botActivatedAt: timestamp("bot_activated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

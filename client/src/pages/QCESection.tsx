@@ -41,6 +41,7 @@ export default function QCESection() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [contributeAmt, setContributeAmt] = useState("");
   const [withdrawAmt, setWithdrawAmt] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
 
   const { data, isLoading, refetch } = useQuery<QceStatus>({ queryKey: ["/api/qce/status"] });
   const { data: walletData } = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
@@ -106,7 +107,6 @@ export default function QCESection() {
   const creditPortalUnlocked = savings?.creditPortalUnlocked ?? false;
   const maxWithdraw = Math.max(qceBalance - QCE.MIN_BALANCE, 0);
   const canWithdraw = qceBalance > QCE.MIN_BALANCE;
-  const [showDetails, setShowDetails] = useState(false);
 
   return (
     <div className="space-y-6">

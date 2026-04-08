@@ -1073,7 +1073,7 @@ export default function AffiliateDashboard() {
             {activeSection === "qce" && walletActivated && <QCESection />}
 
             {/* ── TRUST FUND ── */}
-            {activeSection === "trust_fund" && walletActivated && (
+            {activeSection === "trust_fund" && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Co-Affiliate / Initiator Programme</h2>

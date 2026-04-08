@@ -5,7 +5,7 @@ import { createServer } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const app = express();
 const httpServer = createServer(app);
@@ -64,6 +64,22 @@ app.use((req, res, next) => {
   next();
 });
 
+async function runMigrations() {
+  try {
+    await db.execute(sql`
+      ALTER TABLE co_affiliates
+        ADD COLUMN IF NOT EXISTS withdrawn_amount DECIMAL(14,6) NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE trade_wallets
+        ADD COLUMN IF NOT EXISTS bot_activated_at TIMESTAMP
+    `);
+    console.log("[MIGRATE] Schema migrations applied successfully");
+  } catch (e) {
+    console.error("[MIGRATE] Migration error:", e);
+  }
+}
+
 async function seedAdmin() {
   const ADMIN_EMAIL = "admin@tsiforafrica.com";
   const ADMIN_PASSWORD = "admin123";
@@ -95,6 +111,7 @@ async function seedAdmin() {
 }
 
 (async () => {
+  await runMigrations();
   await registerRoutes(httpServer, app);
   await seedAdmin();
 

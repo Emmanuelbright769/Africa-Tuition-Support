@@ -95,6 +95,11 @@ export default function QCESection() {
     },
   });
 
+  const isActivated = savings?.activated ?? false;
+  const creditPortalUnlocked = savings?.creditPortalUnlocked ?? false;
+  const maxWithdraw = Math.max(qceBalance - QCE.MIN_BALANCE, 0);
+  const canWithdraw = qceBalance > QCE.MIN_BALANCE;
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
@@ -102,11 +107,6 @@ export default function QCESection() {
       </div>
     );
   }
-
-  const isActivated = savings?.activated ?? false;
-  const creditPortalUnlocked = savings?.creditPortalUnlocked ?? false;
-  const maxWithdraw = Math.max(qceBalance - QCE.MIN_BALANCE, 0);
-  const canWithdraw = qceBalance > QCE.MIN_BALANCE;
 
   return (
     <div className="space-y-6">

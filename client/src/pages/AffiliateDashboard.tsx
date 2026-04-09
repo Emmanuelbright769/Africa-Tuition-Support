@@ -34,6 +34,10 @@ import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend,
+} from "recharts";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
@@ -1042,6 +1046,170 @@ export default function AffiliateDashboard() {
                     </div>
                   </div>
                 </motion.div>
+
+                {/* ── P&L Chart — weekly profit / loss breakdown ── */}
+                {(() => {
+                  // Filter to bot_earning sessions only
+                  const botSessions = (tradeTxs as any[]).filter(t => t.type === "bot_earning");
+                  if (botSessions.length === 0) return null;
+
+                  // Helper: ISO week key "YYYY-Www"
+                  const isoWeekKey = (d: Date) => {
+                    const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+                    tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+                    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+                    const week = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+                    return `${tmp.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+                  };
+
+                  // Human-readable label: "Mar 10–16"
+                  const weekLabel = (key: string) => {
+                    const [year, wNum] = key.split("-W").map(Number);
+                    const jan4 = new Date(Date.UTC(year, 0, 4));
+                    const monday = new Date(jan4.getTime() - (((jan4.getUTCDay() || 7) - 1) * 86400000) + (wNum - 1) * 7 * 86400000);
+                    const sunday = new Date(monday.getTime() + 6 * 86400000);
+                    const fmt = (dt: Date) => dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+                    return `${fmt(monday)}–${fmt(sunday)}`;
+                  };
+
+                  // Bucket by week
+                  const weekMap: Record<string, { profit: number; loss: number; key: string }> = {};
+                  botSessions.forEach(t => {
+                    const key = isoWeekKey(new Date(t.createdAt));
+                    if (!weekMap[key]) weekMap[key] = { profit: 0, loss: 0, key };
+                    const net = parseFloat(t.netAmount ?? t.amountUsd ?? "0");
+                    if (net >= 0) weekMap[key].profit += net;
+                    else weekMap[key].loss += Math.abs(net);
+                  });
+
+                  const chartData = Object.entries(weekMap)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([key, v]) => ({
+                      week: weekLabel(key),
+                      profit: parseFloat(v.profit.toFixed(4)),
+                      loss: parseFloat(v.loss.toFixed(4)),
+                      net: parseFloat((v.profit - v.loss).toFixed(4)),
+                    }));
+
+                  const totalProfit = chartData.reduce((s, d) => s + d.profit, 0);
+                  const totalLoss   = chartData.reduce((s, d) => s + d.loss, 0);
+                  const totalNet    = totalProfit - totalLoss;
+
+                  // Custom dot showing the value label
+                  const LabelDot = ({ cx, cy, value, fill }: any) => {
+                    if (cx == null || cy == null || value === 0) return null;
+                    return (
+                      <g>
+                        <circle cx={cx} cy={cy} r={4} fill={fill} strokeWidth={0} />
+                        <text x={cx} y={cy - 8} textAnchor="middle" fontSize={9} fill={fill} fontWeight={700}>
+                          ${Math.abs(value).toFixed(2)}
+                        </text>
+                      </g>
+                    );
+                  };
+
+                  return (
+                    <motion.div variants={itemVariants}>
+                      <Card className="shadow-md border-0 overflow-hidden" data-testid="panel-pnl-chart">
+                        <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-5 pt-4 pb-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <BarChart3 className="w-4 h-4" />
+                              <h3 className="font-bold text-sm">Weekly Profit & Loss</h3>
+                            </div>
+                            <Badge className="bg-white/10 text-white border-0 text-xs">{chartData.length} week{chartData.length !== 1 ? "s" : ""}</Badge>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 mt-2">
+                            <div className="bg-white/10 rounded-lg px-3 py-2">
+                              <p className="text-[10px] text-green-300 font-semibold">Total Profit</p>
+                              <p className="text-sm font-bold text-green-300">${totalProfit.toFixed(4)}</p>
+                            </div>
+                            <div className="bg-white/10 rounded-lg px-3 py-2">
+                              <p className="text-[10px] text-red-300 font-semibold">Total Loss</p>
+                              <p className="text-sm font-bold text-red-300">${totalLoss.toFixed(4)}</p>
+                            </div>
+                            <div className="bg-white/10 rounded-lg px-3 py-2">
+                              <p className="text-[10px] text-slate-300 font-semibold">Net P&L</p>
+                              <p className={`text-sm font-bold ${totalNet >= 0 ? "text-green-300" : "text-red-300"}`}>{totalNet >= 0 ? "+" : ""}${totalNet.toFixed(4)}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <CardContent className="pt-4 pb-2 px-3">
+                          <ResponsiveContainer width="100%" height={220}>
+                            <LineChart data={chartData} margin={{ top: 20, right: 12, left: -8, bottom: 4 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+                              <XAxis
+                                dataKey="week"
+                                tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                                tickLine={false}
+                                axisLine={false}
+                              />
+                              <YAxis
+                                tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                                tickLine={false}
+                                axisLine={false}
+                                tickFormatter={(v: number) => `$${v.toFixed(1)}`}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  background: "hsl(var(--card))",
+                                  border: "1px solid hsl(var(--border))",
+                                  borderRadius: "12px",
+                                  fontSize: "12px",
+                                  color: "hsl(var(--foreground))",
+                                  boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+                                }}
+                                formatter={(value: number, name: string) => [
+                                  `$${Math.abs(value).toFixed(4)}`,
+                                  name === "profit" ? "Profit" : name === "loss" ? "Loss" : "Net"
+                                ]}
+                                labelStyle={{ fontWeight: 700, marginBottom: 4 }}
+                                labelFormatter={(label) => `Week: ${label}`}
+                              />
+                              <Legend
+                                formatter={(val) => val === "profit" ? "Profit" : val === "loss" ? "Loss" : "Net"}
+                                wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="profit"
+                                stroke="#22c55e"
+                                strokeWidth={2.5}
+                                dot={(props: any) => <LabelDot {...props} fill="#22c55e" />}
+                                activeDot={{ r: 6, fill: "#22c55e" }}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="loss"
+                                stroke="#ef4444"
+                                strokeWidth={2.5}
+                                dot={(props: any) => <LabelDot {...props} fill="#ef4444" />}
+                                activeDot={{ r: 6, fill: "#ef4444" }}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+
+                          {/* Weekly breakdown table */}
+                          <div className="mt-3 space-y-1.5">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Week-by-Week Summary</p>
+                            {chartData.map((d, i) => (
+                              <div key={i} className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-xs">
+                                <span className="font-medium text-muted-foreground">{d.week}</span>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-green-600 dark:text-green-400 font-semibold">+${d.profit.toFixed(4)}</span>
+                                  {d.loss > 0 && <span className="text-red-500 font-semibold">-${d.loss.toFixed(4)}</span>}
+                                  <span className={`font-bold ${d.net >= 0 ? "text-foreground" : "text-red-500"}`}>
+                                    Net: {d.net >= 0 ? "+" : ""}${d.net.toFixed(4)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  );
+                })()}
 
                 {/* Broker Selection — dropdown */}
                 <motion.div variants={itemVariants}>

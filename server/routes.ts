@@ -3086,12 +3086,12 @@ export async function registerRoutes(
       const squadWallet = await storage.getOrCreateWallet(userId);
       const newBalance = (parseFloat(squadWallet.balance) + amountUsd).toFixed(2);
       await storage.updateWalletBalance(userId, newBalance);
-      // Credit 5% referral commission to referrer (if applicable)
-      creditReferrerCommission(userId, amountUsd, "personal wallet deposit").catch(() => {});
-      // Activate wallet on first funding ≥ $5
+      // Activate wallet on first funding ≥ $5 and credit referral commission
       if (!squadWallet.activated && parseFloat(newBalance) >= 5) {
         try {
           await storage.activateWallet(userId);
+          // Credit 5% referral commission to referrer on first activation deposit
+          creditReferrerCommission(userId, amountUsd, "personal wallet activation").catch(() => {});
           const sqUser = await storage.getUser(userId);
           if (sqUser?.referredBy) {
             const sqReferrer = await storage.getUserByAffiliateCode(sqUser.referredBy);
@@ -3141,7 +3141,11 @@ export async function registerRoutes(
             const wl = await storage.getOrCreateWallet(userId);
             const newBal = (parseFloat(wl.balance) + amountUsd).toFixed(2);
             await storage.updateWalletBalance(userId, newBal);
-            if (!wl.activated && parseFloat(newBal) >= 5) await storage.activateWallet(userId);
+            if (!wl.activated && parseFloat(newBal) >= 5) {
+              await storage.activateWallet(userId);
+              // Credit 5% referral commission to referrer on first activation deposit
+              creditReferrerCommission(userId, amountUsd, "personal wallet activation").catch(() => {});
+            }
             await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), fee: "0.00", paymentMethod: "squad", description: `Wallet funded via Squad webhook (${ref})` });
             await storage.updateWalletDeposit(allDeposits.id, { status: "completed" });
             const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${amountUsd.toFixed(2)} credited via Squad`, data: { ref }, isRead: false });
@@ -3211,12 +3215,12 @@ export async function registerRoutes(
       const pstackWallet = await storage.getOrCreateWallet(userId);
       const psNewBalance = (parseFloat(pstackWallet.balance) + amountUsd).toFixed(2);
       await storage.updateWalletBalance(userId, psNewBalance);
-      // Credit 5% referral commission to referrer (if applicable)
-      creditReferrerCommission(userId, amountUsd, "personal wallet deposit").catch(() => {});
-      // Activate wallet on first funding ≥ $5
+      // Activate wallet on first funding ≥ $5 and credit referral commission
       if (!pstackWallet.activated && parseFloat(psNewBalance) >= 5) {
         try {
           await storage.activateWallet(userId);
+          // Credit 5% referral commission to referrer on first activation deposit
+          creditReferrerCommission(userId, amountUsd, "personal wallet activation").catch(() => {});
           const psUser = await storage.getUser(userId);
           if (psUser?.referredBy) {
             const psReferrer = await storage.getUserByAffiliateCode(psUser.referredBy);
@@ -3774,23 +3778,20 @@ export async function registerRoutes(
       await storage.updateWalletBalance(deposit.userId, newBalance);
       // Reserve fund (20%)
       await storage.addToReserveFund(reserveCut.toFixed(6));
-      // Affiliate commission (5%) — credit directly to referrer, else shared pool
+      // Affiliate pool share (always recorded for accounting)
       try {
-        const adminRefResult = await creditReferrerCommission(deposit.userId, gross, "wallet deposit");
-        if (!adminRefResult.credited) {
-          const affiliateCount = await storage.getAffiliateCount();
-          const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
-          await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
-        } else {
-          await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), 1, affiliateCut.toFixed(6));
-        }
+        const affiliateCount = await storage.getAffiliateCount();
+        const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
+        await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
       } catch { /* non-critical */ }
       // ── Wallet activation: activate if balance reaches $5 for the first time ──
       const WALLET_ACTIVATION_MIN = 5;
       if (!wallet.activated && parseFloat(newBalance) >= WALLET_ACTIVATION_MIN) {
         try {
           await storage.activateWallet(deposit.userId);
-          // If user was referred by an affiliate, notify that affiliate commission is now unlocked
+          // Credit 5% referral commission to referrer on first activation deposit
+          creditReferrerCommission(deposit.userId, gross, "personal wallet activation").catch(() => {});
+          // Notify referrer that commission is now active
           const depUserForRef = await storage.getUser(deposit.userId);
           if (depUserForRef?.referredBy) {
             const referrer = await storage.getUserByAffiliateCode(depUserForRef.referredBy);

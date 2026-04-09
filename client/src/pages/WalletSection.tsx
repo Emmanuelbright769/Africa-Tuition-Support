@@ -605,7 +605,7 @@ export default function WalletSection() {
               : withdrawals.slice(0, 15).map((w: any) => {
                   const isCrypto = w.type === "crypto_withdrawal";
                   // Extract network+address from description for crypto withdrawals
-                  const networkMatch = isCrypto ? w.description?.match(/\(([^)]+)\)/) : null;
+                  const networkMatch = isCrypto ? w.description?.match(/\(([^)]+?)\)/) : null;
                   const networkLabel = networkMatch ? networkMatch[1] : "";
                   const addrMatch = isCrypto ? w.description?.match(/to ([^\s|]+)/) : null;
                   const addrShort = addrMatch ? addrMatch[1] : "";

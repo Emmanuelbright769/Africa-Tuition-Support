@@ -1073,7 +1073,7 @@ export async function registerRoutes(
       const newBalance = (currentBalance - withdrawAmt).toFixed(2);
       await storage.updateWalletBalance(userId, newBalance);
       // Record transaction — embed network and (truncated) address in description
-      const networkLabel = network === "bep20" ? "BEP20 (BSC)" : "TRC20 (TRON)";
+      const networkLabel = network === "bep20" ? "BEP20/BSC" : "TRC20/TRON";
       const truncated = address.trim().length > 16
         ? `${address.trim().slice(0, 8)}…${address.trim().slice(-6)}`
         : address.trim();

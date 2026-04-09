@@ -1127,7 +1127,7 @@ export async function registerRoutes(
     });
   });
 
-  // Affiliate referral growth stats — includes wallet-activation split
+  // Affiliate referral growth stats — includes wallet-activation split + commission earned
   app.get("/api/affiliate/referral-stats", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -1144,13 +1144,49 @@ export async function registerRoutes(
       const activeCount   = activatedReferrals.length;
       const pendingCount  = totalReferred - activeCount;
 
-      // Commission note: affiliates earn from the trade pool & co-affiliate share;
-      // active referrals are those whose wallets are funded ($5+).
+      // Sum all referral commission trade transactions credited to this affiliate
+      const commissionTxResult = await db.execute(sql`
+        SELECT
+          COALESCE(SUM(CAST(amount_usd AS numeric)), 0) AS total_earned,
+          COUNT(*) AS commission_count
+        FROM trade_transactions
+        WHERE user_id = ${userId}
+          AND type = 'bot_earning'
+          AND note LIKE 'Referral commission%'
+          AND CAST(amount_usd AS numeric) > 0
+      `);
+      const totalCommissionEarned = parseFloat((commissionTxResult.rows[0] as any)?.total_earned ?? "0");
+      const commissionCount       = parseInt((commissionTxResult.rows[0] as any)?.commission_count ?? "0");
+
+      // Get recent commission transactions (last 10)
+      const recentCommissions = await db.execute(sql`
+        SELECT amount_usd, note, created_at
+        FROM trade_transactions
+        WHERE user_id = ${userId}
+          AND type = 'bot_earning'
+          AND note LIKE 'Referral commission%'
+          AND CAST(amount_usd AS numeric) > 0
+        ORDER BY created_at DESC
+        LIMIT 10
+      `);
+
+      // Trade wallet available balance (commissions land here)
+      const tradeWallet = await storage.getOrCreateTradeWallet(userId);
+      const tradeBalance = parseFloat(tradeWallet.tradeBalance);
+
       res.json({
         totalReferred,
-        activeCount,        // referred users who activated & funded wallet
-        pendingCount,       // referred users who joined but haven't funded yet
-        commissionNote: "Commission is earned once each referred member activates and funds their TSIA wallet.",
+        activeCount,
+        pendingCount,
+        totalCommissionEarned: parseFloat(totalCommissionEarned.toFixed(4)),
+        commissionCount,
+        tradeBalance: parseFloat(tradeBalance.toFixed(4)),
+        commissionNote: "You earn 5% of every deposit and bot earning made by members who signed up with your referral code.",
+        recentCommissions: (recentCommissions.rows as any[]).map(r => ({
+          amount: parseFloat(parseFloat(r.amount_usd).toFixed(4)),
+          note: r.note,
+          date: r.created_at,
+        })),
         referrals: allReferrals.map(r => {
           const isActive = activatedReferrals.some(a => a.id === r.id);
           return {
@@ -1159,6 +1195,84 @@ export async function registerRoutes(
             status: isActive ? "active" : "pending",
           };
         }),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Withdraw referral commission earnings from Trade Wallet to Personal Wallet
+  app.post("/api/affiliate/withdraw-commission", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const { amount } = req.body;
+      const withdrawAmount = parseFloat(amount);
+      if (isNaN(withdrawAmount) || withdrawAmount <= 0) {
+        return res.status(400).json({ message: "Enter a valid withdrawal amount." });
+      }
+
+      // Check trade wallet balance
+      const tradeWallet = await storage.getOrCreateTradeWallet(userId);
+      const tradeBalance = parseFloat(tradeWallet.tradeBalance);
+      if (withdrawAmount > tradeBalance) {
+        return res.status(400).json({ message: `Insufficient trade balance. Available: $${tradeBalance.toFixed(4)}` });
+      }
+      if (withdrawAmount < 0.01) {
+        return res.status(400).json({ message: "Minimum withdrawal is $0.01." });
+      }
+
+      const txRef = `COMM-WD-${userId}-${Date.now()}`;
+
+      // Deduct from trade wallet
+      await storage.updateTradeBalance(userId, (-withdrawAmount).toFixed(6));
+      await storage.createTradeTransaction({
+        userId,
+        type: "withdraw_exchange",
+        walletType: null,
+        amountUsd: (-withdrawAmount).toFixed(6),
+        feeUsd: "0.000000",
+        reserveFundDeduction: "0.000000",
+        affiliateShareDeduction: "0.000000",
+        netAmount: (-withdrawAmount).toFixed(6),
+        txHash: null,
+        status: "completed",
+        note: `Commission withdrawal to Personal Wallet | Ref: ${txRef}`,
+      });
+
+      // Credit to personal wallet
+      const personalWallet = await storage.getOrCreateWallet(userId);
+      const newPersonalBalance = (parseFloat(personalWallet.balance) + withdrawAmount).toFixed(2);
+      await storage.updateWalletBalance(userId, newPersonalBalance);
+      await storage.createTransaction({
+        userId,
+        type: "deposit",
+        amount: withdrawAmount.toFixed(2),
+        fee: "0.00",
+        paymentMethod: "trade_wallet",
+        description: `Referral commission withdrawal from Trade Wallet | Ref: ${txRef}`,
+      });
+
+      // Notify
+      const notif = await storage.createNotification({
+        userId,
+        type: "wallet_credit",
+        title: "Commission Withdrawal ✓",
+        message: `$${withdrawAmount.toFixed(4)} withdrawn from your Trade Wallet to your Personal Wallet. Ref: ${txRef}`,
+        data: { ref: txRef, amount: withdrawAmount },
+        isRead: false,
+      });
+      pushToUser(userId, "notification", notif);
+
+      const updatedTrade = await storage.getOrCreateTradeWallet(userId);
+      res.json({
+        success: true,
+        reference: txRef,
+        withdrawn: withdrawAmount,
+        newTradeBalance: parseFloat(updatedTrade.tradeBalance).toFixed(4),
+        newPersonalBalance,
+        message: `$${withdrawAmount.toFixed(4)} moved to your Personal Wallet.`,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

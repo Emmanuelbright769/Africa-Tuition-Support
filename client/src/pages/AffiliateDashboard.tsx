@@ -85,6 +85,251 @@ const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "referrals",          label: "Referrals",              icon: Users },
 ];
 
+// ─── Referral Section Component ─────────────────────────────────────────────
+function ReferralSection({ referralStats, referrals, navigate }: {
+  referralStats: any;
+  referrals: any[];
+  queryClient: any;
+  navigate: (s: any) => void;
+}) {
+  const { toast } = useToast();
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [showWithdrawDialog, setShowWithdrawDialog] = useState(false);
+
+  const withdrawMutation = useMutation({
+    mutationFn: async (amount: string) => {
+      const res = await apiRequest("POST", "/api/affiliate/withdraw-commission", { amount: parseFloat(amount) });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Withdrawal Successful!", description: data.message, className: "border-tsia-green" });
+      queryClient.invalidateQueries({ queryKey: ["/api/affiliate/referral-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
+      setShowWithdrawDialog(false);
+      setWithdrawAmount("");
+    },
+    onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
+  });
+
+  const totalEarned = referralStats?.totalCommissionEarned ?? 0;
+  const tradeBalance = referralStats?.tradeBalance ?? 0;
+  const totalReferred = referralStats?.totalReferred ?? referrals.length;
+  const activeCount = referralStats?.activeCount ?? 0;
+  const pendingCount = referralStats?.pendingCount ?? 0;
+  const recentCommissions: any[] = referralStats?.recentCommissions ?? [];
+  const referralList: any[] = referralStats?.referrals ?? referrals.map((r: any) => ({ ...r, status: "pending" }));
+
+  return (
+    <>
+      <motion.div variants={itemVariants}>
+        <h2 className="text-2xl font-bold mb-1">Referral Growth Dashboard</h2>
+        <p className="text-muted-foreground text-sm mb-6">Track your referred members and commission earnings.</p>
+      </motion.div>
+
+      {/* ── Commission Earnings Hero Card ── */}
+      <motion.div variants={itemVariants}>
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-tsia-green/90 to-green-700 text-white overflow-hidden">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-green-100 text-sm font-medium mb-1">Total Commission Earned</p>
+                <p className="text-4xl font-black tracking-tight" data-testid="text-total-commission">${totalEarned.toFixed(4)}</p>
+                <p className="text-green-200 text-xs mt-1">{referralStats?.commissionCount ?? 0} commission events • 5% per deposit &amp; bot session</p>
+              </div>
+              <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                <DollarSign className="w-7 h-7 text-white" />
+              </div>
+            </div>
+
+            <div className="mt-5 pt-5 border-t border-white/20 flex items-center justify-between">
+              <div>
+                <p className="text-green-100 text-xs">Available in Trade Wallet</p>
+                <p className="text-2xl font-bold">${tradeBalance.toFixed(4)}</p>
+              </div>
+              <Button
+                className="bg-white text-tsia-green font-bold hover:bg-green-50 shadow-md"
+                size="sm"
+                onClick={() => setShowWithdrawDialog(true)}
+                disabled={tradeBalance <= 0}
+                data-testid="btn-withdraw-commission"
+              >
+                <ArrowDownToLine className="w-4 h-4 mr-1.5" />
+                Withdraw to Wallet
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ── Growth stats cards ── */}
+      <motion.div variants={itemVariants} className="grid grid-cols-3 gap-3">
+        <Card className="border-0 shadow-md bg-gradient-to-br from-tsia-green/10 to-tsia-green/5">
+          <CardContent className="pt-4 pb-4 text-center">
+            <div className="w-9 h-9 bg-tsia-green/20 rounded-lg flex items-center justify-center mx-auto mb-2">
+              <Users className="w-5 h-5 text-tsia-green" />
+            </div>
+            <p className="text-2xl font-bold" data-testid="text-total-referred">{totalReferred}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Total Referred</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-md bg-gradient-to-br from-green-100/80 to-green-50 dark:from-green-900/20 dark:to-green-900/10">
+          <CardContent className="pt-4 pb-4 text-center">
+            <div className="w-9 h-9 bg-green-200 dark:bg-green-800/40 rounded-lg flex items-center justify-center mx-auto mb-2">
+              <CheckCircle2 className="w-5 h-5 text-green-700 dark:text-green-400" />
+            </div>
+            <p className="text-2xl font-bold text-green-700 dark:text-green-400" data-testid="text-active-referrals">{activeCount}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Active</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-md bg-gradient-to-br from-amber-100/80 to-amber-50 dark:from-amber-900/20 dark:to-amber-900/10">
+          <CardContent className="pt-4 pb-4 text-center">
+            <div className="w-9 h-9 bg-amber-200 dark:bg-amber-800/40 rounded-lg flex items-center justify-center mx-auto mb-2">
+              <Clock className="w-5 h-5 text-amber-700 dark:text-amber-400" />
+            </div>
+            <p className="text-2xl font-bold text-amber-700 dark:text-amber-400" data-testid="text-pending-referrals">{pendingCount}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Pending</p>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ── Commission note ── */}
+      <motion.div variants={itemVariants}>
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 flex items-start gap-3">
+          <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+          <p className="text-sm text-blue-800 dark:text-blue-300">
+            {referralStats?.commissionNote ?? "You earn 5% of every deposit and bot earning made by members who signed up with your referral code."}
+          </p>
+        </div>
+      </motion.div>
+
+      {/* ── Recent Commission Transactions ── */}
+      {recentCommissions.length > 0 && (
+        <motion.div variants={itemVariants}>
+          <Card className="shadow-md border-0">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Recent Commission Credits</CardTitle>
+              <CardDescription>Your latest referral earnings</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-2">
+                {recentCommissions.map((c: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between py-2.5 border-b last:border-0" data-testid={`row-commission-${i}`}>
+                    <div>
+                      <p className="text-xs font-medium text-foreground line-clamp-1">{c.note?.replace("Referral commission (5%) — ", "From: ") || "Commission"}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(c.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                    </div>
+                    <span className="text-tsia-green font-bold text-sm">+${c.amount.toFixed(4)}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* ── Referral list ── */}
+      <motion.div variants={itemVariants}>
+        <Card className="shadow-md border-0">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Your Referrals</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {referralList.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                <p className="text-sm text-muted-foreground font-medium">No referrals yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Share your referral link to start earning commissions</p>
+                <Button className="mt-4" onClick={() => navigate("overview")} variant="outline">Copy your link</Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {referralList.map((r: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between p-3.5 rounded-xl bg-muted/50 border" data-testid={`row-referral-${i}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center">
+                        <span className="text-sm font-bold text-primary">{r.name?.charAt(0) || "?"}</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{r.name}</p>
+                        <p className="text-xs text-muted-foreground">Joined {new Date(r.joinedAt).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    <Badge className={r.status === "active"
+                      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"}>
+                      {r.status === "active" ? "Active" : "Pending"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ── Withdraw Commission Dialog ── */}
+      <Dialog open={showWithdrawDialog} onOpenChange={setShowWithdrawDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Withdraw Commission Earnings</DialogTitle>
+            <DialogDescription>
+              Move your referral commission earnings from your Trade Wallet to your Personal Wallet.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-4 flex justify-between items-center">
+              <span className="text-sm font-medium text-muted-foreground">Trade Wallet Balance</span>
+              <span className="font-bold text-tsia-green text-lg">${tradeBalance.toFixed(4)}</span>
+            </div>
+            <div>
+              <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Amount to Withdraw ($)</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  max={tradeBalance}
+                  placeholder="0.00"
+                  value={withdrawAmount}
+                  onChange={e => setWithdrawAmount(e.target.value)}
+                  className="text-lg font-bold"
+                  data-testid="input-withdraw-amount"
+                />
+                <Button variant="outline" size="sm" className="shrink-0 font-bold" onClick={() => setWithdrawAmount(tradeBalance.toFixed(4))}>
+                  Max
+                </Button>
+              </div>
+              {withdrawAmount && parseFloat(withdrawAmount) > tradeBalance && (
+                <p className="text-xs text-red-500 mt-1">Amount exceeds available balance</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowWithdrawDialog(false)}>Cancel</Button>
+            <Button
+              className="bg-tsia-green text-white font-bold"
+              disabled={
+                !withdrawAmount ||
+                parseFloat(withdrawAmount) <= 0 ||
+                parseFloat(withdrawAmount) > tradeBalance ||
+                withdrawMutation.isPending
+              }
+              onClick={() => withdrawMutation.mutate(withdrawAmount)}
+              data-testid="btn-confirm-withdraw"
+            >
+              {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownToLine className="w-4 h-4 mr-2" />}
+              Withdraw ${parseFloat(withdrawAmount || "0").toFixed(2)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 export default function AffiliateDashboard() {
   const { formatAmount, rateLabel } = useLocalCurrency();
   const [, setLocation] = useLocation();
@@ -1901,99 +2146,12 @@ export default function AffiliateDashboard() {
 
             {/* ── REFERRALS ── */}
             {activeSection === "referrals" && walletActivated && (
-              <>
-                <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Referral Growth Dashboard</h2>
-                  <p className="text-muted-foreground text-sm mb-6">Track your referred members and commission status.</p>
-                </motion.div>
-
-                {/* Growth stats cards */}
-                <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <Card className="border-0 shadow-md bg-gradient-to-br from-tsia-green/10 to-tsia-green/5">
-                    <CardContent className="pt-5 pb-5">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 bg-tsia-green/20 rounded-lg flex items-center justify-center">
-                          <Users className="w-5 h-5 text-tsia-green" />
-                        </div>
-                        <p className="text-sm text-muted-foreground font-medium">Total Referred</p>
-                      </div>
-                      <p className="text-3xl font-bold" data-testid="text-total-referred">{referralStats?.totalReferred ?? referrals.length}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Members who used your code</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-0 shadow-md bg-gradient-to-br from-green-100/80 to-green-50 dark:from-green-900/20 dark:to-green-900/10">
-                    <CardContent className="pt-5 pb-5">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 bg-green-200 dark:bg-green-800/40 rounded-lg flex items-center justify-center">
-                          <CheckCircle2 className="w-5 h-5 text-green-700 dark:text-green-400" />
-                        </div>
-                        <p className="text-sm text-muted-foreground font-medium">Active (Wallet Funded)</p>
-                      </div>
-                      <p className="text-3xl font-bold text-green-700 dark:text-green-400" data-testid="text-active-referrals">{referralStats?.activeCount ?? 0}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Commission unlocked for these</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-0 shadow-md bg-gradient-to-br from-amber-100/80 to-amber-50 dark:from-amber-900/20 dark:to-amber-900/10">
-                    <CardContent className="pt-5 pb-5">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 bg-amber-200 dark:bg-amber-800/40 rounded-lg flex items-center justify-center">
-                          <Clock className="w-5 h-5 text-amber-700 dark:text-amber-400" />
-                        </div>
-                        <p className="text-sm text-muted-foreground font-medium">Pending (Not Yet Funded)</p>
-                      </div>
-                      <p className="text-3xl font-bold text-amber-700 dark:text-amber-400" data-testid="text-pending-referrals">{referralStats?.pendingCount ?? 0}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Commission activates on funding</p>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                {/* Commission note */}
-                <motion.div variants={itemVariants}>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 flex items-start gap-3">
-                    <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-                    <p className="text-sm text-blue-800 dark:text-blue-300">
-                      {referralStats?.commissionNote ?? "Commission is earned once each referred member activates and funds their TSIA wallet."}
-                    </p>
-                  </div>
-                </motion.div>
-
-                {/* Referral list */}
-                <motion.div variants={itemVariants}>
-                  <Card className="shadow-md border-0">
-                    <CardContent className="pt-6">
-                      {(referralStats?.referrals ?? referrals).length === 0 ? (
-                        <div className="text-center py-16">
-                          <Users className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                          <p className="text-sm text-muted-foreground font-medium">No referrals yet</p>
-                          <p className="text-xs text-muted-foreground mt-1">Share your referral link to start earning commissions</p>
-                          <Button className="mt-4" onClick={() => navigate("overview")} variant="outline">Copy your link</Button>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {(referralStats?.referrals ?? referrals.map((r: any) => ({ ...r, status: "pending" }))).map((r: any, i: number) => (
-                            <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-muted/50 border" data-testid={`row-referral-${i}`}>
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                                  <span className="text-sm font-bold text-primary">{r.name?.charAt(0) || "?"}</span>
-                                </div>
-                                <div>
-                                  <p className="font-medium text-sm">{r.name}</p>
-                                  <p className="text-xs text-muted-foreground">Joined {new Date(r.joinedAt).toLocaleDateString()}</p>
-                                </div>
-                              </div>
-                              <Badge className={r.status === "active"
-                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                                : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"}>
-                                {r.status === "active" ? "Active" : "Pending"}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </>
+              <ReferralSection
+                referralStats={referralStats}
+                referrals={referrals}
+                queryClient={queryClient}
+                navigate={navigate}
+              />
             )}
 
           </motion.div>

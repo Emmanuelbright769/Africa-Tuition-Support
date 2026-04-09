@@ -3078,48 +3078,52 @@ export async function registerRoutes(
 
   // ─── FINTECH: BANKS, RESOLUTION & P2P ───────────────────────────────────────
   // Nigerian banks list
-  app.get("/api/wallet/banks", (req, res) => {
+  // ── Banks list — live from Squad, hardcoded fallback ────────────────────────
+  const FALLBACK_BANKS = [
+    { code: "044", name: "Access Bank" }, { code: "035A", name: "ALAT by Wema" },
+    { code: "023", name: "Citibank Nigeria" }, { code: "050", name: "EcoBank Nigeria" },
+    { code: "070", name: "Fidelity Bank" }, { code: "011", name: "First Bank of Nigeria" },
+    { code: "214", name: "First City Monument Bank (FCMB)" }, { code: "058", name: "Guaranty Trust Bank (GTB)" },
+    { code: "301", name: "Jaiz Bank" }, { code: "082", name: "Keystone Bank" },
+    { code: "526", name: "Kuda Bank" }, { code: "090405", name: "Moniepoint MFB" },
+    { code: "076", name: "Polaris Bank" }, { code: "101", name: "Providus Bank" },
+    { code: "221", name: "Stanbic IBTC Bank" }, { code: "232", name: "Sterling Bank" },
+    { code: "032", name: "Union Bank of Nigeria" }, { code: "033", name: "United Bank for Africa (UBA)" },
+    { code: "215", name: "Unity Bank" }, { code: "035", name: "Wema Bank" },
+    { code: "057", name: "Zenith Bank" }, { code: "090110", name: "VFD Microfinance Bank" },
+    { code: "000026", name: "Taj Bank" }, { code: "000031", name: "PalmPay" },
+    { code: "000014", name: "OPay (OPay Digital)" }, { code: "000019", name: "Flutterwave" },
+  ];
+  let cachedBankList: { code: string; name: string }[] | null = null;
+  let bankListCachedAt = 0;
+
+  app.get("/api/wallet/banks", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    res.json([
-      { code: "044", name: "Access Bank" },
-      { code: "035A", name: "ALAT by Wema" },
-      { code: "401", name: "ASO Savings and Loans" },
-      { code: "023", name: "Citibank Nigeria" },
-      { code: "063", name: "Diamond Bank" },
-      { code: "050", name: "EcoBank Nigeria" },
-      { code: "562", name: "Ekondo Microfinance Bank" },
-      { code: "084", name: "Enterprise Bank" },
-      { code: "070", name: "Fidelity Bank" },
-      { code: "011", name: "First Bank of Nigeria" },
-      { code: "214", name: "First City Monument Bank" },
-      { code: "058", name: "Guaranty Trust Bank" },
-      { code: "030", name: "Heritage Bank" },
-      { code: "301", name: "Jaiz Bank" },
-      { code: "082", name: "Keystone Bank" },
-      { code: "526", name: "Kuda Bank" },
-      { code: "090405", name: "Moniepoint Microfinance Bank" },
-      { code: "014", name: "Mainstreet Bank" },
-      { code: "076", name: "Polaris Bank" },
-      { code: "101", name: "ProvidusBank" },
-      { code: "221", name: "Stanbic IBTC Bank" },
-      { code: "068", name: "Standard Chartered Bank" },
-      { code: "232", name: "Sterling Bank" },
-      { code: "100", name: "Suntrust Bank" },
-      { code: "032", name: "Union Bank of Nigeria" },
-      { code: "033", name: "United Bank For Africa" },
-      { code: "215", name: "Unity Bank" },
-      { code: "035", name: "Wema Bank" },
-      { code: "057", name: "Zenith Bank" },
-      { code: "090110", name: "VFD Microfinance Bank" },
-      { code: "000026", name: "Taj Bank" },
-      { code: "000031", name: "PalmPay" },
-      { code: "000014", name: "Opay (OPay Digital)" },
-      { code: "000019", name: "Flutterwave" },
-    ]);
+    // Serve from memory cache (1 hour TTL)
+    if (cachedBankList && Date.now() - bankListCachedAt < 3600_000) return res.json(cachedBankList);
+    const secretKey = process.env.SQUAD_SECRET_KEY;
+    try {
+      const r = await fetch("https://api.squadco.com/bank/list", {
+        headers: { "Authorization": `Bearer ${secretKey}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await r.json() as any;
+      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+        const banks = data.data
+          .map((b: any) => ({ code: String(b.bank_code || b.code || ""), name: String(b.bank_name || b.name || "") }))
+          .filter((b: any) => b.code && b.name)
+          .sort((a: any, z: any) => a.name.localeCompare(z.name));
+        cachedBankList = banks;
+        bankListCachedAt = Date.now();
+        return res.json(banks);
+      }
+    } catch (_) {}
+    // Fallback
+    res.json(FALLBACK_BANKS);
   });
 
-  // Resolve Nigerian bank account name via Paystack
+  // ── Resolve bank account via Squad ──────────────────────────────────────────
   app.post("/api/wallet/resolve-bank", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -3127,43 +3131,33 @@ export async function registerRoutes(
     if (!accountNumber || !bankCode) return res.status(400).json({ message: "Account number and bank code required" });
     if (!/^\d{10}$/.test(accountNumber)) return res.status(400).json({ message: "Account number must be 10 digits" });
 
-    // ── 1. Serve from cache if available (saves Paystack quota) ──────────
     const cacheKey = `${bankCode}:${accountNumber}`;
     const cached = bankResolveCache.get(cacheKey);
     if (cached) return res.json({ accountName: cached, accountNumber, fromCache: true });
 
-    const key = process.env.PAYSTACK_SECRET_KEY;
-    if (!key) {
-      return res.json({ message: "Cannot auto-verify right now — please confirm account details before sending", unverified: true });
-    }
-
+    const secretKey = process.env.SQUAD_SECRET_KEY;
     try {
-      const url = `https://api.paystack.co/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`;
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
-      const data = await response.json() as any;
-
-      // ── 2. Paystack API-level failure ────────────────────────────────
-      if (!data.status) {
-        const msg: string = (data.message || "").toLowerCase();
-        const isRateLimit = msg.includes("daily limit") || msg.includes("test mode") || msg.includes("upgrade to live");
-        const isNotFound  = msg.includes("could not resolve") || msg.includes("not found") || response.status === 422;
-
-        if (isRateLimit) {
-          // Treat as unverified warning — user can still proceed
-          return res.json({ message: "Auto-verification unavailable right now. Please double-check the account details before sending.", unverified: true });
+      const r = await fetch("https://api.squadco.com/bank/account/lookup", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
+        signal: AbortSignal.timeout(12000),
+      });
+      const data = await r.json() as any;
+      if (data.success) {
+        const accountName: string = data.data?.account_name ?? data.data?.AccountName ?? "";
+        if (accountName) {
+          bankResolveCache.set(cacheKey, accountName);
+          return res.json({ accountName, accountNumber });
         }
-        if (isNotFound) {
-          return res.json({ accountNotFound: true, message: "Account not found. Check the account number and bank." });
-        }
-        return res.json({ message: data.message || "Could not verify account", unverified: true });
       }
-
-      // ── 3. Success — cache and return ────────────────────────────────
-      const accountName: string = data.data.account_name;
-      bankResolveCache.set(cacheKey, accountName);
-      res.json({ accountName, accountNumber: data.data.account_number });
+      const msg: string = (data.message || "").toLowerCase();
+      if (msg.includes("not found") || msg.includes("invalid") || msg.includes("does not exist")) {
+        return res.json({ accountNotFound: true, message: "Account not found. Check the account number and bank." });
+      }
+      return res.json({ message: data.message || "Could not verify account. Please double-check and proceed with caution.", unverified: true });
     } catch (e: any) {
-      res.json({ message: "Verification service unreachable — please confirm account details before sending.", unverified: true });
+      return res.json({ message: "Verification service unreachable — confirm account details before sending.", unverified: true });
     }
   });
 
@@ -3257,6 +3251,286 @@ export async function registerRoutes(
       res.json(transfers);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
+
+  // ─── FINTECH HUB: Squad-powered transactions ─────────────────────────────────
+
+  // ── Shared helper: deduct wallet + record bill + record transaction ──────────
+  async function fintechDebitWallet(
+    userId: number,
+    amountUsd: number,
+    service: string,
+    reference: string,
+    description: string,
+    notifTitle: string,
+    notifMessage: string,
+    notifData: Record<string, any> = {},
+  ) {
+    const wallet = await storage.getOrCreateWallet(userId);
+    const balance = parseFloat(wallet.balance);
+    if (balance < amountUsd) throw Object.assign(new Error(`Insufficient balance. You have $${balance.toFixed(2)}`), { status: 400 });
+    await storage.updateWalletBalance(userId, (balance - amountUsd).toFixed(2));
+    await storage.createBillPayment({ userId, service, amount: amountUsd, reference });
+    await storage.createTransaction({ userId, type: "bill", amount: (-amountUsd).toFixed(2), fee: "0.00", paymentMethod: "wallet", description });
+    const notif = await storage.createNotification({ userId, type: "wallet_credit", title: notifTitle, message: notifMessage, data: notifData, isRead: false });
+    pushToUser(userId, "notification", notif);
+    return await storage.getOrCreateWallet(userId);
+  }
+
+  // ── POST /api/fintech/bank-transfer — Squad payout to Nigerian bank ──────────
+  app.post("/api/fintech/bank-transfer", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { bankCode, bankName, accountNumber, accountName, amount, narration } = req.body;
+      if (!bankCode || !accountNumber || !accountName || !amount) {
+        return res.status(400).json({ message: "bankCode, accountNumber, accountName, and amount are required" });
+      }
+      const transferAmount = parseFloat(amount);
+      if (isNaN(transferAmount) || transferAmount <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+      const wallet = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(wallet.balance);
+      if (balance < transferAmount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+
+      const vatAmount = transferAmount * 0.075;
+      const netAmountUsd = transferAmount - vatAmount;
+      const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
+      const txRef = `TSIA-FT-${userId}-${Date.now()}`;
+
+      // Call Squad payout API
+      const secretKey = process.env.SQUAD_SECRET_KEY;
+      let squadSuccess = false, squadMsg = "";
+      try {
+        const squadRes = await fetch("https://api.squadco.com/payout/initiate", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transaction_reference: txRef,
+            amount: netAmountNgn,
+            bank_code: bankCode,
+            account_number: accountNumber,
+            account_name: accountName,
+            currency_id: "NGN",
+            narration: narration || `TSIA Bank Transfer | Ref: ${txRef}`,
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const squadData = await squadRes.json() as any;
+        squadSuccess = !!squadData.success;
+        if (!squadSuccess) squadMsg = squadData.message ?? "Transfer failed";
+      } catch (e: any) { squadMsg = e.message ?? "Network error"; }
+
+      if (!squadSuccess) {
+        return res.status(502).json({ message: `Bank transfer failed: ${squadMsg}. Please try again or contact support.` });
+      }
+
+      // Deduct + record
+      await storage.updateWalletBalance(userId, (balance - transferAmount).toFixed(2));
+      const billRef = `${accountName} | ${accountNumber} | ${bankName || bankCode} | Ref: ${txRef}`;
+      await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: billRef });
+      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer", description: `Bank transfer ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) — 7.5% VAT: $${vatAmount.toFixed(2)} | Ref: ${txRef}` });
+      const msg = `₦${netAmountNgn.toLocaleString()} sent to ${accountName} (${accountNumber}). Processing within 24h. Ref: ${txRef}`;
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Initiated ✓", message: msg, data: { ref: txRef }, isRead: false });
+      pushToUser(userId, "notification", notif);
+      const updated = await storage.getOrCreateWallet(userId);
+      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // ── POST /api/fintech/airtime — Squad VAS airtime purchase ──────────────────
+  app.post("/api/fintech/airtime", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { network, phone, amount } = req.body;
+      if (!network || !phone || !amount) return res.status(400).json({ message: "network, phone, and amount required" });
+      const amountUsd = parseFloat(amount);
+      if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+      const wallet = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(wallet.balance);
+      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+
+      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const txRef = `TSIA-AIR-${userId}-${Date.now()}`;
+      const NETWORK_MAP: Record<string, string> = { mtn: "MTN", airtel: "AIRTEL", glo: "GLO", "9mobile": "9MOBILE", etisalat: "9MOBILE" };
+      const networkCode = NETWORK_MAP[network.toLowerCase()] || network.toUpperCase();
+
+      const secretKey = process.env.SQUAD_SECRET_KEY;
+      let squadSuccess = false, squadMsg = "";
+      try {
+        const r = await fetch("https://api.squadco.com/vending/purchase/airtime", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ phone_number: phone, network_operator: networkCode, amount: amountNgn, transaction_reference: txRef }),
+          signal: AbortSignal.timeout(20000),
+        });
+        const d = await r.json() as any;
+        squadSuccess = !!d.success;
+        if (!squadSuccess) squadMsg = d.message ?? "Airtime purchase failed";
+      } catch (e: any) { squadMsg = e.message ?? "Network error"; }
+
+      if (!squadSuccess) {
+        return res.status(502).json({ message: `Airtime purchase failed: ${squadMsg}. Please try again.` });
+      }
+
+      const ref = `${networkCode} | ${phone} | ₦${amountNgn.toLocaleString()} | Ref: ${txRef}`;
+      const desc = `Airtime ₦${amountNgn.toLocaleString()} → ${phone} (${networkCode}) | Ref: ${txRef}`;
+      const msg = `₦${amountNgn.toLocaleString()} airtime delivered to ${phone} (${networkCode}).`;
+      await fintechDebitWallet(userId, amountUsd, "airtime", ref, desc, "Airtime Delivered ✓", msg, { ref: txRef });
+      res.json({ success: true, reference: txRef, amountNgn, message: msg });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // ── POST /api/fintech/data — Squad VAS data bundle purchase ─────────────────
+  app.post("/api/fintech/data", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { network, phone, amount, planLabel, planValidity } = req.body;
+      if (!network || !phone || !amount) return res.status(400).json({ message: "network, phone, and amount required" });
+      const amountUsd = parseFloat(amount);
+      if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+      const wallet = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(wallet.balance);
+      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+
+      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const txRef = `TSIA-DATA-${userId}-${Date.now()}`;
+      const NETWORK_MAP: Record<string, string> = { mtn: "MTN", airtel: "AIRTEL", glo: "GLO", "9mobile": "9MOBILE", etisalat: "9MOBILE" };
+      const networkCode = NETWORK_MAP[network.toLowerCase()] || network.toUpperCase();
+
+      const secretKey = process.env.SQUAD_SECRET_KEY;
+      let squadSuccess = false, squadMsg = "";
+      try {
+        const r = await fetch("https://api.squadco.com/vending/purchase/data", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ phone_number: phone, network_operator: networkCode, amount: amountNgn, transaction_reference: txRef }),
+          signal: AbortSignal.timeout(20000),
+        });
+        const d = await r.json() as any;
+        squadSuccess = !!d.success;
+        if (!squadSuccess) squadMsg = d.message ?? "Data purchase failed";
+      } catch (e: any) { squadMsg = e.message ?? "Network error"; }
+
+      if (!squadSuccess) {
+        return res.status(502).json({ message: `Data purchase failed: ${squadMsg}. Please try again.` });
+      }
+
+      const planInfo = planLabel ? `${planLabel}${planValidity ? ` (${planValidity})` : ""}` : `₦${amountNgn.toLocaleString()} data`;
+      const ref = `${networkCode} | ${planInfo} | ${phone} | Ref: ${txRef}`;
+      const desc = `Data ${planInfo} ₦${amountNgn.toLocaleString()} → ${phone} (${networkCode}) | Ref: ${txRef}`;
+      const msg = `${planInfo} data bundle activated on ${phone} (${networkCode}).`;
+      await fintechDebitWallet(userId, amountUsd, "internet", ref, desc, "Data Bundle Activated ✓", msg, { ref: txRef });
+      res.json({ success: true, reference: txRef, amountNgn, message: msg });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // ── POST /api/fintech/electricity — Squad VAS electricity payment ────────────
+  app.post("/api/fintech/electricity", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { discoCode, meterType, meterNumber, amount, phone } = req.body;
+      if (!discoCode || !meterType || !meterNumber || !amount) {
+        return res.status(400).json({ message: "discoCode, meterType, meterNumber, and amount required" });
+      }
+      const amountUsd = parseFloat(amount);
+      if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+      const wallet = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(wallet.balance);
+      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+
+      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const txRef = `TSIA-ELEC-${userId}-${Date.now()}`;
+
+      const secretKey = process.env.SQUAD_SECRET_KEY;
+      let squadSuccess = false, squadMsg = "", token = "";
+      try {
+        const r = await fetch("https://api.squadco.com/vending/purchase/electricity", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            disco_code: discoCode, meter_type: meterType, meter_number: meterNumber,
+            amount: amountNgn, phone_number: phone || "08000000000", transaction_reference: txRef,
+          }),
+          signal: AbortSignal.timeout(25000),
+        });
+        const d = await r.json() as any;
+        squadSuccess = !!d.success;
+        token = d.data?.token ?? d.data?.meter_token ?? "";
+        if (!squadSuccess) squadMsg = d.message ?? "Electricity payment failed";
+      } catch (e: any) { squadMsg = e.message ?? "Network error"; }
+
+      if (!squadSuccess) {
+        return res.status(502).json({ message: `Electricity payment failed: ${squadMsg}. Please try again.` });
+      }
+
+      const noteRef = token ? `Token: ${token} | Ref: ${txRef}` : `Ref: ${txRef}`;
+      const ref = `${discoCode} | ${meterType} | ${meterNumber} | ₦${amountNgn.toLocaleString()} | ${noteRef}`;
+      const desc = `Electricity ₦${amountNgn.toLocaleString()} → ${meterNumber} (${discoCode}, ${meterType}) | ${noteRef}`;
+      const msg = token
+        ? `₦${amountNgn.toLocaleString()} electricity credited. Meter: ${meterNumber}. Token: ${token}`
+        : `₦${amountNgn.toLocaleString()} electricity submitted for ${meterNumber} (${discoCode}).`;
+      await fintechDebitWallet(userId, amountUsd, "electricity", ref, desc, "Electricity Credited ✓", msg, { ref: txRef, token });
+      res.json({ success: true, reference: txRef, amountNgn, token, message: msg });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // ── POST /api/fintech/betting — Betting wallet funding (wallet debit) ────────
+  app.post("/api/fintech/betting", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { platform, bettingUserId, amount } = req.body;
+      if (!platform || !bettingUserId || !amount) return res.status(400).json({ message: "platform, bettingUserId, and amount required" });
+      const amountUsd = parseFloat(amount);
+      if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const txRef = `TSIA-BET-${userId}-${Date.now()}`;
+      const ref = `${platform} | ID: ${bettingUserId} | ₦${amountNgn.toLocaleString()} | Ref: ${txRef}`;
+      const desc = `Betting wallet fund ${platform} ID: ${bettingUserId} | ₦${amountNgn.toLocaleString()} | Ref: ${txRef}`;
+      const msg = `₦${amountNgn.toLocaleString()} funded to ${platform} wallet (ID: ${bettingUserId}).`;
+      await fintechDebitWallet(userId, amountUsd, "betting", ref, desc, "Betting Wallet Funded ✓", msg, { ref: txRef });
+      res.json({ success: true, reference: txRef, amountNgn, message: msg });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // ── POST /api/fintech/request-money — Notify TSIA member of money request ───
+  app.post("/api/fintech/request-money", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { email, amount, note } = req.body;
+      if (!email || !amount) return res.status(400).json({ message: "email and amount are required" });
+      const amountUsd = parseFloat(amount);
+      if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+      const requester = await storage.getUser(userId);
+      if (!requester) return res.status(404).json({ message: "User not found" });
+
+      const target = await storage.getUserByEmail(email.trim().toLowerCase());
+      if (!target) return res.status(404).json({ message: "No TSIA member found with that email" });
+      if (target.id === userId) return res.status(400).json({ message: "You cannot request money from yourself" });
+
+      const requestRef = `REQ-${userId}-${Date.now()}`;
+      const msg = `${requester.firstName} ${requester.lastName} is requesting $${amountUsd.toFixed(2)} from you${note ? `: "${note}"` : ""}. Log in to your TSIA wallet to send.`;
+      const notif = await storage.createNotification({
+        userId: target.id, type: "wallet_credit",
+        title: `Money Request from ${requester.firstName} ${requester.lastName}`,
+        message: msg, data: { requesterId: userId, amount: amountUsd, ref: requestRef }, isRead: false,
+      });
+      pushToUser(target.id, "notification", notif);
+      res.json({ success: true, reference: requestRef, message: `Request for $${amountUsd.toFixed(2)} sent to ${target.firstName} ${target.lastName}.` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // Pay a bill (deduct from wallet)
   app.post("/api/wallet/bill", async (req, res) => {

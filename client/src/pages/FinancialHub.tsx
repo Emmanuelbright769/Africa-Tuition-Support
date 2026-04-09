@@ -174,6 +174,10 @@ export default function FinancialHub() {
   const [memberSuggestions, setMemberSuggestions] = useState<{ id: number; firstName: string; lastName: string; email: string }[]>([]);
   const [showSuggestions, setShowSuggestions]     = useState(false);
 
+  // ── Request Money state ──────────────────────────────────────────────────
+  const [requestEmail, setRequestEmail] = useState("");
+  const [requestNote, setRequestNote]   = useState("");
+
   // Debounced email autocomplete
   useEffect(() => {
     if (!tsiaEmail.trim() || tsiaUser) { setMemberSuggestions([]); setShowSuggestions(false); return; }
@@ -188,8 +192,9 @@ export default function FinancialHub() {
 
   // ── Bill state ────────────────────────────────────────────────────────────
   const [selectedService, setSelectedService] = useState<typeof SERVICES[0] | null>(null);
-  const [billStep, setBillStep]               = useState<"details" | "amount">("details");
+  const [billStep, setBillStep]               = useState<"details" | "amount" | "success">("details");
   const [billRef, setBillRef]                 = useState("");
+  const [txResult, setTxResult]               = useState<{ ref: string; amountNgn: number; token?: string; message: string } | null>(null);
   // Airtime
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
   // Internet
@@ -199,6 +204,7 @@ export default function FinancialHub() {
   const [selectedDisco, setSelectedDisco]     = useState<typeof DISCOS[0] | null>(null);
   const [meterType, setMeterType]             = useState<"prepaid" | "postpaid" | null>(null);
   const [discoSearch, setDiscoSearch]         = useState("");
+  const [elecPhone, setElecPhone]             = useState("");
   // Betting
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
 
@@ -251,16 +257,22 @@ export default function FinancialHub() {
   // ── Mutations ─────────────────────────────────────────────────────────────
   const sendBankMutation = useMutation({
     mutationFn: async () => {
-      // For external bank sends, we deduct from wallet and record as a bill
-      const ref = `${selectedBank?.name} • ${acctNumber} • ${resolvedName}`;
-      const res = await apiRequest("POST", "/api/wallet/bill", { service: "bank_transfer", amount: parseFloat(amount), note: ref });
+      const res = await apiRequest("POST", "/api/fintech/bank-transfer", {
+        bankCode: selectedBank!.code,
+        bankName: selectedBank!.name,
+        accountNumber: acctNumber,
+        accountName: resolvedName || acctNumber,
+        amount: parseFloat(amount),
+        narration: note || undefined,
+      });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "Transfer initiated!", description: `$${fmt(amount)} sent to ${resolvedName} (${selectedBank?.name}).`, className: "border-tsia-green" });
+    onSuccess: (data: any) => {
+      toast({ title: "Transfer Initiated ✓", description: data.message, className: "border-tsia-green" });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/bills"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       setView("home"); resetSend();
     },
     onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
@@ -274,31 +286,58 @@ export default function FinancialHub() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "Money sent!", description: data.message, className: "border-tsia-green" });
+      toast({ title: "Money sent! ✓", description: data.message, className: "border-tsia-green" });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       setView("home"); resetSend();
     },
     onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
   });
 
-  const billMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedService) throw new Error("No service selected");
-      let ref = billRef;
-      if (selectedService.id === "airtime") ref = `${selectedNetwork}:${billRef}`;
-      if (selectedService.id === "internet") ref = `${selectedISP}:${selectedPlan?.label}:${billRef}`;
-      if (selectedService.id === "electricity") ref = `${selectedDisco?.id}:${meterType}:${billRef}`;
-      if (selectedService.id === "betting") ref = `${selectedPlatform}:${billRef}`;
-      const res = await apiRequest("POST", "/api/wallet/bill", { service: selectedService.id, amount: parseFloat(amount), note: ref });
+  const requestMutation = useMutation({
+    mutationFn: async ({ email, amount: amt, reqNote }: { email: string; amount: string; reqNote: string }) => {
+      const res = await apiRequest("POST", "/api/fintech/request-money", { email: email.trim(), amount: parseFloat(amt), note: reqNote || undefined });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "Payment successful!", description: data.message, className: "border-tsia-green" });
+      toast({ title: "Request sent! ✓", description: data.message, className: "border-tsia-green" });
+      setView("home"); setAmount("0"); setNote("");
+    },
+    onError: (e: any) => toast({ title: "Request failed", description: e.message, variant: "destructive" }),
+  });
+
+  const billMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedService) throw new Error("No service selected");
+      let endpoint = "/api/wallet/bill";
+      let payload: Record<string, any> = {};
+
+      if (selectedService.id === "airtime") {
+        endpoint = "/api/fintech/airtime";
+        payload = { network: selectedNetwork, phone: billRef, amount: parseFloat(amount) };
+      } else if (selectedService.id === "internet") {
+        endpoint = "/api/fintech/data";
+        payload = { network: selectedISP, phone: billRef, amount: parseFloat(amount), planLabel: selectedPlan?.label, planValidity: selectedPlan?.validity };
+      } else if (selectedService.id === "electricity") {
+        endpoint = "/api/fintech/electricity";
+        payload = { discoCode: selectedDisco?.id, meterType, meterNumber: billRef, amount: parseFloat(amount), phone: elecPhone || undefined };
+      } else if (selectedService.id === "betting") {
+        endpoint = "/api/fintech/betting";
+        payload = { platform: selectedPlatform, bettingUserId: billRef, amount: parseFloat(amount) };
+      }
+
+      const res = await apiRequest("POST", endpoint, payload);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setTxResult({ ref: data.reference, amountNgn: data.amountNgn, token: data.token, message: data.message });
+      setBillStep("success");
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/bills"] });
-      setView("home"); resetBill();
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
     },
     onError: (e: any) => toast({ title: "Payment failed", description: e.message, variant: "destructive" }),
   });
@@ -313,6 +352,7 @@ export default function FinancialHub() {
     setAmount("0"); setBillRef(""); setSelectedService(null); setBillStep("details");
     setSelectedNetwork(null); setSelectedISP(null); setSelectedPlan(null);
     setSelectedDisco(null); setMeterType(null); setSelectedPlatform(null);
+    setElecPhone(""); setTxResult(null);
   };
 
   const lookupTsia = async () => {
@@ -768,23 +808,34 @@ export default function FinancialHub() {
   if (view === "request") return (
     <AnimatePresence mode="wait">
       <motion.div key="request" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-        <BackHeader onBack={() => setView("home")} title="Request Money" />
+        <BackHeader onBack={() => { setView("home"); setRequestEmail(""); setRequestNote(""); setAmount("0"); }} title="Request Money" sub="Notify a TSIA member to pay you" />
+
         <div>
-          <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Request from (email)</label>
-          <input placeholder="member@email.com" value={note} onChange={e => setNote(e.target.value)}
+          <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Their Email Address</label>
+          <input placeholder="member@tsia.com" value={requestEmail} onChange={e => setRequestEmail(e.target.value)}
             className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-violet-400 bg-background"
-            data-testid="input-request-from" />
+            type="email" data-testid="input-request-from" />
         </div>
+
         <div className="text-center py-2">
           <div className="text-5xl font-black">${fmt(amount)}</div>
           <p className="text-xs text-muted-foreground mt-1">Amount to request</p>
         </div>
+
+        <input placeholder="What's it for? (optional)" value={requestNote} onChange={e => setRequestNote(e.target.value)}
+          className="w-full text-center text-sm border border-border rounded-2xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+          data-testid="input-request-note" />
+
         <Numpad value={amount} onChange={setAmount} />
+
         <Button className="w-full h-12 bg-violet-600 text-white font-bold rounded-2xl"
-          onClick={() => { toast({ title: "Request sent!", description: `Request for $${fmt(amount)} sent to ${note}` }); setView("home"); setAmount("0"); setNote(""); }}
-          disabled={!note || parseFloat(amount) <= 0} data-testid="btn-send-request">
-          <Bell className="w-5 h-5 mr-2" /> Send Request
+          onClick={() => requestMutation.mutate({ email: requestEmail, amount, reqNote: requestNote })}
+          disabled={!requestEmail.trim() || parseFloat(amount) <= 0 || requestMutation.isPending}
+          data-testid="btn-send-request">
+          {requestMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Bell className="w-5 h-5 mr-2" />}
+          Send Request for ${fmt(amount)}
         </Button>
+        <p className="text-xs text-center text-muted-foreground">They will receive a notification in their TSIA app to send you the money.</p>
       </motion.div>
     </AnimatePresence>
   );
@@ -820,7 +871,7 @@ export default function FinancialHub() {
     if (selectedService.id === "electricity") return (
       <AnimatePresence mode="wait">
         <motion.div key="electricity" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Electricity" sub={billStep === "details" ? "Select provider & meter" : "Enter amount"} />
+          <BackHeader onBack={() => billStep === "success" ? resetBill() : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Electricity" sub={billStep === "details" ? "Select provider & meter" : billStep === "success" ? "Payment Complete" : "Enter amount"} />
 
           {billStep === "details" ? (<>
             {/* Disco search + pick */}
@@ -859,14 +910,20 @@ export default function FinancialHub() {
                 </div>
               </div>
 
-              {meterType && (
+              {meterType && (<>
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Meter Number</label>
                   <input type="tel" placeholder="Enter meter number" value={billRef} onChange={e => setBillRef(e.target.value.replace(/\D/g,""))}
                     className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-xl font-mono tracking-widest focus:outline-none focus:border-tsia-green bg-background"
                     data-testid="input-meter" />
                 </div>
-              )}
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Contact Phone (optional)</label>
+                  <input type="tel" placeholder="e.g. 08012345678" value={elecPhone} onChange={e => setElecPhone(e.target.value.replace(/\D/g,"").slice(0,11))}
+                    className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-base font-mono tracking-widest focus:outline-none focus:border-amber-400 bg-background"
+                    data-testid="input-elec-phone" />
+                </div>
+              </>)}
             </>)}
 
             <Button className="w-full h-12 bg-amber-500 text-white font-bold rounded-2xl"
@@ -874,6 +931,31 @@ export default function FinancialHub() {
               onClick={() => setBillStep("amount")}>
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
+
+          </>) : billStep === "success" && txResult ? (<>
+            {/* SUCCESS VIEW */}
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <CheckCircle2 className="w-10 h-10 text-tsia-green" />
+              </div>
+              <div>
+                <h3 className="font-black text-xl text-tsia-green">Electricity Credited ✓</h3>
+                <p className="text-muted-foreground text-sm mt-1">{selectedDisco?.label} • {meterType} • {billRef}</p>
+              </div>
+              <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount Paid</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
+                {txResult.token && (
+                  <div className="bg-white dark:bg-black/20 rounded-xl p-3 text-center border border-amber-300">
+                    <p className="text-xs text-muted-foreground mb-1 font-semibold">PREPAID TOKEN</p>
+                    <p className="font-black text-lg tracking-[0.25em] text-amber-700">{txResult.token}</p>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
+              </div>
+              <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>
+                Done
+              </Button>
+            </div>
           </>) : (<>
             <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-300 rounded-2xl px-4 py-3">
               <div><p className="text-xs text-muted-foreground">Meter</p><p className="font-bold text-sm font-mono">{billRef}</p></div>
@@ -910,7 +992,7 @@ export default function FinancialHub() {
     if (selectedService.id === "internet") return (
       <AnimatePresence mode="wait">
         <motion.div key="internet" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Data" sub={billStep === "details" ? "Select network & plan" : "Confirm purchase"} />
+          <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Data" sub={billStep === "details" ? "Select network & plan" : billStep === "success" ? "Purchase Complete" : "Confirm purchase"} />
 
           {billStep === "details" ? (<>
             <div>
@@ -960,6 +1042,17 @@ export default function FinancialHub() {
               onClick={() => { setAmount(String(selectedPlan!.price)); setBillStep("amount"); }}>
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
+          </>) : billStep === "success" && txResult ? (<>
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><CheckCircle2 className="w-10 h-10 text-blue-600" /></div>
+              <div><h3 className="font-black text-xl text-blue-600">Data Bundle Activated ✓</h3><p className="text-muted-foreground text-sm mt-1">{selectedISP?.toUpperCase()} • {selectedPlan?.label} • {billRef}</p></div>
+              <div className="w-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Validity</span><span className="font-semibold">{selectedPlan?.validity}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
+              </div>
+              <Button className="w-full h-12 bg-blue-600 text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>Done</Button>
+            </div>
           </>) : (<>
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-3xl p-5 text-center">
               <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedISP?.toUpperCase()} Data</p>
@@ -988,7 +1081,7 @@ export default function FinancialHub() {
     if (selectedService.id === "airtime") return (
       <AnimatePresence mode="wait">
         <motion.div key="airtime" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Airtime" sub={billStep === "details" ? "Select network & phone" : "Enter amount"} />
+          <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Airtime" sub={billStep === "details" ? "Select network & phone" : billStep === "success" ? "Purchase Complete" : "Enter amount"} />
 
           {billStep === "details" ? (<>
             <div>
@@ -1010,6 +1103,16 @@ export default function FinancialHub() {
             <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
               disabled={!selectedNetwork || billRef.length < 10}
               onClick={() => setBillStep("amount")}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
+          </>) : billStep === "success" && txResult ? (<>
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center"><CheckCircle2 className="w-10 h-10 text-tsia-green" /></div>
+              <div><h3 className="font-black text-xl text-tsia-green">Airtime Delivered ✓</h3><p className="text-muted-foreground text-sm mt-1">{selectedNetwork?.toUpperCase()} • {billRef}</p></div>
+              <div className="w-full bg-emerald-50 dark:bg-emerald-900/20 border border-tsia-green/30 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
+              </div>
+              <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>Done</Button>
+            </div>
           </>) : (<>
             <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20 border border-tsia-green/30 rounded-2xl px-4 py-3">
               <div><p className="text-xs text-muted-foreground">Phone</p><p className="font-bold font-mono">{billRef}</p></div>
@@ -1041,7 +1144,7 @@ export default function FinancialHub() {
     if (selectedService.id === "betting") return (
       <AnimatePresence mode="wait">
         <motion.div key="betting" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Fund Betting Wallet" sub={billStep === "details" ? "Select platform & ID" : "Enter amount"} />
+          <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Fund Betting Wallet" sub={billStep === "details" ? "Select platform & ID" : billStep === "success" ? "Payment Complete" : "Enter amount"} />
 
           {billStep === "details" ? (<>
             <div>
@@ -1064,6 +1167,16 @@ export default function FinancialHub() {
               disabled={!selectedPlatform || !billRef.trim()} onClick={() => setBillStep("amount")}>
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
+          </>) : billStep === "success" && txResult ? (<>
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-20 h-20 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center"><CheckCircle2 className="w-10 h-10 text-violet-600" /></div>
+              <div><h3 className="font-black text-xl text-violet-600">Betting Wallet Funded ✓</h3><p className="text-muted-foreground text-sm mt-1">{selectedPlatform} • ID: {billRef}</p></div>
+              <div className="w-full bg-violet-50 dark:bg-violet-900/20 border border-violet-300 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount Credited</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
+              </div>
+              <Button className="w-full h-12 bg-violet-600 text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>Done</Button>
+            </div>
           </>) : (<>
             <div className="flex items-center justify-between bg-violet-50 dark:bg-violet-900/20 border border-violet-300 rounded-2xl px-4 py-3">
               <div><p className="text-xs text-muted-foreground">User ID</p><p className="font-bold">{billRef}</p></div>

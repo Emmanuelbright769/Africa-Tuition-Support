@@ -102,7 +102,7 @@ export default function QCESection() {
   const vcMonthlyNeeded = vcSavingsTarget / 3;
   const vcEligibilityOk = eligibilityPct >= 30;
 
-  const fmt₦ = (n: number) => `₦${n.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
+  const formatNaira = (n: number) => `₦${n.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
 
   // ── Mutations ───────────────────────────────────────────────────────
   const contributeMutation = useMutation({
@@ -462,17 +462,17 @@ export default function QCESection() {
                     <div className="grid grid-cols-3 gap-2">
                       <div className="bg-muted/50 rounded-xl p-3 text-center border">
                         <p className="text-[10px] text-muted-foreground mb-1">Savings Target</p>
-                        <p className="font-bold text-sm text-tsia-gold" data-testid="text-vc-target">{fmt₦(vcSavingsTarget)}</p>
+                        <p className="font-bold text-sm text-tsia-gold" data-testid="text-vc-target">{formatNaira(vcSavingsTarget)}</p>
                         <p className="text-[9px] text-muted-foreground mt-0.5">Price ÷ 30%</p>
                       </div>
                       <div className="bg-muted/50 rounded-xl p-3 text-center border">
                         <p className="text-[10px] text-muted-foreground mb-1">Daily Savings</p>
-                        <p className="font-bold text-sm" data-testid="text-vc-daily">{fmt₦(vcDailyNeeded)}</p>
+                        <p className="font-bold text-sm" data-testid="text-vc-daily">{formatNaira(vcDailyNeeded)}</p>
                         <p className="text-[9px] text-muted-foreground mt-0.5">Over 90 days</p>
                       </div>
                       <div className="bg-muted/50 rounded-xl p-3 text-center border">
                         <p className="text-[10px] text-muted-foreground mb-1">Monthly</p>
-                        <p className="font-bold text-sm" data-testid="text-vc-monthly">{fmt₦(vcMonthlyNeeded)}</p>
+                        <p className="font-bold text-sm" data-testid="text-vc-monthly">{formatNaira(vcMonthlyNeeded)}</p>
                         <p className="text-[9px] text-muted-foreground mt-0.5">Over 3 months</p>
                       </div>
                     </div>
@@ -529,13 +529,13 @@ export default function QCESection() {
                               </p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="font-bold text-tsia-gold text-sm" data-testid={`text-vc-price-${vehicle.id}`}>{fmt₦(vehicle.priceNgn)}</p>
+                              <p className="font-bold text-tsia-gold text-sm" data-testid={`text-vc-price-${vehicle.id}`}>{formatNaira(vehicle.priceNgn)}</p>
                               <p className="text-[10px] text-muted-foreground">purchase price</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 mt-3 flex-wrap">
                             <p className="text-[10px] text-muted-foreground">
-                              Target savings: <span className="font-semibold text-foreground">{fmt₦(vehicle.priceNgn / 0.3)}</span>
+                              Target savings: <span className="font-semibold text-foreground">{formatNaira(vehicle.priceNgn / 0.3)}</span>
                             </p>
                             <Button
                               size="sm"
@@ -577,11 +577,11 @@ export default function QCESection() {
                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3" /> {vcSelectedVehicle.city}</p>
                     <div className="flex justify-between mt-2 text-xs">
                       <span className="text-muted-foreground">Purchase price</span>
-                      <span className="font-bold text-tsia-gold">{fmt₦(vcSelectedVehicle.priceNgn)}</span>
+                      <span className="font-bold text-tsia-gold">{formatNaira(vcSelectedVehicle.priceNgn)}</span>
                     </div>
                     <div className="flex justify-between mt-1 text-xs">
                       <span className="text-muted-foreground">Required savings target</span>
-                      <span className="font-semibold">{fmt₦(vcSelectedVehicle.priceNgn / 0.3)}</span>
+                      <span className="font-semibold">{formatNaira(vcSelectedVehicle.priceNgn / 0.3)}</span>
                     </div>
                   </div>
                 )}

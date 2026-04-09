@@ -1041,6 +1041,86 @@ export async function registerRoutes(
     res.json(txns);
   });
 
+  // ── USDT Crypto Withdrawal (manual fulfilment) ───────────────────────────
+  app.post("/api/wallet/withdraw-crypto", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { amount, network, address } = req.body;
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) < 1) {
+        return res.status(400).json({ message: "Minimum withdrawal amount is $1" });
+      }
+      if (!network || !["bep20", "trc20"].includes(network)) {
+        return res.status(400).json({ message: "Invalid network. Choose BEP20 or TRC20." });
+      }
+      if (!address || address.trim().length < 10) {
+        return res.status(400).json({ message: "A valid USDT wallet address is required" });
+      }
+      const wallet = await storage.getOrCreateWallet(userId);
+      if (!wallet.activated) {
+        return res.status(403).json({ message: "Your wallet must be activated (minimum $5 funded) before withdrawing." });
+      }
+      const withdrawAmt = parseFloat(amount);
+      const currentBalance = parseFloat(wallet.balance);
+      const MIN_BALANCE = 2;
+      if (withdrawAmt > currentBalance) {
+        return res.status(400).json({ message: "Insufficient balance" });
+      }
+      if (currentBalance - withdrawAmt < MIN_BALANCE) {
+        return res.status(400).json({ message: `A minimum of $${MIN_BALANCE} must remain in your wallet` });
+      }
+      // Deduct from wallet
+      const newBalance = (currentBalance - withdrawAmt).toFixed(2);
+      await storage.updateWalletBalance(userId, newBalance);
+      // Record transaction — embed network and (truncated) address in description
+      const networkLabel = network === "bep20" ? "BEP20 (BSC)" : "TRC20 (TRON)";
+      const truncated = address.trim().length > 16
+        ? `${address.trim().slice(0, 8)}…${address.trim().slice(-6)}`
+        : address.trim();
+      await storage.createTransaction({
+        userId,
+        type: "crypto_withdrawal",
+        amount: (-withdrawAmt).toFixed(2),
+        fee: "0.00",
+        paymentMethod: "crypto",
+        description: `USDT Withdrawal (${networkLabel}) to ${truncated} | Full address: ${address.trim()} | Processing within 24h`,
+      });
+      // In-app notification
+      const notif = await storage.createNotification({
+        userId,
+        type: "wallet_credit",
+        title: "Crypto Withdrawal Received ✓",
+        message: `Your USDT withdrawal of $${withdrawAmt.toFixed(2)} (${networkLabel}) has been received and will be processed within 24 hours.`,
+        data: { network, address: address.trim(), amount: withdrawAmt },
+        isRead: false,
+      });
+      pushToUser(userId, "notification", notif);
+      const updated = await storage.getOrCreateWallet(userId);
+      res.json({
+        message: `Your USDT withdrawal of $${withdrawAmt.toFixed(2)} has been received and will be processed within 24 hours.`,
+        wallet: updated,
+        amount: withdrawAmt,
+        network,
+        address: address.trim(),
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── Wallet withdrawal history (bank + crypto) ────────────────────────────
+  app.get("/api/wallet/withdrawals", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const txns = await storage.getTransactionsByUser(userId);
+      const withdrawals = txns.filter((t: any) => t.type === "withdrawal" || t.type === "crypto_withdrawal");
+      res.json(withdrawals);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/sponsorship/select", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

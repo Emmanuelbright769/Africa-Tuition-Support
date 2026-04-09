@@ -93,8 +93,19 @@ export default function WalletSection() {
   const [wdStep, setWdStep]               = useState<"bank" | "amount">("bank");
   const [wdLookupLoading, setWdLookupLoading] = useState(false);
 
+  // ── Crypto withdrawal state ────────────────────────────────────────────
+  const [cryptoWithdrawOpen, setCryptoWithdrawOpen] = useState(false);
+  const [cwNetwork, setCwNetwork] = useState<"bep20" | "trc20">("bep20");
+  const [cwAddress, setCwAddress] = useState("");
+  const [cwAmount, setCwAmount] = useState("");
+  const [cwSuccessOpen, setCwSuccessOpen] = useState(false);
+  const [cwSuccessData, setCwSuccessData] = useState<{ amount: number; network: string } | null>(null);
+
+  // ── Withdraw method ────────────────────────────────────────────────────
+  const [withdrawMethod, setWithdrawMethod] = useState<"bank" | "crypto">("bank");
+
   // ── History tab ────────────────────────────────────────────────────────
-  const [historyTab, setHistoryTab] = useState<"deposits" | "sent" | "received" | "bills">("deposits");
+  const [historyTab, setHistoryTab] = useState<"deposits" | "sent" | "received" | "bills" | "withdrawals">("deposits");
 
   // ── Wallet KYC state ───────────────────────────────────────────────────
   const [kycBvn, setKycBvn] = useState("");
@@ -112,6 +123,7 @@ export default function WalletSection() {
   const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"] });
   const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"] });
   const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
+  const { data: withdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"] });
 
   const balance = parseFloat(wallet?.balance ?? "0");
 
@@ -195,6 +207,28 @@ export default function WalletSection() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       setWithdrawOpen(false);
       setWithdrawAmount(""); setWdBankCode(""); setWdAcctNumber(""); setWdAcctName(""); setWdStep("bank"); setWithdrawTermsAccepted(false);
+    },
+    onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
+  });
+
+  const cryptoWithdrawMutation = useMutation({
+    mutationFn: async () => {
+      const amount = parseFloat(cwAmount);
+      if (!amount || amount < 1) throw new Error("Minimum withdrawal is $1");
+      if (!cwAddress.trim()) throw new Error("USDT wallet address is required");
+      const res = await apiRequest("POST", "/api/wallet/withdraw-crypto", { amount, network: cwNetwork, address: cwAddress.trim() });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: (d: any) => {
+      refetchWallet();
+      refetchWithdrawals();
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      setCryptoWithdrawOpen(false);
+      setCwSuccessData({ amount: d.amount, network: d.network });
+      setCwSuccessOpen(true);
+      setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
     },
     onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
@@ -397,7 +431,7 @@ export default function WalletSection() {
                   )}
                 </p>
               )}
-              <p className="text-white/50 text-xs mb-1">Available balance · 7.5% VAT on withdrawals</p>
+              <p className="text-white/50 text-xs mb-1">Available balance · 7.5% VAT on NGN bank withdrawals · No VAT on USDT</p>
               <p className="text-white/40 text-[10px] mb-5">Minimum $2 must remain in wallet at all times for seamless operations</p>
 
               <div className="grid grid-cols-2 gap-3">
@@ -418,6 +452,7 @@ export default function WalletSection() {
                     if (!walletKycDone && needsKyc) {
                       toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan above to unlock withdrawals.", variant: "destructive" }); return;
                     }
+                    setWithdrawMethod("bank");
                     setWithdrawAmount(""); setWithdrawTermsAccepted(false); setWithdrawOpen(true);
                   }}
                   variant="outline"
@@ -467,10 +502,10 @@ export default function WalletSection() {
       <motion.div variants={itemVariants}>
         <h3 className="font-bold text-sm mb-3">Transaction History</h3>
         <div className="flex bg-muted/40 rounded-2xl p-1 text-xs mb-4 overflow-x-auto gap-0.5">
-          {(["deposits","sent","received","bills"] as const).map(tab => (
+          {(["deposits","sent","received","bills","withdrawals"] as const).map(tab => (
             <button key={tab} onClick={() => setHistoryTab(tab)}
               className={`flex-1 py-2 rounded-xl font-semibold capitalize transition-all whitespace-nowrap px-2 ${historyTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
-              {tab === "sent" ? "Sent" : tab === "received" ? "Received" : tab === "deposits" ? "Deposits" : "Bills"}
+              {tab === "sent" ? "Sent" : tab === "received" ? "Received" : tab === "deposits" ? "Deposits" : tab === "bills" ? "Bills" : "Withdrawals"}
             </button>
           ))}
         </div>
@@ -562,6 +597,36 @@ export default function WalletSection() {
                   </div>
                 </div>
               ))
+          )}
+
+          {historyTab === "withdrawals" && (
+            withdrawals.length === 0
+              ? <Empty icon={ArrowUpRight} msg="No withdrawals yet" />
+              : withdrawals.slice(0, 15).map((w: any) => {
+                  const isCrypto = w.type === "crypto_withdrawal";
+                  // Extract network+address from description for crypto withdrawals
+                  const networkMatch = isCrypto ? w.description?.match(/\(([^)]+)\)/) : null;
+                  const networkLabel = networkMatch ? networkMatch[1] : "";
+                  const addrMatch = isCrypto ? w.description?.match(/to ([^\s|]+)/) : null;
+                  const addrShort = addrMatch ? addrMatch[1] : "";
+                  return (
+                    <div key={w.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3" data-testid={`row-withdrawal-${w.id}`}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isCrypto ? "bg-amber-50 dark:bg-amber-900/20" : "bg-blue-50 dark:bg-blue-900/20"}`}>
+                        {isCrypto ? <Coins className="w-5 h-5 text-amber-500" /> : <Banknote className="w-5 h-5 text-blue-500" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm">{isCrypto ? "Crypto Withdrawal" : "Bank Withdrawal"}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {isCrypto ? `${networkLabel} · ${addrShort}` : w.description?.split(" to ")[1]?.split(" —")[0] || ""}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-sm text-red-500">−${Math.abs(parseFloat(w.amount)).toFixed(2)}</p>
+                        <p className="text-[10px] text-muted-foreground/70">{new Date(w.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                      </div>
+                    </div>
+                  );
+                })
           )}
         </div>
       </motion.div>
@@ -751,9 +816,23 @@ export default function WalletSection() {
               <ArrowUpRight className="w-5 h-5 text-blue-500" /> Withdraw Funds
             </DialogTitle>
             <DialogDescription>
-              {wdStep === "bank" ? "Select your bank and enter your account number." : `Sending to: ${wdAcctName} · 7.5% VAT applies.`}
+              Choose your withdrawal method below.
             </DialogDescription>
           </DialogHeader>
+
+          {/* Method tabs */}
+          <div className="flex bg-muted/40 rounded-2xl p-1 mb-1">
+            <button onClick={() => setWithdrawMethod("bank")}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${withdrawMethod === "bank" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+              data-testid="btn-wd-method-bank">
+              <Banknote className="w-4 h-4" /> Bank Transfer (NGN)
+            </button>
+            <button onClick={() => { setWithdrawMethod("crypto"); setWithdrawOpen(false); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); setCryptoWithdrawOpen(true); }}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${withdrawMethod === "crypto" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+              data-testid="btn-wd-method-crypto">
+              <Coins className="w-4 h-4" /> Crypto — USDT
+            </button>
+          </div>
 
           {wdStep === "bank" ? (
             <div className="space-y-4 py-2">
@@ -844,6 +923,124 @@ export default function WalletSection() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── CRYPTO WITHDRAWAL DIALOG ─────────────────────────────────────── */}
+      <Dialog open={cryptoWithdrawOpen} onOpenChange={v => {
+        setCryptoWithdrawOpen(v);
+        if (!v) { setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); }
+      }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Coins className="w-5 h-5 text-amber-500" /> Withdraw USDT
+            </DialogTitle>
+            <DialogDescription>
+              No VAT applies. Processed within 24 hours by the TSIA ops team.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Network selector */}
+            <div>
+              <Label className="mb-2 block">Select Network</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["bep20", "trc20"] as const).map(n => (
+                  <button key={n} onClick={() => setCwNetwork(n)}
+                    className={`p-3 rounded-xl border-2 text-sm font-bold transition-all ${cwNetwork === n ? "border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400" : "border-border hover:border-amber-400/60"}`}
+                    data-testid={`btn-cw-network-${n}`}>
+                    {n === "bep20" ? "BEP20 (BSC)" : "TRC20 (TRON)"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* USDT Address */}
+            <div>
+              <Label htmlFor="cw-address">Your USDT Wallet Address</Label>
+              <Input id="cw-address" placeholder={cwNetwork === "bep20" ? "0x..." : "T..."}
+                value={cwAddress} onChange={e => setCwAddress(e.target.value)}
+                className="mt-1 font-mono text-xs" data-testid="input-cw-address" />
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-start gap-1">
+                <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                Send will arrive on {cwNetwork === "bep20" ? "BEP20 (BSC)" : "TRC20 (TRON)"} network. Wrong network = lost funds.
+              </p>
+            </div>
+
+            {/* Amount */}
+            <div>
+              <Label htmlFor="cw-amount">Amount (USD)</Label>
+              <Input id="cw-amount" type="number" min={1} step={0.01} placeholder="Min $1.00"
+                value={cwAmount} onChange={e => setCwAmount(e.target.value)}
+                className="mt-1 text-lg font-bold" data-testid="input-cw-amount" />
+              {parseFloat(cwAmount) > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Balance after: ${Math.max(0, balance - parseFloat(cwAmount)).toFixed(2)} (min $2 retained)
+                </p>
+              )}
+              {parseFloat(cwAmount) > 0 && balance - parseFloat(cwAmount) < 2 && (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> Must keep $2 minimum in wallet
+                </p>
+              )}
+            </div>
+
+            {/* 24h notice */}
+            <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
+              <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                <strong>Manual processing:</strong> Your USDT will be sent to your wallet within 24 hours. No VAT deducted — you receive the full amount in USDT.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCryptoWithdrawOpen(false)}>Cancel</Button>
+            <Button
+              className="bg-amber-500 hover:bg-amber-600 text-white font-bold"
+              onClick={() => cryptoWithdrawMutation.mutate()}
+              disabled={
+                cryptoWithdrawMutation.isPending ||
+                !cwAmount || parseFloat(cwAmount) < 1 ||
+                !cwAddress.trim() ||
+                parseFloat(cwAmount) > balance ||
+                (balance - parseFloat(cwAmount || "0")) < 2
+              }
+              data-testid="btn-confirm-crypto-wd"
+            >
+              {cryptoWithdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Coins className="w-4 h-4 mr-2" />}
+              Request ${parseFloat(cwAmount || "0").toFixed(2)} USDT
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── CRYPTO WITHDRAWAL SUCCESS DIALOG ─────────────────────────────── */}
+      <Dialog open={cwSuccessOpen} onOpenChange={setCwSuccessOpen}>
+        <DialogContent className="max-w-sm text-center">
+          <div className="flex flex-col items-center gap-4 py-4">
+            <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <CheckCircle2 className="w-9 h-9 text-amber-500" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black">Withdrawal Received!</h3>
+              <p className="text-muted-foreground text-sm mt-1">
+                Your ${cwSuccessData?.amount.toFixed(2)} USDT withdrawal ({cwSuccessData?.network === "bep20" ? "BEP20" : "TRC20"}) has been received.
+              </p>
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 w-full text-left">
+              <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">What happens next?</p>
+              <ul className="text-xs text-amber-700 dark:text-amber-400 mt-2 space-y-1">
+                <li>• TSIA ops team processes all crypto withdrawals within 24 hours</li>
+                <li>• You'll receive the full USDT amount — no VAT deducted</li>
+                <li>• Check your wallet transaction history for status updates</li>
+              </ul>
+            </div>
+            <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold" onClick={() => setCwSuccessOpen(false)} data-testid="btn-cw-success-ok">
+              Got it, thanks!
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

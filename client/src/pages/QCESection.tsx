@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ import {
   CheckCircle2, Clock, Zap, BarChart3, Loader2, RefreshCw,
   CalendarDays, History, ChevronLeft, Info,
   CarFront, Home, Banknote, AlertTriangle, TrendingDown,
-  Shield, MapPin, Calculator, CreditCard, BadgeCheck
+  Shield, MapPin, CreditCard, BadgeCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
@@ -66,8 +66,6 @@ export default function QCESection() {
   const [withdrawAmt, setWithdrawAmt] = useState("");
 
   // ── V-Connect state ──────────────────────────────────────────────────
-  const [vcPrice, setVcPrice] = useState("");
-  const [vcCurrency, setVcCurrency] = useState<"NGN" | "USD">("NGN");
   const [vcSelectedVehicle, setVcSelectedVehicle] = useState<typeof V_CONNECT_VEHICLES[0] | null>(null);
   const [vcInterestOpen, setVcInterestOpen] = useState(false);
   const [vcSuccessOpen, setVcSuccessOpen] = useState(false);
@@ -96,20 +94,8 @@ export default function QCESection() {
   const maxWithdraw = Math.max(qceBalance - QCE.MIN_BALANCE, 0);
   const canWithdraw = qceBalance > QCE.MIN_BALANCE;
 
-  // ── V-Connect calculator derived ────────────────────────────────────
-  const VC_NGN_RATE = 1480; // ₦ per $1 for display/conversion
-  const vcPriceNum = parseFloat(vcPrice.replace(/,/g, "")) || 0;
-  // Normalise to NGN internally so all outputs are in NGN
-  const vcPriceNgn = vcCurrency === "USD" ? vcPriceNum * VC_NGN_RATE : vcPriceNum;
-  const vcSavingsTarget = vcPriceNgn > 0 ? vcPriceNgn / 0.3 : 0;
-  const vcDailyNeeded = vcSavingsTarget / 90;
-  const vcMonthlyNeeded = vcSavingsTarget / 3;
   const vcEligibilityOk = eligibilityPct >= 30;
-
   const formatNaira = (n: number) => `₦${n.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
-  const formatUsd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  // Show amounts in the selected currency for clarity
-  const vcFormatCalc = (ngn: number) => vcCurrency === "USD" ? formatUsd(ngn / VC_NGN_RATE) : formatNaira(ngn);
 
   // ── Mutations ───────────────────────────────────────────────────────
   const contributeMutation = useMutation({
@@ -440,84 +426,6 @@ export default function QCESection() {
                 ? <Badge className="ml-auto bg-tsia-green/10 text-tsia-green border-0 text-[10px] shrink-0"><BadgeCheck className="w-3 h-3 mr-0.5" /> Eligible</Badge>
                 : <Badge className="ml-auto bg-amber-100 text-amber-700 border-0 text-[10px] shrink-0">{eligibilityPct.toFixed(1)}% / 30%</Badge>}
             </div>
-
-            {/* ── Calculator ─────────────────────────────────────── */}
-            <Card className="shadow-sm border-0 border-l-4 border-l-tsia-gold" data-testid="card-vc-calculator">
-              <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Calculator className="w-4 h-4 text-tsia-gold" /> V-Connect Calculator
-                </CardTitle>
-                <CardDescription className="text-xs">Enter a vehicle price to see your savings plan</CardDescription>
-              </CardHeader>
-              <CardContent className="pb-5 space-y-4">
-                {/* Currency selector */}
-                <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
-                  {(["NGN", "USD"] as const).map(cur => (
-                    <button
-                      key={cur}
-                      onClick={() => { setVcCurrency(cur); setVcPrice(""); }}
-                      className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${vcCurrency === cur ? "bg-white dark:bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                      data-testid={`tab-vc-currency-${cur.toLowerCase()}`}
-                    >
-                      {cur === "NGN" ? "₦ Naira" : "$ Dollar"}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Vehicle Price ({vcCurrency === "NGN" ? "₦" : "$"})</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    placeholder={vcCurrency === "NGN" ? "e.g. 28,000,000" : "e.g. 18,919"}
-                    value={vcPrice}
-                    onChange={e => setVcPrice(e.target.value)}
-                    className="text-base"
-                    data-testid="input-vc-price"
-                  />
-                  {vcCurrency === "USD" && vcPriceNum > 0 && (
-                    <p className="text-[10px] text-muted-foreground">≈ {formatNaira(vcPriceNum * VC_NGN_RATE)} at ₦{VC_NGN_RATE.toLocaleString()}/$1</p>
-                  )}
-                </div>
-
-                {vcPriceNum > 0 && (
-                  <div className="space-y-3">
-                    {/* Output grid */}
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="bg-muted/50 rounded-xl p-3 text-center border">
-                        <p className="text-[10px] text-muted-foreground mb-1">Savings Target</p>
-                        <p className="font-bold text-sm text-tsia-gold" data-testid="text-vc-target">{vcFormatCalc(vcSavingsTarget)}</p>
-                        <p className="text-[9px] text-muted-foreground mt-0.5">Price ÷ 30%</p>
-                      </div>
-                      <div className="bg-muted/50 rounded-xl p-3 text-center border">
-                        <p className="text-[10px] text-muted-foreground mb-1">Daily Savings</p>
-                        <p className="font-bold text-sm" data-testid="text-vc-daily">{vcFormatCalc(vcDailyNeeded)}</p>
-                        <p className="text-[9px] text-muted-foreground mt-0.5">Over 90 days</p>
-                      </div>
-                      <div className="bg-muted/50 rounded-xl p-3 text-center border">
-                        <p className="text-[10px] text-muted-foreground mb-1">Monthly</p>
-                        <p className="font-bold text-sm" data-testid="text-vc-monthly">{vcFormatCalc(vcMonthlyNeeded)}</p>
-                        <p className="text-[9px] text-muted-foreground mt-0.5">Over 3 months</p>
-                      </div>
-                    </div>
-
-                    {/* QCE eligibility progress toward 30% */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground font-medium">QCE Eligibility progress toward 30%</span>
-                        <span className={`font-bold ${vcEligibilityOk ? "text-tsia-green" : "text-amber-600"}`}>{eligibilityPct.toFixed(1)}% / 30%</span>
-                      </div>
-                      <Progress value={Math.min((eligibilityPct / 30) * 100, 100)} className="h-2" data-testid="progress-vc-eligibility" />
-                      <p className="text-[10px] text-muted-foreground">
-                        {vcEligibilityOk
-                          ? "You meet the 30% eligibility threshold — you can apply for V-Connect credit."
-                          : `Need ${(30 - eligibilityPct).toFixed(1)}% more eligibility. Keep saving over 90 days.`}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
 
             {/* ── Terms notice ───────────────────────────────────── */}
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 flex items-start gap-3" data-testid="card-vc-terms">

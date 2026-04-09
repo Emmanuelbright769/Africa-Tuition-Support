@@ -9,6 +9,7 @@ import {
   sendNewSaleEmail, sendBotEarningsEmail, sendCoAffiliateEnrollmentEmail,
   sendTourBookingEmail, sendQceActivationEmail, sendQceWithdrawalEmail,
   sendNewArrivalEmail, sendReferralSignupEmail,
+  sendSupportContactToAdmin, sendSupportConfirmation,
 } from "./email";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -4254,6 +4255,26 @@ export async function registerRoutes(
       await storage.deleteCategorySubscription(userId, decodeURIComponent(req.params.category));
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/contact — public support contact form
+  app.post("/api/contact", async (req, res) => {
+    const { name, email, phone, subject, message } = req.body;
+    if (!name || !email || !message) {
+      return res.status(400).json({ message: "Name, email and message are required." });
+    }
+    const adminEmail = process.env.BREVO_SENDER_EMAIL || "emmanuelbright769@gmail.com";
+    const subjectLabel = subject || "General Inquiry";
+    try {
+      await Promise.all([
+        sendSupportContactToAdmin(adminEmail, { name, email, phone: phone || "", subject: subjectLabel, message }),
+        sendSupportConfirmation(email, name, subjectLabel),
+      ]);
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[CONTACT] Email error:", err.message);
+      res.status(500).json({ message: "Failed to send message. Please try again." });
+    }
   });
 
   return httpServer;

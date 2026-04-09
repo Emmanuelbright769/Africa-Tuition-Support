@@ -500,6 +500,64 @@ export async function sendNewArrivalEmail(to: string, firstName: string, categor
   await sendEmail(to, subject, html);
 }
 
+// ─── Support Contact (admin notification + user confirmation) ─────────────────
+
+export async function sendSupportContactToAdmin(
+  adminEmail: string,
+  data: { name: string; email: string; phone: string; subject: string; message: string }
+): Promise<void> {
+  const subjectLine = `[TSIA Support] ${data.subject} — from ${data.name}`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">📩 New Support Request</h2>
+    <p style="color:#4a5e50;font-size:14px;margin:0 0 20px;">A visitor submitted the contact form on tsiforafrica.com.</p>
+    <div style="background:#f0f8f4;border:1px solid #d0e8d8;border-radius:16px;padding:20px 24px;margin:0 0 20px;">
+      <table width="100%" cellpadding="0" cellspacing="4">
+        <tr><td style="color:#6b7c72;font-size:12px;font-weight:600;width:110px;vertical-align:top;padding:6px 0;">Name</td><td style="color:#1a1a1a;font-size:14px;font-weight:700;padding:6px 0;">${data.name}</td></tr>
+        <tr><td style="color:#6b7c72;font-size:12px;font-weight:600;vertical-align:top;padding:6px 0;">Email</td><td style="padding:6px 0;"><a href="mailto:${data.email}" style="color:#1a6b3c;font-size:14px;">${data.email}</a></td></tr>
+        ${data.phone ? `<tr><td style="color:#6b7c72;font-size:12px;font-weight:600;vertical-align:top;padding:6px 0;">Phone</td><td style="color:#1a1a1a;font-size:14px;padding:6px 0;">${data.phone}</td></tr>` : ""}
+        <tr><td style="color:#6b7c72;font-size:12px;font-weight:600;vertical-align:top;padding:6px 0;">Subject</td><td style="color:#1a1a1a;font-size:14px;font-weight:600;padding:6px 0;">${data.subject}</td></tr>
+      </table>
+    </div>
+    <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:12px;padding:20px 24px;margin:0 0 20px;">
+      <p style="color:#6b7c72;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin:0 0 10px;">Message</p>
+      <p style="color:#1a1a1a;font-size:15px;line-height:1.7;margin:0;white-space:pre-wrap;">${data.message}</p>
+    </div>
+    <p style="color:#9caa9f;font-size:12px;margin:0;">Reply directly to <a href="mailto:${data.email}" style="color:#1a6b3c;">${data.email}</a> to respond to this enquiry.</p>
+  `);
+  const brevoKey = process.env.BREVO_API_KEY;
+  if (brevoKey) {
+    const senderEmail = process.env.BREVO_SENDER_EMAIL || FROM_EMAIL;
+    const res = await fetch(BREVO_API, {
+      method: "POST",
+      headers: { "api-key": brevoKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender:      { name: "TSIA Contact Form", email: senderEmail },
+        to:          [{ email: adminEmail }],
+        replyTo:     { name: data.name, email: data.email },
+        subject:     subjectLine,
+        htmlContent: html,
+      }),
+    });
+    const body = await res.text();
+    if (res.ok) { console.log(`[EMAIL] Support → admin ✓`); return; }
+    console.error(`[EMAIL] Support admin ${res.status}: ${body}`);
+  }
+}
+
+export async function sendSupportConfirmation(to: string, name: string, subject: string): Promise<void> {
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">✅ We've received your message</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;">Hi ${name}, thank you for reaching out to TSIA Support.</p>
+    <div style="background:#f0f8f4;border:1px solid #d0e8d8;border-radius:16px;padding:20px 24px;margin:0 0 20px;">
+      <p style="color:#6b7c72;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Your enquiry</p>
+      <p style="color:#1a1a1a;font-size:15px;font-weight:600;margin:0;">${subject}</p>
+    </div>
+    <p style="color:#4a5e50;font-size:14px;line-height:1.7;margin:0 0 20px;">Our support team reviews every message and will respond within <strong>24 hours</strong> (Monday – Friday, 9 AM – 5 PM GMT). For urgent matters, you can also reach us on WhatsApp at <strong>+447552647146</strong>.</p>
+    <p style="color:#9caa9f;font-size:13px;text-align:center;margin:0;">Please do not reply to this email — it is sent from an automated address.<br/>To update your enquiry, visit <a href="https://tsiforafrica.com/contact" style="color:#1a6b3c;">tsiforafrica.com/contact</a>.</p>
+  `);
+  await sendEmail(to, `We received your message — TSIA Support`, html);
+}
+
 // ─── Referral Signup Notification ────────────────────────────────────────────
 
 export async function sendReferralSignupEmail(to: string, firstName: string, referredName: string, role: string): Promise<void> {

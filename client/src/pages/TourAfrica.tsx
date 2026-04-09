@@ -269,7 +269,7 @@ export default function TourAfrica() {
                           </div>
                           <p className="text-muted-foreground text-sm leading-relaxed mb-4">{service.desc}</p>
                           <Button className="w-full mt-auto h-10" variant={service.live ? "default" : "outline"} data-testid={`button-go-${service.id}`}>
-                            {service.live ? "Buy Now" : "Learn More"} <ChevronRight className="w-4 h-4 ml-1" />
+                            {service.id === "car_connect" ? "Buy Now" : service.live ? "Book Now" : "Learn More"} <ChevronRight className="w-4 h-4 ml-1" />
                           </Button>
                         </CardContent>
                       </Card>

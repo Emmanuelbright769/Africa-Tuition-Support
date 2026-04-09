@@ -73,8 +73,6 @@ const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "fintech",      label: "Fintech Hub",             icon: CreditCard },
   { id: "wallet",       label: "Personal Wallet",         icon: Wallet },
   { id: "qce",          label: "QCE Savings",             icon: PiggyBank, badge: "New" },
-  { id: "car_connect",  label: "Car Connect",             icon: Car, badge: "New" },
-  { id: "tenancy",      label: "Landlord Tenancy Gateway", icon: Home },
   { id: "reserve_fund", label: "Strategic Reserve Fund",  icon: Shield },
   { id: "trade",        label: "Trade Market",            icon: Globe },
   { id: "trust_fund",   label: "Affiliate Trust Fund",    icon: Crown },

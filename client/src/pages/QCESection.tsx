@@ -9,11 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
-  PiggyBank, TrendingUp, Lock, Unlock, ArrowDownLeft, ArrowUpRight,
-  CheckCircle2, Clock, Zap, ShieldCheck, BarChart3, Loader2, RefreshCw,
-  CalendarDays, DollarSign, History, ChevronLeft, Info,
-  CarFront, Home, Banknote, AlertTriangle, TrendingDown, Building2,
-  Shield, MapPin, Users, Star, Link as LinkIcon
+  PiggyBank, Lock, Unlock, ArrowDownLeft, ArrowUpRight,
+  CheckCircle2, Clock, Zap, BarChart3, Loader2, RefreshCw,
+  CalendarDays, History, ChevronLeft, Info,
+  CarFront, Home, Banknote, AlertTriangle, TrendingDown,
+  Shield, MapPin, Calculator, CreditCard, BadgeCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
@@ -36,7 +36,17 @@ interface QceTransaction {
 interface QceStatus { savings: QceSavings; transactions: QceTransaction[] }
 interface WalletData { balance: string }
 
-type QceTab = "savings" | "car_connect" | "tenancy" | "loan";
+type QceTab = "savings" | "v_connect" | "tenancy" | "loan";
+
+// ── V-Connect sample vehicles ────────────────────────────────────────────
+const V_CONNECT_VEHICLES = [
+  { id: 1, make: "Toyota", model: "Camry", year: 2023, priceNgn: 28_000_000, city: "Lagos, Nigeria", badge: "Popular", color: "bg-tsia-green/10 border-tsia-green/30" },
+  { id: 2, make: "Honda", model: "CR-V", year: 2022, priceNgn: 32_000_000, city: "Abuja, Nigeria", badge: "New", color: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800" },
+  { id: 3, make: "Hyundai", model: "Tucson", year: 2023, priceNgn: 26_500_000, city: "Port Harcourt, Nigeria", badge: null, color: "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800" },
+  { id: 4, make: "Ford", model: "Ranger (4x4)", year: 2022, priceNgn: 45_000_000, city: "Accra, Ghana", badge: "Premium", color: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800" },
+  { id: 5, make: "Kia", model: "Sportage", year: 2024, priceNgn: 30_000_000, city: "Nairobi, Kenya", badge: "New", color: "bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800" },
+  { id: 6, make: "Toyota", model: "Land Cruiser", year: 2021, priceNgn: 120_000_000, city: "Lagos, Nigeria", badge: "Flagship", color: "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800" },
+];
 
 const iv = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
@@ -55,14 +65,11 @@ export default function QCESection() {
   const [contributeAmt, setContributeAmt] = useState("");
   const [withdrawAmt, setWithdrawAmt] = useState("");
 
-  // ── Car Connect state ───────────────────────────────────────────────
-  const [ccTab, setCcTab] = useState<"browse" | "register">("browse");
-  const [ccForm, setCcForm] = useState({ make: "", model: "", year: "", seats: "4", dailyRate: "", city: "", phone: "", description: "" });
-  const [ccSelectedCar, setCcSelectedCar] = useState<null | { name: string; city: string; rate: string; owner: string }>(null);
-  const [ccConfirmOpen, setCcConfirmOpen] = useState(false);
-  const [ccConnectOpen, setCcConnectOpen] = useState(false);
-  const [ccBookingDate, setCcBookingDate] = useState("");
-  const [ccBookingDays, setCcBookingDays] = useState("1");
+  // ── V-Connect state ──────────────────────────────────────────────────
+  const [vcPrice, setVcPrice] = useState("");
+  const [vcSelectedVehicle, setVcSelectedVehicle] = useState<typeof V_CONNECT_VEHICLES[0] | null>(null);
+  const [vcInterestOpen, setVcInterestOpen] = useState(false);
+  const [vcSuccessOpen, setVcSuccessOpen] = useState(false);
 
   // ── Business Loan state ─────────────────────────────────────────────
   const [loanAmount, setLoanAmount] = useState("");
@@ -87,6 +94,15 @@ export default function QCESection() {
   const creditPortalUnlocked = savings?.creditPortalUnlocked ?? false;
   const maxWithdraw = Math.max(qceBalance - QCE.MIN_BALANCE, 0);
   const canWithdraw = qceBalance > QCE.MIN_BALANCE;
+
+  // ── V-Connect calculator derived ────────────────────────────────────
+  const vcPriceNum = parseFloat(vcPrice.replace(/,/g, "")) || 0;
+  const vcSavingsTarget = vcPriceNum > 0 ? vcPriceNum / 0.3 : 0;
+  const vcDailyNeeded = vcSavingsTarget / 90;
+  const vcMonthlyNeeded = vcSavingsTarget / 3;
+  const vcEligibilityOk = eligibilityPct >= 30;
+
+  const fmt₦ = (n: number) => `₦${n.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
 
   // ── Mutations ───────────────────────────────────────────────────────
   const contributeMutation = useMutation({
@@ -122,12 +138,6 @@ export default function QCESection() {
   const tickMutation = useMutation({
     mutationFn: async () => { const res = await apiRequest("POST", "/api/qce/tick", {}); return res.json(); },
     onSuccess: () => { toast({ title: "Progress updated" }); refetchQce(); },
-  });
-
-  const ccBookMutation = useMutation({
-    mutationFn: async (data: any) => apiRequest("POST", "/api/tour/book", data),
-    onSuccess: () => toast({ title: "Connection request sent!", description: "The car owner will contact you shortly." }),
-    onError: () => toast({ title: "Failed to connect", variant: "destructive" }),
   });
 
   const applyLoanMutation = useMutation({
@@ -181,29 +191,24 @@ export default function QCESection() {
         </CardContent>
       </Card>
 
-      {/* Car Connect card */}
-      <Card className="shadow-sm border-0" data-testid="card-qce-carconnect-home">
+      {/* V-Connect card */}
+      <Card className="shadow-sm border-0" data-testid="card-qce-vconnect-home">
         <CardContent className="pt-5 pb-5">
           <div className="flex items-start gap-3 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-900/20 flex items-center justify-center shrink-0">
-              <CarFront className="w-5 h-5 text-teal-600" />
+            <div className="w-10 h-10 rounded-xl bg-tsia-gold/10 flex items-center justify-center shrink-0">
+              <CarFront className="w-5 h-5 text-tsia-gold" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <p className="font-bold">Car Connect</p>
-                <Badge className="bg-teal-100 text-teal-700 border-0 text-[10px]">Live</Badge>
+                <p className="font-bold">V-Connect</p>
+                <Badge className="bg-tsia-gold/10 text-tsia-gold border-0 text-[10px]">Vehicle Credit</Badge>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">Peer-to-peer vehicle sharing across Africa</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Purchase vehicles on credit — achieve 30% QCE eligibility over 90 days to qualify</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white flex-1" onClick={() => { setCcTab("browse"); setActiveTab("car_connect"); }} data-testid="btn-home-cc-find">
-              <CarFront className="w-3.5 h-3.5 mr-1" /> Find a Car
-            </Button>
-            <Button size="sm" variant="outline" className="flex-1" onClick={() => { setCcTab("register"); setActiveTab("car_connect"); }} data-testid="btn-home-cc-register">
-              List My Car
-            </Button>
-          </div>
+          <Button size="sm" className="w-full bg-tsia-gold hover:bg-tsia-gold/90 text-white" onClick={() => setActiveTab("v_connect")} data-testid="btn-home-vc-explore">
+            <CarFront className="w-3.5 h-3.5 mr-1" /> Explore Vehicles
+          </Button>
         </CardContent>
       </Card>
 
@@ -410,168 +415,204 @@ export default function QCESection() {
           </motion.div>
         )}
 
-        {/* ── CAR CONNECT ──────────────────────────────────────────── */}
-        {activeTab === "car_connect" && (
-          <motion.div key="car_connect" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-4">
+        {/* ── V-CONNECT ────────────────────────────────────────────── */}
+        {activeTab === "v_connect" && (
+          <motion.div key="v_connect" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-4">
             <BackBtn />
 
-            {/* Tab switcher */}
-            <div className="flex gap-2 p-1 bg-muted rounded-xl w-fit">
-              {(["browse", "register"] as const).map(t => (
-                <button key={t} onClick={() => setCcTab(t)}
-                  className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${ccTab === t ? "bg-white dark:bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                  data-testid={`tab-cc-${t}`}>
-                  {t === "browse" ? "Find a Car" : "Register My Car"}
-                </button>
-              ))}
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-tsia-gold/10 flex items-center justify-center shrink-0">
+                <CarFront className="w-5 h-5 text-tsia-gold" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">V-Connect</h3>
+                <p className="text-xs text-muted-foreground">Vehicle Purchase Credit — 30% QCE eligibility required</p>
+              </div>
+              {vcEligibilityOk
+                ? <Badge className="ml-auto bg-tsia-green/10 text-tsia-green border-0 text-[10px] shrink-0"><BadgeCheck className="w-3 h-3 mr-0.5" /> Eligible</Badge>
+                : <Badge className="ml-auto bg-amber-100 text-amber-700 border-0 text-[10px] shrink-0">{eligibilityPct.toFixed(1)}% / 30%</Badge>}
             </div>
 
-            {ccTab === "browse" && (
-              <>
-                <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-2xl p-3 flex items-start gap-2 text-xs">
-                  <Shield className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                  <p className="text-teal-800 dark:text-teal-300 font-medium">All vehicle owners are verified TSIA members. Payments go through your wallet.</p>
+            {/* ── Calculator ─────────────────────────────────────── */}
+            <Card className="shadow-sm border-0 border-l-4 border-l-tsia-gold" data-testid="card-vc-calculator">
+              <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Calculator className="w-4 h-4 text-tsia-gold" /> V-Connect Calculator
+                </CardTitle>
+                <CardDescription className="text-xs">Enter a vehicle price to see your savings plan</CardDescription>
+              </CardHeader>
+              <CardContent className="pb-5 space-y-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Vehicle Price (₦)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="e.g. 28,000,000"
+                    value={vcPrice}
+                    onChange={e => setVcPrice(e.target.value)}
+                    className="text-base"
+                    data-testid="input-vc-price"
+                  />
                 </div>
-                <div className="space-y-3">
-                  {[
-                    { id: 1, make: "Toyota", model: "Corolla", year: "2020", seats: 5, dailyRate: "$45", city: "Lagos, Nigeria", owner: "Chukwuemeka A.", rating: 4.9, trips: 34, img: "🚗", color: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800" },
-                    { id: 2, make: "Honda", model: "CR-V", year: "2021", seats: 7, dailyRate: "$60", city: "Abuja, Nigeria", owner: "Fatima B.", rating: 5.0, trips: 18, img: "🚙", color: "bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800" },
-                    { id: 3, make: "Hyundai", model: "Elantra", year: "2019", seats: 5, dailyRate: "$38", city: "Nairobi, Kenya", owner: "James K.", rating: 4.8, trips: 52, img: "🏎️", color: "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800" },
-                    { id: 4, make: "Ford", model: "Ranger (4x4)", year: "2022", seats: 5, dailyRate: "$75", city: "Accra, Ghana", owner: "Kwame A.", rating: 4.7, trips: 12, img: "🛻", color: "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800" },
-                    { id: 5, make: "Kia", model: "Sportage", year: "2020", seats: 5, dailyRate: "$55", city: "Port Harcourt, Nigeria", owner: "Sandra O.", rating: 4.9, trips: 27, img: "🚘", color: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" },
-                  ].map(car => (
-                    <Card key={car.id} className={`border-2 ${car.color.split(" ").slice(2).join(" ")} shadow-sm`}>
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-12 h-12 ${car.color.split(" ").slice(0, 2).join(" ")} rounded-2xl flex items-center justify-center text-2xl shrink-0`}>{car.img}</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 flex-wrap">
-                              <div>
-                                <p className="font-bold text-sm">{car.year} {car.make} {car.model}</p>
-                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3" /> {car.city}</p>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <p className="font-bold text-teal-700 dark:text-teal-300">{car.dailyRate}</p>
-                                <p className="text-[10px] text-muted-foreground">per day</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
-                              <span className="flex items-center gap-0.5"><Users className="w-3 h-3" /> {car.seats} seats</span>
-                              <span className="flex items-center gap-0.5"><Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {car.rating} ({car.trips} trips)</span>
-                              <span className="flex items-center gap-0.5"><Shield className="w-3 h-3 text-teal-500" /> Verified</span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-3">
-                              <p className="text-xs text-muted-foreground">Owner: <span className="font-semibold text-foreground">{car.owner}</span></p>
-                              <Button size="sm" className="ml-auto bg-teal-600 hover:bg-teal-700 text-white text-xs h-7 px-3"
-                                onClick={() => { setCcSelectedCar({ name: `${car.year} ${car.make} ${car.model}`, city: car.city, rate: car.dailyRate, owner: car.owner }); setCcConfirmOpen(true); }}
-                                data-testid={`btn-connect-car-${car.id}`}>
-                                <LinkIcon className="w-3 h-3 mr-1" /> Connect
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </>
-            )}
 
-            {ccTab === "register" && (
-              <>
-                <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-2xl p-3 flex items-start gap-2 text-xs">
-                  <Zap className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                  <p className="text-teal-800 dark:text-teal-300 font-medium">Earn in USD. Payments are credited directly to your TSIA wallet.</p>
-                </div>
-                <Card className="shadow-sm border-2 border-teal-200 dark:border-teal-800">
-                  <CardHeader className="pb-2 pt-4"><CardTitle className="text-sm flex items-center gap-2"><CarFront className="w-4 h-4 text-teal-600" /> Vehicle Registration</CardTitle></CardHeader>
-                  <CardContent className="pb-5 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1"><Label className="text-xs">Make</Label><Input placeholder="e.g. Toyota" value={ccForm.make} onChange={e => setCcForm(f => ({ ...f, make: e.target.value }))} data-testid="input-cc-make" /></div>
-                      <div className="space-y-1"><Label className="text-xs">Model</Label><Input placeholder="e.g. Corolla" value={ccForm.model} onChange={e => setCcForm(f => ({ ...f, model: e.target.value }))} data-testid="input-cc-model" /></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1"><Label className="text-xs">Year</Label><Input type="number" min="2000" max="2025" placeholder="2022" value={ccForm.year} onChange={e => setCcForm(f => ({ ...f, year: e.target.value }))} data-testid="input-cc-year" /></div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Seats</Label>
-                        <select value={ccForm.seats} onChange={e => setCcForm(f => ({ ...f, seats: e.target.value }))} className="w-full h-10 rounded-lg border border-border bg-card px-3 text-sm" data-testid="select-cc-seats">
-                          {["2","4","5","6","7","8"].map(n => <option key={n}>{n}</option>)}
-                        </select>
+                {vcPriceNum > 0 && (
+                  <div className="space-y-3">
+                    {/* Output grid */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-muted/50 rounded-xl p-3 text-center border">
+                        <p className="text-[10px] text-muted-foreground mb-1">Savings Target</p>
+                        <p className="font-bold text-sm text-tsia-gold" data-testid="text-vc-target">{fmt₦(vcSavingsTarget)}</p>
+                        <p className="text-[9px] text-muted-foreground mt-0.5">Price ÷ 30%</p>
+                      </div>
+                      <div className="bg-muted/50 rounded-xl p-3 text-center border">
+                        <p className="text-[10px] text-muted-foreground mb-1">Daily Savings</p>
+                        <p className="font-bold text-sm" data-testid="text-vc-daily">{fmt₦(vcDailyNeeded)}</p>
+                        <p className="text-[9px] text-muted-foreground mt-0.5">Over 90 days</p>
+                      </div>
+                      <div className="bg-muted/50 rounded-xl p-3 text-center border">
+                        <p className="text-[10px] text-muted-foreground mb-1">Monthly</p>
+                        <p className="font-bold text-sm" data-testid="text-vc-monthly">{fmt₦(vcMonthlyNeeded)}</p>
+                        <p className="text-[9px] text-muted-foreground mt-0.5">Over 3 months</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1"><Label className="text-xs">Daily Rate (USD)</Label><Input type="number" min="10" placeholder="45" value={ccForm.dailyRate} onChange={e => setCcForm(f => ({ ...f, dailyRate: e.target.value }))} data-testid="input-cc-rate" /></div>
-                      <div className="space-y-1"><Label className="text-xs">Your City</Label><Input placeholder="Lagos, Nigeria" value={ccForm.city} onChange={e => setCcForm(f => ({ ...f, city: e.target.value }))} data-testid="input-cc-city" /></div>
-                    </div>
-                    <div className="space-y-1"><Label className="text-xs">WhatsApp / Phone</Label><Input placeholder="+234 80..." value={ccForm.phone} onChange={e => setCcForm(f => ({ ...f, phone: e.target.value }))} data-testid="input-cc-phone" /></div>
-                    <div className="space-y-1"><Label className="text-xs">Description (optional)</Label><Input placeholder="AC, Bluetooth, clean interior..." value={ccForm.description} onChange={e => setCcForm(f => ({ ...f, description: e.target.value }))} data-testid="input-cc-description" /></div>
-                    <Button className="w-full bg-teal-600 hover:bg-teal-700 text-white"
-                      disabled={!ccForm.make || !ccForm.model || !ccForm.year || !ccForm.dailyRate || !ccForm.city || !ccForm.phone}
-                      onClick={() => setCcConnectOpen(true)} data-testid="btn-cc-register">
-                      <CarFront className="w-4 h-4 mr-2" /> Register Vehicle
-                    </Button>
-                  </CardContent>
-                </Card>
-              </>
-            )}
 
-            {/* Connect/Book dialog */}
-            <Dialog open={ccConfirmOpen} onOpenChange={v => { setCcConfirmOpen(v); if (!v) setCcSelectedCar(null); }}>
+                    {/* QCE eligibility progress toward 30% */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground font-medium">QCE Eligibility progress toward 30%</span>
+                        <span className={`font-bold ${vcEligibilityOk ? "text-tsia-green" : "text-amber-600"}`}>{eligibilityPct.toFixed(1)}% / 30%</span>
+                      </div>
+                      <Progress value={Math.min((eligibilityPct / 30) * 100, 100)} className="h-2" data-testid="progress-vc-eligibility" />
+                      <p className="text-[10px] text-muted-foreground">
+                        {vcEligibilityOk
+                          ? "You meet the 30% eligibility threshold — you can apply for V-Connect credit."
+                          : `Need ${(30 - eligibilityPct).toFixed(1)}% more eligibility. Keep saving over 90 days.`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ── Terms notice ───────────────────────────────────── */}
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 flex items-start gap-3" data-testid="card-vc-terms">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <div className="text-xs text-red-800 dark:text-red-300 space-y-1">
+                <p className="font-semibold">Important: Early withdrawal resets eligibility</p>
+                <p>If you change or withdraw your QCE savings plan before the 90-day target is complete, your savings are returned without profit and your QCE credit eligibility resets to zero.</p>
+              </div>
+            </div>
+
+            {/* ── Vehicle listings ────────────────────────────────── */}
+            <div>
+              <p className="text-sm font-bold mb-3">Available Vehicles via V-Connect Credit</p>
+              <div className="space-y-3">
+                {V_CONNECT_VEHICLES.map(vehicle => (
+                  <Card key={vehicle.id} className={`border-2 ${vehicle.color} shadow-sm`} data-testid={`card-vc-vehicle-${vehicle.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-tsia-gold/10 flex items-center justify-center shrink-0">
+                          <CarFront className="w-6 h-6 text-tsia-gold" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-bold text-sm">{vehicle.year} {vehicle.make} {vehicle.model}</p>
+                                {vehicle.badge && (
+                                  <Badge className="text-[9px] bg-tsia-gold/10 text-tsia-gold border-0 h-4">{vehicle.badge}</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3" /> {vehicle.city}
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-bold text-tsia-gold text-sm" data-testid={`text-vc-price-${vehicle.id}`}>{fmt₦(vehicle.priceNgn)}</p>
+                              <p className="text-[10px] text-muted-foreground">purchase price</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 mt-3 flex-wrap">
+                            <p className="text-[10px] text-muted-foreground">
+                              Target savings: <span className="font-semibold text-foreground">{fmt₦(vehicle.priceNgn / 0.3)}</span>
+                            </p>
+                            <Button
+                              size="sm"
+                              className={`ml-auto text-xs h-7 px-3 ${vcEligibilityOk ? "bg-tsia-gold hover:bg-tsia-gold/90 text-white" : "bg-muted text-muted-foreground cursor-not-allowed"}`}
+                              disabled={!vcEligibilityOk}
+                              onClick={() => { setVcSelectedVehicle(vehicle); setVcInterestOpen(true); }}
+                              data-testid={`btn-vc-interest-${vehicle.id}`}
+                            >
+                              <CreditCard className="w-3 h-3 mr-1" /> Express Interest
+                            </Button>
+                          </div>
+                          {!vcEligibilityOk && (
+                            <p className="text-[10px] text-amber-600 mt-1">
+                              Requires 30% QCE eligibility · you have {eligibilityPct.toFixed(1)}%
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            {/* Express Interest dialog */}
+            <Dialog open={vcInterestOpen} onOpenChange={v => { setVcInterestOpen(v); if (!v) setVcSelectedVehicle(null); }}>
               <DialogContent className="sm:max-w-sm">
                 <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2"><LinkIcon className="w-4 h-4 text-teal-600" /> Connect with Car Owner</DialogTitle>
-                  <DialogDescription>Choose your booking dates and confirm your request.</DialogDescription>
+                  <DialogTitle className="flex items-center gap-2">
+                    <CarFront className="w-4 h-4 text-tsia-gold" /> Express Interest
+                  </DialogTitle>
+                  <DialogDescription>
+                    Submit your interest in purchasing this vehicle via V-Connect credit.
+                  </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-3 py-2">
-                  {ccSelectedCar && (
-                    <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-xl p-3">
-                      <p className="font-bold text-sm">{ccSelectedCar.name}</p>
-                      <p className="text-xs text-muted-foreground">{ccSelectedCar.city} · {ccSelectedCar.owner}</p>
-                      <p className="text-sm font-semibold text-teal-700 dark:text-teal-300 mt-1">{ccSelectedCar.rate} / day</p>
+                {vcSelectedVehicle && (
+                  <div className="bg-tsia-gold/5 border border-tsia-gold/20 rounded-xl p-4 my-2">
+                    <p className="font-bold text-sm">{vcSelectedVehicle.year} {vcSelectedVehicle.make} {vcSelectedVehicle.model}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3" /> {vcSelectedVehicle.city}</p>
+                    <div className="flex justify-between mt-2 text-xs">
+                      <span className="text-muted-foreground">Purchase price</span>
+                      <span className="font-bold text-tsia-gold">{fmt₦(vcSelectedVehicle.priceNgn)}</span>
                     </div>
-                  )}
-                  <div className="space-y-1"><Label className="text-xs">Start Date</Label><Input type="date" value={ccBookingDate} min={new Date().toISOString().split("T")[0]} onChange={e => setCcBookingDate(e.target.value)} data-testid="input-cc-date" /></div>
-                  <div className="space-y-1"><Label className="text-xs">Number of Days</Label><Input type="number" min="1" max="30" value={ccBookingDays} onChange={e => setCcBookingDays(e.target.value)} data-testid="input-cc-days" /></div>
-                  {ccSelectedCar && ccBookingDate && ccBookingDays && (
-                    <div className="bg-muted rounded-xl p-3 text-sm flex justify-between font-bold">
-                      <span>Total</span>
-                      <span className="text-teal-700 dark:text-teal-300">${(parseFloat(ccSelectedCar.rate.replace("$","")) * parseInt(ccBookingDays || "1")).toFixed(2)}</span>
+                    <div className="flex justify-between mt-1 text-xs">
+                      <span className="text-muted-foreground">Required savings target</span>
+                      <span className="font-semibold">{fmt₦(vcSelectedVehicle.priceNgn / 0.3)}</span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setCcConfirmOpen(false)}>Cancel</Button>
-                  <Button className="bg-teal-600 hover:bg-teal-700 text-white" disabled={!ccBookingDate || !ccBookingDays}
-                    onClick={() => {
-                      if (!ccSelectedCar) return;
-                      const total = parseFloat(ccSelectedCar.rate.replace("$","")) * parseInt(ccBookingDays || "1");
-                      ccBookMutation.mutate({ type: "car_connect", details: { ...ccSelectedCar, startDate: ccBookingDate, days: parseInt(ccBookingDays) }, amount: total });
-                      setCcConfirmOpen(false); setCcSelectedCar(null); setCcBookingDate(""); setCcBookingDays("1");
-                    }} data-testid="btn-cc-confirm-connect">
-                    {ccBookMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LinkIcon className="w-4 h-4 mr-2" />} Confirm & Connect
+                  <Button variant="outline" onClick={() => setVcInterestOpen(false)}>Cancel</Button>
+                  <Button
+                    className="bg-tsia-gold hover:bg-tsia-gold/90 text-white"
+                    onClick={() => { setVcInterestOpen(false); setVcSuccessOpen(true); }}
+                    data-testid="btn-vc-confirm-interest"
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-2" /> Submit Application
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
 
-            {/* Register success dialog */}
-            <Dialog open={ccConnectOpen} onOpenChange={setCcConnectOpen}>
+            {/* Success dialog */}
+            <Dialog open={vcSuccessOpen} onOpenChange={setVcSuccessOpen}>
               <DialogContent className="sm:max-w-sm">
                 <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-teal-600" /> Vehicle Registration</DialogTitle>
-                  <DialogDescription>Your {ccForm.year} {ccForm.make} {ccForm.model} will be listed for ${ccForm.dailyRate}/day in {ccForm.city}.</DialogDescription>
+                  <DialogTitle className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-tsia-green" /> Application Received
+                  </DialogTitle>
                 </DialogHeader>
-                <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-xl p-4 text-xs space-y-1.5 my-2">
-                  {["TSIA verifies your vehicle within 24h", "Your listing goes live on Car Connect", "Earnings are paid directly to your TSIA wallet"].map(s => (
-                    <p key={s} className="flex items-start gap-2 text-teal-700 dark:text-teal-400"><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {s}</p>
-                  ))}
+                <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-2xl p-4 my-2 space-y-2 text-sm">
+                  <p className="font-semibold text-tsia-green">Your V-Connect application has been submitted!</p>
+                  <p className="text-muted-foreground text-xs">A TSIA advisor will contact you within 48 hours to discuss your V-Connect credit plan and next steps.</p>
                 </div>
                 <DialogFooter>
-                  <Button className="w-full bg-teal-600 hover:bg-teal-700 text-white" onClick={() => {
-                    toast({ title: "Registration Submitted!", description: `Your ${ccForm.make} ${ccForm.model} has been submitted for verification.` });
-                    setCcConnectOpen(false); setCcForm({ make: "", model: "", year: "", seats: "4", dailyRate: "", city: "", phone: "", description: "" });
-                  }} data-testid="btn-cc-confirm-register">
-                    Got it — Submit Registration
+                  <Button className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white" onClick={() => { setVcSuccessOpen(false); setVcSelectedVehicle(null); }} data-testid="btn-vc-success-close">
+                    Got it
                   </Button>
                 </DialogFooter>
               </DialogContent>

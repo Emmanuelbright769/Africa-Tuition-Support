@@ -1246,6 +1246,30 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid category. Must be 100, 300, or 500 (elite)." });
       }
 
+      // ── Wallet balance check ──
+      const MIN_WALLET_BALANCE = 2;
+      const wallet = await storage.getOrCreateWallet(userId);
+      const walletBalance = parseFloat(wallet.balance);
+      if (walletBalance - amountPaid < MIN_WALLET_BALANCE) {
+        const needed = (amountPaid + MIN_WALLET_BALANCE - walletBalance).toFixed(2);
+        return res.status(400).json({
+          message: `Insufficient wallet balance. You need $${amountPaid} but only have $${walletBalance.toFixed(2)} (a $2 minimum must remain). Please fund your wallet with at least $${needed} more.`,
+          code: "INSUFFICIENT_BALANCE",
+          walletBalance: walletBalance.toFixed(2),
+          required: amountPaid,
+        });
+      }
+
+      // ── Deduct from Personal Wallet ──
+      await storage.updateWalletBalance(userId, (walletBalance - amountPaid).toFixed(2));
+      await storage.createTransaction({
+        userId,
+        type: "withdrawal",
+        amount: `-${amountPaid.toFixed(2)}`,
+        description: `Co-Affiliate Trust Fund investment — ${cat === 500 ? "Elite" : cat === 300 ? "Growth" : "Starter"} tier`,
+        status: "completed",
+      });
+
       const reserveCut = parseFloat((amountPaid * 0.20).toFixed(2)); // 20% to reserve
       const record = await storage.createCoAffiliate({
         userId,
@@ -1262,7 +1286,7 @@ export async function registerRoutes(
         userId,
         type: "system",
         title: "Trust Fund Enrolment Confirmed",
-        message: `You've joined the Co-Affiliate programme. $${reserveCut.toFixed(2)} (20%) has been ring-fenced into the Strategic Reserve Fund.`,
+        message: `$${amountPaid.toFixed(2)} has been deducted from your wallet. You've joined the Co-Affiliate programme. $${reserveCut.toFixed(2)} (20%) has been ring-fenced into the Strategic Reserve Fund.`,
         data: { amountPaid, reserveCut, shareLabel: (sharePercentage * 100).toFixed(6) + "%" },
         isRead: false,
       });
@@ -1325,17 +1349,50 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid category." });
       }
 
-      const updated = await storage.updateCoAffiliate(userId, {
+      // ── Wallet balance check ──
+      const MIN_WALLET_BALANCE = 2;
+      const upgradeWallet = await storage.getOrCreateWallet(userId);
+      const upgradeWalletBalance = parseFloat(upgradeWallet.balance);
+      if (upgradeWalletBalance - newAmountPaid < MIN_WALLET_BALANCE) {
+        const needed = (newAmountPaid + MIN_WALLET_BALANCE - upgradeWalletBalance).toFixed(2);
+        return res.status(400).json({
+          message: `Insufficient wallet balance. You need $${newAmountPaid} but only have $${upgradeWalletBalance.toFixed(2)} (a $2 minimum must remain). Please fund your wallet with at least $${needed} more.`,
+          code: "INSUFFICIENT_BALANCE",
+          walletBalance: upgradeWalletBalance.toFixed(2),
+          required: newAmountPaid,
+        });
+      }
+
+      // ── Deduct from Personal Wallet ──
+      await storage.updateWalletBalance(userId, (upgradeWalletBalance - newAmountPaid).toFixed(2));
+      await storage.createTransaction({
+        userId,
+        type: "withdrawal",
+        amount: `-${newAmountPaid.toFixed(2)}`,
+        description: `Co-Affiliate Trust Fund upgrade — ${cat === 500 ? "Elite" : cat === 300 ? "Growth" : "Starter"} tier`,
+        status: "completed",
+      });
+
+      const upgraded = await storage.updateCoAffiliate(userId, {
         investmentCategory: newCategory,
         amountPaid: newAmountPaid.toFixed(2),
         sharePercentage: newSharePercentage.toFixed(10),
       });
 
+      await storage.createNotification({
+        userId,
+        type: "system",
+        title: "Trust Fund Tier Upgraded",
+        message: `$${newAmountPaid.toFixed(2)} deducted from your wallet. You've upgraded to the ${cat === 500 ? "Elite" : cat === 300 ? "Growth" : "Starter"} tier.`,
+        data: { newAmountPaid, shareLabel: (newSharePercentage * 100).toFixed(6) + "%" },
+        isRead: false,
+      });
+
       res.json({
-        ...updated,
+        ...upgraded,
         currentPrice: newAmountPaid,
         shareLabel: (newSharePercentage * 100).toFixed(6) + "%",
-        message: `Successfully upgraded to ${cat === 500 ? "Elite" : cat === 300 ? "Growth" : "Starter"} tier!`,
+        message: `Successfully upgraded to ${cat === 500 ? "Elite" : cat === 300 ? "Growth" : "Starter"} tier! $${newAmountPaid.toFixed(2)} deducted from your wallet.`,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });

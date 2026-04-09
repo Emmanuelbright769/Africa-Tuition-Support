@@ -354,6 +354,8 @@ export default function AffiliateDashboard() {
       setSubscribeOpen(false); setSelectedCategory(null); setEliteCustomAmount("500");
       refetchMyCoAff();
       queryClient.invalidateQueries({ queryKey: ["/api/co-affiliate/program"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
     },
     onError: (err: any) => toast({ title: "Enrollment Failed", description: err.message, variant: "destructive" }),
   });
@@ -502,6 +504,8 @@ export default function AffiliateDashboard() {
       setUpgradeOpen(false);
       refetchMyCoAff();
       queryClient.invalidateQueries({ queryKey: ["/api/co-affiliate/program"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
     },
     onError: (err: any) => toast({ title: "Upgrade Failed", description: err.message, variant: "destructive" }),
   });
@@ -1891,41 +1895,83 @@ export default function AffiliateDashboard() {
             const col = getTierStyle(selectedCategory);
             const finalAmt = isElite ? Math.round(eliteAmt * Math.pow(1.2, progress.milestones)) : tier.currentPrice;
             const finalShare = isElite ? (getEliteSharePercentage(eliteAmt) * 100).toFixed(6) : tier.shareLabel;
+            const walBal = parseFloat(personalWalletData?.balance ?? "0");
+            const canAfford = walBal - finalAmt >= 2;
+            const shortfall = canAfford ? 0 : Math.max(0, finalAmt + 2 - walBal);
             return (
-              <div className={`rounded-xl p-5 border-2 my-2 ${col.bg} ${col.border}`}>
-                <div className="flex justify-between items-start mb-3">
-                  <div><p className="text-xs text-muted-foreground">Category</p><h4 className={`text-2xl font-bold ${col.text}`}>{tier.label}{isElite ? ` ($${Math.round(eliteAmt)})` : ""}</h4></div>
-                  <div className="text-right"><p className="text-xs text-muted-foreground">Total Amount</p><p className="text-2xl font-bold">${finalAmt}</p></div>
-                </div>
-                {/* Payment breakdown showing the 20% reserve */}
-                <div className="bg-background/60 rounded-xl p-3 mb-3 space-y-2 text-xs">
-                  <p className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Payment Breakdown</p>
-                  <div className="flex justify-between items-center">
-                    <span className="flex items-center gap-1.5 text-foreground font-medium"><Crown className="w-3 h-3 text-amber-500" /> Co-Affiliate Fund (80%)</span>
-                    <span className="font-bold text-foreground">${(finalAmt * 0.80).toFixed(2)}</span>
+              <>
+                <div className={`rounded-xl p-5 border-2 my-2 ${col.bg} ${col.border}`}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div><p className="text-xs text-muted-foreground">Category</p><h4 className={`text-2xl font-bold ${col.text}`}>{tier.label}{isElite ? ` ($${Math.round(eliteAmt)})` : ""}</h4></div>
+                    <div className="text-right"><p className="text-xs text-muted-foreground">Total Amount</p><p className="text-2xl font-bold">${finalAmt}</p></div>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-medium"><Shield className="w-3 h-3 text-amber-500" /> Strategic Reserve (20%)</span>
-                    <span className="font-bold text-amber-700 dark:text-amber-400">${(finalAmt * 0.20).toFixed(2)}</span>
+                  {/* Payment breakdown */}
+                  <div className="bg-background/60 rounded-xl p-3 mb-3 space-y-2 text-xs">
+                    <p className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Payment Breakdown</p>
+                    <div className="flex justify-between items-center">
+                      <span className="flex items-center gap-1.5 text-foreground font-medium"><Crown className="w-3 h-3 text-amber-500" /> Co-Affiliate Fund (80%)</span>
+                      <span className="font-bold text-foreground">${(finalAmt * 0.80).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-medium"><Shield className="w-3 h-3 text-amber-500" /> Strategic Reserve (20%)</span>
+                      <span className="font-bold text-amber-700 dark:text-amber-400">${(finalAmt * 0.20).toFixed(2)}</span>
+                    </div>
+                    <div className="border-t border-border pt-2 flex justify-between items-center">
+                      <span className="text-muted-foreground font-medium">Your Wallet Balance</span>
+                      <span className={`font-bold ${canAfford ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>${walBal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Balance After Payment</span>
+                      <span className={`font-bold ${canAfford ? "text-foreground" : "text-red-500"}`}>${Math.max(0, walBal - finalAmt).toFixed(2)}</span>
+                    </div>
                   </div>
-                  <div className="border-t border-border pt-1 flex justify-between items-center">
-                    <span className="text-muted-foreground">Total Investment</span>
-                    <span className="font-bold">${finalAmt}</span>
+                  <div className={`text-sm font-semibold px-3 py-2 rounded-lg ${col.badge}`}>Lifetime share: {finalShare}% of TSIA profits</div>
+                  <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> Lifetime participation, no renewal needed</div>
+                    <div className="flex items-center gap-1.5"><Shield className="w-3 h-3 text-amber-500" /> 20% ring-fenced into Strategic Reserve</div>
+                    <div className="flex items-center gap-1.5"><AlertCircle className="w-3 h-3 text-red-500" /> Investment is non-refundable</div>
                   </div>
                 </div>
-                <div className={`text-sm font-semibold px-3 py-2 rounded-lg ${col.badge}`}>Lifetime share: {finalShare}% of TSIA profits</div>
-                <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> Lifetime participation, no renewal needed</div>
-                  <div className="flex items-center gap-1.5"><Shield className="w-3 h-3 text-amber-500" /> 20% ring-fenced into Strategic Reserve</div>
-                  <div className="flex items-center gap-1.5"><AlertCircle className="w-3 h-3 text-red-500" /> Investment is non-refundable</div>
-                </div>
-              </div>
+
+                {!canAfford && (
+                  <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 space-y-2" data-testid="alert-insufficient-funds">
+                    <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-semibold text-sm">
+                      <AlertCircle className="w-4 h-4 shrink-0" /> Insufficient Wallet Balance
+                    </div>
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      You need <strong>${finalAmt}</strong> but your wallet only has <strong>${walBal.toFixed(2)}</strong> (a $2 minimum must always remain). Please fund your wallet with at least <strong>${shortfall.toFixed(2)}</strong> more before enrolling.
+                    </p>
+                    <Button size="sm" variant="outline" className="w-full border-red-300 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 text-xs h-8"
+                      onClick={() => { setSubscribeOpen(false); setActiveSection("wallet"); }}
+                      data-testid="button-fund-account">
+                      Fund My Wallet
+                    </Button>
+                  </div>
+                )}
+              </>
             );
           })()}
           <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setSubscribeOpen(false)}>Cancel</Button>
-            <Button onClick={() => selectedCategory !== null && subscribeMutation.mutate({ category: selectedCategory, customAmount: selectedCategory === 500 ? eliteAmt : undefined })}
-              disabled={subscribeMutation.isPending} className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold" data-testid="button-confirm-subscribe">
+            <Button onClick={() => {
+              if (selectedCategory === null) return;
+              const isElite = selectedCategory === 500;
+              const tier = pricing.find((p: any) => isElite ? p.isElite : p.category === selectedCategory);
+              if (!tier) return;
+              const finalAmt = isElite ? Math.round(eliteAmt * Math.pow(1.2, progress.milestones)) : tier.currentPrice;
+              const walBal = parseFloat(personalWalletData?.balance ?? "0");
+              if (walBal - finalAmt < 2) return;
+              subscribeMutation.mutate({ category: selectedCategory, customAmount: selectedCategory === 500 ? eliteAmt : undefined });
+            }}
+              disabled={subscribeMutation.isPending || (() => {
+                if (selectedCategory === null) return true;
+                const isElite = selectedCategory === 500;
+                const tier = pricing.find((p: any) => isElite ? p.isElite : p.category === selectedCategory);
+                if (!tier) return true;
+                const finalAmt = isElite ? Math.round(eliteAmt * Math.pow(1.2, progress.milestones)) : tier.currentPrice;
+                return parseFloat(personalWalletData?.balance ?? "0") - finalAmt < 2;
+              })()}
+              className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold disabled:opacity-50" data-testid="button-confirm-subscribe">
               {subscribeMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Processing...</> : "Confirm & Enrol"}
             </Button>
           </DialogFooter>
@@ -2254,6 +2300,45 @@ export default function AffiliateDashboard() {
                 <p className="text-xs text-muted-foreground">New share: {(getEliteSharePercentage(upgradeEliteAmtNum) * 100).toFixed(6)}% lifetime</p>
               </div>
             )}
+
+            {/* Wallet balance check for upgrade */}
+            {(() => {
+              const walBal = parseFloat(personalWalletData?.balance ?? "0");
+              const upgradeMilestones = progress.milestones;
+              const upgradeMultiplier = Math.pow(1 + CO_AFFILIATE_PROGRAM.PRICE_INCREASE_RATE, upgradeMilestones);
+              let upgradeAmt = 0;
+              if (upgradeCategory === 300) {
+                const t = pricing.find((p: any) => p.category === 300);
+                upgradeAmt = t?.currentPrice ?? 0;
+              } else if (upgradeCategory === 500) {
+                upgradeAmt = Math.round(upgradeEliteAmtNum * upgradeMultiplier);
+              }
+              const canAfford = walBal - upgradeAmt >= 2;
+              const shortfall = canAfford ? 0 : Math.max(0, upgradeAmt + 2 - walBal);
+              return (
+                <div className={`rounded-xl p-3 border text-xs space-y-1.5 ${canAfford ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800" : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"}`}>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground font-medium">Upgrade cost</span>
+                    <span className="font-bold">${upgradeAmt > 0 ? upgradeAmt : "—"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground font-medium">Your wallet balance</span>
+                    <span className={`font-bold ${canAfford ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>${walBal.toFixed(2)}</span>
+                  </div>
+                  {upgradeAmt > 0 && !canAfford && (
+                    <>
+                      <p className="text-red-600 dark:text-red-400 font-medium pt-1">Insufficient funds — you need ${shortfall.toFixed(2)} more (keeping $2 minimum).</p>
+                      <Button size="sm" variant="outline" className="w-full border-red-300 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 h-8"
+                        onClick={() => { setUpgradeOpen(false); setActiveSection("wallet"); }}
+                        data-testid="button-upgrade-fund-account">
+                        Fund My Wallet
+                      </Button>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-3 text-xs">
               <p className="font-semibold text-purple-800 dark:text-purple-300 mb-1">What changes after upgrade:</p>
               <p className="text-purple-700 dark:text-purple-400">Your lifetime profit share percentage increases immediately to match the new tier. The investment is one-time and non-refundable.</p>
@@ -2261,8 +2346,26 @@ export default function AffiliateDashboard() {
           </div>
           <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setUpgradeOpen(false)}>Cancel</Button>
-            <Button onClick={() => upgradeMutation.mutate({ category: upgradeCategory, customAmount: upgradeCategory === 500 ? upgradeEliteAmtNum : undefined })}
-              disabled={upgradeMutation.isPending} className="bg-purple-600 hover:bg-purple-700 text-white font-bold" data-testid="button-confirm-upgrade">
+            <Button onClick={() => {
+              const walBal = parseFloat(personalWalletData?.balance ?? "0");
+              const upgradeMilestones = progress.milestones;
+              const upgradeMultiplier = Math.pow(1 + CO_AFFILIATE_PROGRAM.PRICE_INCREASE_RATE, upgradeMilestones);
+              let upgradeAmt = 0;
+              if (upgradeCategory === 300) { const t = pricing.find((p: any) => p.category === 300); upgradeAmt = t?.currentPrice ?? 0; }
+              else if (upgradeCategory === 500) { upgradeAmt = Math.round(upgradeEliteAmtNum * upgradeMultiplier); }
+              if (walBal - upgradeAmt < 2) return;
+              upgradeMutation.mutate({ category: upgradeCategory, customAmount: upgradeCategory === 500 ? upgradeEliteAmtNum : undefined });
+            }}
+              disabled={upgradeMutation.isPending || (() => {
+                const walBal = parseFloat(personalWalletData?.balance ?? "0");
+                const upgradeMilestones = progress.milestones;
+                const upgradeMultiplier = Math.pow(1 + CO_AFFILIATE_PROGRAM.PRICE_INCREASE_RATE, upgradeMilestones);
+                let upgradeAmt = 0;
+                if (upgradeCategory === 300) { const t = pricing.find((p: any) => p.category === 300); upgradeAmt = t?.currentPrice ?? 0; }
+                else if (upgradeCategory === 500) { upgradeAmt = Math.round(upgradeEliteAmtNum * upgradeMultiplier); }
+                return upgradeAmt > 0 && walBal - upgradeAmt < 2;
+              })()}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold disabled:opacity-50" data-testid="button-confirm-upgrade">
               {upgradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />} Confirm Upgrade
             </Button>
           </DialogFooter>

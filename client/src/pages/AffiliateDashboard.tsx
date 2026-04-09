@@ -78,7 +78,6 @@ const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "trust_fund",   label: "Affiliate Trust Fund",    icon: Crown },
   { id: "ecommerce",    label: "E-Commerce",              icon: ShoppingCart },
   { id: "tour_africa",  label: "Tour Africa",             icon: Car },
-  { id: "loan",               label: "Business Loan",          icon: Banknote },
   { id: "emergency_response", label: "Emergency Response",     icon: HeartPulse, badge: "Soon" },
   { id: "forum",              label: "Community Forum",        icon: MessageSquareText },
   { id: "referrals",          label: "Referrals",              icon: Users },

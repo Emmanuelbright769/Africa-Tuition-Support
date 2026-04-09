@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow, format } from "date-fns";
 import { QCE } from "@shared/schema";
+import { useLocation } from "wouter";
 
 interface QceSavings {
   id: number; userId: number; balance: string; activated: boolean;
@@ -36,6 +38,7 @@ const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 
 export default function QCESection() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const [contributeOpen, setContributeOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -99,6 +102,7 @@ export default function QCESection() {
   const creditPortalUnlocked = savings?.creditPortalUnlocked ?? false;
   const maxWithdraw = Math.max(qceBalance - QCE.MIN_BALANCE, 0);
   const canWithdraw = qceBalance > QCE.MIN_BALANCE;
+  const [, setLocation] = useLocation();
 
   if (isLoading) {
     return (
@@ -136,6 +140,29 @@ export default function QCESection() {
             )}
           </div>
         </div>
+      </motion.div>
+
+      <motion.div variants={itemVariants} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="shadow-md border-0">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Car Connect</CardTitle>
+            <CardDescription>Peer-to-peer vehicle sharing and bookings.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">Browse cars, register yours, and make a booking.</p>
+            <Button onClick={() => setLocation("/tour-africa")} data-testid="button-qce-car-connect">Open</Button>
+          </CardContent>
+        </Card>
+        <Card className="shadow-md border-0">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Landlord Tenancy Gateway</CardTitle>
+            <CardDescription>Property listing and lease financing.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">List properties, browse leases, and manage tenancy.</p>
+            <Button onClick={() => setLocation("/tenancy")} data-testid="button-qce-tenancy">Open</Button>
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Activate prompt — shown before activation */}

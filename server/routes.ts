@@ -3086,6 +3086,8 @@ export async function registerRoutes(
       const squadWallet = await storage.getOrCreateWallet(userId);
       const newBalance = (parseFloat(squadWallet.balance) + amountUsd).toFixed(2);
       await storage.updateWalletBalance(userId, newBalance);
+      // Credit 5% referral commission to referrer (if applicable)
+      creditReferrerCommission(userId, amountUsd, "personal wallet deposit").catch(() => {});
       // Activate wallet on first funding ≥ $5
       if (!squadWallet.activated && parseFloat(newBalance) >= 5) {
         try {
@@ -3209,6 +3211,8 @@ export async function registerRoutes(
       const pstackWallet = await storage.getOrCreateWallet(userId);
       const psNewBalance = (parseFloat(pstackWallet.balance) + amountUsd).toFixed(2);
       await storage.updateWalletBalance(userId, psNewBalance);
+      // Credit 5% referral commission to referrer (if applicable)
+      creditReferrerCommission(userId, amountUsd, "personal wallet deposit").catch(() => {});
       // Activate wallet on first funding ≥ $5
       if (!pstackWallet.activated && parseFloat(psNewBalance) >= 5) {
         try {

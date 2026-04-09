@@ -86,13 +86,17 @@ export default function Signup() {
   const { requestOtp, verifyOtp } = useAuth();
   const { toast } = useToast();
 
-  // Pre-select role from query param (used by /affiliate-signup redirect)
+  // Pre-select role and referral code from query params
   useEffect(() => {
     const params = new URLSearchParams(search);
     const r = params.get("role");
     if (r === "affiliate" || r === "student" || r === "both") {
       setRoleChoice(r as RoleChoice);
       setStep(1);
+    }
+    const ref = params.get("ref");
+    if (ref) {
+      setFormData(f => ({ ...f, referralCode: ref }));
     }
   }, [search]);
 

@@ -67,6 +67,7 @@ export default function QCESection() {
 
   // ── V-Connect state ──────────────────────────────────────────────────
   const [vcPrice, setVcPrice] = useState("");
+  const [vcCurrency, setVcCurrency] = useState<"NGN" | "USD">("NGN");
   const [vcSelectedVehicle, setVcSelectedVehicle] = useState<typeof V_CONNECT_VEHICLES[0] | null>(null);
   const [vcInterestOpen, setVcInterestOpen] = useState(false);
   const [vcSuccessOpen, setVcSuccessOpen] = useState(false);
@@ -96,13 +97,19 @@ export default function QCESection() {
   const canWithdraw = qceBalance > QCE.MIN_BALANCE;
 
   // ── V-Connect calculator derived ────────────────────────────────────
+  const VC_NGN_RATE = 1480; // ₦ per $1 for display/conversion
   const vcPriceNum = parseFloat(vcPrice.replace(/,/g, "")) || 0;
-  const vcSavingsTarget = vcPriceNum > 0 ? vcPriceNum / 0.3 : 0;
+  // Normalise to NGN internally so all outputs are in NGN
+  const vcPriceNgn = vcCurrency === "USD" ? vcPriceNum * VC_NGN_RATE : vcPriceNum;
+  const vcSavingsTarget = vcPriceNgn > 0 ? vcPriceNgn / 0.3 : 0;
   const vcDailyNeeded = vcSavingsTarget / 90;
   const vcMonthlyNeeded = vcSavingsTarget / 3;
   const vcEligibilityOk = eligibilityPct >= 30;
 
   const formatNaira = (n: number) => `₦${n.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
+  const formatUsd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Show amounts in the selected currency for clarity
+  const vcFormatCalc = (ngn: number) => vcCurrency === "USD" ? formatUsd(ngn / VC_NGN_RATE) : formatNaira(ngn);
 
   // ── Mutations ───────────────────────────────────────────────────────
   const contributeMutation = useMutation({
@@ -443,17 +450,34 @@ export default function QCESection() {
                 <CardDescription className="text-xs">Enter a vehicle price to see your savings plan</CardDescription>
               </CardHeader>
               <CardContent className="pb-5 space-y-4">
+                {/* Currency selector */}
+                <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
+                  {(["NGN", "USD"] as const).map(cur => (
+                    <button
+                      key={cur}
+                      onClick={() => { setVcCurrency(cur); setVcPrice(""); }}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${vcCurrency === cur ? "bg-white dark:bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      data-testid={`tab-vc-currency-${cur.toLowerCase()}`}
+                    >
+                      {cur === "NGN" ? "₦ Naira" : "$ Dollar"}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Vehicle Price (₦)</Label>
+                  <Label className="text-xs">Vehicle Price ({vcCurrency === "NGN" ? "₦" : "$"})</Label>
                   <Input
                     type="number"
                     min={0}
-                    placeholder="e.g. 28,000,000"
+                    placeholder={vcCurrency === "NGN" ? "e.g. 28,000,000" : "e.g. 18,919"}
                     value={vcPrice}
                     onChange={e => setVcPrice(e.target.value)}
                     className="text-base"
                     data-testid="input-vc-price"
                   />
+                  {vcCurrency === "USD" && vcPriceNum > 0 && (
+                    <p className="text-[10px] text-muted-foreground">≈ {formatNaira(vcPriceNum * VC_NGN_RATE)} at ₦{VC_NGN_RATE.toLocaleString()}/$1</p>
+                  )}
                 </div>
 
                 {vcPriceNum > 0 && (
@@ -462,17 +486,17 @@ export default function QCESection() {
                     <div className="grid grid-cols-3 gap-2">
                       <div className="bg-muted/50 rounded-xl p-3 text-center border">
                         <p className="text-[10px] text-muted-foreground mb-1">Savings Target</p>
-                        <p className="font-bold text-sm text-tsia-gold" data-testid="text-vc-target">{formatNaira(vcSavingsTarget)}</p>
+                        <p className="font-bold text-sm text-tsia-gold" data-testid="text-vc-target">{vcFormatCalc(vcSavingsTarget)}</p>
                         <p className="text-[9px] text-muted-foreground mt-0.5">Price ÷ 30%</p>
                       </div>
                       <div className="bg-muted/50 rounded-xl p-3 text-center border">
                         <p className="text-[10px] text-muted-foreground mb-1">Daily Savings</p>
-                        <p className="font-bold text-sm" data-testid="text-vc-daily">{formatNaira(vcDailyNeeded)}</p>
+                        <p className="font-bold text-sm" data-testid="text-vc-daily">{vcFormatCalc(vcDailyNeeded)}</p>
                         <p className="text-[9px] text-muted-foreground mt-0.5">Over 90 days</p>
                       </div>
                       <div className="bg-muted/50 rounded-xl p-3 text-center border">
                         <p className="text-[10px] text-muted-foreground mb-1">Monthly</p>
-                        <p className="font-bold text-sm" data-testid="text-vc-monthly">{formatNaira(vcMonthlyNeeded)}</p>
+                        <p className="font-bold text-sm" data-testid="text-vc-monthly">{vcFormatCalc(vcMonthlyNeeded)}</p>
                         <p className="text-[9px] text-muted-foreground mt-0.5">Over 3 months</p>
                       </div>
                     </div>

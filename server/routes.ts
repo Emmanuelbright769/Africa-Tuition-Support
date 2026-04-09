@@ -2241,6 +2241,7 @@ export async function registerRoutes(
       if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
       const targetId = parseInt(req.params.id);
       if (isNaN(targetId)) return res.status(400).json({ message: "Invalid id" });
+      if (targetId === sessionUserId) return res.status(400).json({ message: "You cannot delete your own admin account." });
       await storage.deleteUserById(targetId);
       res.json({ success: true, deletedId: targetId });
     } catch (e: any) {

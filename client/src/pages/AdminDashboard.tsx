@@ -235,6 +235,8 @@ export default function AdminDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/affiliates-all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/co-affiliates"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
       setDeleteUserDialog({ open: false, user: null });
       toast({ title: "User Deleted", description: "User account has been permanently removed." });

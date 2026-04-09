@@ -434,7 +434,7 @@ export default function WalletSection() {
               <p className="text-white/50 text-xs mb-1">Available balance · 7.5% VAT on NGN bank withdrawals · No VAT on USDT</p>
               <p className="text-white/40 text-[10px] mb-5">Minimum $2 must remain in wallet at all times for seamless operations</p>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <Button
                   onClick={() => {
                     if (!walletKycDone && needsKyc) {
@@ -442,26 +442,43 @@ export default function WalletSection() {
                     }
                     setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); setFundOpen(true);
                   }}
-                  className="h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl"
+                  className="w-full h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl"
                   data-testid="btn-fund-wallet"
                 >
                   <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
                 </Button>
-                <Button
-                  onClick={() => {
-                    if (!walletKycDone && needsKyc) {
-                      toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan above to unlock withdrawals.", variant: "destructive" }); return;
-                    }
-                    setWithdrawMethod("bank");
-                    setWithdrawAmount(""); setWithdrawTermsAccepted(false); setWithdrawOpen(true);
-                  }}
-                  variant="outline"
-                  className="h-12 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold"
-                  disabled={balance <= 0}
-                  data-testid="btn-withdraw"
-                >
-                  <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw
-                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    onClick={() => {
+                      if (!walletKycDone && needsKyc) {
+                        toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan above to unlock withdrawals.", variant: "destructive" }); return;
+                      }
+                      setWithdrawMethod("bank");
+                      setWithdrawAmount(""); setWithdrawTermsAccepted(false); setWithdrawOpen(true);
+                    }}
+                    variant="outline"
+                    className="h-10 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold text-sm"
+                    disabled={balance <= 0}
+                    data-testid="btn-withdraw"
+                  >
+                    <ArrowUpRight className="w-4 h-4 mr-1.5" /> Withdraw NGN
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!walletKycDone && needsKyc) {
+                        toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan above to unlock withdrawals.", variant: "destructive" }); return;
+                      }
+                      setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
+                      setCryptoWithdrawOpen(true);
+                    }}
+                    variant="outline"
+                    className="h-10 border-amber-300/60 text-amber-200 hover:bg-amber-400/10 rounded-2xl font-bold text-sm"
+                    disabled={balance <= 0}
+                    data-testid="btn-withdraw-crypto"
+                  >
+                    <Coins className="w-4 h-4 mr-1.5" /> Send USDT
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

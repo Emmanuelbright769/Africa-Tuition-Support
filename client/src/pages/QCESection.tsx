@@ -101,7 +101,6 @@ export default function QCESection() {
   const creditPortalUnlocked = savings?.creditPortalUnlocked ?? false;
   const maxWithdraw = Math.max(qceBalance - QCE.MIN_BALANCE, 0);
   const canWithdraw = qceBalance > QCE.MIN_BALANCE;
-  const [, setLocation] = useLocation();
 
   if (isLoading) {
     return (

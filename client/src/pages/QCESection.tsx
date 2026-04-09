@@ -18,7 +18,6 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow, format } from "date-fns";
 import { QCE } from "@shared/schema";
-import { useLocation } from "wouter";
 
 interface QceSavings {
   id: number; userId: number; balance: string; activated: boolean;

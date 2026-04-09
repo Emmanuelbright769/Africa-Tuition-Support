@@ -1473,6 +1473,51 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Helper: credit 5% referral commission to the user's referrer ─────────────
+  async function creditReferrerCommission(
+    referredUserId: number,
+    grossAmount: number,
+    sourceLabel: string,
+  ): Promise<{ credited: boolean; referrerId?: number; commissionAmount?: number }> {
+    try {
+      const user = await storage.getUser(referredUserId);
+      if (!user?.referredBy) return { credited: false };
+      const referrer = await storage.getUserByAffiliateCode(user.referredBy);
+      if (!referrer) return { credited: false };
+
+      const commission = parseFloat((grossAmount * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(6)); // 5%
+      if (commission <= 0) return { credited: false };
+
+      // Ensure referrer has a trade wallet before crediting
+      await storage.getOrCreateTradeWallet(referrer.id);
+      await storage.updateTradeBalance(referrer.id, commission.toFixed(6));
+      await storage.createTradeTransaction({
+        userId: referrer.id,
+        type: "bot_earning",
+        walletType: null,
+        amountUsd: commission.toFixed(6),
+        feeUsd: "0.000000",
+        reserveFundDeduction: "0.000000",
+        affiliateShareDeduction: "0.000000",
+        netAmount: commission.toFixed(6),
+        txHash: null,
+        status: "completed",
+        note: `Referral commission (5%) — ${user.firstName} ${user.lastName} ${sourceLabel}`,
+      });
+      const notif = await storage.createNotification({
+        userId: referrer.id,
+        type: "wallet_credit",
+        title: "Referral Commission Earned!",
+        message: `$${commission.toFixed(4)} (5%) referral commission from ${user.firstName} ${user.lastName.charAt(0)}. ${sourceLabel}. Added to your Trade Wallet.`,
+        data: { referredUserId, commission, sourceLabel },
+        isRead: false,
+      });
+      pushToUser(referrer.id, "notification", notif);
+      return { credited: true, referrerId: referrer.id, commissionAmount: commission };
+    } catch { return { credited: false }; }
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
+
   app.post("/api/trade/deposit", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -1502,14 +1547,22 @@ export async function registerRoutes(
         netAmount: userCredit.toFixed(6),
         txHash: txHash || null,
         status: "completed",
-        note: `Deposit via ${walletType.toUpperCase()} — 20% reserve, 5% affiliate pool`,
+        note: `Deposit via ${walletType.toUpperCase()} — 20% reserve, 5% affiliate commission`,
       });
 
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
       await storage.addToReserveFund(reserveCut.toFixed(6));
-      const affiliateCount = await storage.getAffiliateCount();
-      const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
-      await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+
+      // Credit 5% directly to the specific referrer (if any), otherwise shared pool
+      const refResult = await creditReferrerCommission(userId, amount, "trade deposit");
+      if (!refResult.credited) {
+        const affiliateCount = await storage.getAffiliateCount();
+        const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
+        await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+      } else {
+        // Still record in pool table for accounting (using referrer count = 1)
+        await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), 1, affiliateCut.toFixed(6));
+      }
 
       const wallet = await storage.getOrCreateTradeWallet(userId);
       res.json({
@@ -1566,9 +1619,15 @@ export async function registerRoutes(
       });
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
       await storage.addToReserveFund(reserveCut.toFixed(6));
-      const affiliateCount = await storage.getAffiliateCount();
-      const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
-      await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+      // Credit 5% directly to specific referrer (if any), otherwise shared pool
+      const fwRefResult = await creditReferrerCommission(userId, amount, "trade funding");
+      if (!fwRefResult.credited) {
+        const affiliateCount = await storage.getAffiliateCount();
+        const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
+        await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+      } else {
+        await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), 1, affiliateCut.toFixed(6));
+      }
       // Log transaction in personal wallet history
       const platformFee = reserveCut + affiliateCut;
       await storage.createTransaction({
@@ -1821,10 +1880,16 @@ export async function registerRoutes(
 
       // ── PROFIT DAY ───────────────────────────────────────────────────────
       const rate    = BOT_FULL_RATE * fraction;
-      const earning = parseFloat((balance * rate).toFixed(6));
+      const grossEarning = parseFloat((balance * rate).toFixed(6));
       const ratePercent = (rate * 100).toFixed(4);
 
-      if (earning <= 0) return res.status(400).json({ message: "Earning too small to credit." });
+      if (grossEarning <= 0) return res.status(400).json({ message: "Earning too small to credit." });
+
+      // 5% referral commission on bot earnings (deducted from gross, credited to referrer)
+      const botAffiliateCommission = parseFloat((grossEarning * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(6));
+      const botUser = await storage.getUser(userId);
+      const hasBotReferrer = !!(botUser?.referredBy);
+      const earning = hasBotReferrer ? parseFloat((grossEarning - botAffiliateCommission).toFixed(6)) : grossEarning;
 
       await storage.createTradeTransaction({
         userId,
@@ -1833,18 +1898,24 @@ export async function registerRoutes(
         amountUsd: earning.toFixed(6),
         feeUsd: "0.000000",
         reserveFundDeduction: "0.000000",
-        affiliateShareDeduction: "0.000000",
+        affiliateShareDeduction: hasBotReferrer ? botAffiliateCommission.toFixed(6) : "0.000000",
         netAmount: earning.toFixed(6),
         txHash: null,
         status: "completed",
-        note: `Bot session: ${elapsedHours}h traded → ${ratePercent}% return on $${balance.toFixed(2)}`,
+        note: `Bot session: ${elapsedHours}h traded → ${ratePercent}% return on $${balance.toFixed(2)}${hasBotReferrer ? ` | 5% referral commission: $${botAffiliateCommission.toFixed(4)}` : ""}`,
       });
       const updatedWallet = await storage.creditBotEarnings(userId, earning.toFixed(6));
+
+      // Credit 5% commission to referrer if applicable
+      if (hasBotReferrer && botAffiliateCommission > 0) {
+        await creditReferrerCommission(userId, grossEarning, "bot earnings").catch(() => {});
+      }
+
       await storage.createNotification({
         userId,
         type: "trade",
         title: "Bot Session Complete — Earnings Credited",
-        message: `Your trading bot session (${elapsedHours}h) has ended. $${earning.toFixed(4)} (${ratePercent}% return) has been added to your Trade Wallet.`,
+        message: `Your trading bot session (${elapsedHours}h) has ended. $${earning.toFixed(4)} (${ratePercent}% return${hasBotReferrer ? ", 5% referral commission deducted" : ""}) has been added to your Trade Wallet.`,
         data: { earning, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance },
         isRead: false,
       });
@@ -3585,11 +3656,16 @@ export async function registerRoutes(
       await storage.updateWalletBalance(deposit.userId, newBalance);
       // Reserve fund (20%)
       await storage.addToReserveFund(reserveCut.toFixed(6));
-      // Affiliate pool (5%) — recorded to shared affiliate pool
+      // Affiliate commission (5%) — credit directly to referrer, else shared pool
       try {
-        const affiliateCount = await storage.getAffiliateCount();
-        const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
-        await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+        const adminRefResult = await creditReferrerCommission(deposit.userId, gross, "wallet deposit");
+        if (!adminRefResult.credited) {
+          const affiliateCount = await storage.getAffiliateCount();
+          const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
+          await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+        } else {
+          await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), 1, affiliateCut.toFixed(6));
+        }
       } catch { /* non-critical */ }
       // ── Wallet activation: activate if balance reaches $5 for the first time ──
       const WALLET_ACTIVATION_MIN = 5;

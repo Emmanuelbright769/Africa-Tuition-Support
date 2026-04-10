@@ -2752,17 +2752,80 @@ export async function registerRoutes(
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
 
-      const affiliates = await db.select().from(users).where(eq(users.role, "affiliate")).orderBy(desc(users.createdAt));
+      // Include ALL non-admin users who have an affiliate code (students + affiliates)
+      const allNonAdmin = await db.select().from(users)
+        .where(sql`role != 'admin' AND affiliate_code IS NOT NULL AND affiliate_code != ''`)
+        .orderBy(desc(users.createdAt));
       const enriched = await Promise.all(
-        affiliates.map(async (a) => {
+        allNonAdmin.map(async (a) => {
           const wallet = await storage.getOrCreateWallet(a.id);
           const coAffiliate = await storage.getCoAffiliateByUser(a.id);
           const referrals = await storage.getReferralsByCode(a.affiliateCode || "");
           const tradeWallet = await storage.getOrCreateTradeWallet(a.id);
-          return { ...a, password: undefined, wallet, coAffiliate, referralCount: referrals.length, tradeWallet };
+          // Sum referral commissions from trade_transactions
+          const commResult = await db.execute(sql`
+            SELECT COALESCE(SUM(CAST(amount_usd AS numeric)), 0) AS total_commission
+            FROM trade_transactions
+            WHERE user_id = ${a.id} AND type = 'bot_earning' AND note LIKE 'Referral commission%' AND CAST(amount_usd AS numeric) > 0
+          `);
+          const totalCommission = parseFloat((commResult.rows[0] as any)?.total_commission ?? "0");
+          return { ...a, password: undefined, wallet, coAffiliate, referralCount: referrals.length, tradeWallet, totalCommission };
         })
       );
       res.json(enriched);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: All referral commissions ────────────────────────────────────────
+  app.get("/api/admin/referrals-all", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const result = await db.execute(sql`
+        SELECT
+          tt.id,
+          tt.user_id AS referrer_id,
+          u.first_name || ' ' || u.last_name AS referrer_name,
+          u.email AS referrer_email,
+          u.affiliate_code AS referrer_code,
+          tt.amount_usd,
+          tt.note,
+          tt.created_at
+        FROM trade_transactions tt
+        JOIN users u ON u.id = tt.user_id
+        WHERE tt.type = 'bot_earning'
+          AND tt.note LIKE 'Referral commission%'
+          AND CAST(tt.amount_usd AS numeric) > 0
+        ORDER BY tt.created_at DESC
+        LIMIT 200
+      `);
+
+      // Summary stats
+      const summaryResult = await db.execute(sql`
+        SELECT
+          COUNT(*) AS total_events,
+          COALESCE(SUM(CAST(amount_usd AS numeric)), 0) AS total_paid,
+          COUNT(DISTINCT user_id) AS unique_referrers
+        FROM trade_transactions
+        WHERE type = 'bot_earning'
+          AND note LIKE 'Referral commission%'
+          AND CAST(amount_usd AS numeric) > 0
+      `);
+      const summary = summaryResult.rows[0] as any;
+
+      res.json({
+        commissions: result.rows,
+        stats: {
+          totalEvents: parseInt(summary.total_events ?? "0"),
+          totalPaid: parseFloat(summary.total_paid ?? "0"),
+          uniqueReferrers: parseInt(summary.unique_referrers ?? "0"),
+        },
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

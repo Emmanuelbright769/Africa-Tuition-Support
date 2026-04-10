@@ -15,7 +15,7 @@ import {
   Wallet, FileText, LogOut, ArrowRight, BarChart2, ShoppingBag, Share2,
   ArrowLeftRight, Bell, Landmark, XCircle, AlertTriangle, RefreshCw,
   ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
-  Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight
+  Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight, GitBranch
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -81,6 +81,7 @@ const NAV = [
   { id: "loans",         icon: Landmark,       label: "Loans",         badgeKey: "pendingLoans" },
   { id: "users",         icon: Users,          label: "All Users" },
   { id: "affiliates",    icon: Share2,         label: "Affiliates" },
+  { id: "referrals",     icon: GitBranch,      label: "Referrals" },
   { id: "transactions",  icon: ArrowLeftRight, label: "Transactions" },
   { id: "ecommerce",     icon: ShoppingBag,    label: "E-commerce" },
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
@@ -137,6 +138,7 @@ export default function AdminDashboard() {
   const { data: reserveFundData }          = useQuery({ queryKey: ["/api/reserve-fund/live"], enabled: activeTab === "reserve" });
   const { data: reserveProfitData }        = useQuery({ queryKey: ["/api/reserve-fund/commission-profits"], enabled: activeTab === "reserve" });
   const { data: allTrustFunders = [] }     = useQuery({ queryKey: ["/api/admin/co-affiliates"], enabled: activeTab === "trustfunders" });
+  const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
   const verifyMutation = useMutation({
@@ -840,6 +842,7 @@ export default function AdminDashboard() {
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Affiliate</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Code</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Referrals</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Commission Earned</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Co-Affiliate</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Trade Wallet</TableHead>
@@ -849,17 +852,19 @@ export default function AdminDashboard() {
                       </TableHeader>
                       <TableBody>
                         {filteredAffiliates.length === 0 ? (
-                          <TableRow><TableCell colSpan={8} className="text-center py-10 text-slate-500">No affiliates found.</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={9} className="text-center py-10 text-slate-500">No users with affiliate codes found.</TableCell></TableRow>
                         ) : filteredAffiliates.map((a: any) => (
                           <TableRow key={a.id} className="hover:bg-slate-50/50">
                             <TableCell className="px-6">
                               <div className="font-medium text-sm text-slate-900">{a.firstName} {a.lastName}</div>
                               <div className="text-xs text-slate-500">{a.email}</div>
+                              {a.role === "student" && <span className="text-xs text-blue-500">student</span>}
                             </TableCell>
                             <TableCell><code className="text-xs bg-slate-100 px-2 py-0.5 rounded font-mono">{a.affiliateCode || "—"}</code></TableCell>
                             <TableCell>
                               <span className={`font-bold text-sm ${a.referralCount > 0 ? "text-tsia-green" : "text-slate-400"}`}>{a.referralCount}</span>
                             </TableCell>
+                            <TableCell className="font-semibold text-sm text-amber-600">{fmtUSD(a.totalCommission ?? 0)}</TableCell>
                             <TableCell>
                               {a.coAffiliate ? (
                                 <Badge variant="outline" className="text-xs">
@@ -883,6 +888,78 @@ export default function AdminDashboard() {
                                 </Button>
                               </div>
                             </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════════ REFERRALS ═══════════════════════════════ */}
+            {activeTab === "referrals" && (
+              <motion.div key="referrals" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+                {/* Summary cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Card className="border-0 shadow-sm">
+                    <CardContent className="p-5">
+                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Commissions Paid</p>
+                      <p className="text-2xl font-bold text-amber-600">{fmtUSD((referralsData as any)?.stats?.totalPaid ?? 0)}</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-0 shadow-sm">
+                    <CardContent className="p-5">
+                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Commission Events</p>
+                      <p className="text-2xl font-bold">{(referralsData as any)?.stats?.totalEvents ?? 0}</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-0 shadow-sm">
+                    <CardContent className="p-5">
+                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Active Referrers</p>
+                      <p className="text-2xl font-bold text-tsia-green">{(referralsData as any)?.stats?.uniqueReferrers ?? 0}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Commission history table */}
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base">Referral Commission History</CardTitle>
+                    <CardDescription>All 5% referral commissions credited to members (latest 200)</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">#</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Referrer</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Code</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Note</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {!referralsData || ((referralsData as any).commissions?.length === 0) ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-10 text-slate-500">
+                              No referral commissions recorded yet.
+                            </TableCell>
+                          </TableRow>
+                        ) : (referralsData as any).commissions?.map((r: any, idx: number) => (
+                          <TableRow key={r.id} className="hover:bg-slate-50/50">
+                            <TableCell className="px-6 text-xs text-slate-400">{idx + 1}</TableCell>
+                            <TableCell>
+                              <div className="font-medium text-sm text-slate-900">{r.referrer_name}</div>
+                              <div className="text-xs text-slate-500">{r.referrer_email}</div>
+                            </TableCell>
+                            <TableCell>
+                              <code className="text-xs bg-slate-100 px-2 py-0.5 rounded font-mono">{r.referrer_code || "—"}</code>
+                            </TableCell>
+                            <TableCell className="font-bold text-sm text-amber-600">{fmtUSD(parseFloat(r.amount_usd ?? 0))}</TableCell>
+                            <TableCell className="text-xs text-slate-600 max-w-[200px] truncate">{r.note}</TableCell>
+                            <TableCell className="text-xs text-slate-500">{fmtDate(r.created_at)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

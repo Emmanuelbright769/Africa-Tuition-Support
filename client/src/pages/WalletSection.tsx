@@ -102,6 +102,7 @@ export default function WalletSection() {
 
   // ── Withdraw method ────────────────────────────────────────────────────
   const [withdrawMethod, setWithdrawMethod] = useState<"bank" | "crypto">("bank");
+  const [withdrawChoiceOpen, setWithdrawChoiceOpen] = useState(false);
 
   // ── History tab ────────────────────────────────────────────────────────
   const [historyTab, setHistoryTab] = useState<"deposits" | "sent" | "received" | "bills" | "withdrawals">("deposits");
@@ -446,38 +447,20 @@ export default function WalletSection() {
                 >
                   <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
                 </Button>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    onClick={() => {
-                      if (!walletKycDone && needsKyc) {
-                        toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan above to unlock withdrawals.", variant: "destructive" }); return;
-                      }
-                      setWithdrawMethod("bank");
-                      setWithdrawAmount(""); setWithdrawTermsAccepted(false); setWithdrawOpen(true);
-                    }}
-                    variant="outline"
-                    className="h-11 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold text-sm"
-                    disabled={balance <= 0}
-                    data-testid="btn-withdraw-bank"
-                  >
-                    <Banknote className="w-4 h-4 mr-1.5" /> Withdraw to Bank
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      if (!walletKycDone && needsKyc) {
-                        toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan above to unlock withdrawals.", variant: "destructive" }); return;
-                      }
-                      setWithdrawMethod("crypto"); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
-                      setWithdrawOpen(true);
-                    }}
-                    variant="outline"
-                    className="h-11 border-amber-300/60 text-amber-200 hover:bg-amber-400/10 rounded-2xl font-bold text-sm"
-                    disabled={balance <= 0}
-                    data-testid="btn-withdraw-crypto"
-                  >
-                    <Coins className="w-4 h-4 mr-1.5" /> Withdraw via Crypto
-                  </Button>
-                </div>
+                <Button
+                  onClick={() => {
+                    if (!walletKycDone && needsKyc) {
+                      toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan above to unlock withdrawals.", variant: "destructive" }); return;
+                    }
+                    setWithdrawChoiceOpen(true);
+                  }}
+                  variant="outline"
+                  className="w-full h-12 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold"
+                  disabled={balance <= 0}
+                  data-testid="btn-withdraw"
+                >
+                  <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw
+                </Button>
               </div>
             </div>
           </div>
@@ -818,6 +801,65 @@ export default function WalletSection() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── WITHDRAW METHOD CHOICE DIALOG ──────────────────────────────── */}
+      <Dialog open={withdrawChoiceOpen} onOpenChange={setWithdrawChoiceOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowUpRight className="w-5 h-5 text-blue-500" /> Withdraw Funds
+            </DialogTitle>
+            <DialogDescription>
+              Choose how you want to receive your funds.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {/* Bank Transfer option */}
+            <button
+              onClick={() => {
+                setWithdrawChoiceOpen(false);
+                setWithdrawMethod("bank");
+                setWithdrawAmount(""); setWithdrawTermsAccepted(false); setWdStep("bank");
+                setWithdrawOpen(true);
+              }}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-border hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left group"
+              data-testid="btn-choose-bank-withdraw"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 group-hover:bg-blue-200 dark:group-hover:bg-blue-800/40 transition-colors">
+                <Banknote className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-sm">Bank Transfer</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Receive NGN directly to your Nigerian bank account. 7.5% VAT applies.</p>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-blue-500 transition-colors shrink-0" />
+            </button>
+
+            {/* Crypto (USDT) option */}
+            <button
+              onClick={() => {
+                setWithdrawChoiceOpen(false);
+                setWithdrawMethod("crypto"); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
+                setWithdrawOpen(true);
+              }}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-border hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all text-left group"
+              data-testid="btn-choose-crypto-withdraw"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0 group-hover:bg-amber-200 dark:group-hover:bg-amber-800/40 transition-colors">
+                <Coins className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-sm">USDT Crypto Withdrawal</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Receive USDT on BEP20 (BSC) or TRC20 (TRON). No VAT — full amount credited within 24 hours.</p>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-amber-500 transition-colors shrink-0" />
+            </button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="w-full" onClick={() => setWithdrawChoiceOpen(false)}>Cancel</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

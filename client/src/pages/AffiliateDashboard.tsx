@@ -112,7 +112,7 @@ function ReferralSection({ referralStats, referrals, navigate }: {
   });
 
   const totalEarned = referralStats?.totalCommissionEarned ?? 0;
-  const tradeBalance = referralStats?.tradeBalance ?? 0;
+  const commissionBalance = referralStats?.commissionBalance ?? 0;
   const totalReferred = referralStats?.totalReferred ?? referrals.length;
   const activeCount = referralStats?.activeCount ?? 0;
   const pendingCount = referralStats?.pendingCount ?? 0;
@@ -143,14 +143,14 @@ function ReferralSection({ referralStats, referrals, navigate }: {
 
             <div className="mt-5 pt-5 border-t border-white/20 flex items-center justify-between">
               <div>
-                <p className="text-green-100 text-xs">Available in Trade Wallet</p>
-                <p className="text-2xl font-bold">${tradeBalance.toFixed(4)}</p>
+                <p className="text-green-100 text-xs">Available in Commission Wallet</p>
+                <p className="text-2xl font-bold">${commissionBalance.toFixed(4)}</p>
               </div>
               <Button
                 className="bg-white text-tsia-green font-bold hover:bg-green-50 shadow-md"
                 size="sm"
                 onClick={() => setShowWithdrawDialog(true)}
-                disabled={tradeBalance <= 0}
+                disabled={commissionBalance <= 0}
                 data-testid="btn-withdraw-commission"
               >
                 <ArrowDownToLine className="w-4 h-4 mr-1.5" />
@@ -273,13 +273,13 @@ function ReferralSection({ referralStats, referrals, navigate }: {
           <DialogHeader>
             <DialogTitle>Withdraw Commission Earnings</DialogTitle>
             <DialogDescription>
-              Move your referral commission earnings from your Trade Wallet to your Personal Wallet.
+              Move your referral commission earnings from your Commission Wallet to your Personal Wallet.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-4 flex justify-between items-center">
-              <span className="text-sm font-medium text-muted-foreground">Trade Wallet Balance</span>
-              <span className="font-bold text-tsia-green text-lg">${tradeBalance.toFixed(4)}</span>
+              <span className="text-sm font-medium text-muted-foreground">Commission Wallet Balance</span>
+              <span className="font-bold text-tsia-green text-lg">${commissionBalance.toFixed(4)}</span>
             </div>
             <div>
               <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Amount to Withdraw ($)</Label>
@@ -288,18 +288,18 @@ function ReferralSection({ referralStats, referrals, navigate }: {
                   type="number"
                   min="0.01"
                   step="0.01"
-                  max={tradeBalance}
+                  max={commissionBalance}
                   placeholder="0.00"
                   value={withdrawAmount}
                   onChange={e => setWithdrawAmount(e.target.value)}
                   className="text-lg font-bold"
                   data-testid="input-withdraw-amount"
                 />
-                <Button variant="outline" size="sm" className="shrink-0 font-bold" onClick={() => setWithdrawAmount(tradeBalance.toFixed(4))}>
+                <Button variant="outline" size="sm" className="shrink-0 font-bold" onClick={() => setWithdrawAmount(commissionBalance.toFixed(4))}>
                   Max
                 </Button>
               </div>
-              {withdrawAmount && parseFloat(withdrawAmount) > tradeBalance && (
+              {withdrawAmount && parseFloat(withdrawAmount) > commissionBalance && (
                 <p className="text-xs text-red-500 mt-1">Amount exceeds available balance</p>
               )}
             </div>
@@ -311,7 +311,7 @@ function ReferralSection({ referralStats, referrals, navigate }: {
               disabled={
                 !withdrawAmount ||
                 parseFloat(withdrawAmount) <= 0 ||
-                parseFloat(withdrawAmount) > tradeBalance ||
+                parseFloat(withdrawAmount) > commissionBalance ||
                 withdrawMutation.isPending
               }
               onClick={() => withdrawMutation.mutate(withdrawAmount)}
@@ -822,6 +822,10 @@ export default function AffiliateDashboard() {
   const myAmountPaid       = myCoAff ? parseFloat(myCoAff.amountPaid) : 0;
   const mySharePct         = myCoAff ? (parseFloat(myCoAff.sharePercentage) * 100).toFixed(6) : "0";
   const tradeBalance   = parseFloat(tradeWallet?.tradeBalance ?? "0");
+  const totalInvested  = parseFloat(tradeWallet?.totalInvested ?? "0");
+  const totalBotEarned = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
+  const roiComplete    = !!(tradeWallet?.roiComplete);
+  const roiProgress    = totalInvested > 0 ? Math.min(100, (totalBotEarned / totalInvested) * 100) : 0;
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);
 
@@ -1246,7 +1250,18 @@ export default function AffiliateDashboard() {
                         </div>
                         {/* Action footer */}
                         <div className="bg-card p-4 flex items-center gap-3">
-                          {tradeBalance < TRADE_MARKET.MIN_DEPOSIT ? (
+                          {roiComplete ? (
+                            // ROI Complete — bot trading closed
+                            <div className="flex-1 flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                                <span className="text-lg">🎉</span>
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">100% ROI Achieved — Trading Complete</p>
+                                <p className="text-xs text-muted-foreground">Your invested capital has been fully returned as profit. Make a new deposit to continue trading.</p>
+                              </div>
+                            </div>
+                          ) : tradeBalance < TRADE_MARKET.MIN_DEPOSIT ? (
                             // No investment plan — block the bot entirely
                             <div className="flex-1 flex items-center gap-3">
                               <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
@@ -1335,6 +1350,26 @@ export default function AffiliateDashboard() {
                         <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">+2% / session</p>
                       </div>
                     </div>
+                    {/* ROI Progress bar — shown once user has invested */}
+                    {totalInvested > 0 && (
+                      <div className="px-4 py-3 border-t border-emerald-100 dark:border-emerald-800 bg-white dark:bg-card">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <p className="text-xs text-muted-foreground font-medium">ROI Progress</p>
+                          <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                            {roiComplete ? "100% — Complete" : `${roiProgress.toFixed(1)}% of ${totalInvested.toFixed(2)}`}
+                          </p>
+                        </div>
+                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${roiComplete ? "bg-emerald-500" : "bg-amber-500"}`}
+                            style={{ width: `${Math.min(100, roiProgress)}%` }}
+                          />
+                        </div>
+                        {roiComplete && (
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1">Trading cycle complete. Deposit to start a new cycle.</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </motion.div>
 

@@ -1253,9 +1253,9 @@ export async function registerRoutes(
         LIMIT 10
       `);
 
-      // Trade wallet available balance (commissions land here)
+      // Referral commission wallet balance (separate from trade balance)
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
-      const tradeBalance = parseFloat(tradeWallet.tradeBalance);
+      const commissionBalance = parseFloat(tradeWallet.referralCommissionBalance);
 
       res.json({
         totalReferred,
@@ -1263,7 +1263,7 @@ export async function registerRoutes(
         pendingCount,
         totalCommissionEarned: parseFloat(totalCommissionEarned.toFixed(4)),
         commissionCount,
-        tradeBalance: parseFloat(tradeBalance.toFixed(4)),
+        commissionBalance: parseFloat(commissionBalance.toFixed(4)),
         commissionNote: "You earn 5% from: wallet activation fees, student subscription plans, affiliate trust fund deposits, and global trade market bot earnings — for every member who signed up with your referral code.",
         recentCommissions: (recentCommissions.rows as any[]).map(r => ({
           amount: parseFloat(parseFloat(r.amount_usd).toFixed(4)),
@@ -1299,17 +1299,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Minimum withdrawal is $1.00." });
       }
 
-      // Check trade wallet balance
+      // Check referral commission balance (separate from trade balance)
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
-      const tradeBalance = parseFloat(tradeWallet.tradeBalance);
-      if (withdrawAmount > tradeBalance) {
-        return res.status(400).json({ message: `Insufficient trade balance. Available: $${tradeBalance.toFixed(4)}` });
+      const commissionBalance = parseFloat(tradeWallet.referralCommissionBalance);
+      if (withdrawAmount > commissionBalance) {
+        return res.status(400).json({ message: `Insufficient commission balance. Available: $${commissionBalance.toFixed(4)}` });
       }
 
       const txRef = `COMM-WD-${userId}-${Date.now()}`;
 
-      // Deduct from trade wallet
-      await storage.updateTradeBalance(userId, (-withdrawAmount).toFixed(6));
+      // Deduct from referral commission balance (NOT trade balance)
+      await storage.subtractReferralCommission(userId, withdrawAmount.toFixed(6));
       await storage.createTradeTransaction({
         userId,
         type: "withdraw_exchange",
@@ -1692,9 +1692,8 @@ export async function registerRoutes(
       const commission = parseFloat((grossAmount * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(6)); // 5%
       if (commission <= 0) return { credited: false };
 
-      // Ensure referrer has a trade wallet before crediting
-      await storage.getOrCreateTradeWallet(referrer.id);
-      await storage.updateTradeBalance(referrer.id, commission.toFixed(6));
+      // Ensure referrer has a trade wallet before crediting; credit commission wallet (NOT trade balance)
+      await storage.addReferralCommission(referrer.id, commission.toFixed(6));
       await storage.createTradeTransaction({
         userId: referrer.id,
         type: "bot_earning",
@@ -1712,7 +1711,7 @@ export async function registerRoutes(
         userId: referrer.id,
         type: "wallet_credit",
         title: "Referral Commission Earned!",
-        message: `$${commission.toFixed(4)} (5%) referral commission from ${user.firstName} ${user.lastName.charAt(0)}. ${sourceLabel}. Added to your Trade Wallet.`,
+        message: `$${commission.toFixed(4)} (5%) referral commission from ${user.firstName} ${user.lastName.charAt(0)}. ${sourceLabel}. Added to your Commission Wallet.`,
         data: { referredUserId, commission, sourceLabel },
         isRead: false,
       });
@@ -1755,6 +1754,10 @@ export async function registerRoutes(
       });
 
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
+      await storage.addToTotalInvested(userId, userCredit.toFixed(6));
+      // If ROI was previously complete, reset for new trading cycle
+      const postDepositWallet = await storage.getOrCreateTradeWallet(userId);
+      if (postDepositWallet.roiComplete) await storage.resetRoiForNewCycle(userId);
       await storage.addToReserveFund(reserveCut.toFixed(6));
 
       // Credit 5% directly to the specific referrer (if any), otherwise shared pool
@@ -1822,6 +1825,10 @@ export async function registerRoutes(
         note: `Funded from Personal Wallet — 75% credited, 20% reserve, 5% affiliate pool`,
       });
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
+      await storage.addToTotalInvested(userId, userCredit.toFixed(6));
+      // If ROI was previously complete, reset for new trading cycle
+      const fwPostWallet = await storage.getOrCreateTradeWallet(userId);
+      if (fwPostWallet.roiComplete) await storage.resetRoiForNewCycle(userId);
       await storage.addToReserveFund(reserveCut.toFixed(6));
       // Credit 5% directly to specific referrer (if any), otherwise shared pool
       const fwRefResult = await creditReferrerCommission(userId, amount, "trade funding");
@@ -2003,6 +2010,7 @@ export async function registerRoutes(
       if (isWeekend) return res.status(400).json({ message: "The market is closed on weekends. Trading resumes Monday at 1:00 PM GMT." });
       if (isBeforeOpen) return res.status(400).json({ message: "The activation window opens at 1:00 PM GMT (Mon–Fri)." });
       const wallet = await storage.getOrCreateTradeWallet(userId);
+      if (wallet.roiComplete) return res.status(400).json({ message: "ROI Complete. Your 100% return has been achieved. Make a new deposit to restart trading." });
       if (parseFloat(wallet.tradeBalance) <= 0) return res.status(400).json({ message: "No trade balance." });
       const now = new Date();
       const updated = await storage.setBotActivatedAt(userId, now);
@@ -2124,6 +2132,23 @@ export async function registerRoutes(
         await creditReferrerCommission(userId, grossEarning, "bot earnings").catch(() => {});
       }
 
+      // ── 100% ROI CHECK: if cumulative bot earnings ≥ total invested capital, close the trade ──
+      const totalEarned  = parseFloat(updatedWallet.totalBotEarnings);
+      const totalInvested = parseFloat(updatedWallet.totalInvested);
+      let roiJustCompleted = false;
+      if (!updatedWallet.roiComplete && totalInvested > 0 && totalEarned >= totalInvested) {
+        roiJustCompleted = true;
+        await storage.markRoiComplete(userId);
+        await storage.createNotification({
+          userId,
+          type: "trade",
+          title: "🎉 100% ROI Achieved — Trading Complete!",
+          message: `Congratulations! Your bot has returned 100% of your invested capital ($${totalInvested.toFixed(2)}) as profit. Your trade balance has been settled. Make a new deposit to continue trading.`,
+          data: { totalEarned, totalInvested },
+          isRead: false,
+        });
+      }
+
       await storage.createNotification({
         userId,
         type: "trade",
@@ -2137,12 +2162,14 @@ export async function registerRoutes(
       });
       // Clear DB botActivatedAt so the session doesn't replay on next load
       await storage.setBotActivatedAt(userId, null);
+      const finalWallet = roiJustCompleted ? await storage.getOrCreateTradeWallet(userId) : updatedWallet;
       res.json({
         earning: earning.toFixed(6),
         elapsedHours,
         ratePercent,
-        newBalance: updatedWallet.tradeBalance,
-        totalBotEarnings: updatedWallet.totalBotEarnings,
+        newBalance: finalWallet.tradeBalance,
+        totalBotEarnings: finalWallet.totalBotEarnings,
+        roiComplete: finalWallet.roiComplete,
         isLossDay: false,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

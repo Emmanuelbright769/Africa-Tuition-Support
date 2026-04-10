@@ -407,7 +407,6 @@ export default function WalletSection() {
                   }}
                   variant="outline"
                   className="w-full h-12 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold"
-                  disabled={balance <= 0}
                   data-testid="btn-withdraw"
                 >
                   <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw

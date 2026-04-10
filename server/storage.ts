@@ -238,12 +238,15 @@ export class DatabaseStorage implements IStorage {
   async deleteUserById(id: number): Promise<void> {
     // Must delete all related records in dependency order before removing the user
     await db.transaction(async (tx) => {
-      // 1. ecommerce chat messages (depend on chats, not directly on user)
+      // 1. ecommerce chat messages — delete any message where this user is the sender
+      //    OR the message belongs to a chat they own (buyer/seller). Must do sender first
+      //    to avoid FK violation when deleting the user row.
       await tx.execute(sql`
         DELETE FROM ecommerce_chat_messages
-        WHERE chat_id IN (
-          SELECT id FROM ecommerce_chats WHERE buyer_id = ${id} OR seller_id = ${id}
-        )
+        WHERE sender_id = ${id}
+           OR chat_id IN (
+             SELECT id FROM ecommerce_chats WHERE buyer_id = ${id} OR seller_id = ${id}
+           )
       `);
       // 2. ecommerce chats
       await tx.delete(ecommerceChats).where(

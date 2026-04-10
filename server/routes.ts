@@ -2427,6 +2427,28 @@ export async function registerRoutes(
     });
   });
 
+  // ─── ADMIN: Set referred_by for a user (retroactive referral assignment) ─────
+  app.patch("/api/admin/users/:id/referred-by", async (req, res) => {
+    const sessionUserId = (req.session as any)?.userId;
+    if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+    const admin = await storage.getUser(sessionUserId);
+    if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const targetId = parseInt(req.params.id);
+      const { affiliateCode } = req.body as { affiliateCode: string };
+      if (!affiliateCode) return res.status(400).json({ message: "affiliateCode required" });
+      // Verify the referrer exists
+      const referrer = await storage.getUserByAffiliateCode(affiliateCode.trim().toUpperCase());
+      if (!referrer) return res.status(404).json({ message: `No user found with affiliate code ${affiliateCode}` });
+      if (referrer.id === targetId) return res.status(400).json({ message: "A user cannot refer themselves" });
+      // Update the user's referred_by field
+      await db.execute(sql`UPDATE users SET referred_by = ${affiliateCode.trim().toUpperCase()} WHERE id = ${targetId}`);
+      res.json({ success: true, message: `User's referral source set to ${affiliateCode.toUpperCase()} (${referrer.firstName} ${referrer.lastName})` });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── ADMIN: Back-fill referral commissions ────────────────────────────────────
   // Finds all referred users whose wallets are activated but whose referrer has
   // never received a commission, and credits them retroactively.

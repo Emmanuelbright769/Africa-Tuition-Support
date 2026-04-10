@@ -116,6 +116,8 @@ export default function AdminDashboard() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
   const [deleteUserDialog, setDeleteUserDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
+  const [setReferrerDialog, setSetReferrerDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
+  const [referrerCode, setReferrerCode] = useState("");
 
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -231,7 +233,9 @@ export default function AdminDashboard() {
   const deleteUserMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("DELETE", `/api/admin/users/${id}`);
-      return res.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to delete user");
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
@@ -241,6 +245,24 @@ export default function AdminDashboard() {
       setDeleteUserDialog({ open: false, user: null });
       toast({ title: "User Deleted", description: "User account has been permanently removed." });
     },
+    onError: (e: any) => toast({ variant: "destructive", title: "Delete Failed", description: e.message }),
+  });
+
+  const setReferrerMutation = useMutation({
+    mutationFn: async ({ id, affiliateCode }: { id: number; affiliateCode: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${id}/referred-by`, { affiliateCode });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to set referrer");
+      return data;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/affiliates-all"] });
+      setSetReferrerDialog({ open: false, user: null });
+      setReferrerCode("");
+      toast({ title: "Referral Source Set", description: data.message });
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
   });
 
   const confirmDepositMutation = useMutation({
@@ -756,6 +778,9 @@ export default function AdminDashboard() {
                                 </Button>
                                 <Button size="sm" variant="outline" className="h-7 text-xs text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => { setEditBalanceDialog({ open: true, user: u }); setEditBalanceAmount(u.wallet?.balance || "0"); setEditBalanceNote(""); }} data-testid={`button-edit-wallet-${u.id}`}>
                                   <Edit className="w-3 h-3 mr-1" /> Wallet
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => { setSetReferrerDialog({ open: true, user: u }); setReferrerCode(u.referredBy || ""); }} data-testid={`button-set-referrer-${u.id}`} title={u.referredBy ? `Referred by: ${u.referredBy}` : "Set referral source"}>
+                                  <Share2 className="w-3 h-3 mr-1" /> {u.referredBy ? "Re-assign" : "Referrer"}
                                 </Button>
                                 <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeleteUserDialog({ open: true, user: u })} data-testid={`button-delete-user-${u.id}`}>
                                   <Trash2 className="w-3 h-3" />
@@ -1592,6 +1617,45 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => setDeleteUserDialog({ open: false, user: null })}>Cancel</Button>
             <Button variant="destructive" disabled={deleteUserMutation.isPending} onClick={() => deleteUserMutation.mutate(deleteUserDialog.user?.id)} data-testid="button-confirm-delete-user">
               {deleteUserMutation.isPending ? "Deleting..." : <><Trash2 className="w-4 h-4 mr-2" /> Permanently Delete</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Set Referrer dialog */}
+      <Dialog open={setReferrerDialog.open} onOpenChange={open => { if (!open) { setSetReferrerDialog({ open: false, user: null }); setReferrerCode(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Share2 className="w-4 h-4 text-purple-600" /> Set Referral Source</DialogTitle>
+            <DialogDescription>Manually assign which affiliate referred this user. Runs the back-fill after saving.</DialogDescription>
+          </DialogHeader>
+          {setReferrerDialog.user && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-sm space-y-0.5 my-2">
+              <p className="font-semibold text-purple-900">{setReferrerDialog.user.firstName} {setReferrerDialog.user.lastName}</p>
+              <p className="text-purple-700 text-xs">{setReferrerDialog.user.email}</p>
+              {setReferrerDialog.user.referredBy && <p className="text-purple-600 text-xs mt-1">Currently: <strong>{setReferrerDialog.user.referredBy}</strong></p>}
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>Affiliate Code of Referrer</Label>
+            <Input
+              placeholder="e.g. TSIA-EMM0007"
+              value={referrerCode}
+              onChange={e => setReferrerCode(e.target.value.toUpperCase())}
+              className="font-mono"
+              data-testid="input-referrer-code"
+            />
+            <p className="text-xs text-muted-foreground">Enter the affiliate code of the person who referred this user. After saving, go to Affiliates → "Run Back-fill Now" to credit any owed commissions.</p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setSetReferrerDialog({ open: false, user: null }); setReferrerCode(""); }}>Cancel</Button>
+            <Button
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+              disabled={!referrerCode.trim() || setReferrerMutation.isPending}
+              onClick={() => setReferrerMutation.mutate({ id: setReferrerDialog.user?.id, affiliateCode: referrerCode.trim() })}
+              data-testid="button-confirm-set-referrer"
+            >
+              {setReferrerMutation.isPending ? "Saving..." : "Save Referral Source"}
             </Button>
           </DialogFooter>
         </DialogContent>

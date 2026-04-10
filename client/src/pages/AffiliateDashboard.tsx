@@ -2042,7 +2042,7 @@ export default function AffiliateDashboard() {
                       { label: "Flexible terms", desc: "6, 12, or 24 months", icon: Clock },
                       { label: "Quick review", desc: "Fast turnaround for active members", icon: Zap },
                       { label: "No collateral", desc: "Activity-based underwriting", icon: Shield },
-                      { label: "15% flat rate", desc: "Competitive for business loans", icon: TrendingDown },
+                      { label: "30% flat rate", desc: "Competitive for business loans", icon: TrendingDown },
                     ].map(f => (
                       <div key={f.label} className="bg-muted/50 rounded-xl p-4 border flex flex-col items-center gap-2">
                         <f.icon className="w-5 h-5 text-blue-500" />

@@ -3074,7 +3074,7 @@ export async function registerRoutes(
           return res.json({ eligible: false, reason: "You need at least 1 verified referral or a trade wallet balance to qualify for a business loan.", limitUsd: 0 });
         }
         const limitUsd = calculateAffiliateLoanLimit(refCount, tradeBalance, coAmount);
-        res.json({ eligible: true, limitUsd: Math.round(limitUsd), referralCount: refCount, tradeBalance, coAffiliateAmount: coAmount, activeLoan: activeLoan || null, interestRate: 15, terms: [6, 12, 24] });
+        res.json({ eligible: true, limitUsd: Math.round(limitUsd), referralCount: refCount, tradeBalance, coAffiliateAmount: coAmount, activeLoan: activeLoan || null, interestRate: 30, terms: [6, 12, 24] });
       } else {
         res.json({ eligible: false, reason: "Loans are available for students and affiliates only.", limitUsd: 0 });
       }
@@ -3105,7 +3105,7 @@ export async function registerRoutes(
         const tradeBalance = parseFloat(tradeWallet.balance || "0");
         if (referrals.length === 0 && tradeBalance === 0) return res.status(400).json({ message: "You need earnings to qualify for a business loan." });
         maxLimit = calculateAffiliateLoanLimit(referrals.length, tradeBalance, coAffiliate ? parseFloat(coAffiliate.investedAmount) : 0);
-        interestRate = 15;
+        interestRate = 30;
       }
       if (parseFloat(amountUsd) > maxLimit) return res.status(400).json({ message: `Loan amount exceeds your limit of $${Math.round(maxLimit).toFixed(2)}` });
       const { totalPayable, monthly } = calculateLoanMonthly(parseFloat(amountUsd), interestRate, parseInt(termMonths));

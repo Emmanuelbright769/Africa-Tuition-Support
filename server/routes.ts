@@ -1292,15 +1292,15 @@ export async function registerRoutes(
       if (isNaN(withdrawAmount) || withdrawAmount <= 0) {
         return res.status(400).json({ message: "Enter a valid withdrawal amount." });
       }
+      if (withdrawAmount < 1) {
+        return res.status(400).json({ message: "Minimum withdrawal is $1.00." });
+      }
 
       // Check trade wallet balance
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
       const tradeBalance = parseFloat(tradeWallet.tradeBalance);
       if (withdrawAmount > tradeBalance) {
         return res.status(400).json({ message: `Insufficient trade balance. Available: $${tradeBalance.toFixed(4)}` });
-      }
-      if (withdrawAmount < 0.01) {
-        return res.status(400).json({ message: "Minimum withdrawal is $0.01." });
       }
 
       const txRef = `COMM-WD-${userId}-${Date.now()}`;
@@ -1609,6 +1609,7 @@ export async function registerRoutes(
       const available = parseFloat((myProfit - alreadyWithdrawn).toFixed(6));
 
       if (available <= 0) return res.status(400).json({ message: "No available earnings to withdraw at this time." });
+      if (available < 1) return res.status(400).json({ message: `Minimum withdrawal is $1.00. Your available balance is $${available.toFixed(4)} — keep earning until you reach $1.` });
 
       // Credit Personal Wallet
       const wallet = await storage.getOrCreateWallet(userId);
@@ -3251,17 +3252,26 @@ export async function registerRoutes(
       }
       // Amount in kobo → USD
       const amountKoboFromSquad = data.data?.transaction_amount ?? 0;
-      const amountUsd = parseFloat(existing?.amountUsd ?? (amountKoboFromSquad / 148000).toFixed(2));
-      // Credit wallet
+      const gross = parseFloat(existing?.amountUsd ?? (amountKoboFromSquad / 148000).toFixed(2));
+      // Apply 75 / 20 / 5 split (same as admin confirm)
+      const sqReserveCut   = parseFloat((gross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));   // 20%
+      const sqAffiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2)); // 5%
+      const sqUserCredit   = parseFloat((gross - sqReserveCut - sqAffiliateCut).toFixed(2));     // 75%
+      // Credit 75% to wallet
       const squadWallet = await storage.getOrCreateWallet(userId);
-      const newBalance = (parseFloat(squadWallet.balance) + amountUsd).toFixed(2);
+      const newBalance = (parseFloat(squadWallet.balance) + sqUserCredit).toFixed(2);
       await storage.updateWalletBalance(userId, newBalance);
+      // Reserve fund
+      await storage.addToReserveFund(sqReserveCut.toFixed(6));
+      // Affiliate pool
+      const sqAffiliateCount = await storage.getAffiliateCount();
+      const sqPerAffiliate = sqAffiliateCount > 0 ? sqAffiliateCut / sqAffiliateCount : 0;
+      await storage.recordAffiliateTradeShare(null, sqAffiliateCut.toFixed(6), sqAffiliateCount, sqPerAffiliate.toFixed(6), "personal_wallet_squad");
       // Activate wallet on first funding ≥ $5 and credit referral commission
       if (!squadWallet.activated && parseFloat(newBalance) >= 5) {
         try {
           await storage.activateWallet(userId);
-          // Credit 5% referral commission to referrer on first activation deposit
-          creditReferrerCommission(userId, amountUsd, "personal wallet activation").catch(() => {});
+          creditReferrerCommission(userId, gross, "personal wallet activation").catch(() => {});
           const sqUser = await storage.getUser(userId);
           if (sqUser?.referredBy) {
             const sqReferrer = await storage.getUserByAffiliateCode(sqUser.referredBy);
@@ -3278,13 +3288,13 @@ export async function registerRoutes(
         } catch { /* non-critical */ }
       }
       // Record credited transaction
-      await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), fee: "0.00", paymentMethod: "squad", description: `Wallet funded via Squad (${transactionRef})` });
+      await storage.createTransaction({ userId, type: "deposit", amount: sqUserCredit.toFixed(2), fee: (sqReserveCut + sqAffiliateCut).toFixed(2), paymentMethod: "squad", description: `Wallet funded via Squad (${transactionRef}) — $${sqUserCredit.toFixed(2)} (75%) credited, $${sqReserveCut.toFixed(2)} reserve, $${sqAffiliateCut.toFixed(2)} pool` });
       // Mark deposit record as completed
       if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
       // Push live notification
-      const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, data: { transactionRef }, isRead: false });
+      const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${gross.toFixed(2)} received — $${sqUserCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet`, data: { transactionRef }, isRead: false });
       pushToUser(userId, "notification", notif);
-      res.json({ message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd });
+      res.json({ message: `$${sqUserCredit.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd: sqUserCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3307,18 +3317,25 @@ export async function registerRoutes(
           const verData = await verRes.json() as any;
           if (verData.success && verData.data?.transaction_status === "Success") {
             const userId = allDeposits.userId;
-            const amountUsd = parseFloat(allDeposits.amountUsd);
+            const wkGross = parseFloat(allDeposits.amountUsd);
+            // Apply 75 / 20 / 5 split
+            const wkReserveCut   = parseFloat((wkGross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
+            const wkAffiliateCut = parseFloat((wkGross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
+            const wkUserCredit   = parseFloat((wkGross - wkReserveCut - wkAffiliateCut).toFixed(2));
             const wl = await storage.getOrCreateWallet(userId);
-            const newBal = (parseFloat(wl.balance) + amountUsd).toFixed(2);
+            const newBal = (parseFloat(wl.balance) + wkUserCredit).toFixed(2);
             await storage.updateWalletBalance(userId, newBal);
+            await storage.addToReserveFund(wkReserveCut.toFixed(6));
+            const wkAffCount = await storage.getAffiliateCount();
+            const wkPerAff = wkAffCount > 0 ? wkAffiliateCut / wkAffCount : 0;
+            await storage.recordAffiliateTradeShare(null, wkAffiliateCut.toFixed(6), wkAffCount, wkPerAff.toFixed(6), "personal_wallet_squad_webhook");
             if (!wl.activated && parseFloat(newBal) >= 5) {
               await storage.activateWallet(userId);
-              // Credit 5% referral commission to referrer on first activation deposit
-              creditReferrerCommission(userId, amountUsd, "personal wallet activation").catch(() => {});
+              creditReferrerCommission(userId, wkGross, "personal wallet activation").catch(() => {});
             }
-            await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), fee: "0.00", paymentMethod: "squad", description: `Wallet funded via Squad webhook (${ref})` });
+            await storage.createTransaction({ userId, type: "deposit", amount: wkUserCredit.toFixed(2), fee: (wkReserveCut + wkAffiliateCut).toFixed(2), paymentMethod: "squad", description: `Wallet funded via Squad webhook (${ref}) — $${wkUserCredit.toFixed(2)} (75%) credited, $${wkReserveCut.toFixed(2)} reserve, $${wkAffiliateCut.toFixed(2)} pool` });
             await storage.updateWalletDeposit(allDeposits.id, { status: "completed" });
-            const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${amountUsd.toFixed(2)} credited via Squad`, data: { ref }, isRead: false });
+            const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${wkGross.toFixed(2)} received — $${wkUserCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet`, data: { ref }, isRead: false });
             pushToUser(userId, "notification", notif);
           }
         }
@@ -3380,17 +3397,26 @@ export async function registerRoutes(
       });
       const data = await response.json() as any;
       if (!data.status || data.data?.status !== "success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment." });
-      const amountUsd = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / 148000).toFixed(2));
-      // Credit wallet
+      const psGross = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / 148000).toFixed(2));
+      // Apply 75 / 20 / 5 split
+      const psReserveCut   = parseFloat((psGross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
+      const psAffiliateCut = parseFloat((psGross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
+      const psUserCredit   = parseFloat((psGross - psReserveCut - psAffiliateCut).toFixed(2));
+      // Credit 75% to wallet
       const pstackWallet = await storage.getOrCreateWallet(userId);
-      const psNewBalance = (parseFloat(pstackWallet.balance) + amountUsd).toFixed(2);
+      const psNewBalance = (parseFloat(pstackWallet.balance) + psUserCredit).toFixed(2);
       await storage.updateWalletBalance(userId, psNewBalance);
+      // Reserve fund
+      await storage.addToReserveFund(psReserveCut.toFixed(6));
+      // Affiliate pool
+      const psAffCount = await storage.getAffiliateCount();
+      const psPerAff = psAffCount > 0 ? psAffiliateCut / psAffCount : 0;
+      await storage.recordAffiliateTradeShare(null, psAffiliateCut.toFixed(6), psAffCount, psPerAff.toFixed(6), "personal_wallet_paystack");
       // Activate wallet on first funding ≥ $5 and credit referral commission
       if (!pstackWallet.activated && parseFloat(psNewBalance) >= 5) {
         try {
           await storage.activateWallet(userId);
-          // Credit 5% referral commission to referrer on first activation deposit
-          creditReferrerCommission(userId, amountUsd, "personal wallet activation").catch(() => {});
+          creditReferrerCommission(userId, psGross, "personal wallet activation").catch(() => {});
           const psUser = await storage.getUser(userId);
           if (psUser?.referredBy) {
             const psReferrer = await storage.getUserByAffiliateCode(psUser.referredBy);
@@ -3409,10 +3435,10 @@ export async function registerRoutes(
       // Mark deposit as completed
       if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
       // Record transaction (for complete history)
-      await storage.createTransaction({ userId, type: "deposit", amount: amountUsd.toFixed(2), fee: "0.00", paymentMethod: "paystack", description: `Wallet funded via Paystack (${reference})` });
-      const psNotif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, data: { reference }, isRead: false });
+      await storage.createTransaction({ userId, type: "deposit", amount: psUserCredit.toFixed(2), fee: (psReserveCut + psAffiliateCut).toFixed(2), paymentMethod: "paystack", description: `Wallet funded via Paystack (${reference}) — $${psUserCredit.toFixed(2)} (75%) credited, $${psReserveCut.toFixed(2)} reserve, $${psAffiliateCut.toFixed(2)} pool` });
+      const psNotif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${psGross.toFixed(2)} received — $${psUserCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet`, data: { reference }, isRead: false });
       pushToUser(userId, "notification", psNotif);
-      res.json({ message: `$${amountUsd.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd });
+      res.json({ message: `$${psUserCredit.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd: psUserCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

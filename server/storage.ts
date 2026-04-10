@@ -108,7 +108,7 @@ export interface IStorage {
   getTradeTransactionsByUser(userId: number): Promise<TradeTransaction[]>;
   getTradeReserveFund(): Promise<{ total_balance: string; total_deposited: string }>;
   addToReserveFund(amount: string): Promise<void>;
-  recordAffiliateTradeShare(tradeTransactionId: number, poolAmount: string, affiliateCount: number, perAffiliate: string): Promise<void>;
+  recordAffiliateTradeShare(tradeTransactionId: number | null, poolAmount: string, affiliateCount: number, perAffiliate: string, sourceType?: string): Promise<void>;
   getAffiliateCount(): Promise<number>;
 
   // Loans
@@ -632,8 +632,8 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async recordAffiliateTradeShare(tradeTransactionId: number, poolAmount: string, affiliateCount: number, perAffiliate: string): Promise<void> {
-    await db.insert(affiliateTradeShares).values({ tradeTransactionId, totalPoolAmount: poolAmount, affiliateCount, perAffiliateAmount: perAffiliate });
+  async recordAffiliateTradeShare(tradeTransactionId: number | null, poolAmount: string, affiliateCount: number, perAffiliate: string, sourceType = "trade"): Promise<void> {
+    await db.insert(affiliateTradeShares).values({ tradeTransactionId: tradeTransactionId ?? null, totalPoolAmount: poolAmount, affiliateCount, perAffiliateAmount: perAffiliate, sourceType });
   }
 
   async getAffiliateCount(): Promise<number> {

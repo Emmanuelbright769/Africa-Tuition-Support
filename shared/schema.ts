@@ -158,10 +158,11 @@ export const tradeReserveFund = pgTable("trade_reserve_fund", {
 
 export const affiliateTradeShares = pgTable("affiliate_trade_shares", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  tradeTransactionId: integer("trade_transaction_id").notNull().references(() => tradeTransactions.id),
+  tradeTransactionId: integer("trade_transaction_id"),
   totalPoolAmount: decimal("total_pool_amount", { precision: 16, scale: 6 }).notNull(),
   affiliateCount: integer("affiliate_count").notNull().default(0),
   perAffiliateAmount: decimal("per_affiliate_amount", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  sourceType: text("source_type").default("trade"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

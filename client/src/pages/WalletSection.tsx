@@ -13,7 +13,7 @@ import {
   Wallet, Eye, EyeOff, ArrowDownLeft, ArrowUpRight, Loader2,
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
   Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy, Coins,
-  ScanFace, MapPin, AlertTriangle, Lock
+  ScanFace, MapPin, AlertTriangle, Lock, ChevronLeft
 } from "lucide-react";
 
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -82,27 +82,14 @@ export default function WalletSection() {
   const [cryptoAmount, setCryptoAmount]   = useState("");
   const [cryptoTxHash, setCryptoTxHash]   = useState("");
 
-  // ── Withdraw dialog state ──────────────────────────────────────────────
-  const [withdrawOpen, setWithdrawOpen]         = useState(false);
-  const [withdrawAmount, setWithdrawAmount]     = useState("");
-  const [withdrawTermsAccepted, setWithdrawTermsAccepted] = useState(false);
-  // Squad bank transfer state
-  const [wdBankCode, setWdBankCode]       = useState("");
-  const [wdAcctNumber, setWdAcctNumber]   = useState("");
-  const [wdAcctName, setWdAcctName]       = useState("");
-  const [wdStep, setWdStep]               = useState<"bank" | "amount">("bank");
-  const [wdLookupLoading, setWdLookupLoading] = useState(false);
-
-  // ── Crypto withdrawal state ────────────────────────────────────────────
-  const [cwNetwork, setCwNetwork] = useState<"bep20" | "trc20">("bep20");
-  const [cwAddress, setCwAddress] = useState("");
-  const [cwAmount, setCwAmount] = useState("");
+  // ── Withdrawal state ───────────────────────────────────────────────────
+  const [withdrawChoiceOpen, setWithdrawChoiceOpen] = useState(false);
+  const [cwOpen, setCwOpen]               = useState(false);
+  const [cwNetwork, setCwNetwork]         = useState<"bep20" | "trc20">("bep20");
+  const [cwAddress, setCwAddress]         = useState("");
+  const [cwAmount, setCwAmount]           = useState("");
   const [cwSuccessOpen, setCwSuccessOpen] = useState(false);
   const [cwSuccessData, setCwSuccessData] = useState<{ amount: number; netAmount: number; fee: number; network: string } | null>(null);
-
-  // ── Withdraw method ────────────────────────────────────────────────────
-  const [withdrawMethod, setWithdrawMethod] = useState<"bank" | "crypto">("bank");
-  const [withdrawChoiceOpen, setWithdrawChoiceOpen] = useState(false);
 
   // ── History tab ────────────────────────────────────────────────────────
   const [historyTab, setHistoryTab] = useState<"deposits" | "sent" | "received" | "bills" | "withdrawals">("deposits");
@@ -190,27 +177,6 @@ export default function WalletSection() {
     onError: (e: any) => toast({ title: "Submission failed", description: e.message, variant: "destructive" }),
   });
 
-  const withdrawMutation = useMutation({
-    mutationFn: async () => {
-      const amount = parseFloat(withdrawAmount);
-      if (!amount || amount <= 0) throw new Error("Enter a valid amount");
-      if (amount > balance) throw new Error("Insufficient balance");
-      if (!wdBankCode || !wdAcctNumber || !wdAcctName) throw new Error("Bank account details required");
-      const res = await apiRequest("POST", "/api/wallet/withdraw", { amount, bankCode: wdBankCode, accountNumber: wdAcctNumber, accountName: wdAcctName });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message);
-      return d;
-    },
-    onSuccess: (d: any) => {
-      toast({ title: "Withdrawal initiated ✓", description: d.message, className: "border-blue-500" });
-      refetchWallet();
-      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      setWithdrawOpen(false);
-      setWithdrawAmount(""); setWdBankCode(""); setWdAcctNumber(""); setWdAcctName(""); setWdStep("bank"); setWithdrawTermsAccepted(false);
-    },
-    onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
-  });
-
   const cryptoWithdrawMutation = useMutation({
     mutationFn: async () => {
       const amount = parseFloat(cwAmount);
@@ -225,28 +191,13 @@ export default function WalletSection() {
       refetchWallet();
       refetchWithdrawals();
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      setWithdrawOpen(false);
+      setCwOpen(false);
       setCwSuccessData({ amount: d.amount, netAmount: d.netAmount ?? d.amount, fee: d.fee ?? 0, network: d.network });
       setCwSuccessOpen(true);
       setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
     },
     onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
-
-  const accountLookup = async () => {
-    if (!wdBankCode || wdAcctNumber.length !== 10) return;
-    setWdLookupLoading(true); setWdAcctName("");
-    try {
-      const res = await apiRequest("POST", "/api/bank/lookup", { bankCode: wdBankCode, accountNumber: wdAcctNumber });
-      const data = await res.json();
-      if (res.ok && data.accountName) { setWdAcctName(data.accountName); setWdStep("amount"); }
-      else toast({ title: "Account not found", description: data.message || "Check account number and bank.", variant: "destructive" });
-    } catch { toast({ title: "Lookup failed", description: "Network error. Try again.", variant: "destructive" }); }
-    finally { setWdLookupLoading(false); }
-  };
-
-  const vatAmt = parseFloat(withdrawAmount || "0") * 0.075;
-  const youGet = parseFloat(withdrawAmount || "0") * 0.925;
 
   const sentTransfers     = (transfers as TransferRecord[]).filter(t => t.senderId === user?.id);
   const receivedTransfers = (transfers as TransferRecord[]).filter(t => t.recipientId === user?.id);
@@ -804,278 +755,220 @@ export default function WalletSection() {
         </DialogContent>
       </Dialog>
 
-      {/* ── WITHDRAW METHOD CHOICE DIALOG ──────────────────────────────── */}
+      {/* ══════════════════ WITHDRAW — STEP 1: CHOOSE METHOD ══════════════════ */}
       <Dialog open={withdrawChoiceOpen} onOpenChange={setWithdrawChoiceOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowUpRight className="w-5 h-5 text-blue-500" /> Withdraw Funds
-            </DialogTitle>
-            <DialogDescription>
-              Choose how you want to receive your funds.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            {/* Bank Transfer option */}
-            <button
-              onClick={() => {
-                setWithdrawChoiceOpen(false);
-                setWithdrawMethod("bank");
-                setWithdrawAmount(""); setWithdrawTermsAccepted(false); setWdStep("bank");
-                setWithdrawOpen(true);
-              }}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-border hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left group"
+        <DialogContent className="max-w-xs p-0 overflow-hidden rounded-3xl">
+          {/* Header */}
+          <div className="bg-gradient-to-br from-[#1a4731] to-[#0f2a1e] px-6 pt-6 pb-5 text-white">
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
+                <ArrowUpRight className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="font-black text-lg leading-tight">Withdraw Funds</h2>
+                <p className="text-white/60 text-xs">Select a withdrawal method</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 space-y-3">
+            {/* ── Bank Withdrawal — Coming Soon ── */}
+            <div
+              className="relative w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed opacity-60"
               data-testid="btn-choose-bank-withdraw"
             >
-              <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 group-hover:bg-blue-200 dark:group-hover:bg-blue-800/40 transition-colors">
-                <Banknote className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                <Banknote className="w-6 h-6 text-blue-400" />
               </div>
-              <div className="flex-1">
-                <p className="font-bold text-sm">Bank Transfer</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Receive NGN directly to your Nigerian bank account. 7.5% VAT applies.</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-sm text-slate-500 dark:text-slate-400">Bank Withdrawal</p>
+                  <span className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Coming Soon</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5 truncate">NGN to Nigerian bank account</p>
               </div>
-              <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-blue-500 transition-colors shrink-0" />
-            </button>
+              <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+            </div>
 
-            {/* Crypto (USDT) option */}
+            {/* ── Crypto Withdrawal — Active ── */}
             <button
               onClick={() => {
                 setWithdrawChoiceOpen(false);
-                setWithdrawMethod("crypto"); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
-                setWithdrawOpen(true);
+                setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
+                setCwOpen(true);
               }}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-border hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all text-left group"
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-amber-300/60 dark:border-amber-600/40 bg-amber-50 dark:bg-amber-900/20 hover:border-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all text-left group"
               data-testid="btn-choose-crypto-withdraw"
             >
-              <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0 group-hover:bg-amber-200 dark:group-hover:bg-amber-800/40 transition-colors">
+              <div className="w-12 h-12 rounded-2xl bg-amber-400/20 flex items-center justify-center shrink-0 group-hover:bg-amber-400/30 transition-colors">
                 <Coins className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
-              <div className="flex-1">
-                <p className="font-bold text-sm">USDT Crypto Withdrawal</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Receive USDT on BEP20 (BSC) or TRC20 (TRON). No VAT — 1% handling fee. Processed within 24 hours.</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-sm text-amber-800 dark:text-amber-200">USDT Crypto</p>
+                  <span className="text-[10px] font-bold bg-tsia-green/20 text-tsia-green px-2 py-0.5 rounded-full uppercase tracking-wide">Active</span>
+                </div>
+                <p className="text-xs text-amber-700/70 dark:text-amber-400/70 mt-0.5">BEP20 (BSC) or TRC20 (TRON) · 1% fee · 24h</p>
               </div>
-              <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-amber-500 transition-colors shrink-0" />
+              <ArrowUpRight className="w-4 h-4 text-amber-500 shrink-0" />
             </button>
           </div>
-          <DialogFooter>
-            <Button variant="outline" className="w-full" onClick={() => setWithdrawChoiceOpen(false)}>Cancel</Button>
-          </DialogFooter>
+
+          <div className="px-4 pb-4">
+            <Button variant="ghost" className="w-full text-sm text-muted-foreground" onClick={() => setWithdrawChoiceOpen(false)}>
+              Cancel
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* ── WITHDRAW DIALOG ─────────────────────────────────────────────── */}
-      <Dialog open={withdrawOpen} onOpenChange={v => {
-        setWithdrawOpen(v);
-        if (!v) { setWithdrawAmount(""); setWithdrawTermsAccepted(false); setWdBankCode(""); setWdAcctNumber(""); setWdAcctName(""); setWdStep("bank"); }
-      }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowUpRight className="w-5 h-5 text-blue-500" /> Withdraw Funds
-            </DialogTitle>
-            <DialogDescription>
-              Choose your withdrawal method below.
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Method tabs */}
-          <div className="flex bg-muted/40 rounded-2xl p-1 mb-1">
-            <button onClick={() => setWithdrawMethod("bank")}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${withdrawMethod === "bank" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
-              data-testid="btn-wd-method-bank">
-              <Banknote className="w-4 h-4" /> Bank Transfer
+      {/* ══════════════════ WITHDRAW — STEP 2: CRYPTO FORM ══════════════════ */}
+      <Dialog open={cwOpen} onOpenChange={v => { setCwOpen(v); if (!v) { setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); } }}>
+        <DialogContent className="max-w-sm p-0 overflow-hidden rounded-3xl">
+          {/* Header */}
+          <div className="bg-gradient-to-br from-amber-500 to-amber-700 px-6 pt-6 pb-5 text-white">
+            <button onClick={() => { setCwOpen(false); setWithdrawChoiceOpen(true); }}
+              className="flex items-center gap-1 text-white/70 hover:text-white text-xs mb-3 transition-colors"
+              data-testid="btn-back-to-choice">
+              <ChevronLeft className="w-4 h-4" /> Back
             </button>
-            <button onClick={() => { setWithdrawMethod("crypto"); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); }}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${withdrawMethod === "crypto" ? "bg-card shadow text-amber-600" : "text-muted-foreground"}`}
-              data-testid="btn-wd-method-crypto">
-              <Coins className="w-4 h-4" /> Withdraw via Crypto
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center">
+                <Coins className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="font-black text-xl leading-tight">USDT Withdrawal</h2>
+                <p className="text-white/70 text-xs mt-0.5">Credited within 24 hours · 1% handling fee</p>
+              </div>
+            </div>
           </div>
 
-          {/* ── BANK WITHDRAWAL FORM ── */}
-          {withdrawMethod === "bank" && (
-            <>
-              {wdStep === "bank" ? (
-                <div className="space-y-4 py-2">
-                  <div className="space-y-2">
-                    <Label>Select Bank</Label>
-                    <select value={wdBankCode} onChange={e => { setWdBankCode(e.target.value); setWdAcctName(""); }}
-                      className="w-full h-11 rounded-xl border border-border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
-                      data-testid="select-withdraw-bank">
-                      <option value="" disabled>— Choose your bank —</option>
-                      {NIGERIAN_BANKS.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Account Number (10-digit NUBAN)</Label>
-                    <Input maxLength={10} placeholder="e.g. 0123456789" value={wdAcctNumber}
-                      onChange={e => { setWdAcctNumber(e.target.value.replace(/\D/g, "").slice(0, 10)); setWdAcctName(""); }}
-                      data-testid="input-withdraw-acct-number" />
-                  </div>
-                  {wdAcctName && (
-                    <div className="flex items-center gap-2 bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3">
-                      <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Account verified</p>
-                        <p className="font-bold text-sm">{wdAcctName}</p>
-                      </div>
-                    </div>
-                  )}
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
-                    <Button onClick={accountLookup}
-                      disabled={wdLookupLoading || !wdBankCode || wdAcctNumber.length !== 10}
-                      className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="btn-verify-account">
-                      {wdLookupLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />} Verify Account
-                    </Button>
-                  </DialogFooter>
-                </div>
-              ) : (
-                <div className="space-y-4 py-2">
-                  <div className="flex items-center gap-2 bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3">
-                    <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">Sending to</p>
-                      <p className="font-bold text-sm">{wdAcctName}</p>
-                      <p className="text-xs text-muted-foreground">{NIGERIAN_BANKS.find(b => b.code === wdBankCode)?.name} · {wdAcctNumber}</p>
-                    </div>
-                    <Button size="sm" variant="ghost" className="ml-auto text-xs" onClick={() => setWdStep("bank")}>Change</Button>
-                  </div>
-                  <div>
-                    <Label htmlFor="wd-amount">Amount (USD)</Label>
-                    <Input id="wd-amount" type="number" min={2} step={0.01} placeholder="0.00"
-                      value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
-                      className="mt-1 text-lg font-bold" data-testid="input-withdraw-amount" />
-                    {parseFloat(withdrawAmount) > 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(withdrawAmount))} {rateLabel()}</p>
+          <div className="p-5 space-y-4">
+            {/* Network Selector */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Select Network</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(["bep20", "trc20"] as const).map(n => (
+                  <button key={n} onClick={() => { setCwNetwork(n); setCwAddress(""); }}
+                    className={`relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 text-center transition-all ${
+                      cwNetwork === n
+                        ? "border-amber-500 bg-amber-50 dark:bg-amber-900/20"
+                        : "border-border hover:border-amber-400/50 bg-card"
+                    }`}
+                    data-testid={`btn-cw-network-${n}`}>
+                    {cwNetwork === n && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-amber-500 absolute top-2 right-2" />
                     )}
-                  </div>
-                  {parseFloat(withdrawAmount) > 0 && (
-                    <div className="bg-muted rounded-2xl p-4 border space-y-2 text-sm">
-                      <div className="flex justify-between"><span className="text-muted-foreground">Withdrawal</span><span className="font-medium">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
-                      <div className="flex justify-between text-red-500"><span>VAT (7.5%)</span><span>−${vatAmt.toFixed(2)}</span></div>
-                      <div className="flex justify-between font-bold border-t pt-2 mt-1">
-                        <span>You Receive</span>
-                        <div className="text-right">
-                          <span className="text-tsia-green">₦{Math.round(youGet * 1280).toLocaleString()}</span>
-                          <p className="text-[11px] text-muted-foreground font-normal">${youGet.toFixed(2)} at ₦1,280/$1</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {parseFloat(withdrawAmount) > balance && (
-                    <p className="text-xs text-red-500 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Insufficient balance (have ${balance.toFixed(2)})</p>
-                  )}
-                  <TermsCheckbox checked={withdrawTermsAccepted} onCheckedChange={setWithdrawTermsAccepted} context="withdrawal" />
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
-                    <Button
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
-                      onClick={() => withdrawMutation.mutate()}
-                      disabled={withdrawMutation.isPending || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > balance || !withdrawTermsAccepted}
-                      data-testid="btn-confirm-withdraw"
-                    >
-                      {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                      Confirm Withdrawal
-                    </Button>
-                  </DialogFooter>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* ── CRYPTO WITHDRAWAL FORM (inline) ── */}
-          {withdrawMethod === "crypto" && (
-            <div className="space-y-4 py-2">
-              {/* Network selector */}
-              <div>
-                <Label className="mb-2 block">Select Network</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(["bep20", "trc20"] as const).map(n => (
-                    <button key={n} onClick={() => setCwNetwork(n)}
-                      className={`p-3 rounded-xl border-2 text-sm font-bold transition-all ${cwNetwork === n ? "border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400" : "border-border hover:border-amber-400/60"}`}
-                      data-testid={`btn-cw-network-${n}`}>
-                      {n === "bep20" ? "BEP20 (BSC)" : "TRC20 (TRON)"}
-                    </button>
-                  ))}
-                </div>
+                    <span className={`text-sm font-black ${cwNetwork === n ? "text-amber-700 dark:text-amber-300" : "text-foreground"}`}>
+                      {n === "bep20" ? "BEP20" : "TRC20"}
+                    </span>
+                    <span className={`text-[10px] font-medium ${cwNetwork === n ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                      {n === "bep20" ? "BSC Network" : "TRON Network"}
+                    </span>
+                  </button>
+                ))}
               </div>
-              {/* USDT Address */}
-              <div>
-                <Label htmlFor="cw-address">Your USDT Wallet Address</Label>
-                <Input id="cw-address" placeholder={cwNetwork === "bep20" ? "0x..." : "T..."}
-                  value={cwAddress} onChange={e => setCwAddress(e.target.value)}
-                  className="mt-1 font-mono text-xs" data-testid="input-cw-address" />
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-start gap-1">
-                  <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
-                  Arrives on {cwNetwork === "bep20" ? "BEP20 (BSC)" : "TRC20 (TRON)"}. Wrong network = lost funds.
-                </p>
-              </div>
-              {/* Amount */}
-              <div>
-                <Label htmlFor="cw-amount">Amount (USD)</Label>
-                <Input id="cw-amount" type="number" min={1} step={0.01} placeholder="Min $1.00"
-                  value={cwAmount} onChange={e => setCwAmount(e.target.value)}
-                  className="mt-1 text-lg font-bold" data-testid="input-cw-amount" />
-              </div>
-              {/* Live fee breakdown */}
-              {parseFloat(cwAmount) > 0 && (() => {
-                const amt  = parseFloat(cwAmount);
-                const fee  = parseFloat((amt * 0.01).toFixed(2));
-                const net  = parseFloat((amt - fee).toFixed(2));
-                const bal  = balance - amt;
-                return (
-                  <div className="rounded-xl border bg-slate-50 dark:bg-slate-800/40 p-3 space-y-1.5 text-sm">
-                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                      <span>Withdrawal amount</span><span>${amt.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-red-500">
-                      <span>Handling fee (1%)</span><span>−${fee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-bold text-tsia-green border-t pt-1.5">
-                      <span>You receive (USDT)</span><span>${net.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-muted-foreground pt-0.5 border-t">
-                      <span>Wallet balance after</span>
-                      <span className={bal < 2 ? "text-red-500 font-semibold" : ""}>${Math.max(0, bal).toFixed(2)}</span>
-                    </div>
-                    {bal < 2 && (
-                      <p className="text-xs text-red-500 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Must keep $2 minimum in wallet
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
-              {/* 24h notice */}
-              <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
-                <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-800 dark:text-amber-300">
-                  <strong>Manual processing:</strong> USDT sent within 24 hours. A 1% handling fee applies — no VAT.
-                </p>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
-                <Button
-                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold"
-                  onClick={() => cryptoWithdrawMutation.mutate()}
-                  disabled={
-                    cryptoWithdrawMutation.isPending ||
-                    !cwAmount || parseFloat(cwAmount) < 1 ||
-                    !cwAddress.trim() ||
-                    parseFloat(cwAmount) > balance ||
-                    (balance - parseFloat(cwAmount || "0")) < 2
-                  }
-                  data-testid="btn-confirm-crypto-wd"
-                >
-                  {cryptoWithdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Coins className="w-4 h-4 mr-2" />}
-                  {parseFloat(cwAmount) > 0
-                    ? `Receive $${(parseFloat(cwAmount) * 0.99).toFixed(2)} USDT`
-                    : "Confirm Withdrawal"}
-                </Button>
-              </DialogFooter>
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 flex items-start gap-1">
+                <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                Only send to a <strong>{cwNetwork === "bep20" ? "BEP20/BSC" : "TRC20/TRON"}</strong> address. Wrong network = permanently lost funds.
+              </p>
             </div>
-          )}
+
+            {/* Wallet Address */}
+            <div>
+              <Label htmlFor="cw-address" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Your USDT Address ({cwNetwork === "bep20" ? "BEP20" : "TRC20"})
+              </Label>
+              <Input
+                id="cw-address"
+                placeholder={cwNetwork === "bep20" ? "0x… (starts with 0x)" : "T… (starts with T)"}
+                value={cwAddress}
+                onChange={e => setCwAddress(e.target.value)}
+                className="mt-1.5 font-mono text-xs h-11 rounded-xl"
+                data-testid="input-cw-address"
+              />
+            </div>
+
+            {/* Amount */}
+            <div>
+              <Label htmlFor="cw-amount" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Amount (USD) — Balance: <span className="text-tsia-green font-bold">${balance.toFixed(2)}</span>
+              </Label>
+              <Input
+                id="cw-amount"
+                type="number"
+                min={1}
+                step={0.01}
+                placeholder="Enter amount (min $1.00)"
+                value={cwAmount}
+                onChange={e => setCwAmount(e.target.value)}
+                className="mt-1.5 text-xl font-black h-12 rounded-xl"
+                data-testid="input-cw-amount"
+              />
+            </div>
+
+            {/* Live fee breakdown — shown once amount is entered */}
+            {parseFloat(cwAmount) > 0 && (() => {
+              const amt = parseFloat(cwAmount);
+              const fee = parseFloat((amt * 0.01).toFixed(2));
+              const net = parseFloat((amt - fee).toFixed(2));
+              const rem = balance - amt;
+              const tooLow = rem < 2;
+              return (
+                <div className="rounded-2xl border bg-slate-50 dark:bg-slate-800/50 divide-y divide-border text-sm overflow-hidden">
+                  <div className="flex justify-between items-center px-4 py-2.5">
+                    <span className="text-muted-foreground">You send</span>
+                    <span className="font-semibold">${amt.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-4 py-2.5 text-red-500">
+                    <span>Handling fee (1%)</span>
+                    <span className="font-semibold">−${fee.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-4 py-2.5 bg-tsia-green/5">
+                    <span className="font-bold text-tsia-green">You receive (USDT)</span>
+                    <span className="font-black text-tsia-green">${net.toFixed(2)}</span>
+                  </div>
+                  <div className={`flex justify-between items-center px-4 py-2.5 ${tooLow ? "bg-red-50 dark:bg-red-900/20" : ""}`}>
+                    <span className="text-muted-foreground text-xs">Wallet balance after</span>
+                    <span className={`text-xs font-semibold ${tooLow ? "text-red-500" : "text-muted-foreground"}`}>
+                      ${Math.max(0, rem).toFixed(2)}
+                      {tooLow && " ⚠ min $2"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 24h info banner */}
+            <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 p-3">
+              <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                Withdrawals are processed manually by the TSIA team within <strong>24 hours</strong>. A <strong>1% handling fee</strong> is deducted — no VAT charged.
+              </p>
+            </div>
+
+            {/* CTA */}
+            <Button
+              className="w-full h-12 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base"
+              onClick={() => cryptoWithdrawMutation.mutate()}
+              disabled={
+                cryptoWithdrawMutation.isPending ||
+                !cwAmount || parseFloat(cwAmount) < 1 ||
+                !cwAddress.trim() ||
+                parseFloat(cwAmount) > balance ||
+                (balance - parseFloat(cwAmount || "0")) < 2
+              }
+              data-testid="btn-confirm-crypto-wd"
+            >
+              {cryptoWithdrawMutation.isPending
+                ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Processing…</>
+                : parseFloat(cwAmount) > 0
+                  ? <><Coins className="w-5 h-5 mr-2" /> Receive ${(parseFloat(cwAmount) * 0.99).toFixed(2)} USDT</>
+                  : <><Coins className="w-5 h-5 mr-2" /> Confirm Withdrawal</>
+              }
+            </Button>
+            <Button variant="ghost" className="w-full text-sm text-muted-foreground" onClick={() => setCwOpen(false)}>Cancel</Button>
+          </div>
         </DialogContent>
       </Dialog>
 

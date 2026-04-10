@@ -134,7 +134,7 @@ function ReferralSection({ referralStats, referrals, navigate }: {
               <div>
                 <p className="text-green-100 text-sm font-medium mb-1">Total Commission Earned</p>
                 <p className="text-4xl font-black tracking-tight" data-testid="text-total-commission">${totalEarned.toFixed(4)}</p>
-                <p className="text-green-200 text-xs mt-1">{referralStats?.commissionCount ?? 0} commission events • 5% per deposit &amp; bot session</p>
+                <p className="text-green-200 text-xs mt-1">{referralStats?.commissionCount ?? 0} commission events • 5% on wallet activations, subscriptions, trust fund &amp; trade bot</p>
               </div>
               <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
                 <DollarSign className="w-7 h-7 text-white" />

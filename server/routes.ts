@@ -848,6 +848,9 @@ export async function registerRoutes(
       // Increment batch enrollment (may auto-close batch if max reached)
       await storage.incrementBatchEnrollment(batch.id, BATCH_MAX);
 
+      // ── Credit 5% referral commission to referrer on student portal fee payment ──
+      creditReferrerCommission(userId, portalFee, "student subscription plan").catch(() => {});
+
       res.json(verification);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -1261,7 +1264,7 @@ export async function registerRoutes(
         totalCommissionEarned: parseFloat(totalCommissionEarned.toFixed(4)),
         commissionCount,
         tradeBalance: parseFloat(tradeBalance.toFixed(4)),
-        commissionNote: "You earn 5% of every deposit and bot earning made by members who signed up with your referral code.",
+        commissionNote: "You earn 5% from: wallet activation fees, student subscription plans, affiliate trust fund deposits, and global trade market bot earnings — for every member who signed up with your referral code.",
         recentCommissions: (recentCommissions.rows as any[]).map(r => ({
           amount: parseFloat(parseFloat(r.amount_usd).toFixed(4)),
           note: r.note,
@@ -1476,6 +1479,9 @@ export async function registerRoutes(
       // Ring-fence 20% of trust fund investment into the strategic reserve
       await storage.addToReserveFund(reserveCut.toFixed(6));
 
+      // ── Credit 5% referral commission to referrer on Trust Fund deposit ──
+      creditReferrerCommission(userId, amountPaid, "affiliate trust fund deposit").catch(() => {});
+
       await storage.createNotification({
         userId,
         type: "system",
@@ -1572,6 +1578,9 @@ export async function registerRoutes(
         amountPaid: newAmountPaid.toFixed(2),
         sharePercentage: newSharePercentage.toFixed(10),
       });
+
+      // ── Credit 5% referral commission to referrer on Trust Fund upgrade ──
+      creditReferrerCommission(userId, newAmountPaid, "affiliate trust fund deposit").catch(() => {});
 
       await storage.createNotification({
         userId,

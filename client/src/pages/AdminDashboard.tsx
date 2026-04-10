@@ -773,7 +773,36 @@ export default function AdminDashboard() {
 
             {/* ═══════════════════════════════ AFFILIATES ═══════════════════════════════ */}
             {activeTab === "affiliates" && (
-              <motion.div key="affiliates" variants={slide} initial="hidden" animate="visible" exit="exit">
+              <motion.div key="affiliates" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+                {/* Back-fill referral commissions */}
+                <Card className="border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                      <Users className="w-4 h-4" /> Back-fill Referral Commissions
+                    </CardTitle>
+                    <CardDescription className="text-amber-700 dark:text-amber-400">
+                      Credits any owed 5% referral commissions to affiliates whose referred users have activated wallets but never received commissions.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      size="sm"
+                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                      onClick={async () => {
+                        try {
+                          const res = await apiRequest("POST", "/api/admin/backfill-referral-commissions", {});
+                          const data = await res.json();
+                          toast({ title: "Back-fill complete", description: data.summary });
+                        } catch (e: any) {
+                          toast({ title: "Back-fill failed", description: e.message, variant: "destructive" });
+                        }
+                      }}
+                      data-testid="btn-backfill-referral-commissions"
+                    >
+                      Run Back-fill Now
+                    </Button>
+                  </CardContent>
+                </Card>
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
                     <CardTitle className="text-base">Affiliate Directory</CardTitle>

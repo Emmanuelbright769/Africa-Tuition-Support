@@ -1019,13 +1019,15 @@ export default function AffiliateDashboard() {
                     </CardContent></Card>
                   </motion.div>
                   <motion.div variants={itemVariants}>
-                    <Card className="shadow-md border-0 h-full"><CardContent className="pt-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="bg-blue-100 dark:bg-blue-900/40 p-3 rounded-xl"><Users className="w-6 h-6 text-blue-600" /></div>
-                        <div><p className="text-sm text-muted-foreground font-medium">Total Referrals</p><p className="text-3xl font-bold" data-testid="text-aff-referral-count">{referralCount}</p></div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Students signed up via your code</p>
-                    </CardContent></Card>
+                    <Card className="shadow-md border-0 h-full cursor-pointer hover:shadow-lg transition-shadow hover:border-blue-300 dark:hover:border-blue-700 border" onClick={() => navigate("referrals")} data-testid="card-referral-overview">
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="bg-blue-100 dark:bg-blue-900/40 p-3 rounded-xl"><Users className="w-6 h-6 text-blue-600" /></div>
+                          <div><p className="text-sm text-muted-foreground font-medium">Total Referrals</p><p className="text-3xl font-bold" data-testid="text-aff-referral-count">{referralCount}</p></div>
+                        </div>
+                        <p className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">View referral growth dashboard →</p>
+                      </CardContent>
+                    </Card>
                   </motion.div>
                   <motion.div variants={itemVariants}>
                     <Card className={`shadow-md border-0 h-full cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/40 border ${isEnrolled ? 'border-green-200 dark:border-green-800' : ''}`} onClick={() => navigate("trust_fund")} data-testid="card-trust-fund-overview">

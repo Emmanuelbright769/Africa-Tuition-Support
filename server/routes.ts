@@ -2427,6 +2427,71 @@ export async function registerRoutes(
     });
   });
 
+  // ─── ADMIN: Back-fill referral commissions ────────────────────────────────────
+  // Finds all referred users whose wallets are activated but whose referrer has
+  // never received a commission, and credits them retroactively.
+  app.post("/api/admin/backfill-referral-commissions", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const admin = await storage.getUser(userId);
+    if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+    try {
+      // Get all referred users who have activated wallets
+      const referredWithActivatedWallets = await db.execute(sql`
+        SELECT u.id, u.first_name, u.last_name, u.referred_by, w.balance, w.activated_at
+        FROM users u
+        JOIN wallets w ON w.user_id = u.id
+        WHERE u.referred_by IS NOT NULL
+          AND w.activated = true
+      `);
+
+      const credited: { referredUser: string; referrer: string; amount: number }[] = [];
+      const skipped: { referredUser: string; reason: string }[] = [];
+
+      for (const row of referredWithActivatedWallets.rows as any[]) {
+        const referrer = await storage.getUserByAffiliateCode(row.referred_by);
+        if (!referrer) {
+          skipped.push({ referredUser: `${row.first_name} ${row.last_name}`, reason: "Referrer not found" });
+          continue;
+        }
+
+        // Check if a referral commission was already credited for this user
+        const existingCommission = await db.execute(sql`
+          SELECT id FROM trade_transactions
+          WHERE user_id = ${referrer.id}
+            AND note LIKE ${'%' + row.first_name + '%' + row.last_name + '%'}
+            AND note LIKE '%Referral commission%'
+          LIMIT 1
+        `);
+
+        if (existingCommission.rows.length > 0) {
+          skipped.push({ referredUser: `${row.first_name} ${row.last_name}`, reason: "Commission already credited" });
+          continue;
+        }
+
+        // Credit 5% of the activation balance amount
+        const walletBalance = parseFloat(row.balance ?? "0");
+        const commissionBase = walletBalance > 0 ? walletBalance : 5; // At minimum assume $5 activation
+        const result = await creditReferrerCommission(row.id, commissionBase, "wallet activation (backfill)");
+
+        if (result.credited) {
+          credited.push({
+            referredUser: `${row.first_name} ${row.last_name}`,
+            referrer: `${referrer.firstName} ${referrer.lastName}`,
+            amount: result.commissionAmount ?? 0,
+          });
+        } else {
+          skipped.push({ referredUser: `${row.first_name} ${row.last_name}`, reason: "Commission credit failed" });
+        }
+      }
+
+      res.json({ success: true, credited, skipped, summary: `${credited.length} commissions credited, ${skipped.length} skipped` });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── ADMIN: Enhanced stats ────────────────────────────────────────────────────
   app.get("/api/admin/enhanced-stats", async (req, res) => {
     try {

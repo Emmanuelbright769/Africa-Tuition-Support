@@ -2614,8 +2614,11 @@ export async function registerRoutes(
       if (isNaN(newBal) || newBal < 0) return res.status(400).json({ message: "Invalid balance amount" });
       const curWal = await storage.getOrCreateWallet(targetId);
       await storage.updateWalletBalance(targetId, newBal.toFixed(2));
-      // Auto-activate wallet if balance reaches $5 minimum
-      if (!curWal.activated && newBal >= 5) await storage.activateWallet(targetId);
+      // Auto-activate wallet if balance reaches $5 minimum and fire referral commission
+      if (!curWal.activated && newBal >= 5) {
+        await storage.activateWallet(targetId);
+        creditReferrerCommission(targetId, newBal, "personal wallet activation").catch(() => {});
+      }
       // Record as admin adjustment transaction
       await storage.createTransaction({ userId: targetId, type: "admin_adjustment", amount: newBal.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin adjustment: ${note}` : "Admin wallet balance adjustment" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Updated", message: `Your TSIA wallet balance has been updated to $${newBal.toFixed(2)} by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
@@ -4968,6 +4971,38 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("[CONTACT] Email error:", err.message);
       res.status(500).json({ message: "Failed to send message. Please try again." });
+    }
+  });
+
+  // ─── AUTO BACKFILL: credit missed referral commissions on startup ─────────────
+  setImmediate(async () => {
+    try {
+      const rows = await db.execute(sql`
+        SELECT u.id, u.referred_by, w.balance
+        FROM users u
+        JOIN wallets w ON w.user_id = u.id
+        WHERE u.referred_by IS NOT NULL
+          AND w.activated_at IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM trade_transactions tt
+            WHERE tt.user_id != u.id
+              AND tt.type = 'bot_earning'
+              AND tt.note LIKE '%' || u.first_name || ' ' || u.last_name || '%personal wallet activation%'
+          )
+      `);
+      const missed = rows.rows as { id: number; referred_by: string; balance: string }[];
+      let credited = 0;
+      for (const row of missed) {
+        const result = await creditReferrerCommission(row.id, parseFloat(row.balance), "personal wallet activation (backfill)");
+        if (result.credited) credited++;
+      }
+      if (credited > 0) {
+        console.log(`[REFERRAL BACKFILL] Credited ${credited} missing referral commissions on startup.`);
+      } else {
+        console.log(`[REFERRAL BACKFILL] No missing commissions found.`);
+      }
+    } catch (e: any) {
+      console.error("[REFERRAL BACKFILL] Error:", e.message);
     }
   });
 

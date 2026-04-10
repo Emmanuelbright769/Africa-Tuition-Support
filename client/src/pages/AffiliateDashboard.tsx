@@ -640,7 +640,7 @@ export default function AffiliateDashboard() {
   const { data: personalWalletData, refetch: refetchPersonalWallet } = useQuery<any>({ queryKey: ["/api/wallet"], refetchInterval: 6000 });
   const personalBalance = parseFloat(personalWalletData?.balance ?? "0");
   const walletActivated = personalWalletData?.activated === true;
-  const { data: referralStats } = useQuery<any>({ queryKey: ["/api/affiliate/referral-stats"], enabled: walletActivated });
+  const { data: referralStats } = useQuery<any>({ queryKey: ["/api/affiliate/referral-stats"] });
 
   // Wallet activation popup — placed AFTER personalWalletData declaration to avoid TDZ
   const [activationPopupOpen, setActivationPopupOpen] = useState(false);
@@ -957,7 +957,7 @@ export default function AffiliateDashboard() {
           <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
             {/* ── WALLET GATE ── */}
-            {!walletActivated && activeSection !== "overview" && (
+            {!walletActivated && activeSection !== "overview" && activeSection !== "referrals" && (
               <motion.div variants={itemVariants} className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
                 <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
                   <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />
@@ -2145,7 +2145,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── REFERRALS ── */}
-            {activeSection === "referrals" && walletActivated && (
+            {activeSection === "referrals" && (
               <ReferralSection
                 referralStats={referralStats}
                 referrals={referrals}

@@ -1066,16 +1066,22 @@ export async function registerRoutes(
       const withdrawAmt = parseFloat(amount);
       const currentBalance = parseFloat(wallet.balance);
       const MIN_BALANCE = 2;
-      if (withdrawAmt > currentBalance) {
+      if (withdrawAmt <= 0 || withdrawAmt > currentBalance) {
         return res.status(400).json({ message: "Insufficient balance" });
       }
       if (currentBalance - withdrawAmt < MIN_BALANCE) {
         return res.status(400).json({ message: `A minimum of $${MIN_BALANCE} must remain in your wallet` });
       }
-      // Deduct from wallet
+
+      // ── Fee calculation: 1% network handling charge (no VAT on crypto) ────
+      const feeAmt    = parseFloat((withdrawAmt * CURRENCY_RATES.CRYPTO_WITHDRAW_FEE).toFixed(2));
+      const netAmt    = parseFloat((withdrawAmt - feeAmt).toFixed(2));
+
+      // Deduct full requested amount from wallet
       const newBalance = (currentBalance - withdrawAmt).toFixed(2);
       await storage.updateWalletBalance(userId, newBalance);
-      // Record transaction — embed network and (truncated) address in description
+
+      // Record transaction
       const networkLabel = network === "bep20" ? "BEP20/BSC" : "TRC20/TRON";
       const truncated = address.trim().length > 16
         ? `${address.trim().slice(0, 8)}…${address.trim().slice(-6)}`
@@ -1084,25 +1090,28 @@ export async function registerRoutes(
         userId,
         type: "crypto_withdrawal",
         amount: (-withdrawAmt).toFixed(2),
-        fee: "0.00",
+        fee: feeAmt.toFixed(2),
         paymentMethod: "crypto",
-        description: `USDT Withdrawal (${networkLabel}) to ${truncated} | Full address: ${address.trim()} | Processing within 24h`,
+        description: `USDT Withdrawal (${networkLabel}) to ${truncated} — ${(CURRENCY_RATES.CRYPTO_WITHDRAW_FEE * 100).toFixed(0)}% fee: $${feeAmt.toFixed(2)} | Net: $${netAmt.toFixed(2)} | Full address: ${address.trim()} | Processing within 24h`,
       });
+
       // In-app notification
       const notif = await storage.createNotification({
         userId,
         type: "wallet_credit",
         title: "Crypto Withdrawal Received ✓",
-        message: `Your USDT withdrawal of $${withdrawAmt.toFixed(2)} (${networkLabel}) has been received and will be processed within 24 hours.`,
-        data: { network, address: address.trim(), amount: withdrawAmt },
+        message: `Your USDT withdrawal of $${netAmt.toFixed(2)} (after 1% fee) via ${networkLabel} has been received and will be processed within 24 hours.`,
+        data: { network, address: address.trim(), amount: netAmt, fee: feeAmt },
         isRead: false,
       });
       pushToUser(userId, "notification", notif);
       const updated = await storage.getOrCreateWallet(userId);
       res.json({
-        message: `Your USDT withdrawal of $${withdrawAmt.toFixed(2)} has been received and will be processed within 24 hours.`,
+        message: `Your USDT withdrawal has been received. You will receive $${netAmt.toFixed(2)} after the 1% handling fee ($${feeAmt.toFixed(2)}). Processing within 24 hours.`,
         wallet: updated,
         amount: withdrawAmt,
+        netAmount: netAmt,
+        fee: feeAmt,
         network,
         address: address.trim(),
       });

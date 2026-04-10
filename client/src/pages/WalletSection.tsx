@@ -98,7 +98,7 @@ export default function WalletSection() {
   const [cwAddress, setCwAddress] = useState("");
   const [cwAmount, setCwAmount] = useState("");
   const [cwSuccessOpen, setCwSuccessOpen] = useState(false);
-  const [cwSuccessData, setCwSuccessData] = useState<{ amount: number; network: string } | null>(null);
+  const [cwSuccessData, setCwSuccessData] = useState<{ amount: number; netAmount: number; fee: number; network: string } | null>(null);
 
   // ── Withdraw method ────────────────────────────────────────────────────
   const [withdrawMethod, setWithdrawMethod] = useState<"bank" | "crypto">("bank");
@@ -226,7 +226,7 @@ export default function WalletSection() {
       refetchWithdrawals();
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       setWithdrawOpen(false);
-      setCwSuccessData({ amount: d.amount, network: d.network });
+      setCwSuccessData({ amount: d.amount, netAmount: d.netAmount ?? d.amount, fee: d.fee ?? 0, network: d.network });
       setCwSuccessOpen(true);
       setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
     },
@@ -431,7 +431,7 @@ export default function WalletSection() {
                   )}
                 </p>
               )}
-              <p className="text-white/50 text-xs mb-1">Available balance · 7.5% VAT on NGN bank withdrawals · No VAT on USDT</p>
+              <p className="text-white/50 text-xs mb-1">Available balance · 7.5% VAT on bank withdrawals · 1% fee on USDT crypto</p>
               <p className="text-white/40 text-[10px] mb-5">Minimum $2 must remain in wallet at all times for seamless operations</p>
 
               <div className="space-y-2">
@@ -852,7 +852,7 @@ export default function WalletSection() {
               </div>
               <div className="flex-1">
                 <p className="font-bold text-sm">USDT Crypto Withdrawal</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Receive USDT on BEP20 (BSC) or TRC20 (TRON). No VAT — full amount credited within 24 hours.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Receive USDT on BEP20 (BSC) or TRC20 (TRON). No VAT — 1% handling fee. Processed within 24 hours.</p>
               </div>
               <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-amber-500 transition-colors shrink-0" />
             </button>
@@ -1017,22 +1017,41 @@ export default function WalletSection() {
                 <Input id="cw-amount" type="number" min={1} step={0.01} placeholder="Min $1.00"
                   value={cwAmount} onChange={e => setCwAmount(e.target.value)}
                   className="mt-1 text-lg font-bold" data-testid="input-cw-amount" />
-                {parseFloat(cwAmount) > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Balance after: ${Math.max(0, balance - parseFloat(cwAmount)).toFixed(2)} (min $2 retained)
-                  </p>
-                )}
-                {parseFloat(cwAmount) > 0 && balance - parseFloat(cwAmount) < 2 && (
-                  <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3.5 h-3.5" /> Must keep $2 minimum in wallet
-                  </p>
-                )}
               </div>
+              {/* Live fee breakdown */}
+              {parseFloat(cwAmount) > 0 && (() => {
+                const amt  = parseFloat(cwAmount);
+                const fee  = parseFloat((amt * 0.01).toFixed(2));
+                const net  = parseFloat((amt - fee).toFixed(2));
+                const bal  = balance - amt;
+                return (
+                  <div className="rounded-xl border bg-slate-50 dark:bg-slate-800/40 p-3 space-y-1.5 text-sm">
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                      <span>Withdrawal amount</span><span>${amt.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-red-500">
+                      <span>Handling fee (1%)</span><span>−${fee.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-tsia-green border-t pt-1.5">
+                      <span>You receive (USDT)</span><span>${net.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground pt-0.5 border-t">
+                      <span>Wallet balance after</span>
+                      <span className={bal < 2 ? "text-red-500 font-semibold" : ""}>${Math.max(0, bal).toFixed(2)}</span>
+                    </div>
+                    {bal < 2 && (
+                      <p className="text-xs text-red-500 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Must keep $2 minimum in wallet
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
               {/* 24h notice */}
               <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
                 <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800 dark:text-amber-300">
-                  <strong>Manual processing:</strong> USDT sent within 24 hours. No VAT — you receive the full amount.
+                  <strong>Manual processing:</strong> USDT sent within 24 hours. A 1% handling fee applies — no VAT.
                 </p>
               </div>
               <DialogFooter>
@@ -1050,7 +1069,9 @@ export default function WalletSection() {
                   data-testid="btn-confirm-crypto-wd"
                 >
                   {cryptoWithdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Coins className="w-4 h-4 mr-2" />}
-                  Request ${parseFloat(cwAmount || "0").toFixed(2)} USDT
+                  {parseFloat(cwAmount) > 0
+                    ? `Receive $${(parseFloat(cwAmount) * 0.99).toFixed(2)} USDT`
+                    : "Confirm Withdrawal"}
                 </Button>
               </DialogFooter>
             </div>
@@ -1068,14 +1089,26 @@ export default function WalletSection() {
             <div>
               <h3 className="text-xl font-black">Withdrawal Received!</h3>
               <p className="text-muted-foreground text-sm mt-1">
-                Your ${cwSuccessData?.amount.toFixed(2)} USDT withdrawal ({cwSuccessData?.network === "bep20" ? "BEP20" : "TRC20"}) has been received.
+                {cwSuccessData?.network === "bep20" ? "BEP20/BSC" : "TRC20/TRON"} · Processing within 24 hours
               </p>
+            </div>
+            {/* Fee summary */}
+            <div className="rounded-xl border bg-slate-50 dark:bg-slate-800/40 p-3 w-full space-y-1.5 text-sm">
+              <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                <span>Requested</span><span>${cwSuccessData?.amount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-red-500">
+                <span>Handling fee (1%)</span><span>−${cwSuccessData?.fee.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-tsia-green border-t pt-1.5">
+                <span>You will receive (USDT)</span><span>${cwSuccessData?.netAmount.toFixed(2)}</span>
+              </div>
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 w-full text-left">
               <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">What happens next?</p>
               <ul className="text-xs text-amber-700 dark:text-amber-400 mt-2 space-y-1">
                 <li>• TSIA ops team processes all crypto withdrawals within 24 hours</li>
-                <li>• You'll receive the full USDT amount — no VAT deducted</li>
+                <li>• 1% handling fee deducted — no VAT applied</li>
                 <li>• Check your wallet transaction history for status updates</li>
               </ul>
             </div>

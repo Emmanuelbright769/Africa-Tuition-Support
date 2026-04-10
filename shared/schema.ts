@@ -253,6 +253,7 @@ export const WAEC_GRADE_WEIGHTS: Record<string, number> = {
 export const CURRENCY_RATES = {
   USD_TO_NGN_PAYMENT: 1480,
   USD_TO_NGN_PAYOUT: 1280,
+  CRYPTO_WITHDRAW_FEE: 0.01, // 1% network handling fee — no VAT, applied to USDT withdrawals
 };
 
 export const WAEC_COMPULSORY_SUBJECTS = ["Mathematics", "English Language"];

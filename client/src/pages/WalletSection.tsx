@@ -756,76 +756,79 @@ export default function WalletSection() {
 
       {/* ══════════════════ WITHDRAW — STEP 1: CHOOSE METHOD ══════════════════ */}
       <Dialog open={withdrawChoiceOpen} onOpenChange={setWithdrawChoiceOpen}>
-        <DialogContent className="max-w-xs p-0 overflow-hidden rounded-3xl">
-          {/* Header */}
-          <div className="bg-gradient-to-br from-[#1a4731] to-[#0f2a1e] px-6 pt-6 pb-5 text-white">
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
-                <ArrowUpRight className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="font-black text-lg leading-tight">Withdraw Funds</h2>
-                <p className="text-white/60 text-xs">Select a withdrawal method</p>
+        <DialogContent className="max-w-xs w-[calc(100vw-2rem)] p-0 rounded-3xl overflow-visible" style={{ maxHeight: "90vh" }}>
+          <div className="flex flex-col rounded-3xl overflow-hidden" style={{ maxHeight: "90vh" }}>
+            {/* Header */}
+            <div className="bg-gradient-to-br from-[#1a4731] to-[#0f2a1e] px-5 pt-5 pb-4 text-white shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-2xl bg-white/10 flex items-center justify-center">
+                  <ArrowUpRight className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="font-black text-base leading-tight">Withdraw Funds</h2>
+                  <p className="text-white/60 text-[11px]">Select a withdrawal method</p>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="p-4 space-y-3">
-            {/* ── Bank Withdrawal — Coming Soon ── */}
-            <div
-              className="relative w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed opacity-60"
-              data-testid="btn-choose-bank-withdraw"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
-                <Banknote className="w-6 h-6 text-blue-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-bold text-sm text-slate-500 dark:text-slate-400">Bank Withdrawal</p>
-                  <span className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Coming Soon</span>
+            <div className="p-4 space-y-3 overflow-y-auto">
+              {/* ── Bank Withdrawal — Coming Soon ── */}
+              <div
+                className="w-full flex items-center gap-3 p-3.5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed opacity-60"
+                data-testid="btn-choose-bank-withdraw"
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                  <Banknote className="w-5 h-5 text-blue-400" />
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5 truncate">NGN to Nigerian bank account</p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="font-bold text-sm text-slate-500 dark:text-slate-400">Bank Withdrawal</p>
+                    <span className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wide">Coming Soon</span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">NGN to Nigerian bank account</p>
+                </div>
+                <Lock className="w-4 h-4 text-slate-400 shrink-0" />
               </div>
-              <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+
+              {/* ── Crypto Withdrawal — Active ── */}
+              <button
+                onClick={() => {
+                  setWithdrawChoiceOpen(false);
+                  setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
+                  setCwOpen(true);
+                }}
+                className="w-full flex items-center gap-3 p-3.5 rounded-2xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 active:scale-[0.98] transition-all text-left"
+                data-testid="btn-choose-crypto-withdraw"
+              >
+                <div className="w-10 h-10 rounded-xl bg-amber-400/20 flex items-center justify-center shrink-0">
+                  <Coins className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="font-bold text-sm text-amber-800 dark:text-amber-200">USDT Crypto</p>
+                    <span className="text-[10px] font-bold bg-green-100 dark:bg-green-900/40 text-tsia-green px-2 py-0.5 rounded-full uppercase tracking-wide">Active</span>
+                  </div>
+                  <p className="text-xs text-amber-700/70 dark:text-amber-400/70 mt-0.5">BEP20 (BSC) · TRC20 (TRON) · 1% fee</p>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-amber-500 shrink-0" />
+              </button>
             </div>
 
-            {/* ── Crypto Withdrawal — Active ── */}
-            <button
-              onClick={() => {
-                setWithdrawChoiceOpen(false);
-                setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
-                setCwOpen(true);
-              }}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-amber-300/60 dark:border-amber-600/40 bg-amber-50 dark:bg-amber-900/20 hover:border-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all text-left group"
-              data-testid="btn-choose-crypto-withdraw"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-amber-400/20 flex items-center justify-center shrink-0 group-hover:bg-amber-400/30 transition-colors">
-                <Coins className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-bold text-sm text-amber-800 dark:text-amber-200">USDT Crypto</p>
-                  <span className="text-[10px] font-bold bg-tsia-green/20 text-tsia-green px-2 py-0.5 rounded-full uppercase tracking-wide">Active</span>
-                </div>
-                <p className="text-xs text-amber-700/70 dark:text-amber-400/70 mt-0.5">BEP20 (BSC) or TRC20 (TRON) · 1% fee · 24h</p>
-              </div>
-              <ArrowUpRight className="w-4 h-4 text-amber-500 shrink-0" />
-            </button>
-          </div>
-
-          <div className="px-4 pb-4">
-            <Button variant="ghost" className="w-full text-sm text-muted-foreground" onClick={() => setWithdrawChoiceOpen(false)}>
-              Cancel
-            </Button>
+            <div className="px-4 pb-4 shrink-0">
+              <Button variant="ghost" className="w-full text-sm text-muted-foreground" onClick={() => setWithdrawChoiceOpen(false)}>
+                Cancel
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* ══════════════════ WITHDRAW — STEP 2: CRYPTO FORM ══════════════════ */}
       <Dialog open={cwOpen} onOpenChange={v => { setCwOpen(v); if (!v) { setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); } }}>
-        <DialogContent className="max-w-sm p-0 overflow-hidden rounded-3xl">
+        <DialogContent className="max-w-sm w-[calc(100vw-2rem)] p-0 rounded-3xl overflow-visible" style={{ maxHeight: "90vh" }}>
+        <div className="flex flex-col rounded-3xl overflow-hidden" style={{ maxHeight: "90vh" }}>
           {/* Header */}
-          <div className="bg-gradient-to-br from-amber-500 to-amber-700 px-6 pt-6 pb-5 text-white">
+          <div className="bg-gradient-to-br from-amber-500 to-amber-700 px-6 pt-6 pb-5 text-white shrink-0">
             <button onClick={() => { setCwOpen(false); setWithdrawChoiceOpen(true); }}
               className="flex items-center gap-1 text-white/70 hover:text-white text-xs mb-3 transition-colors"
               data-testid="btn-back-to-choice">
@@ -842,7 +845,7 @@ export default function WalletSection() {
             </div>
           </div>
 
-          <div className="p-5 space-y-4">
+          <div className="p-5 space-y-4 overflow-y-auto flex-1">
             {/* Network Selector */}
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Select Network</p>
@@ -967,6 +970,7 @@ export default function WalletSection() {
               }
             </Button>
             <Button variant="ghost" className="w-full text-sm text-muted-foreground" onClick={() => setCwOpen(false)}>Cancel</Button>
+          </div>
           </div>
         </DialogContent>
       </Dialog>

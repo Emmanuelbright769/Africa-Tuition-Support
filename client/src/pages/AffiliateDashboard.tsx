@@ -410,10 +410,19 @@ export default function AffiliateDashboard() {
   // Guard ref: declared here (with all other refs/state) so it is initialized before any function references it
   const botCompletingRef = useRef(false);
 
-  // Determine if we're inside the trading window (1PM–1AM GMT)
+  // Determine if we're inside the trading window (Mon–Fri 1PM–1AM GMT; Sat before 1AM for Fri session tail)
   const ukHourNow = parseInt(ukNow.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
-  const isInTradingWindow = ukHourNow >= 13 || ukHourNow < 1;
-  // Bot is active only while: started, <12h elapsed, AND within the 1PM–1AM trading window
+  const ukDayNum  = new Date(ukNow.toLocaleString("en-US", { timeZone: "Europe/London" })).getDay(); // 0=Sun,1=Mon…6=Sat
+  // Afternoon session: Mon–Fri 1PM–midnight (can start new session)
+  const isWeekdayAfternoon = ukDayNum >= 1 && ukDayNum <= 5 && ukHourNow >= 13;
+  // After-midnight tail: Tue–Sat before 1AM (completing a session started the previous evening)
+  const isMidnightTail = ukDayNum >= 2 && ukDayNum <= 6 && ukHourNow < 1;
+  const isInTradingWindow  = isWeekdayAfternoon || isMidnightTail;
+  // Can ACTIVATE a new session only Mon–Fri afternoon (not the after-midnight tail)
+  const isActivationAllowed = isWeekdayAfternoon;
+  const isWeekendClosed = ukDayNum === 0 || (ukDayNum === 6 && ukHourNow >= 1);
+  const isFriday = ukDayNum === 5;
+  // Bot is active only while: started, <12h elapsed, AND within the trading window
   const botActive = botActivatedAt !== null && (Date.now() - botActivatedAt) < 12 * 3600 * 1000 && isInTradingWindow;
   const botMinsRemaining = botActivatedAt ? Math.max(0, Math.floor((botActivatedAt + 12 * 3600000 - Date.now()) / 60000)) : 0;
   const botHoursLeft = Math.floor(botMinsRemaining / 60);
@@ -427,7 +436,7 @@ export default function AffiliateDashboard() {
     try {
       const r = await apiRequest("POST", "/api/trade/bot/complete", { activatedAt: sessionStart });
       if (r.ok) {
-        // Only clear client-side session after confirmed server success
+        // Confirmed server success — clear session
         setBotActivatedAt(null);
         try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
         const data = await r.json();
@@ -454,12 +463,20 @@ export default function AffiliateDashboard() {
           });
         }
       } else {
-        // Keep session alive client-side so it retries on next page load / re-auth
-        if (isAutoOff) toast({ title: "Bot Session Pending", description: "Could not reach the server right now. Your session is saved and will complete when you return.", variant: "destructive" });
+        // 4xx = non-recoverable (no balance, stale session, etc.) — clear locally, no retry
+        // 5xx = server error — keep locally so user can retry on next visit
+        const status = r.status;
+        if (status >= 400 && status < 500) {
+          setBotActivatedAt(null);
+          try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
+          // Silently clear — no toast needed for stale/invalid sessions
+        } else if (isAutoOff) {
+          toast({ title: "Bot Session Pending", description: "Server unavailable. Your session is saved and will complete when the server recovers.", variant: "destructive" });
+        }
       }
     } catch {
-      // Keep session alive — network error, will retry
-      if (isAutoOff) toast({ title: "Bot Session Pending", description: "Network error. Your bot session is saved and will complete automatically.", variant: "destructive" });
+      // Network error — keep session alive so it retries when connectivity returns
+      if (isAutoOff) toast({ title: "Bot Session Pending", description: "Network error. Your bot session is saved and will complete automatically when you reconnect.", variant: "destructive" });
     } finally {
       botCompletingRef.current = false;
     }
@@ -514,20 +531,24 @@ export default function AffiliateDashboard() {
     const interval = setInterval(() => {
       const now = new Date();
       setUkNow(now);
-      const ukHour = parseInt(now.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
+      const ukH  = parseInt(now.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
+      const ukD  = new Date(now.toLocaleString("en-US", { timeZone: "Europe/London" })).getDay();
       const ukMinute = now.getMinutes();
-      const windowOpen = ukHour >= 13 || ukHour < 1;
-      // Auto-off after 12h elapsed OR once the 1AM GMT window closes
+      // Weekday-aware window check (Mon-Fri afternoon + Mon-Sat midnight tail)
+      const wdAfternoon = ukD >= 1 && ukD <= 5 && ukH >= 13;
+      const midnightTail = ukD >= 2 && ukD <= 6 && ukH < 1;
+      const windowOpen = wdAfternoon || midnightTail;
+      // Auto-off after 12h elapsed OR once the trading window closes
       if (botActivatedAt && ((Date.now() - botActivatedAt) >= 12 * 3600 * 1000 || !windowOpen)) {
         completeBotSession(true, botActivatedAt);
         return;
       }
-      // 30-min pre-1PM UK window-open reminder
-      if (ukHour === 12 && ukMinute === 30 && !botActive) {
+      // 30-min pre-1PM reminder (weekdays only)
+      if (ukD >= 1 && ukD <= 5 && ukH === 12 && ukMinute === 30 && !botActive) {
         if (Notification.permission === "granted") {
           new Notification("TSIA Trade Market", { body: "30 minutes until 1:00 PM — Time to activate your Trading Bot!", icon: "/favicon.ico" });
         }
-        toast({ title: "⏰ Bot Reminder", description: "It's 12:30 PM — the activation window opens in 30 minutes at 1:00 PM GMT and stays open for 12 hours!", className: "border-amber-500" });
+        toast({ title: "Bot Reminder", description: "It's 12:30 PM — the activation window opens in 30 minutes at 1:00 PM GMT and stays open for 12 hours!", className: "border-amber-500" });
       }
     }, 30000); // every 30 seconds
     return () => clearInterval(interval);
@@ -1134,19 +1155,25 @@ export default function AffiliateDashboard() {
                 {/* ===== TRADING BOT ACTIVATION PANEL ===== */}
                 <motion.div variants={itemVariants}>
                   {(() => {
-                    const ukHour = parseInt(ukNow.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
+                    const ukHour = ukHourNow;
                     const ukMin  = ukNow.getMinutes();
-                    // Window is open from 1PM GMT until 1AM GMT (12 hours)
-                    const isActivationWindow = ukHour >= 13 || ukHour < 1;
-                    const isWarning = ukHour === 12 && ukMin >= 30;
-                    // How many minutes until the window opens (only relevant when window is closed)
+                    // Use the outer-scope weekday-aware flags
+                    const isActivationWindow = isActivationAllowed;
+                    const isWarning = ukDayNum >= 1 && ukDayNum <= 5 && ukHour === 12 && ukMin >= 30;
+                    // How many minutes until the window opens (Mon–Fri 1PM)
                     const minsUntilOpen = isActivationWindow ? 0 : (() => {
                       const nowMins = ukHour * 60 + ukMin;
                       const openMins = 13 * 60;
+                      if (isWeekendClosed) {
+                        // Days until Monday 1PM
+                        const daysUntilMon = ukDayNum === 0 ? 1 : ukDayNum === 6 ? 2 : 0;
+                        return daysUntilMon * 24 * 60 + openMins;
+                      }
                       return nowMins < openMins ? openMins - nowMins : (24 * 60 - nowMins + openMins);
                     })();
                     const hoursUntilOpen = Math.floor(minsUntilOpen / 60);
                     const minsUntilOpenRem = minsUntilOpen % 60;
+                    const statusLabel = botActive ? "ACTIVE" : isActivationWindow ? "WINDOW OPEN" : isWeekendClosed ? "WEEKEND CLOSED" : "OFFLINE";
                     return (
                       <div className={`rounded-2xl overflow-hidden shadow-xl border-2 ${botActive ? "border-green-500" : isActivationWindow ? "border-amber-400" : "border-slate-200 dark:border-slate-700"}`}>
                         {/* Header */}
@@ -1158,12 +1185,12 @@ export default function AffiliateDashboard() {
                               </div>
                               <div>
                                 <p className="font-bold text-lg leading-tight">AI Trading Bot</p>
-                                <p className="text-xs opacity-80">Window opens 1:00 PM GMT · Runs for 12 hours · Auto-off at 1:00 AM</p>
+                                <p className="text-xs opacity-80">Mon–Fri · Opens 1:00 PM GMT · 12-hour session · Auto-off at 1:00 AM</p>
                               </div>
                             </div>
                             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${botActive ? "bg-green-500/30 text-green-100" : isActivationWindow ? "bg-amber-500/30 text-amber-100" : "bg-white/10 text-white/70"}`}>
                               <span className={`w-2 h-2 rounded-full ${botActive ? "bg-green-300 animate-pulse" : isActivationWindow ? "bg-amber-300 animate-pulse" : "bg-white/40"}`} />
-                              {botActive ? "ACTIVE" : isActivationWindow ? "WINDOW OPEN" : "OFFLINE"}
+                              {statusLabel}
                             </div>
                           </div>
                           {botActive ? (
@@ -1172,6 +1199,18 @@ export default function AffiliateDashboard() {
                               <div>
                                 <p className="text-sm font-semibold">Bot is running — auto-off in {botHoursLeft}h {botMinsLeft}m</p>
                                 <p className="text-xs text-green-200 mt-0.5">Executing 2% daily trades using arithmetic algorithm strategy</p>
+                              </div>
+                            </div>
+                          ) : isWeekendClosed ? (
+                            <div className="bg-white/10 rounded-xl p-3 flex items-center gap-3">
+                              <Timer className="w-5 h-5 text-white/60 shrink-0" />
+                              <div>
+                                <p className="text-sm font-semibold">Market closed for the weekend</p>
+                                <p className="text-xs text-white/70 mt-0.5">
+                                  Trading resumes <strong className="text-white">Monday at 1:00 PM GMT</strong>
+                                  {hoursUntilOpen > 0 ? ` (in ${Math.floor(hoursUntilOpen / 24)}d ${hoursUntilOpen % 24}h)` : ""}.
+                                  {isFriday ? " Friday is the last trading day of the week." : ""}
+                                </p>
                               </div>
                             </div>
                           ) : isWarning ? (
@@ -1186,9 +1225,13 @@ export default function AffiliateDashboard() {
                             <div className="bg-white/15 rounded-xl p-3 flex items-center gap-3">
                               <Bell className="w-5 h-5 text-amber-200 shrink-0 animate-bounce" />
                               <div>
-                                <p className="text-sm font-semibold">Activation window is open — tap to start!</p>
+                                <p className="text-sm font-semibold">
+                                  Activation window is open — tap to start!
+                                  {isFriday ? " (Last session of the week)" : ""}
+                                </p>
                                 <p className="text-xs text-amber-200 mt-0.5">
                                   Window closes at <strong className="text-white">1:00 AM GMT</strong>. Bot runs for 12 hours from activation.
+                                  {isFriday ? " Next session available Monday." : ""}
                                 </p>
                               </div>
                             </div>
@@ -1196,7 +1239,7 @@ export default function AffiliateDashboard() {
                             <div className="bg-white/10 rounded-xl p-3">
                               <p className="text-sm text-white/80">
                                 UK time: <strong className="text-white">{ukNow.toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}</strong>
-                                {" · "} Window opens in <strong className="text-white">{hoursUntilOpen > 0 ? `${hoursUntilOpen}h ` : ""}{minsUntilOpenRem}m</strong> at <strong className="text-white">1:00 PM GMT</strong>.
+                                {" · "} Window opens in <strong className="text-white">{hoursUntilOpen > 0 ? `${hoursUntilOpen}h ` : ""}{minsUntilOpenRem}m</strong> at <strong className="text-white">1:00 PM GMT</strong> (Mon–Fri).
                               </p>
                             </div>
                           )}
@@ -1228,8 +1271,10 @@ export default function AffiliateDashboard() {
                               <div className="flex-1">
                                 <p className="text-xs text-muted-foreground">
                                   {isActivationWindow
-                                    ? "Window open now — activates for 12 hours from the moment you tap."
-                                    : `Opens at 1:00 PM GMT${hoursUntilOpen > 0 ? ` (in ${hoursUntilOpen}h ${minsUntilOpenRem}m)` : ""}.`}
+                                    ? `Window open now${isFriday ? " — last session of the week" : ""}. Activates for 12 hours from the moment you tap.`
+                                    : isWeekendClosed
+                                      ? "Market closed. Resumes Monday at 1:00 PM GMT."
+                                      : `Opens at 1:00 PM GMT${hoursUntilOpen > 0 ? ` (in ${hoursUntilOpen}h ${minsUntilOpenRem}m)` : ""}.`}
                                 </p>
                               </div>
                               <Button
@@ -1239,7 +1284,8 @@ export default function AffiliateDashboard() {
                                 data-testid="button-bot-activate"
                                 className={`${isActivationWindow ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-muted text-muted-foreground cursor-not-allowed"} font-bold`}
                               >
-                                <Power className="w-3.5 h-3.5 mr-1.5" /> {isActivationWindow ? "Activate Bot" : "Opens at 1:00 PM"}
+                                <Power className="w-3.5 h-3.5 mr-1.5" />
+                                {isActivationWindow ? "Activate Bot" : isWeekendClosed ? "Opens Monday" : "Opens at 1:00 PM"}
                               </Button>
                             </>
                           )}

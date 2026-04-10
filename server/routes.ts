@@ -1968,16 +1968,15 @@ export async function registerRoutes(
     return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
   }
   function getLossDaysForWeek(weekNum: number): Set<number> {
-    // Returns 2 distinct ISO weekday numbers (1=Mon … 7=Sun) deterministically per week
-    const d1 = ((weekNum * 7 + 3) % 7) + 1;
-    let d2   = ((weekNum * 13 + 11) % 7) + 1;
-    if (d2 === d1) d2 = (d2 % 7) + 1;
-    return new Set([d1, d2]);
+    // Returns exactly 1 ISO weekday number (1=Mon…5=Fri) deterministically per week
+    // Only picks from Mon-Fri (1-5) since weekend trading is disabled
+    const d1 = ((weekNum * 7 + 3) % 5) + 1;
+    return new Set([d1]);
   }
   function getLossRateForDay(weekNum: number, isoDay: number): number {
-    // Deterministic loss rate between 0.5% and 1.5%
+    // Deterministic loss rate between 0.5% and 2.0% (capped same as profit)
     const seed = (weekNum * 37 + isoDay * 17) % 100;
-    return 0.005 + seed / 10000; // 0.005 → 0.0149
+    return 0.005 + (seed / 100) * 0.015; // 0.5% → 2.0%
   }
   // ────────────────────────────────────────────────────────────────────────────
 
@@ -1986,6 +1985,14 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      // Weekend check: block activations on Saturday (after 1AM) and all of Sunday (UK time)
+      const ukNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" }));
+      const ukDay  = ukNow.getDay();   // 0=Sun, 1=Mon … 6=Sat
+      const ukHour = ukNow.getHours();
+      const isWeekend = ukDay === 0 || (ukDay === 6 && ukHour >= 1);
+      const isBeforeOpen = ukHour < 13 && !(ukDay >= 2 && ukDay <= 6 && ukHour < 1);
+      if (isWeekend) return res.status(400).json({ message: "The market is closed on weekends. Trading resumes Monday at 1:00 PM GMT." });
+      if (isBeforeOpen) return res.status(400).json({ message: "The activation window opens at 1:00 PM GMT (Mon–Fri)." });
       const wallet = await storage.getOrCreateTradeWallet(userId);
       if (parseFloat(wallet.tradeBalance) <= 0) return res.status(400).json({ message: "No trade balance." });
       const now = new Date();
@@ -2063,6 +2070,8 @@ export async function registerRoutes(
           data: { loss: lossAmount, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance },
           isRead: false,
         });
+        // Clear DB botActivatedAt so the session doesn't replay on next load
+        await storage.setBotActivatedAt(userId, null);
         return res.json({
           earning: (-lossAmount).toFixed(6),
           elapsedHours,
@@ -2117,6 +2126,8 @@ export async function registerRoutes(
       storage.getUser(userId).then(u => {
         if (u) sendBotEarningsEmail(u.email, u.firstName, earning.toFixed(2), parseFloat(updatedWallet.tradeBalance).toFixed(2)).catch((err: any) => console.error("[EMAIL] Bot earnings email failed:", err?.message ?? err));
       });
+      // Clear DB botActivatedAt so the session doesn't replay on next load
+      await storage.setBotActivatedAt(userId, null);
       res.json({
         earning: earning.toFixed(6),
         elapsedHours,

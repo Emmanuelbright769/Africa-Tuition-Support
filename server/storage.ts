@@ -236,6 +236,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteUserById(id: number): Promise<void> {
+    // Fetch user email first (needed for OTP codes which are keyed by email, not user_id)
+    const [targetUser] = await db.select({ email: users.email }).from(users).where(eq(users.id, id));
+    const userEmail = targetUser?.email;
+
     // Must delete all related records in dependency order before removing the user
     await db.transaction(async (tx) => {
       // 1. ecommerce chat messages — delete any message where this user is the sender
@@ -334,8 +338,10 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(fileUploads).where(eq(fileUploads.userId, id));
       // 30. loans
       await tx.delete(loans).where(eq(loans.userId, id));
-      // 31. otp codes
-      await tx.delete(otpCodes).where(eq(otpCodes.userId, id));
+      // 31. otp codes — keyed by email, not user_id
+      if (userEmail) {
+        await tx.delete(otpCodes).where(eq(otpCodes.email, userEmail));
+      }
       // 32. tour bookings
       await tx.delete(tourBookings).where(eq(tourBookings.userId, id));
       // 33. finally delete the user

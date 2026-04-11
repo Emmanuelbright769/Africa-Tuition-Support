@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, TrendingUp, Zap, Globe, Lock, RefreshCw, Info, ChevronRight, ChevronDown, BarChart3, Coins, Receipt } from "lucide-react";
+import { Shield, TrendingUp, Zap, Globe, Lock, RefreshCw, Info, ChevronRight, ChevronDown, BarChart3, Coins, Receipt, ArrowUpRight } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   Area, AreaChart,
@@ -34,6 +34,7 @@ type CommissionData = {
     totalFees: number;
     totalPoolPaid: number;
     totalNetProfit: number;
+    totalWithdrawals: number;
   };
 };
 
@@ -404,23 +405,39 @@ export default function ReserveFund() {
               <div className="px-5 pb-5 space-y-5">
 
                 {/* Summary stat pills */}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {[
-                    { label: "E-Commerce (8%)",    value: totals?.totalEcom ?? 0,       color: "text-tsia-green",  icon: Coins },
-                    { label: "Withdrawal Fees",    value: totals?.totalFees ?? 0,       color: "text-blue-500",   icon: Receipt },
-                    { label: "Affiliate Pool Paid", value: totals?.totalPoolPaid ?? 0,  color: "text-violet-500", icon: Zap },
-                    { label: "Net Platform Profit", value: totals?.totalNetProfit ?? 0, color: "text-[#f0c040]",  icon: TrendingUp },
+                    { label: "E-Commerce (8%)",    value: totals?.totalEcom ?? 0,       color: "text-tsia-green",  icon: Coins,      isMoney: true },
+                    { label: "Affiliate Pool Paid", value: totals?.totalPoolPaid ?? 0,  color: "text-violet-500", icon: Zap,        isMoney: true },
+                    { label: "Net Platform Profit", value: totals?.totalNetProfit ?? 0, color: "text-[#f0c040]",  icon: TrendingUp, isMoney: true },
                   ].map(stat => (
                     <div key={stat.label} className="bg-muted/50 rounded-xl p-3">
                       <div className="flex items-center gap-1.5 mb-1">
                         <stat.icon className={`w-3.5 h-3.5 ${stat.color}`} />
                         <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">{stat.label}</span>
                       </div>
-                      <p className={`font-black text-base ${stat.color}`}>
-                        ${stat.value.toFixed(2)}
-                      </p>
+                      <p className={`font-black text-base ${stat.color}`}>${stat.value.toFixed(2)}</p>
                     </div>
                   ))}
+                </div>
+                {/* Withdrawals row — fees + count */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Receipt className="w-3.5 h-3.5 text-blue-500" />
+                      <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Commissions Taken</span>
+                    </div>
+                    <p className="font-black text-base text-blue-600">${(totals?.totalFees ?? 0).toFixed(2)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">withdrawal fee revenue</p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <ArrowUpRight className="w-3.5 h-3.5 text-slate-500" />
+                      <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Withdrawals</span>
+                    </div>
+                    <p className="font-black text-base text-slate-700 dark:text-slate-300">{(totals?.totalWithdrawals ?? 0).toLocaleString()}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">total processed</p>
+                  </div>
                 </div>
 
                 {/* Stacked Bar Chart */}

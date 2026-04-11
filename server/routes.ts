@@ -2277,6 +2277,13 @@ export async function registerRoutes(
         ORDER BY month_key
       `);
 
+      // Total wallet withdrawals count
+      const withdrawalCountResult = await db.execute(sql`
+        SELECT COUNT(*) AS total_count
+        FROM transactions
+        WHERE type IN ('withdrawal', 'crypto_withdrawal')
+      `);
+
       // Affiliate pool already distributed (5%) — this is NOT platform profit
       const poolResult = await db.execute(sql`
         SELECT
@@ -2333,7 +2340,9 @@ export async function registerRoutes(
         { totalEcom: 0, totalFees: 0, totalPoolPaid: 0, totalNetProfit: 0 }
       );
 
-      res.json({ chartData, totals });
+      const totalWithdrawals = parseInt((withdrawalCountResult.rows[0] as any)?.total_count ?? "0", 10);
+
+      res.json({ chartData, totals: { ...totals, totalWithdrawals } });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

@@ -1620,19 +1620,30 @@ export default function AdminDashboard() {
                     <CardDescription>E-commerce commissions + withdrawal fees, minus affiliate pool payouts</CardDescription>
                   </CardHeader>
                   {(reserveProfitData as any)?.totals && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 border-b bg-slate-50">
-                      {[
-                        { label: "E-com Commissions", value: fmtUSD((reserveProfitData as any).totals.totalEcom), color: "text-blue-600" },
-                        { label: "Withdrawal Fees", value: fmtUSD((reserveProfitData as any).totals.totalFees), color: "text-purple-600" },
-                        { label: "Affiliate Pool Paid", value: fmtUSD((reserveProfitData as any).totals.totalPoolPaid), color: "text-amber-600" },
-                        { label: "Net Profit", value: fmtUSD((reserveProfitData as any).totals.totalNetProfit), color: "text-tsia-green" },
-                      ].map(s => (
-                        <div key={s.label} className="px-6 py-4 border-r last:border-0">
-                          <p className="text-xs text-slate-500">{s.label}</p>
-                          <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 border-b bg-slate-50">
+                        {[
+                          { label: "E-com Commissions", value: fmtUSD((reserveProfitData as any).totals.totalEcom), color: "text-blue-600" },
+                          { label: "Affiliate Pool Paid", value: fmtUSD((reserveProfitData as any).totals.totalPoolPaid), color: "text-amber-600" },
+                          { label: "Net Profit", value: fmtUSD((reserveProfitData as any).totals.totalNetProfit), color: "text-tsia-green" },
+                        ].map(s => (
+                          <div key={s.label} className="px-6 py-4 border-r last:border-0">
+                            <p className="text-xs text-slate-500">{s.label}</p>
+                            <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 border-b bg-purple-50/50">
+                        <div className="px-6 py-4 border-r">
+                          <p className="text-xs text-slate-500">Commissions Taken (Withdrawal Fees)</p>
+                          <p className="text-lg font-bold text-purple-600">{fmtUSD((reserveProfitData as any).totals.totalFees)}</p>
                         </div>
-                      ))}
-                    </div>
+                        <div className="px-6 py-4">
+                          <p className="text-xs text-slate-500">No. of Withdrawals</p>
+                          <p className="text-lg font-bold text-slate-700">{((reserveProfitData as any).totals.totalWithdrawals ?? 0).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </>
                   )}
                   <div className="overflow-x-auto">
                     <Table>

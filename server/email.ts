@@ -35,7 +35,40 @@ function baseTemplate(content: string): string {
         </tr>
         <!-- Footer -->
         <tr>
-          <td style="background:#f7f9f7;padding:20px 32px;text-align:center;border-top:1px solid #e5ede8;">
+          <td style="background:#f7f9f7;padding:24px 32px 20px;text-align:center;border-top:1px solid #e5ede8;">
+            <!-- Social links -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+              <tr>
+                <td align="center">
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="padding:0 6px;">
+                        <a href="https://www.facebook.com/tsiforafrica" style="display:inline-block;width:32px;height:32px;background:#1877f2;border-radius:50%;text-align:center;line-height:32px;color:#fff;font-weight:900;font-size:15px;text-decoration:none;" title="Facebook">f</a>
+                      </td>
+                      <td style="padding:0 6px;">
+                        <a href="https://www.instagram.com/tsiforafrica" style="display:inline-block;width:32px;height:32px;background:radial-gradient(circle at 30% 107%,#fdf497 0%,#fdf497 5%,#fd5949 45%,#d6249f 60%,#285AEB 90%);border-radius:50%;text-align:center;line-height:32px;color:#fff;font-weight:900;font-size:13px;text-decoration:none;" title="Instagram">&#9679;</a>
+                      </td>
+                      <td style="padding:0 6px;">
+                        <a href="https://www.youtube.com/@tsiforafrica" style="display:inline-block;width:32px;height:32px;background:#ff0000;border-radius:50%;text-align:center;line-height:32px;color:#fff;font-weight:900;font-size:13px;text-decoration:none;" title="YouTube">&#9654;</a>
+                      </td>
+                      <td style="padding:0 6px;">
+                        <a href="https://x.com/tsiforafrica" style="display:inline-block;width:32px;height:32px;background:#000000;border-radius:50%;text-align:center;line-height:32px;color:#fff;font-weight:900;font-size:13px;text-decoration:none;" title="X / Twitter">𝕏</a>
+                      </td>
+                      <td style="padding:0 6px;">
+                        <a href="https://www.tiktok.com/@tsiforafrica" style="display:inline-block;width:32px;height:32px;background:#010101;border-radius:50%;text-align:center;line-height:32px;color:#fff;font-weight:900;font-size:11px;text-decoration:none;" title="TikTok">TT</a>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding-top:6px;font-size:9px;color:#b5c0b8;text-align:center;">FB</td>
+                      <td style="padding-top:6px;font-size:9px;color:#b5c0b8;text-align:center;">IG</td>
+                      <td style="padding-top:6px;font-size:9px;color:#b5c0b8;text-align:center;">YT</td>
+                      <td style="padding-top:6px;font-size:9px;color:#b5c0b8;text-align:center;">X</td>
+                      <td style="padding-top:6px;font-size:9px;color:#b5c0b8;text-align:center;">TT</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
             <p style="color:#9caa9f;font-size:11px;margin:0;">© ${new Date().getFullYear()} TSIA – Tuition Support Initiative for Africa</p>
             <p style="color:#b5c0b8;font-size:10px;margin:4px 0 0;">This is an automated message, please do not reply.</p>
           </td>

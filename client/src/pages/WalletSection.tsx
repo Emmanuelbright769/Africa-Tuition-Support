@@ -13,12 +13,11 @@ import {
   Wallet, Eye, EyeOff, ArrowDownLeft, ArrowUpRight, Loader2,
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
   Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy, Coins,
-  ScanFace, MapPin, AlertTriangle, Lock, ChevronLeft
+  MapPin, AlertTriangle, Lock, ChevronLeft
 } from "lucide-react";
 
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
-import BiometricVerification from "@/components/ui/BiometricVerification";
 
 const NIGERIAN_BANKS = [
   { code: "044", name: "Access Bank" }, { code: "023", name: "Citibank Nigeria" },
@@ -101,7 +100,6 @@ export default function WalletSection() {
   const [kycLocationVerified, setKycLocationVerified] = useState(false);
   const [kycLocationLoading, setKycLocationLoading] = useState(false);
   const [kycLocationCoords, setKycLocationCoords] = useState("");
-  const [kycShowBiometric, setKycShowBiometric] = useState(false);
   const [kycSubmitting, setKycSubmitting] = useState(false);
 
   // ── Queries ────────────────────────────────────────────────────────────
@@ -237,15 +235,16 @@ export default function WalletSection() {
     }
   };
 
-  const handleKycBiometricComplete = async () => {
+  const handleKycSubmit = async () => {
     setKycSubmitting(true);
     try {
-      await apiRequest("POST", "/api/verification/biometric");
-      setKycShowBiometric(false);
-      toast({ title: "Wallet Activated! 🎉", description: "Your wallet is now fully activated. You can fund and transact." });
+      const res = await apiRequest("POST", "/api/verification/wallet-kyc", { bvn: kycBvn, gpsCoords: kycLocationCoords });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
       refetchVerification();
-    } catch {
-      toast({ title: "Biometric Error", description: "Could not save biometric. Try again.", variant: "destructive" });
+      toast({ title: "Wallet Activated ✓", description: "Your wallet is now fully unlocked!" });
+    } catch (e: any) {
+      toast({ title: "Activation failed", description: e.message, variant: "destructive" });
     } finally {
       setKycSubmitting(false);
     }
@@ -327,23 +326,11 @@ export default function WalletSection() {
               )}
             </div>
 
-            {/* Step 3: Face Scan */}
-            <div className={`p-4 rounded-xl border transition-all ${!kycLocationVerified ? 'opacity-40 pointer-events-none' : 'bg-white dark:bg-slate-800 border-border'}`}>
-              <Label className="font-semibold flex items-center gap-2 mb-2 text-sm">
-                <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 text-xs font-bold flex items-center justify-center">3</span>
-                Biometric Face Scan
-              </Label>
-              <p className="text-xs text-muted-foreground mb-3">A quick face scan confirms you are a real, unique individual. Camera access required.</p>
-              <Button
-                size="sm"
-                className="h-10 w-full bg-blue-600 hover:bg-blue-700"
-                onClick={() => setKycShowBiometric(true)}
-                disabled={!kycLocationVerified || kycSubmitting}
-                data-testid="button-wallet-start-biometric"
-              >
-                <ScanFace className="w-4 h-4 mr-2" /> Start Face Scan
+            {kycLocationVerified && (
+              <Button className="h-11 w-full bg-tsia-green hover:bg-tsia-green/90 text-white font-bold" onClick={handleKycSubmit} disabled={kycSubmitting} data-testid="button-wallet-complete-kyc">
+                {kycSubmitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Activating…</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Complete Verification</>}
               </Button>
-            </div>
+            )}
           </div>
         </motion.div>
       )}
@@ -389,7 +376,7 @@ export default function WalletSection() {
                 <Button
                   onClick={() => {
                     if (!walletKycDone && needsKyc) {
-                      toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan above to unlock funding.", variant: "destructive" }); return;
+                      toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification above to unlock funding.", variant: "destructive" }); return;
                     }
                     setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); setFundOpen(true);
                   }}
@@ -401,7 +388,7 @@ export default function WalletSection() {
                 <Button
                   onClick={() => {
                     if (!walletKycDone && needsKyc) {
-                      toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan above to unlock withdrawals.", variant: "destructive" }); return;
+                      toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification above to unlock withdrawals.", variant: "destructive" }); return;
                     }
                     setWithdrawChoiceOpen(true);
                   }}
@@ -429,7 +416,7 @@ export default function WalletSection() {
             key={label}
             onClick={() => {
               if (!walletKycDone && needsKyc) {
-                toast({ title: "Wallet KYC Required", description: "Complete BVN, GPS, and face scan to unlock funding.", variant: "destructive" }); return;
+                toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification to unlock funding.", variant: "destructive" }); return;
               }
               setFundMethod(method);
               setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef("");
@@ -1019,33 +1006,6 @@ export default function WalletSection() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Biometric dialog for Wallet KYC ── */}
-      <Dialog open={kycShowBiometric} onOpenChange={open => { if (!open) setKycShowBiometric(false); }}>
-        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-2xl border-0 shadow-2xl">
-          <div className="bg-[#1A3C34] px-5 py-4 flex items-center gap-3">
-            <div className="w-9 h-9 bg-[#D4AF37]/20 rounded-xl flex items-center justify-center">
-              <ScanFace className="w-5 h-5 text-[#D4AF37]" />
-            </div>
-            <div>
-              <h2 className="text-white font-bold text-base leading-tight">TSIA Identity Verification</h2>
-              <p className="text-white/60 text-[11px]">Powered by secure facial biometrics</p>
-            </div>
-            <div className="ml-auto flex items-center gap-1 bg-[#D4AF37]/20 rounded-full px-2 py-0.5">
-              <div className="w-1.5 h-1.5 bg-[#D4AF37] rounded-full" />
-              <span className="text-[#D4AF37] text-[10px] font-bold">SECURE</span>
-            </div>
-          </div>
-          <div className="px-5 py-4">
-            <BiometricVerification
-              onComplete={handleKycBiometricComplete}
-              onCancel={() => setKycShowBiometric(false)}
-            />
-          </div>
-          <div className="px-5 py-3 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-800 flex items-center justify-center gap-2">
-            <span className="text-[10px] text-muted-foreground">🔒 256-bit encrypted · NDPR compliant · Data not stored</span>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

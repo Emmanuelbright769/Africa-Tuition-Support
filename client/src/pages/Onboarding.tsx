@@ -3,6 +3,7 @@ import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ShieldAlert, CreditCard, Lock, FileText, CheckCircle2, Loader2,
@@ -51,6 +52,9 @@ export default function Onboarding() {
   const [waecResult, setWaecResult] = useState<any>(null);
   const [waecFailed, setWaecFailed] = useState(false);
   const [failPercentage, setFailPercentage] = useState(0);
+
+  // Sponsorship reason
+  const [sponsorshipReason, setSponsorshipReason] = useState("");
 
   // Step 3 — Payment
   const [paymentTermsAccepted, setPaymentTermsAccepted] = useState(false);
@@ -196,6 +200,7 @@ export default function Onboarding() {
     try {
       const res = await apiRequest("POST", "/api/verification/waec-validate", {
         waecRegNumber: waecReg, waecYear, subjects, grades: gradesList, schoolName, schoolLocation,
+        sponsorshipReason: sponsorshipReason.trim() || undefined,
       });
       const data = await res.json();
       setWaecResult(data);
@@ -526,13 +531,26 @@ export default function Onboarding() {
                     )}
                   </AnimatePresence>
 
+                  <div className="space-y-2 pt-2">
+                    <Label className="text-base font-semibold">Reason for Sponsorship <span className="text-red-500">*</span></Label>
+                    <Textarea
+                      placeholder="Tell us why you need this sponsorship — your goals, your circumstances, and how TSIA will help you move forward."
+                      className="min-h-[100px] bg-muted/30 text-sm resize-none"
+                      value={sponsorshipReason}
+                      onChange={e => setSponsorshipReason(e.target.value)}
+                      maxLength={800}
+                      data-testid="textarea-sponsorship-reason"
+                    />
+                    <p className="text-xs text-muted-foreground text-right">{sponsorshipReason.length}/800 characters</p>
+                  </div>
+
                   <div className="flex gap-4 pt-2">
                     <Button variant="outline" onClick={() => setStep(1)} className="w-1/3 h-12 font-semibold">Back</Button>
                     <Button
                       onClick={handleValidateWaec}
                       className="w-2/3 h-12 text-base font-semibold bg-amber-600 hover:bg-amber-700 shadow-md"
                       data-testid="button-validate-waec"
-                      disabled={!allElectivesSelected || !allGradesFilled || !waecReg || !waecYear || !schoolName || !schoolLocation}
+                      disabled={!allElectivesSelected || !allGradesFilled || !waecReg || !waecYear || !schoolName || !schoolLocation || sponsorshipReason.trim().length < 20}
                     >
                       <CreditCard className="w-5 h-5 mr-2" /> Proceed to Payment
                     </Button>
@@ -549,7 +567,7 @@ export default function Onboarding() {
                     <CreditCard className="w-8 h-8" />
                   </div>
                   <h2 className="text-3xl font-bold mb-2">Portal Fee Payment</h2>
-                  <p className="text-muted-foreground text-lg mb-6">Pay the one-time portal fee to activate your application. KYC and biometric can be completed afterwards.</p>
+                  <p className="text-muted-foreground text-lg mb-6">Pay the one-time portal fee to activate your application. BVN and GPS verification can be completed afterwards in your wallet.</p>
                 </div>
 
                 <div className="p-8 space-y-6">
@@ -762,7 +780,7 @@ export default function Onboarding() {
                   <p className="text-sm text-muted-foreground">Our team will review within 24–48 hours. You'll receive a notification once approved and your wallet is funded.</p>
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-left">
                     <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Next step: Activate your Wallet</p>
-                    <p className="text-xs text-blue-700 dark:text-blue-400">Head to the <strong>Wallet</strong> section in your dashboard to complete BVN verification, GPS location, and face scan — required to fund and transact.</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-400">Head to the <strong>Wallet</strong> section in your dashboard to complete BVN verification and GPS location — required to fund and transact.</p>
                   </div>
                   <Button onClick={() => {
                     queryClient.invalidateQueries({ queryKey: ["/api/verification/status"] });

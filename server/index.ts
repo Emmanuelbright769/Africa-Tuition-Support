@@ -95,6 +95,10 @@ async function runMigrations() {
         created_at    TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    await db.execute(sql`
+      ALTER TABLE verifications
+        ADD COLUMN IF NOT EXISTS sponsorship_reason TEXT
+    `);
     console.log("[MIGRATE] Schema migrations applied successfully");
   } catch (e) {
     console.error("[MIGRATE] Migration error:", e);

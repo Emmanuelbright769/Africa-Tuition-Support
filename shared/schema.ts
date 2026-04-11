@@ -50,6 +50,7 @@ export const verifications = pgTable("verifications", {
   schoolLocation: text("school_location"),
   biometricVerified: boolean("biometric_verified").notNull().default(false),
   ageDisqualified: boolean("age_disqualified").notNull().default(false),
+  sponsorshipReason: text("sponsorship_reason"),
   status: verificationStatusEnum("status").notNull().default("pending"),
   portalFeePaid: boolean("portal_fee_paid").notNull().default(false),
   commitmentStartDate: timestamp("commitment_start_date"),

@@ -87,7 +87,8 @@ const NAV = [
   { id: "ecommerce",     icon: ShoppingBag,    label: "E-commerce" },
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
   { id: "deposits",      icon: Coins,          label: "Deposits" },
-  { id: "withdrawals",  icon: Banknote,       label: "Withdrawals",   badgeKey: "pendingWithdrawals" },
+  { id: "withdrawals",  icon: Banknote,       label: "Bank W/D",      badgeKey: "pendingWithdrawals" },
+  { id: "crypto_withdrawals", icon: Coins,    label: "Crypto W/D",    badgeKey: "pendingCryptoWd" },
   { id: "reserve",      icon: ShieldCheck,    label: "Str. Reserve" },
   { id: "trustfunders", icon: Award,          label: "Trust Funders" },
   { id: "messages",     icon: MessageSquare,  label: "Forum Messages" },
@@ -123,6 +124,7 @@ export default function AdminDashboard() {
   const [referrerCode, setReferrerCode] = useState("");
   // Withdrawal review state
   const [wdFilter, setWdFilter] = useState<"all" | "pending" | "approved" | "declined" | "refunded">("all");
+  const [cwdFilter, setCwdFilter] = useState<"all" | "pending" | "approved" | "declined" | "refunded">("all");
   const [wdNoteDialogId, setWdNoteDialogId] = useState<number | null>(null);
   const [wdNote, setWdNote]               = useState("");
   const [wdAction, setWdAction]           = useState<"approve" | "decline" | null>(null);
@@ -418,7 +420,8 @@ export default function AdminDashboard() {
     pendingVerifications: (pendingVerifications as any[]).length,
     pendingDisbursements: (pendingDisbursements as any[]).length,
     pendingLoans: (allLoans as any[]).filter((l: any) => l.status === "pending").length,
-    pendingWithdrawals: (allWithdrawals as any[]).filter((w: any) => w.status === "pending").length,
+    pendingWithdrawals: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && w.type === "bank").length,
+    pendingCryptoWd: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && w.type === "crypto").length,
   };
 
   // ─── Sidebar nav ───────────────────────────────────────────────────────────
@@ -1223,15 +1226,15 @@ export default function AdminDashboard() {
               </motion.div>
             )}
 
-            {/* ═══════════════════════════ WITHDRAWALS ═══════════════════════════ */}
+            {/* ═══════════════════════════ BANK WITHDRAWALS ═══════════════════════════ */}
             {activeTab === "withdrawals" && (
               <motion.div key="withdrawals" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
                 {/* Summary bar */}
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { label: "Total", value: (allWithdrawals as any[]).length, color: "text-slate-700" },
-                    { label: "Pending", value: (allWithdrawals as any[]).filter((w: any) => w.status === "pending").length, color: "text-amber-600" },
-                    { label: "Approved", value: (allWithdrawals as any[]).filter((w: any) => w.status === "approved").length, color: "text-tsia-green" },
+                    { label: "Total Bank", value: (allWithdrawals as any[]).filter((w: any) => w.type === "bank").length, color: "text-slate-700" },
+                    { label: "Pending", value: (allWithdrawals as any[]).filter((w: any) => w.type === "bank" && w.status === "pending").length, color: "text-amber-600" },
+                    { label: "Approved", value: (allWithdrawals as any[]).filter((w: any) => w.type === "bank" && w.status === "approved").length, color: "text-tsia-green" },
                   ].map(s => (
                     <Card key={s.label} className="p-3 text-center">
                       <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
@@ -1242,7 +1245,7 @@ export default function AdminDashboard() {
 
                 {/* Filter + Cards */}
                 {(() => {
-                  const filtered = (allWithdrawals as any[]).filter((w: any) => wdFilter === "all" || w.status === wdFilter);
+                  const filtered = (allWithdrawals as any[]).filter((w: any) => w.type === "bank" && (wdFilter === "all" || w.status === wdFilter));
                   function copyToClipboard(text: string, key: string) {
                     navigator.clipboard.writeText(text).then(() => {
                       setWdCopied(key);
@@ -1433,6 +1436,143 @@ export default function AdminDashboard() {
                       </Dialog>
                     </>
                   );
+                })()}
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════ CRYPTO WITHDRAWALS ═══════════════════════════ */}
+            {activeTab === "crypto_withdrawals" && (
+              <motion.div key="crypto_withdrawals" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: "Total Crypto", value: (allWithdrawals as any[]).filter((w: any) => w.type === "crypto").length, color: "text-slate-700" },
+                    { label: "Pending", value: (allWithdrawals as any[]).filter((w: any) => w.type === "crypto" && w.status === "pending").length, color: "text-amber-600" },
+                    { label: "Approved", value: (allWithdrawals as any[]).filter((w: any) => w.type === "crypto" && w.status === "approved").length, color: "text-tsia-green" },
+                  ].map(s => (
+                    <Card key={s.label} className="p-3 text-center">
+                      <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+                    </Card>
+                  ))}
+                </div>
+
+                {(() => {
+                  const filtered = (allWithdrawals as any[]).filter((w: any) => w.type === "crypto" && (cwdFilter === "all" || w.status === cwdFilter));
+                  function copyToClipboard(text: string, key: string) {
+                    navigator.clipboard.writeText(text).then(() => {
+                      setWdCopied(key);
+                      setTimeout(() => setWdCopied(null), 1800);
+                    });
+                  }
+                  return (<>
+                    <div className="flex gap-2 flex-wrap">
+                      {(["all", "pending", "approved", "declined", "refunded"] as const).map(f => (
+                        <button key={f} onClick={() => setCwdFilter(f)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition-all ${cwdFilter === f ? "bg-amber-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"}`}>
+                          {f}
+                        </button>
+                      ))}
+                      <button onClick={() => refetchWithdrawals()} className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                        <RefreshCw className="w-3 h-3" /> Refresh
+                      </button>
+                    </div>
+
+                    {filtered.length === 0 && (
+                      <Card className="p-8 text-center text-muted-foreground">No {cwdFilter !== "all" ? cwdFilter : ""} crypto withdrawal requests.</Card>
+                    )}
+
+                    <div className="space-y-3">
+                      {filtered.map((wd: any) => (
+                        <Card key={wd.id} className={`overflow-hidden border-l-4 ${wd.status === "pending" ? "border-l-amber-400" : wd.status === "approved" ? "border-l-green-500" : wd.status === "declined" ? "border-l-red-500" : "border-l-slate-400"}`}>
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-sm">{wd.user?.firstName} {wd.user?.lastName}</span>
+                                  <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700">USDT Crypto</Badge>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${wd.status === "pending" ? "bg-amber-100 text-amber-700" : wd.status === "approved" ? "bg-green-100 text-green-700" : wd.status === "declined" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"}`}>
+                                    {wd.status}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                                  <span>{wd.user?.email}</span>
+                                  {wd.user?.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{wd.user.phone}</span>}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-lg font-black text-amber-600">${parseFloat(wd.amount).toFixed(2)}</p>
+                                <p className="text-xs text-muted-foreground">Net: ${parseFloat(wd.netAmount).toFixed(2)} USDT</p>
+                              </div>
+                            </div>
+
+                            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-sm space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground text-xs">Network</span>
+                                <span className="font-semibold text-xs">{wd.network}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-muted-foreground text-xs shrink-0">Address</span>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="font-mono text-xs truncate max-w-[160px]" title={wd.address}>{wd.address}</span>
+                                  <button onClick={() => copyToClipboard(wd.address, `addr-${wd.id}`)} className="text-muted-foreground hover:text-amber-500 transition-colors shrink-0">
+                                    {wdCopied === `addr-${wd.id}` ? <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green" /> : <Copy className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground text-xs">Fee (1%)</span>
+                                <span className="text-red-500 text-xs">−${parseFloat(wd.fee).toFixed(2)}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>{new Date(wd.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>
+                              {wd.adminNote && <span className="italic">Note: {wd.adminNote}</span>}
+                            </div>
+
+                            {wd.status === "pending" && (
+                              <div className="flex gap-2 pt-1">
+                                <Button size="sm" className="flex-1 bg-tsia-green hover:bg-tsia-green/90 text-white text-xs h-9 rounded-xl font-bold"
+                                  onClick={() => { setWdNoteDialogId(wd.id); setWdNote(""); setWdAction("approve"); }}
+                                  data-testid={`btn-approve-cwd-${wd.id}`}>
+                                  <ThumbsUp className="w-3.5 h-3.5 mr-1" /> Approve
+                                </Button>
+                                <Button size="sm" variant="destructive" className="flex-1 text-xs h-9 rounded-xl font-bold"
+                                  onClick={() => { setWdNoteDialogId(wd.id); setWdNote(""); setWdAction("decline"); }}
+                                  data-testid={`btn-decline-cwd-${wd.id}`}>
+                                  <ThumbsDown className="w-3.5 h-3.5 mr-1" /> Decline & Refund
+                                </Button>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+
+                    <Dialog open={wdNoteDialogId !== null} onOpenChange={open => { if (!open) { setWdNoteDialogId(null); setWdNote(""); setWdAction(null); } }}>
+                      <DialogContent className="max-w-sm">
+                        <DialogHeader>
+                          <DialogTitle>{wdAction === "approve" ? "Approve Crypto Withdrawal" : "Decline & Refund"}</DialogTitle>
+                          <DialogDescription>
+                            {wdAction === "approve" ? "Confirm you have sent the USDT. The user will be notified." : "This will refund the full amount back to the user's wallet."}
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3 py-2">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Admin Note (optional)</Label>
+                            <Textarea placeholder={wdAction === "approve" ? "e.g. Sent via TRC-20 at 3PM" : "e.g. Invalid address"} value={wdNote} onChange={e => setWdNote(e.target.value)} className="mt-1.5 h-20 text-sm" />
+                          </div>
+                        </div>
+                        <DialogFooter className="gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => { setWdNoteDialogId(null); setWdNote(""); setWdAction(null); }}>Cancel</Button>
+                          <Button size="sm" className={wdAction === "approve" ? "bg-tsia-green hover:bg-tsia-green/90" : ""} variant={wdAction === "decline" ? "destructive" : "default"} disabled={wdActionMutation.isPending}
+                            onClick={() => wdActionMutation.mutate({ id: wdNoteDialogId!, action: wdAction!, adminNote: wdNote })}>
+                            {wdActionMutation.isPending ? "Processing…" : wdAction === "approve" ? "Confirm Approval" : "Confirm Decline"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </>);
                 })()}
               </motion.div>
             )}

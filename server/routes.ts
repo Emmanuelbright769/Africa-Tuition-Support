@@ -521,67 +521,6 @@ export async function registerRoutes(
     }
   });
 
-  // ── Face liveness check via Prembly ──────────────────────────────────────
-  app.post("/api/verification/face-liveness", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
-      const { image } = req.body; // base64 JPEG from webcam
-      if (!image) return res.status(400).json({ message: "Image is required." });
-
-      const apiKey = process.env.PREMBLY_API_KEY;
-      const appId  = process.env.PREMBLY_APP_ID || "tsia";
-
-      if (!apiKey) {
-        // No API configured — pass liveness locally (client-side checks already ran)
-        console.warn("[LIVENESS] PREMBLY_API_KEY not set — accepting client-side liveness result");
-        return res.json({ live: true, confidence: 0, demo: true, message: "Liveness accepted (API key not yet configured)." });
-      }
-
-      let verifyRes: Response;
-      try {
-        verifyRes = await fetch("https://api.prembly.com/identitypass/verification/liveness_check", {
-          method: "POST",
-          headers: {
-            "x-api-key":    apiKey,
-            "app-id":       appId,
-            "Content-Type": "application/json",
-            "Accept":       "application/json",
-          },
-          body: JSON.stringify({ image }),
-          signal: AbortSignal.timeout(20000),
-        });
-      } catch (netErr: any) {
-        console.error("[LIVENESS] Network error:", netErr.message);
-        // Don't block user if liveness API is unreachable — fallback pass
-        return res.json({ live: true, confidence: 0, message: "Liveness service temporarily unavailable; check passed locally." });
-      }
-
-      const raw = await verifyRes.text();
-      let json: any;
-      try { json = JSON.parse(raw); } catch {
-        console.error("[LIVENESS] non-JSON response:", raw.slice(0, 200));
-        return res.json({ live: true, confidence: 0, message: "Liveness service returned unexpected response; check passed locally." });
-      }
-
-      console.log(`[LIVENESS] HTTP ${verifyRes.status} | status=${json.status} | detail=${json.detail || json.message || ""}`);
-
-      if (!verifyRes.ok || json.status === false) {
-        return res.status(400).json({ message: json?.detail || json?.message || "Face liveness check failed. Please ensure good lighting and try again." });
-      }
-
-      const d = json.data || json;
-      return res.json({
-        live: true,
-        confidence: d.confidence || d.score || 95,
-        message: json.detail || json.message || "Liveness verified.",
-      });
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
-    }
-  });
-
   app.post("/api/verification/waec-validate", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -590,7 +529,7 @@ export async function registerRoutes(
       let verification = await storage.getVerificationByUser(userId);
       if (!verification) return res.status(400).json({ message: "Start verification first" });
 
-      const { waecRegNumber, waecYear, subjects, grades, schoolName, schoolLocation } = req.body;
+      const { waecRegNumber, waecYear, subjects, grades, schoolName, schoolLocation, sponsorshipReason } = req.body;
 
       if (!waecRegNumber || !waecYear) {
         return res.status(400).json({ message: "WAEC registration number and year are required" });
@@ -659,6 +598,7 @@ export async function registerRoutes(
         payoutMin: payoutInfo.min.toFixed(2),
         payoutMax: payoutInfo.max.toFixed(2),
         ageDisqualified: isAgeDisqualified,
+        ...(sponsorshipReason ? { sponsorshipReason } : {}),
       });
 
       // Return success regardless of age — disqualification is invisible to user
@@ -761,7 +701,7 @@ export async function registerRoutes(
           userId,
           type: "verification_update",
           title: "Wallet KYC Complete ✓",
-          message: "Your BVN, GPS location, and biometric face scan have been verified. Your TSIA wallet is now fully unlocked.",
+          message: "Your BVN and GPS location have been verified. Your TSIA wallet is now fully unlocked.",
           data: { bvn: bvn.slice(-4).padStart(11, "*"), gpsCoords },
           isRead: false,
         });
@@ -2311,7 +2251,7 @@ export async function registerRoutes(
         ORDER BY month_key
       `);
 
-      // Trade withdrawal fees collected
+      // Trade withdrawal fees collected (from trade market)
       const feeResult = await db.execute(sql`
         SELECT
           TO_CHAR(created_at, 'Mon YY') AS month,
@@ -2319,6 +2259,20 @@ export async function registerRoutes(
           COALESCE(SUM(CAST(fee_usd AS numeric)), 0) AS fees
         FROM trade_transactions
         WHERE type IN ('withdraw_exchange', 'withdraw_bank')
+        GROUP BY month, month_key
+        ORDER BY month_key
+      `);
+
+      // Wallet withdrawal fees (bank VAT 7.5% + crypto 1%) from personal wallet
+      const walletFeeResult = await db.execute(sql`
+        SELECT
+          TO_CHAR(created_at, 'Mon YY') AS month,
+          TO_CHAR(created_at, 'YYYY-MM') AS month_key,
+          COALESCE(SUM(CAST(fee AS numeric)), 0) AS fees
+        FROM transactions
+        WHERE type IN ('withdrawal', 'crypto_withdrawal')
+          AND fee IS NOT NULL
+          AND CAST(fee AS numeric) > 0
         GROUP BY month, month_key
         ORDER BY month_key
       `);
@@ -2343,6 +2297,11 @@ export async function registerRoutes(
         months[k].ecom += parseFloat(row.ecom_commission ?? "0");
       }
       for (const row of feeResult.rows as any[]) {
+        const k = row.month_key as string;
+        if (!months[k]) months[k] = { month: row.month, ecom: 0, fees: 0, poolPaid: 0 };
+        months[k].fees += parseFloat(row.fees ?? "0");
+      }
+      for (const row of walletFeeResult.rows as any[]) {
         const k = row.month_key as string;
         if (!months[k]) months[k] = { month: row.month, ecom: 0, fees: 0, poolPaid: 0 };
         months[k].fees += parseFloat(row.fees ?? "0");

@@ -838,65 +838,73 @@ export default function WalletPage() {
 
       {/* ══ WITHDRAW — STEP 1: CHOOSE METHOD ══ */}
       <Dialog open={withdrawChoiceOpen} onOpenChange={setWithdrawChoiceOpen}>
-        <DialogContent className="w-full max-w-sm p-0 rounded-3xl overflow-hidden border-0 shadow-2xl">
-          <div className="px-6 pt-6 pb-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Withdraw from Wallet</p>
-            <h2 className="text-xl font-black text-foreground">Choose a Method</h2>
-          </div>
+        <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !h-full !rounded-none !m-0 !p-0 !border-0 overflow-hidden bg-background">
+          <div className="flex flex-col h-full">
+            {/* Top header strip */}
+            <div className="bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] px-6 pt-14 pb-8 text-white shrink-0">
+              <p className="text-xs font-semibold text-white/60 uppercase tracking-widest mb-1">Personal Wallet</p>
+              <h2 className="text-3xl font-black">Withdraw Funds</h2>
+              <p className="text-white/70 text-sm mt-1">Select your preferred withdrawal method</p>
+            </div>
 
-          <div className="px-4 pb-2 space-y-2">
-            {/* Bank — Active */}
-            <button
-              onClick={() => { setWithdrawChoiceOpen(false); setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); setBwOpen(true); }}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[#1a5c38] hover:bg-[#1e6b42] active:scale-[0.98] transition-all text-left group"
-              data-testid="btn-choose-bank-withdraw"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
-                <Banknote className="w-7 h-7 text-amber-300" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-black text-base text-white leading-tight">Bank Withdrawal</p>
-                  <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Active</span>
+            {/* Options */}
+            <div className="flex-1 px-5 py-8 space-y-4">
+              {/* Bank */}
+              <button
+                onClick={() => { setWithdrawChoiceOpen(false); setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); setBwOpen(true); }}
+                className="w-full flex items-center gap-4 p-5 rounded-3xl bg-[#1a5c38] hover:bg-[#1e6b42] active:scale-[0.98] transition-all text-left group shadow-lg"
+                data-testid="btn-choose-bank-withdraw"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
+                  <Banknote className="w-8 h-8 text-amber-300" />
                 </div>
-                <p className="text-xs text-white/60 mt-0.5">NGN to Nigerian bank · 7.5% VAT · 30min–24h</p>
-              </div>
-              <ArrowUpRight className="w-5 h-5 text-white/70 group-hover:text-white shrink-0 transition-colors" />
-            </button>
-
-            {/* USDT Crypto — Active */}
-            <button
-              onClick={() => { setWithdrawChoiceOpen(false); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); setCwOpen(true); }}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[#1a5c38] hover:bg-[#1e6b42] active:scale-[0.98] transition-all text-left group"
-              data-testid="btn-choose-crypto-withdraw"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
-                <Coins className="w-7 h-7 text-amber-300" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-black text-base text-white leading-tight">USDT Crypto</p>
-                  <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Active</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-black text-lg text-white leading-tight">Bank Withdrawal</p>
+                    <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Active</span>
+                  </div>
+                  <p className="text-sm text-white/60">NGN to Nigerian bank · 7.5% VAT</p>
+                  <p className="text-xs text-white/40 mt-0.5">30 minutes – 24 hours</p>
                 </div>
-                <p className="text-xs text-white/60 mt-0.5">BEP20 (BSC) · TRC20 (TRON) · 1% fee</p>
-              </div>
-              <ArrowUpRight className="w-5 h-5 text-white/70 group-hover:text-white shrink-0 transition-colors" />
-            </button>
-          </div>
+                <ArrowUpRight className="w-6 h-6 text-white/70 group-hover:text-white shrink-0 transition-colors" />
+              </button>
 
-          <div className="px-4 pt-1 pb-5">
-            <Button variant="ghost" className="w-full h-11 text-sm font-semibold text-muted-foreground" onClick={() => setWithdrawChoiceOpen(false)}>
-              Cancel
-            </Button>
+              {/* USDT Crypto */}
+              <button
+                onClick={() => { setWithdrawChoiceOpen(false); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); setCwOpen(true); }}
+                className="w-full flex items-center gap-4 p-5 rounded-3xl bg-amber-500 hover:bg-amber-600 active:scale-[0.98] transition-all text-left group shadow-lg"
+                data-testid="btn-choose-crypto-withdraw"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                  <Coins className="w-8 h-8 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-black text-lg text-white leading-tight">USDT Crypto</p>
+                    <span className="text-[9px] font-black bg-white/30 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">Active</span>
+                  </div>
+                  <p className="text-sm text-white/80">BEP20 (BSC) · TRC20 (TRON)</p>
+                  <p className="text-xs text-white/60 mt-0.5">1% handling fee · within 24 hours</p>
+                </div>
+                <ArrowUpRight className="w-6 h-6 text-white/80 group-hover:text-white shrink-0 transition-colors" />
+              </button>
+            </div>
+
+            {/* Cancel */}
+            <div className="px-5 pb-10 shrink-0">
+              <Button variant="outline" className="w-full h-14 text-base font-bold rounded-2xl" onClick={() => setWithdrawChoiceOpen(false)}>
+                Cancel
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* ══ WITHDRAW — STEP 2: CRYPTO FORM ══ */}
       <Dialog open={cwOpen} onOpenChange={v => { setCwOpen(v); if (!v) { setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); } }}>
-        <DialogContent className="w-full max-w-sm p-0 rounded-3xl overflow-hidden border-0 shadow-2xl" style={{ maxHeight: "90vh" }}>
-          <div className="flex flex-col" style={{ maxHeight: "90vh" }}>
-            <div className="bg-gradient-to-br from-amber-500 to-amber-700 px-6 pt-6 pb-5 text-white shrink-0">
+        <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !h-full !rounded-none !m-0 !p-0 !border-0 overflow-hidden bg-background">
+          <div className="flex flex-col h-full">
+            <div className="bg-gradient-to-br from-amber-500 to-amber-700 px-6 pt-14 pb-6 text-white shrink-0">
               <button onClick={() => { setCwOpen(false); setWithdrawChoiceOpen(true); }} className="flex items-center gap-1 text-white/70 hover:text-white text-xs mb-3 transition-colors">
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
@@ -1023,10 +1031,10 @@ export default function WalletPage() {
 
       {/* ══ BANK WITHDRAWAL — STEP 2: FORM ══ */}
       <Dialog open={bwOpen} onOpenChange={v => { setBwOpen(v); if (!v) { setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); } }}>
-        <DialogContent className="w-full max-w-sm p-0 rounded-3xl overflow-hidden border-0 shadow-2xl" style={{ maxHeight: "92vh" }}>
-          <div className="flex flex-col" style={{ maxHeight: "92vh" }}>
+        <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !h-full !rounded-none !m-0 !p-0 !border-0 overflow-hidden bg-background">
+          <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] px-6 pt-6 pb-5 text-white shrink-0">
+            <div className="bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] px-6 pt-14 pb-6 text-white shrink-0">
               <button onClick={() => { setBwOpen(false); setWithdrawChoiceOpen(true); }} className="flex items-center gap-1 text-white/70 hover:text-white text-xs mb-3 transition-colors">
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>

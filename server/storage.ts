@@ -1453,11 +1453,24 @@ export class DatabaseStorage implements IStorage {
 
   // ─── Referral stats ─────────────────────────────────────────────────────────
   async getActivatedReferralsByCode(affiliateCode: string): Promise<User[]> {
-    const referred = await db.select({ u: users })
+    // A referral is "active" if they have completed wallet KYC (biometricVerified)
+    // OR have funded their wallet to $5+ (wallets.activated). Deduped by user id.
+    const kycActivated = await db.select({ u: users })
+      .from(users)
+      .innerJoin(verifications, eq(verifications.userId, users.id))
+      .where(and(eq(users.referredBy, affiliateCode), eq(verifications.biometricVerified, true)));
+
+    const walletActivated = await db.select({ u: users })
       .from(users)
       .innerJoin(wallets, eq(wallets.userId, users.id))
       .where(and(eq(users.referredBy, affiliateCode), eq(wallets.activated, true)));
-    return referred.map(r => r.u);
+
+    const seen = new Set<number>();
+    const all: User[] = [];
+    for (const r of [...kycActivated, ...walletActivated]) {
+      if (!seen.has(r.u.id)) { seen.add(r.u.id); all.push(r.u); }
+    }
+    return all;
   }
 
   // ─── Withdrawal Requests ─────────────────────────────────────────────────────

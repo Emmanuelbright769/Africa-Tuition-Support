@@ -1057,13 +1057,13 @@ export default function WalletPage() {
                   className="w-full mt-1.5 h-11 rounded-xl border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a5c38]"
                   value={bwBankName} data-testid="select-bank-name"
                   onChange={e => {
-                    const opt = NIGERIAN_BANKS.find(b => b.name === e.target.value);
+                    const opt = NG_BANKS.find(b => b.name === e.target.value);
                     setBwBankName(e.target.value);
                     setBwBankCode(opt?.code ?? "");
                   }}
                 >
                   <option value="">-- Choose bank --</option>
-                  {NIGERIAN_BANKS.map(b => <option key={b.code} value={b.name}>{b.name}</option>)}
+                  {NG_BANKS.map(b => <option key={b.code} value={b.name}>{b.name}</option>)}
                   <option value="__other__">Other (type below)</option>
                 </select>
                 {bwBankName === "__other__" && (

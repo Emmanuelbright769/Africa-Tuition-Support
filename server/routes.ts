@@ -3,6 +3,7 @@ import { type Server } from "http";
 import { storage } from "./storage";
 import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import {
+  sendEmail,
   sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail,
   sendOrderUpdateEmail, sendLoanUpdateEmail, sendVerificationUpdateEmail,
   sendReferralCommissionEmail, sendPriceDropEmail,
@@ -957,80 +958,98 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { amount, bankCode, accountNumber, accountName } = req.body;
-      if (!bankCode || !accountNumber || !accountName) {
-        return res.status(400).json({ message: "Bank details required: bankCode, accountNumber, accountName" });
+      const { amount, bankName, bankCode, accountNumber, accountName } = req.body;
+      if (!bankName || !accountNumber || !accountName) {
+        return res.status(400).json({ message: "Bank name, account number and account name are required" });
+      }
+      if (accountNumber.length !== 10) {
+        return res.status(400).json({ message: "Account number must be exactly 10 digits" });
       }
 
       const wallet = await storage.getOrCreateWallet(userId);
+      if (!wallet.activated) {
+        return res.status(403).json({ message: "Activate your wallet before withdrawing" });
+      }
       const withdrawAmount = parseFloat(amount);
-      const MIN_BALANCE = 2; // always keep $2 in wallet
-      if (withdrawAmount <= 0 || withdrawAmount > parseFloat(wallet.balance)) {
+      const MIN_BALANCE = 2;
+      if (!withdrawAmount || withdrawAmount <= 0 || withdrawAmount > parseFloat(wallet.balance)) {
         return res.status(400).json({ message: "Insufficient balance" });
       }
       if (parseFloat(wallet.balance) - withdrawAmount < MIN_BALANCE) {
-        return res.status(400).json({ message: `You must keep a minimum of $${MIN_BALANCE} in your wallet` });
+        return res.status(400).json({ message: `A minimum of $${MIN_BALANCE} must remain in your wallet` });
       }
 
-      const vatAmount = withdrawAmount * 0.075;
-      const netAmountUsd = withdrawAmount - vatAmount;
-      const netAmountNgn = netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
-      const transferRef = `TSIA-WD-${userId}-${Date.now()}`;
+      const vatAmount   = parseFloat((withdrawAmount * 0.075).toFixed(2));
+      const netAmountUsd = parseFloat((withdrawAmount - vatAmount).toFixed(2));
+      const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
 
-      // ── Attempt Squad Transfer (payout to Nigerian bank) ──────────────────
-      const secretKey = process.env.SQUAD_SECRET_KEY;
-      let squadSuccess = false;
-      let squadMsg = "";
-      try {
-        const squadRes = await fetch("https://api.squadco.com/payout/initiate", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transaction_reference: transferRef,
-            amount: Math.round(netAmountNgn), // Squad Transfer amount in NGN (naira)
-            bank_code: bankCode,
-            account_number: accountNumber,
-            account_name: accountName,
-            currency_id: "NGN",
-            narration: `TSIA Wallet Withdrawal | Ref: ${transferRef}`,
-          }),
-          signal: AbortSignal.timeout(15000),
-        });
-        const squadData = await squadRes.json() as any;
-        if (squadData.success) {
-          squadSuccess = true;
-        } else {
-          squadMsg = squadData.message ?? "Squad transfer failed";
-        }
-      } catch (fetchErr: any) {
-        squadMsg = fetchErr.message ?? "Network error during transfer";
-      }
+      // Deduct from wallet immediately — funds held pending manual admin transfer
+      const newBalance = (parseFloat(wallet.balance) - withdrawAmount).toFixed(2);
+      await storage.updateWalletBalance(userId, newBalance);
 
-      if (!squadSuccess) {
-        return res.status(502).json({ message: `Bank transfer failed: ${squadMsg}. Please try again or contact support.` });
-      }
-
-      // ── Deduct wallet and record transaction ──────────────────────────────
-      await storage.updateWalletBalance(userId, (parseFloat(wallet.balance) - withdrawAmount).toFixed(2));
+      // Record ledger transaction
+      const txRef = `TSIA-WD-${userId}-${Date.now()}`;
       await storage.createTransaction({
         userId, type: "withdrawal",
         amount: (-withdrawAmount).toFixed(2),
         fee: vatAmount.toFixed(2),
         paymentMethod: "bank_transfer",
-        description: `Withdrawal ₦${Math.round(netAmountNgn).toLocaleString()} to ${accountName} (${accountNumber}) — 7.5% VAT: $${vatAmount.toFixed(2)} | Ref: ${transferRef}`,
+        description: `Bank withdrawal ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} — 7.5% VAT $${vatAmount.toFixed(2)} | Ref: ${txRef}`,
       });
 
-      const user = await storage.getUser(userId);
-      const wdNotif = await storage.createNotification({ userId, type: "wallet_credit", title: "Withdrawal Initiated ✓", message: `₦${Math.round(netAmountNgn).toLocaleString()} has been sent to ${accountName} (${accountNumber}). Processing within 24h.`, data: { ref: transferRef }, isRead: false });
-      pushToUser(userId, "notification", wdNotif);
+      // Create withdrawal request for admin dashboard
+      const wdReq = await storage.createWithdrawalRequest({
+        userId, type: "bank",
+        amount: withdrawAmount.toFixed(2),
+        fee: vatAmount.toFixed(2),
+        netAmount: netAmountUsd.toFixed(2),
+        bankName, bankCode: bankCode ?? "",
+        accountNumber, accountName,
+      });
 
-      const updated = await storage.getOrCreateWallet(userId);
+      // In-app notification
+      const user = await storage.getUser(userId);
+      const notif = await storage.createNotification({
+        userId, type: "wallet_credit",
+        title: "Withdrawal Submitted ✓",
+        message: `Your withdrawal of ₦${netAmountNgn.toLocaleString()} to ${accountName} at ${bankName} is being processed. You will receive your funds within 30 minutes to 24 hours.`,
+        data: { ref: txRef }, isRead: false,
+      });
+      pushToUser(userId, "notification", notif);
+
+      // Email confirmation
+      try {
+        await sendEmail(
+          user!.email,
+          "Withdrawal Request Received — TSIA",
+          `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
+            <h2 style="color:#1a5c38;margin-bottom:4px">Withdrawal Request Received</h2>
+            <p style="color:#6b7280;margin-top:0">Hi ${user!.firstName}, your withdrawal request has been received.</p>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin:20px 0">
+              <table width="100%" cellpadding="6" style="font-size:14px;color:#374151">
+                <tr><td>Amount Requested</td><td align="right"><strong>$${withdrawAmount.toFixed(2)}</strong></td></tr>
+                <tr><td style="color:#ef4444">VAT (7.5%)</td><td align="right" style="color:#ef4444">−$${vatAmount.toFixed(2)}</td></tr>
+                <tr style="border-top:1px solid #e5e7eb"><td><strong style="color:#1a5c38">You Receive</strong></td><td align="right"><strong style="color:#1a5c38">₦${netAmountNgn.toLocaleString()}</strong></td></tr>
+              </table>
+            </div>
+            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:16px;margin-bottom:16px">
+              <p style="margin:0;font-size:13px;color:#92400e"><strong>Bank:</strong> ${bankName}</p>
+              <p style="margin:4px 0 0;font-size:13px;color:#92400e"><strong>Account:</strong> ${accountNumber} — ${accountName}</p>
+            </div>
+            <p style="font-size:13px;color:#6b7280">Your funds will be credited to your bank account within <strong>30 minutes to 24 hours</strong>. If you do not receive it within 24 hours, your balance will be automatically refunded.</p>
+            <p style="font-size:12px;color:#9ca3af">Reference: ${txRef}</p>
+          </div>`
+        );
+      } catch {}
+
+      const updatedWallet = await storage.getOrCreateWallet(userId);
       res.json({
-        wallet: updated,
+        wallet: updatedWallet,
+        withdrawalRequestId: wdReq.id,
         vatAmount: vatAmount.toFixed(2),
         netAmount: netAmountUsd.toFixed(2),
-        netAmountNgn: Math.round(netAmountNgn).toFixed(0),
-        transferRef,
+        netAmountNgn: netAmountNgn.toFixed(0),
+        bankName, accountNumber, accountName,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -1095,7 +1114,18 @@ export async function registerRoutes(
         description: `USDT Withdrawal (${networkLabel}) to ${truncated} — ${(CURRENCY_RATES.CRYPTO_WITHDRAW_FEE * 100).toFixed(0)}% fee: $${feeAmt.toFixed(2)} | Net: $${netAmt.toFixed(2)} | Full address: ${address.trim()} | Processing within 24h`,
       });
 
+      // Create withdrawal request for admin dashboard
+      await storage.createWithdrawalRequest({
+        userId, type: "crypto",
+        amount: withdrawAmt.toFixed(2),
+        fee: feeAmt.toFixed(2),
+        netAmount: netAmt.toFixed(2),
+        network: networkLabel,
+        address: address.trim(),
+      });
+
       // In-app notification
+      const cryptoUser = await storage.getUser(userId);
       const notif = await storage.createNotification({
         userId,
         type: "wallet_credit",
@@ -1105,6 +1135,28 @@ export async function registerRoutes(
         isRead: false,
       });
       pushToUser(userId, "notification", notif);
+
+      // Email confirmation
+      try {
+        await sendEmail(
+          cryptoUser!.email,
+          "Crypto Withdrawal Request Received — TSIA",
+          `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
+            <h2 style="color:#1a5c38">Crypto Withdrawal Request Received</h2>
+            <p style="color:#6b7280">Hi ${cryptoUser!.firstName}, your USDT withdrawal request is being processed.</p>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin:20px 0;font-size:14px;color:#374151">
+              <div style="margin-bottom:8px"><span>Amount Requested:</span> <strong>$${withdrawAmt.toFixed(2)}</strong></div>
+              <div style="margin-bottom:8px;color:#ef4444"><span>Handling fee (1%):</span> <strong>−$${feeAmt.toFixed(2)}</strong></div>
+              <div style="border-top:1px solid #e5e7eb;padding-top:8px"><span>You Receive (USDT):</span> <strong style="color:#1a5c38">$${netAmt.toFixed(2)}</strong></div>
+            </div>
+            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px;font-size:13px;color:#92400e">
+              <strong>Network:</strong> ${networkLabel}<br><strong>Address:</strong> ${address.trim()}
+            </div>
+            <p style="font-size:13px;color:#6b7280;margin-top:16px">Your USDT will be sent within <strong>24 hours</strong>. No VAT is charged on crypto withdrawals.</p>
+          </div>`
+        );
+      } catch {}
+
       const updated = await storage.getOrCreateWallet(userId);
       res.json({
         message: `Your USDT withdrawal has been received. You will receive $${netAmt.toFixed(2)} after the 1% handling fee ($${feeAmt.toFixed(2)}). Processing within 24 hours.`,
@@ -2720,6 +2772,122 @@ export async function registerRoutes(
         .innerJoin(users, eq(walletDeposits.userId, users.id))
         .orderBy(desc(walletDeposits.createdAt));
       res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── ADMIN: Withdrawal Requests ──────────────────────────────────────────────
+  app.get("/api/admin/withdrawals", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const rows = await storage.getAllWithdrawalRequests();
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/admin/withdrawals/:id/approve", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const wdId = parseInt(req.params.id);
+      const { adminNote } = req.body;
+      const wd = await storage.getWithdrawalRequestById(wdId);
+      if (!wd) return res.status(404).json({ message: "Withdrawal request not found" });
+      if (wd.status !== "pending") return res.status(400).json({ message: `Cannot approve a ${wd.status} request` });
+      await storage.updateWithdrawalRequest(wdId, {
+        status: "approved",
+        adminNote: adminNote ?? "",
+        processedAt: new Date(),
+      });
+      const user = await storage.getUser(wd.userId);
+      // Notify user
+      const notif = await storage.createNotification({
+        userId: wd.userId, type: "wallet_credit",
+        title: "Withdrawal Approved ✓",
+        message: wd.type === "bank"
+          ? `Your withdrawal of ₦${Math.round(parseFloat(wd.netAmount) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} has been approved and sent to your bank account.`
+          : `Your USDT withdrawal of $${parseFloat(wd.netAmount).toFixed(2)} has been approved and sent to your wallet.`,
+        data: { withdrawalId: wdId }, isRead: false,
+      });
+      pushToUser(wd.userId, "notification", notif);
+      try {
+        await sendEmail(
+          user!.email,
+          "Withdrawal Approved — TSIA",
+          `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
+            <h2 style="color:#1a5c38">Withdrawal Approved!</h2>
+            <p style="color:#6b7280">Hi ${user!.firstName}, your withdrawal has been processed and sent.</p>
+            <div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#166534">
+              ${wd.type === "bank"
+                ? `<strong>Amount Sent:</strong> ₦${Math.round(parseFloat(wd.netAmount as string) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} to ${wd.accountName} (${wd.accountNumber}) at ${wd.bankName}`
+                : `<strong>Amount Sent:</strong> $${parseFloat(wd.netAmount as string).toFixed(2)} USDT via ${wd.network} to ${wd.address}`
+              }
+            </div>
+            ${adminNote ? `<p style="font-size:13px;color:#6b7280"><strong>Note:</strong> ${adminNote}</p>` : ""}
+            <p style="font-size:13px;color:#6b7280">If you have any questions, please contact our support team.</p>
+          </div>`
+        );
+      } catch {}
+      res.json({ message: "Withdrawal approved" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/admin/withdrawals/:id/decline", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const wdId = parseInt(req.params.id);
+      const { adminNote } = req.body;
+      const wd = await storage.getWithdrawalRequestById(wdId);
+      if (!wd) return res.status(404).json({ message: "Withdrawal request not found" });
+      if (wd.status !== "pending") return res.status(400).json({ message: `Cannot decline a ${wd.status} request` });
+      // Refund the wallet
+      const wallet = await storage.getOrCreateWallet(wd.userId);
+      const refundAmt = parseFloat(wd.amount);
+      const refundedBalance = (parseFloat(wallet.balance) + refundAmt).toFixed(2);
+      await storage.updateWalletBalance(wd.userId, refundedBalance);
+      await storage.createTransaction({
+        userId: wd.userId, type: "refund",
+        amount: refundAmt.toFixed(2),
+        fee: "0",
+        paymentMethod: wd.type === "bank" ? "bank_transfer" : "crypto",
+        description: `Withdrawal refund — ${adminNote ?? "declined by admin"}`,
+      });
+      await storage.updateWithdrawalRequest(wdId, {
+        status: "declined",
+        adminNote: adminNote ?? "",
+        processedAt: new Date(),
+      });
+      const user = await storage.getUser(wd.userId);
+      const notif = await storage.createNotification({
+        userId: wd.userId, type: "wallet_credit",
+        title: "Withdrawal Declined — Refunded",
+        message: `Your withdrawal of $${parseFloat(wd.amount).toFixed(2)} was declined and has been refunded to your TSIA wallet. ${adminNote ?? ""}`,
+        data: { withdrawalId: wdId }, isRead: false,
+      });
+      pushToUser(wd.userId, "notification", notif);
+      try {
+        await sendEmail(
+          user!.email,
+          "Withdrawal Declined & Refunded — TSIA",
+          `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
+            <h2 style="color:#dc2626">Withdrawal Declined</h2>
+            <p style="color:#6b7280">Hi ${user!.firstName}, unfortunately your withdrawal request has been declined.</p>
+            <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#991b1b">
+              <strong>Refunded:</strong> $${parseFloat(wd.amount as string).toFixed(2)} has been returned to your TSIA wallet.
+            </div>
+            ${adminNote ? `<p style="font-size:13px;color:#6b7280"><strong>Reason:</strong> ${adminNote}</p>` : ""}
+            <p style="font-size:13px;color:#6b7280">Please contact support if you have any questions.</p>
+          </div>`
+        );
+      } catch {}
+      res.json({ message: "Withdrawal declined and refunded", newBalance: refundedBalance });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

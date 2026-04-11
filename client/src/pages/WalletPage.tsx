@@ -100,6 +100,17 @@ export default function WalletPage() {
 
   // ── Withdraw dialog state ───────────────────────────────────────────────
   const [withdrawChoiceOpen, setWithdrawChoiceOpen] = useState(false);
+  // Bank withdrawal
+  const [bwOpen, setBwOpen]             = useState(false);
+  const [bwBankName, setBwBankName]     = useState("");
+  const [bwBankCode, setBwBankCode]     = useState("");
+  const [bwBankOther, setBwBankOther]   = useState("");
+  const [bwAccount, setBwAccount]       = useState("");
+  const [bwAccountName, setBwAccountName] = useState("");
+  const [bwAmount, setBwAmount]         = useState("");
+  const [bwSuccessOpen, setBwSuccessOpen] = useState(false);
+  const [bwSuccessData, setBwSuccessData] = useState<{ amount: number; vatAmount: number; netAmountNgn: number; bankName: string; accountNumber: string; accountName: string } | null>(null);
+  // Crypto withdrawal
   const [cwOpen, setCwOpen]               = useState(false);
   const [cwNetwork, setCwNetwork]         = useState<"bep20" | "trc20">("bep20");
   const [cwAddress, setCwAddress]         = useState("");
@@ -262,6 +273,44 @@ export default function WalletPage() {
       setCwSuccessOpen(true);
       refetchWallet();
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/withdrawals"] });
+    },
+    onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
+  });
+
+  const bankWithdrawMutation = useMutation({
+    mutationFn: async () => {
+      const amount = parseFloat(bwAmount);
+      if (!amount || amount < 1) throw new Error("Minimum withdrawal is $1");
+      const effectiveBankName = bwBankName === "__other__" ? bwBankOther.trim() : bwBankName;
+      if (!effectiveBankName) throw new Error("Please select or enter your bank name");
+      if (!bwAccount || bwAccount.length !== 10 || !/^\d+$/.test(bwAccount)) throw new Error("Account number must be exactly 10 digits");
+      if (!bwAccountName.trim()) throw new Error("Account name is required");
+      const res = await apiRequest("POST", "/api/wallet/withdraw", {
+        amount,
+        bankName: effectiveBankName,
+        bankCode: bwBankCode,
+        accountNumber: bwAccount,
+        accountName: bwAccountName.trim(),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: (d: any) => {
+      const effectiveBankName = bwBankName === "__other__" ? bwBankOther.trim() : bwBankName;
+      setBwSuccessData({
+        amount: parseFloat(bwAmount),
+        vatAmount: parseFloat(d.vatAmount),
+        netAmountNgn: parseInt(d.netAmountNgn),
+        bankName: effectiveBankName,
+        accountNumber: bwAccount,
+        accountName: bwAccountName,
+      });
+      setBwOpen(false);
+      setBwSuccessOpen(true);
+      setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount("");
+      refetchWallet();
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
     },
     onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
@@ -804,18 +853,24 @@ export default function WalletPage() {
           </div>
 
           <div className="px-4 pb-2 space-y-2">
-            {/* Bank — Coming Soon */}
-            <div className="relative flex items-center gap-4 p-4 rounded-2xl bg-slate-100 dark:bg-slate-800/60 cursor-not-allowed select-none" data-testid="btn-choose-bank-withdraw">
-              <span className="absolute top-2.5 right-2.5 text-[9px] font-black bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Coming Soon</span>
-              <div className="w-14 h-14 rounded-2xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                <Banknote className="w-7 h-7 text-slate-400" />
+            {/* Bank — Active */}
+            <button
+              onClick={() => { setWithdrawChoiceOpen(false); setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); setBwOpen(true); }}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[#1a5c38] hover:bg-[#1e6b42] active:scale-[0.98] transition-all text-left group"
+              data-testid="btn-choose-bank-withdraw"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
+                <Banknote className="w-7 h-7 text-amber-300" />
               </div>
-              <div className="flex-1 min-w-0 opacity-50">
-                <p className="font-black text-base text-foreground leading-tight">Bank Withdrawal</p>
-                <p className="text-xs text-muted-foreground mt-0.5">NGN to Nigerian bank account</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-black text-base text-white leading-tight">Bank Withdrawal</p>
+                  <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Active</span>
+                </div>
+                <p className="text-xs text-white/60 mt-0.5">NGN to Nigerian bank · 7.5% VAT · 30min–24h</p>
               </div>
-              <Lock className="w-4 h-4 text-slate-400 shrink-0 opacity-50" />
-            </div>
+              <ArrowUpRight className="w-5 h-5 text-white/70 group-hover:text-white shrink-0 transition-colors" />
+            </button>
 
             {/* USDT Crypto — Active */}
             <button
@@ -970,6 +1025,181 @@ export default function WalletPage() {
               <div className="flex justify-between font-bold text-tsia-green border-t pt-1.5"><span>You will receive (USDT)</span><span>${cwSuccessData?.netAmount.toFixed(2)}</span></div>
             </div>
             <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold" onClick={() => setCwSuccessOpen(false)}>Got it, thanks!</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══ BANK WITHDRAWAL — STEP 2: FORM ══ */}
+      <Dialog open={bwOpen} onOpenChange={v => { setBwOpen(v); if (!v) { setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); } }}>
+        <DialogContent className="w-full max-w-sm p-0 rounded-3xl overflow-hidden border-0 shadow-2xl" style={{ maxHeight: "92vh" }}>
+          <div className="flex flex-col" style={{ maxHeight: "92vh" }}>
+            {/* Header */}
+            <div className="bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] px-6 pt-6 pb-5 text-white shrink-0">
+              <button onClick={() => { setBwOpen(false); setWithdrawChoiceOpen(true); }} className="flex items-center gap-1 text-white/70 hover:text-white text-xs mb-3 transition-colors">
+                <ArrowLeft className="w-4 h-4" /> Back
+              </button>
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center">
+                  <Banknote className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="font-black text-xl leading-tight">Bank Withdrawal</h2>
+                  <p className="text-white/70 text-xs mt-0.5">NGN to your Nigerian bank · 7.5% VAT · 30min–24h</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Bank selector */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Select Your Bank</Label>
+                <select
+                  className="w-full mt-1.5 h-11 rounded-xl border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a5c38]"
+                  value={bwBankName} data-testid="select-bank-name"
+                  onChange={e => {
+                    const opt = NIGERIAN_BANKS.find(b => b.name === e.target.value);
+                    setBwBankName(e.target.value);
+                    setBwBankCode(opt?.code ?? "");
+                  }}
+                >
+                  <option value="">-- Choose bank --</option>
+                  {NIGERIAN_BANKS.map(b => <option key={b.code} value={b.name}>{b.name}</option>)}
+                  <option value="__other__">Other (type below)</option>
+                </select>
+                {bwBankName === "__other__" && (
+                  <Input
+                    placeholder="Type your bank name"
+                    value={bwBankOther} onChange={e => setBwBankOther(e.target.value)}
+                    className="mt-2 h-11 rounded-xl" data-testid="input-bank-other"
+                  />
+                )}
+              </div>
+
+              {/* Account Number */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Account Number (10 digits)</Label>
+                <Input
+                  type="text" inputMode="numeric" maxLength={10} placeholder="e.g. 0123456789"
+                  value={bwAccount} onChange={e => setBwAccount(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  className="mt-1.5 font-mono h-11 rounded-xl tracking-widest" data-testid="input-bank-account"
+                />
+                {bwAccount.length > 0 && bwAccount.length < 10 && (
+                  <p className="text-xs text-red-500 mt-1">{10 - bwAccount.length} more digit{10 - bwAccount.length !== 1 ? "s" : ""} needed</p>
+                )}
+              </div>
+
+              {/* Account Name */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Account Name</Label>
+                <Input
+                  placeholder="e.g. John Doe"
+                  value={bwAccountName} onChange={e => setBwAccountName(e.target.value)}
+                  className="mt-1.5 h-11 rounded-xl" data-testid="input-bank-account-name"
+                />
+              </div>
+
+              {/* Amount */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Amount (USD) — Balance: <span className="text-[#1a5c38] font-bold">${balance.toFixed(2)}</span>
+                </Label>
+                <Input
+                  type="number" min={1} step={0.01} placeholder="Enter amount (min $1.00)"
+                  value={bwAmount} onChange={e => setBwAmount(e.target.value)}
+                  className="mt-1.5 text-xl font-black h-12 rounded-xl" data-testid="input-bank-amount"
+                />
+              </div>
+
+              {/* Fee breakdown */}
+              {parseFloat(bwAmount) > 0 && (() => {
+                const amt  = parseFloat(bwAmount);
+                const vat  = parseFloat((amt * 0.075).toFixed(2));
+                const net  = parseFloat((amt - vat).toFixed(2));
+                const ngn  = Math.round(net * 1280);
+                const rem  = balance - amt;
+                const tooLow = rem < 2;
+                return (
+                  <div className="rounded-2xl border bg-slate-50 dark:bg-slate-800/50 divide-y divide-border text-sm overflow-hidden">
+                    <div className="flex justify-between items-center px-4 py-2.5"><span className="text-muted-foreground">You send</span><span className="font-semibold">${amt.toFixed(2)}</span></div>
+                    <div className="flex justify-between items-center px-4 py-2.5 text-red-500"><span>VAT (7.5%)</span><span className="font-semibold">−${vat.toFixed(2)}</span></div>
+                    <div className="flex justify-between items-center px-4 py-2.5"><span className="text-muted-foreground">Net (USD)</span><span className="font-semibold">${net.toFixed(2)}</span></div>
+                    <div className="flex justify-between items-center px-4 py-3 bg-[#1a5c38]/5"><span className="font-bold text-[#1a5c38]">You receive (NGN)</span><span className="font-black text-[#1a5c38] text-base">₦{ngn.toLocaleString()}</span></div>
+                    {tooLow && <div className="px-4 py-2 text-red-500 text-xs flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Minimum $2 must remain in wallet</div>}
+                    {amt > balance && <div className="px-4 py-2 text-red-500 text-xs flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Insufficient balance</div>}
+                  </div>
+                );
+              })()}
+
+              {/* Info box */}
+              <div className="flex items-start gap-2.5 rounded-2xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700/50 p-3">
+                <Shield className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-green-800 dark:text-green-300 leading-relaxed">
+                  Funds are debited immediately. Bank transfer takes <strong>30 minutes to 24 hours</strong>. Auto-refunded if not processed in 24h.
+                </p>
+              </div>
+
+              {/* Submit */}
+              <Button
+                className="w-full h-12 bg-[#1a5c38] hover:bg-[#1e6b42] text-white font-black rounded-2xl text-base"
+                onClick={() => bankWithdrawMutation.mutate()}
+                disabled={
+                  bankWithdrawMutation.isPending ||
+                  !bwAmount || parseFloat(bwAmount) < 1 ||
+                  parseFloat(bwAmount) > balance ||
+                  (balance - parseFloat(bwAmount || "0")) < 2 ||
+                  bwAccount.length !== 10 ||
+                  !bwAccountName.trim() ||
+                  (!bwBankName || (bwBankName === "__other__" && !bwBankOther.trim()))
+                }
+                data-testid="btn-confirm-bank-wd"
+              >
+                {bankWithdrawMutation.isPending
+                  ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Submitting…</>
+                  : parseFloat(bwAmount) > 0
+                    ? <><Banknote className="w-5 h-5 mr-2" /> Send ₦{Math.round((parseFloat(bwAmount) * 0.925) * 1280).toLocaleString()}</>
+                    : <><Banknote className="w-5 h-5 mr-2" /> Confirm Bank Withdrawal</>
+                }
+              </Button>
+              <Button variant="ghost" className="w-full text-sm text-muted-foreground" onClick={() => setBwOpen(false)}>Cancel</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══ BANK WITHDRAWAL SUCCESS ══ */}
+      <Dialog open={bwSuccessOpen} onOpenChange={setBwSuccessOpen}>
+        <DialogContent className="max-w-sm p-0 overflow-hidden rounded-3xl border-0 shadow-2xl">
+          <div className="flex flex-col items-center gap-0">
+            {/* Green top band */}
+            <div className="w-full bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] flex flex-col items-center py-8 px-6">
+              <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mb-3">
+                <CheckCircle2 className="w-11 h-11 text-white" />
+              </div>
+              <h2 className="text-white font-black text-2xl text-center">Withdrawal Submitted!</h2>
+              <p className="text-white/70 text-sm text-center mt-1">Your bank transfer is being processed</p>
+            </div>
+            {/* Details */}
+            <div className="w-full p-5 space-y-3">
+              <div className="rounded-2xl border bg-slate-50 dark:bg-slate-800/50 divide-y divide-border text-sm overflow-hidden">
+                <div className="flex justify-between items-center px-4 py-2.5"><span className="text-muted-foreground">Amount</span><span className="font-semibold">${bwSuccessData?.amount.toFixed(2)}</span></div>
+                <div className="flex justify-between items-center px-4 py-2.5 text-red-500"><span>VAT (7.5%)</span><span>−${bwSuccessData?.vatAmount.toFixed(2)}</span></div>
+                <div className="flex justify-between items-center px-4 py-3 bg-[#1a5c38]/5">
+                  <span className="font-bold text-[#1a5c38]">You'll receive (NGN)</span>
+                  <span className="font-black text-[#1a5c38] text-base">₦{bwSuccessData?.netAmountNgn.toLocaleString()}</span>
+                </div>
+              </div>
+              <div className="rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 px-4 py-3 text-sm">
+                <p className="font-semibold text-amber-900 dark:text-amber-300">{bwSuccessData?.bankName}</p>
+                <p className="text-amber-700 dark:text-amber-400 font-mono text-xs mt-0.5">{bwSuccessData?.accountNumber} · {bwSuccessData?.accountName}</p>
+              </div>
+              <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#1a5c38]" />
+                <span>Processing takes <strong>30 minutes to 24 hours</strong>. You'll receive an email once sent. Auto-refunded if not processed in time.</span>
+              </div>
+              <Button className="w-full bg-[#1a5c38] hover:bg-[#1e6b42] text-white font-bold rounded-2xl" onClick={() => setBwSuccessOpen(false)} data-testid="btn-bank-wd-done">
+                Done
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

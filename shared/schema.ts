@@ -872,6 +872,32 @@ export const sponsorshipBatches = pgTable("sponsorship_batches", {
 });
 export type SponsorshipBatch = typeof sponsorshipBatches.$inferSelect;
 
+// ─── WITHDRAWAL REQUESTS ──────────────────────────────────────────────────────
+export const withdrawalRequests = pgTable("withdrawal_requests", {
+  id:            integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:        integer("user_id").notNull().references(() => users.id),
+  type:          text("type", { enum: ["bank", "crypto"] }).notNull(),
+  amount:        decimal("amount",     { precision: 14, scale: 2 }).notNull(),
+  fee:           decimal("fee",        { precision: 14, scale: 2 }).notNull().default("0"),
+  netAmount:     decimal("net_amount", { precision: 14, scale: 2 }).notNull(),
+  // Bank-specific
+  bankName:      text("bank_name"),
+  bankCode:      text("bank_code"),
+  accountNumber: text("account_number"),
+  accountName:   text("account_name"),
+  // Crypto-specific
+  network:       text("network"),
+  address:       text("address"),
+  // Admin
+  status:        text("status", { enum: ["pending", "approved", "declined", "refunded"] }).notNull().default("pending"),
+  adminNote:     text("admin_note"),
+  processedAt:   timestamp("processed_at"),
+  createdAt:     timestamp("created_at").defaultNow().notNull(),
+});
+export const insertWithdrawalRequestSchema = createInsertSchema(withdrawalRequests).omit({ id: true, createdAt: true });
+export type InsertWithdrawalRequest = z.infer<typeof insertWithdrawalRequestSchema>;
+export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;
+
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [
   { id: "binance", name: "Binance", specialty: "Crypto & Futures", rating: 4.9, minDeposit: 10, fee: "0.1%", description: "World's largest crypto exchange with deep liquidity." },

@@ -74,7 +74,7 @@ function getSmtpTransport(): nodemailer.Transporter | null {
   } as any);
 }
 
-async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   // 1 — Brevo REST API (works over HTTPS port 443, no domain ownership verification)
   const brevoKey = process.env.BREVO_API_KEY;
   if (brevoKey) {

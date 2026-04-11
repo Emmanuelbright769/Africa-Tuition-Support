@@ -12,6 +12,7 @@ import {
   qceSavings, qceTransactions,
   priceAlerts, categorySubscriptions,
   sponsorCohorts, cohortCodes, sponsorshipBatches,
+  withdrawalRequests,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -1452,12 +1453,55 @@ export class DatabaseStorage implements IStorage {
 
   // ─── Referral stats ─────────────────────────────────────────────────────────
   async getActivatedReferralsByCode(affiliateCode: string): Promise<User[]> {
-    // Returns users referred by this code who have an activated wallet
     const referred = await db.select({ u: users })
       .from(users)
       .innerJoin(wallets, eq(wallets.userId, users.id))
       .where(and(eq(users.referredBy, affiliateCode), eq(wallets.activated, true)));
     return referred.map(r => r.u);
+  }
+
+  // ─── Withdrawal Requests ─────────────────────────────────────────────────────
+  async createWithdrawalRequest(data: {
+    userId: number; type: "bank" | "crypto"; amount: string; fee: string; netAmount: string;
+    bankName?: string; bankCode?: string; accountNumber?: string; accountName?: string;
+    network?: string; address?: string;
+  }) {
+    const [req] = await db.insert(withdrawalRequests).values({
+      userId: data.userId, type: data.type,
+      amount: data.amount, fee: data.fee, netAmount: data.netAmount,
+      bankName: data.bankName, bankCode: data.bankCode,
+      accountNumber: data.accountNumber, accountName: data.accountName,
+      network: data.network, address: data.address,
+      status: "pending",
+    }).returning();
+    return req;
+  }
+
+  async getWithdrawalRequestById(id: number) {
+    const [req] = await db.select().from(withdrawalRequests).where(eq(withdrawalRequests.id, id));
+    return req ?? null;
+  }
+
+  async updateWithdrawalRequest(id: number, updates: Partial<{ status: string; adminNote: string; processedAt: Date }>) {
+    const [req] = await db.update(withdrawalRequests).set(updates as any).where(eq(withdrawalRequests.id, id)).returning();
+    return req;
+  }
+
+  async getAllWithdrawalRequests() {
+    const rows = await db.select({
+      wr: withdrawalRequests,
+      u: { id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email, phone: users.phone },
+    })
+    .from(withdrawalRequests)
+    .innerJoin(users, eq(users.id, withdrawalRequests.userId))
+    .orderBy(desc(withdrawalRequests.createdAt));
+    return rows.map(r => ({ ...r.wr, user: r.u }));
+  }
+
+  async getPendingWithdrawalsOlderThan24h() {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return await db.select().from(withdrawalRequests)
+      .where(and(eq(withdrawalRequests.status, "pending"), lte(withdrawalRequests.createdAt, cutoff)));
   }
 }
 

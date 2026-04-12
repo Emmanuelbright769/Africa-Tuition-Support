@@ -406,11 +406,20 @@ export async function registerRoutes(
       return { ok: false, data: null, message: "Verification service returned an unexpected response. Please try again." };
     }
 
-    console.log(`[KYC Prembly] ${idType} → HTTP ${resp.status} | status=${json.status} | detail=${json.detail || json.message || ""}`);
+    console.log(`[KYC Prembly] ${idType} → HTTP ${resp.status} | status=${json.status} | detail=${json.detail || json.message || ""} | errors=${JSON.stringify(json.errors || {})}`);
 
     // Prembly returns status:true on success, status:false on failure
     if (!resp.ok || json.status === false) {
-      const errMsg = json?.detail || json?.message || json?.errors?.code || "ID could not be verified. Please check your details and try again.";
+      // Wallet balance insufficient → treat as format-only pass so users aren't blocked
+      // while the Prembly account is being funded
+      const isLowBalance = json?.message?.toLowerCase().includes("insufficient") ||
+                           json?.detail?.toLowerCase().includes("insufficient") ||
+                           json?.response_code === "04";
+      if (isLowBalance) {
+        console.warn("[KYC Prembly] Insufficient wallet balance — falling back to format-only validation");
+        return { ok: true, data: null, message: "format_only" };
+      }
+      const errMsg = json?.detail || json?.message || "ID could not be verified. Please check your details and try again.";
       return { ok: false, data: null, message: errMsg };
     }
 
@@ -472,13 +481,15 @@ export async function registerRoutes(
       const result = await ninverifyLookup(idType, idBody);
       if (!result.ok) return res.status(400).json({ message: result.message });
 
-      const demo = result.message === "demo";
+      const isFormatOnly = result.message === "format_only" || result.message === "demo" || !result.data;
       return res.json({
         valid: true,
         idType,
         idNumber,
-        demo,
-        message: demo ? `${ID_LABELS[idType] || idType} format validated (live lookup active with API key).` : `${ID_LABELS[idType] || idType} verified successfully.`,
+        demo: isFormatOnly,
+        message: isFormatOnly
+          ? `${ID_LABELS[idType] || idType} accepted — live verification will be confirmed by the team.`
+          : `${ID_LABELS[idType] || idType} verified successfully.`,
         data: result.data,
       });
     } catch (e: any) {

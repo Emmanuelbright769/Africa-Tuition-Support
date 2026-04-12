@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -13,7 +13,7 @@ import {
   Wallet, Eye, EyeOff, ArrowDownLeft, ArrowUpRight, Loader2,
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
   Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy, Coins,
-  MapPin, AlertTriangle, Lock, ChevronLeft
+  MapPin, AlertTriangle, Lock, ChevronLeft, Camera, ScanFace, RotateCcw
 } from "lucide-react";
 
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -101,6 +101,13 @@ export default function WalletSection() {
   const [kycLocationLoading, setKycLocationLoading] = useState(false);
   const [kycLocationCoords, setKycLocationCoords] = useState("");
   const [kycSubmitting, setKycSubmitting] = useState(false);
+  // ── Face capture state ──────────────────────────────────────────────────
+  const [kycFaceVerified, setKycFaceVerified]   = useState(false);
+  const [kycCameraActive, setKycCameraActive]   = useState(false);
+  const [kycSelfie, setKycSelfie]               = useState<string | null>(null);
+  const kycVideoRef  = useRef<HTMLVideoElement>(null);
+  const kycCanvasRef = useRef<HTMLCanvasElement>(null);
+  const kycStreamRef = useRef<MediaStream | null>(null);
 
   // ── Queries ────────────────────────────────────────────────────────────
   const { data: verification, refetch: refetchVerification } = useQuery<any>({ queryKey: ["/api/verification/status"] });
@@ -211,10 +218,15 @@ export default function WalletSection() {
       toast({ title: "Invalid BVN", description: "Enter a valid 11-digit BVN.", variant: "destructive" }); return;
     }
     setKycBvnVerifying(true);
-    await new Promise(r => setTimeout(r, 2200));
-    setKycBvnVerified(true);
-    setKycBvnVerifying(false);
-    toast({ title: "BVN Verified ✓", description: "Bank Verification Number confirmed." });
+    try {
+      const res = await apiRequest("POST", "/api/verification/bvn", { bvn: kycBvn });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      setKycBvnVerified(true);
+      toast({ title: "BVN Verified ✓", className: "border-tsia-green" });
+    } catch (e: any) {
+      toast({ title: "BVN Verification Failed", description: e.message, variant: "destructive" });
+    } finally { setKycBvnVerifying(false); }
   };
 
   const handleKycVerifyLocation = async () => {
@@ -225,24 +237,55 @@ export default function WalletSection() {
       );
       const { latitude, longitude } = pos.coords;
       setKycLocationCoords(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
-      await new Promise(r => setTimeout(r, 1000));
       setKycLocationVerified(true);
-      toast({ title: "Location Verified ✓", description: "GPS coordinates confirmed for proof of address." });
+      toast({ title: "Location Verified ✓", className: "border-tsia-green" });
     } catch {
-      toast({ title: "Location Denied", description: "Enable GPS and try again. False location leads to disqualification.", variant: "destructive" });
+      toast({ title: "Location Denied", description: "Enable GPS and try again.", variant: "destructive" });
     } finally {
       setKycLocationLoading(false);
     }
   };
 
+  const handleKycStartCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+      kycStreamRef.current = stream;
+      if (kycVideoRef.current) { kycVideoRef.current.srcObject = stream; kycVideoRef.current.play(); }
+      setKycCameraActive(true);
+    } catch {
+      toast({ title: "Camera access denied", description: "Please allow camera access and try again.", variant: "destructive" });
+    }
+  };
+
+  const handleKycCapture = () => {
+    if (!kycVideoRef.current || !kycCanvasRef.current) return;
+    const video = kycVideoRef.current; const canvas = kycCanvasRef.current;
+    canvas.width = video.videoWidth || 640; canvas.height = video.videoHeight || 480;
+    canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const base64 = canvas.toDataURL("image/jpeg", 0.85);
+    setKycSelfie(base64);
+    kycStreamRef.current?.getTracks().forEach(t => t.stop());
+    kycStreamRef.current = null;
+    setKycCameraActive(false); setKycFaceVerified(true);
+    toast({ title: "Selfie Captured ✓", className: "border-tsia-green" });
+  };
+
+  const handleKycRetake = async () => {
+    setKycSelfie(null); setKycFaceVerified(false);
+    await handleKycStartCamera();
+  };
+
   const handleKycSubmit = async () => {
+    if (!kycSelfie) {
+      toast({ title: "Selfie required", description: "Please capture your selfie in Step 3.", variant: "destructive" }); return;
+    }
     setKycSubmitting(true);
     try {
-      const res = await apiRequest("POST", "/api/verification/wallet-kyc", { bvn: kycBvn, gpsCoords: kycLocationCoords });
+      const res = await apiRequest("POST", "/api/verification/wallet-kyc", { bvn: kycBvn, gpsCoords: kycLocationCoords, selfieBase64: kycSelfie });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
       refetchVerification();
-      toast({ title: "Wallet Activated ✓", description: "Your wallet is now fully unlocked!" });
+      toast({ title: "Wallet Activated ✓", description: "Your wallet is now fully unlocked!", className: "border-tsia-green" });
     } catch (e: any) {
       toast({ title: "Activation failed", description: e.message, variant: "destructive" });
     } finally {
@@ -326,7 +369,54 @@ export default function WalletSection() {
               )}
             </div>
 
-            {kycLocationVerified && (
+            {/* Step 3: Facial Biometric */}
+            <div className={`p-4 rounded-xl border transition-all ${!kycLocationVerified ? 'opacity-40 pointer-events-none' : kycFaceVerified ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700' : 'bg-white dark:bg-slate-800 border-border'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="font-semibold flex items-center gap-2 text-sm">
+                  {kycFaceVerified ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 text-xs font-bold flex items-center justify-center">3</span>}
+                  Facial Biometric
+                </Label>
+                {kycFaceVerified && <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 px-2 py-0.5 rounded-full font-bold">Captured ✓</span>}
+              </div>
+              {!kycFaceVerified ? (
+                <>
+                  <p className="text-xs text-muted-foreground mb-3 flex items-start gap-1.5">
+                    <ScanFace className="w-3.5 h-3.5 shrink-0 mt-0.5 text-blue-500" />
+                    Take a live selfie to confirm your identity. Ensure good lighting and look directly at the camera.
+                  </p>
+                  {kycCameraActive ? (
+                    <div className="space-y-2">
+                      <div className="relative rounded-xl overflow-hidden bg-black aspect-video max-h-52">
+                        <video ref={kycVideoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
+                        <div className="absolute inset-0 border-4 border-blue-400/40 rounded-xl pointer-events-none" />
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">Centre your face in the frame</div>
+                      </div>
+                      <Button size="sm" className="h-10 w-full bg-blue-600 hover:bg-blue-700 text-white" onClick={handleKycCapture} data-testid="button-wallet-capture-selfie">
+                        <Camera className="w-4 h-4 mr-2" /> Capture Selfie
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" className="h-10 w-full" onClick={handleKycStartCamera} data-testid="button-wallet-open-camera">
+                      <Camera className="w-4 h-4 mr-2" /> Open Camera
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <img src={kycSelfie!} alt="selfie" className="w-16 h-16 rounded-xl object-cover border-2 border-green-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-green-600 dark:text-green-400 font-medium">Selfie captured successfully</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Your face has been recorded for identity verification</p>
+                    <button onClick={handleKycRetake} className="text-xs text-blue-500 underline mt-1 flex items-center gap-1" data-testid="button-wallet-retake-selfie">
+                      <RotateCcw className="w-3 h-3" /> Retake
+                    </button>
+                  </div>
+                </div>
+              )}
+              <canvas ref={kycCanvasRef} className="hidden" />
+            </div>
+
+            {kycFaceVerified && (
               <Button className="h-11 w-full bg-tsia-green hover:bg-tsia-green/90 text-white font-bold" onClick={handleKycSubmit} disabled={kycSubmitting} data-testid="button-wallet-complete-kyc">
                 {kycSubmitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Activating…</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Complete Verification</>}
               </Button>

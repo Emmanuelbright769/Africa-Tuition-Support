@@ -965,6 +965,8 @@ export async function registerRoutes(
         paymentMethod: "bank_transfer",
         description: `Bank withdrawal ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} — 7.5% VAT $${vatAmount.toFixed(2)} | Ref: ${txRef}`,
       });
+      // Credit 5% referral commission on bank withdrawal activity
+      creditReferrerCommission(userId, withdrawAmount, "bank withdrawal").catch(() => {});
 
       // Create withdrawal request for admin dashboard
       const wdReq = await storage.createWithdrawalRequest({
@@ -1082,6 +1084,8 @@ export async function registerRoutes(
         paymentMethod: "crypto",
         description: `USDT Withdrawal (${networkLabel}) to ${truncated} — ${(CURRENCY_RATES.CRYPTO_WITHDRAW_FEE * 100).toFixed(0)}% fee: $${feeAmt.toFixed(2)} | Net: $${netAmt.toFixed(2)} | Full address: ${address.trim()} | Processing within 24h`,
       });
+      // Credit 5% referral commission on crypto withdrawal activity
+      creditReferrerCommission(userId, withdrawAmt, "crypto withdrawal").catch(() => {});
 
       // Create withdrawal request for admin dashboard
       await storage.createWithdrawalRequest({
@@ -1299,7 +1303,7 @@ export async function registerRoutes(
         totalCommissionEarned: parseFloat(totalCommissionEarned.toFixed(4)),
         commissionCount,
         commissionBalance: parseFloat(commissionBalance.toFixed(4)),
-        commissionNote: "You earn 5% from: wallet activation fees, student subscription plans, affiliate trust fund deposits, and global trade market bot earnings — for every member who signed up with your referral code.",
+        commissionNote: "You earn 5% from every transaction your referrals make — including wallet deposits, student subscriptions, trust fund investments, trade market activity, fintech payments, P2P transfers, bank & crypto withdrawals, bot earnings, and trust fund withdrawals.",
         recentCommissions: (recentCommissions.rows as any[]).map(r => ({
           amount: parseFloat(parseFloat(r.amount_usd).toFixed(4)),
           note: r.note,
@@ -1672,6 +1676,8 @@ export async function registerRoutes(
         paymentMethod: "trust_fund",
         description: `Trust Fund earnings withdrawal — ${(sharePercentage * 100).toFixed(6)}% share of $${totalAffiliatePool.toFixed(2)} pool`,
       });
+      // Credit 5% referral commission on trust fund earnings withdrawal
+      creditReferrerCommission(userId, available, "trust fund earnings withdrawal").catch(() => {});
 
       // Notification
       await storage.createNotification({
@@ -3978,6 +3984,8 @@ export async function registerRoutes(
       // Record transaction entries for both parties
       await storage.createTransaction({ userId, type: "transfer", amount: (-amount).toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `P2P transfer to ${recipient.firstName} ${recipient.lastName}${note ? ` — ${note}` : ""}` });
       await storage.createTransaction({ userId: recipientId, type: "transfer", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `P2P transfer from ${(await storage.getUser(userId))?.firstName ?? "User"}${note ? ` — ${note}` : ""}` });
+      // Credit 5% referral commission on sender's wallet activity
+      creditReferrerCommission(userId, amount, "p2p wallet transfer").catch(() => {});
       res.json({ message: `$${amount.toFixed(2)} sent to ${recipient.firstName} ${recipient.lastName} successfully` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

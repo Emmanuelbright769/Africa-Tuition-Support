@@ -347,82 +347,85 @@ export async function registerRoutes(
     })));
   });
 
-  // ── Helper: verify any Nigerian ID via Ninverify (ninverify.ng) ─────────
-  // Ninverify supports NIN, BVN, VIN (Voter's Card), Driver's Licence, Passport.
-  // Set NINVERIFY_API_KEY in secrets to enable live lookups.
+  // ── Helper: verify any Nigerian ID via Prembly (api.prembly.com) ─────────
+  // Prembly (formerly Identitypass) supports NIN, BVN, VIN, Driver's Licence, Passport.
+  // Set PREMBLY_API_KEY and PREMBLY_APP_ID in secrets to enable live lookups.
   async function ninverifyLookup(idType: string, idBody: Record<string, string>): Promise<{ ok: boolean; data: any; message: string }> {
-    const apiKey = process.env.NINVERIFY_API_KEY;
+    const apiKey = process.env.PREMBLY_API_KEY;
+    const appId  = process.env.PREMBLY_APP_ID;
 
-    if (!apiKey) {
+    if (!apiKey || !appId) {
       return { ok: false, data: null, message: "Identity verification service is not configured. Please contact support." };
     }
 
-    // Ninverify endpoint map — https://api.ninverify.ng/api/v1/
+    // Prembly endpoint map — https://api.prembly.com/identitypass/verification/
     const endpointMap: Record<string, string> = {
-      nin:             "https://api.ninverify.ng/api/v1/nin",
-      bvn:             "https://api.ninverify.ng/api/v1/bvn",
-      voters_card:     "https://api.ninverify.ng/api/v1/vin",
-      drivers_license: "https://api.ninverify.ng/api/v1/drivers-license",
-      passport:        "https://api.ninverify.ng/api/v1/passport",
-      national_id:     "https://api.ninverify.ng/api/v1/nin",
+      nin:             "https://api.prembly.com/identitypass/verification/nin",
+      bvn:             "https://api.prembly.com/identitypass/verification/bvn",
+      voters_card:     "https://api.prembly.com/identitypass/verification/voter_id",
+      drivers_license: "https://api.prembly.com/identitypass/verification/drivers_license",
+      passport:        "https://api.prembly.com/identitypass/verification/passport",
+      national_id:     "https://api.prembly.com/identitypass/verification/nin",
     };
 
-    // Ninverify body field map
+    // Prembly body field map (all use "number" as the key)
     const bodyMap: Record<string, Record<string, string>> = {
-      nin:             { nin:         idBody.nin          || "" },
-      bvn:             { bvn:         idBody.bvn          || "" },
-      voters_card:     { vin:         idBody.vin          || "" },
-      drivers_license: { license_no:  idBody.license_no   || "" },
-      passport:        { passport_no: idBody.passport_no  || "", last_name: idBody.last_name || "" },
-      national_id:     { nin:         idBody.nin          || "" },
+      nin:             { number: idBody.nin          || "" },
+      bvn:             { number: idBody.bvn          || "" },
+      voters_card:     { number: idBody.vin          || "", last_name: idBody.last_name || "" },
+      drivers_license: { number: idBody.license_no   || "" },
+      passport:        { number: idBody.passport_no  || "", last_name: idBody.last_name || "" },
+      national_id:     { number: idBody.nin          || "" },
     };
 
     const url  = endpointMap[idType] || endpointMap.nin;
-    const body = bodyMap[idType]     || { nin: Object.values(idBody)[0] || "" };
+    const body = bodyMap[idType]     || { number: Object.values(idBody)[0] || "" };
 
     let resp: Response;
     try {
       resp = await fetch(url, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${apiKey}`,
+          "x-api-key":     apiKey,
+          "app-id":        appId,
           "Content-Type":  "application/json",
           "Accept":        "application/json",
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(20000),
       });
     } catch (err: any) {
-      console.error("[KYC] Network error:", err.message);
+      console.error("[KYC] Network error calling Prembly:", err.message, err.cause?.message ?? "");
       return { ok: false, data: null, message: "Verification service is temporarily unreachable. Please try again shortly." };
     }
 
     const raw = await resp.text();
     let json: any;
     try { json = JSON.parse(raw); } catch {
-      console.error("[KYC] Non-JSON response:", raw.slice(0, 200));
+      console.error("[KYC] Non-JSON response from Prembly:", raw.slice(0, 300));
       return { ok: false, data: null, message: "Verification service returned an unexpected response. Please try again." };
     }
 
-    console.log(`[KYC] ${idType} → HTTP ${resp.status} | status=${json.status} | message=${json.message || ""}`);
+    console.log(`[KYC Prembly] ${idType} → HTTP ${resp.status} | status=${json.status} | detail=${json.detail || json.message || ""}`);
 
+    // Prembly returns status:true on success, status:false on failure
     if (!resp.ok || json.status === false) {
-      const errMsg = json?.message || json?.error || "ID could not be verified. Please check your details and try again.";
+      const errMsg = json?.detail || json?.message || json?.errors?.code || "ID could not be verified. Please check your details and try again.";
       return { ok: false, data: null, message: errMsg };
     }
 
     const d = json.data || json;
     return {
       ok: true,
-      message: json.message || "Verified",
+      message: json.detail || json.message || "Verified",
       data: {
-        firstName:   d.firstName  || d.first_name  || d.firstname  || d.firstname  || "",
-        lastName:    d.lastName   || d.last_name   || d.lastname   || d.surname    || "",
-        middleName:  d.middleName || d.middle_name || d.middlename || "",
+        firstName:   d.firstname  || d.firstName  || d.first_name  || "",
+        lastName:    d.surname    || d.lastName   || d.last_name   || d.lastname   || "",
+        middleName:  d.middlename || d.middleName || d.middle_name || "",
         gender:      d.gender     || "",
-        phone:       d.phoneNumber || d.phone_number || d.phone     || "",
-        dateOfBirth: d.dateOfBirth || d.date_of_birth || d.dob     || d.birthdate  || "",
-        photo:       d.photo       || d.image       || d.passport_photo || null,
+        phone:       d.phone      || d.phoneNumber || d.phone_number || "",
+        dateOfBirth: d.birthdate  || d.dateOfBirth || d.date_of_birth || d.dob || "",
+        photo:       d.photo      || d.image       || d.passport_photo || null,
       },
     };
   }
@@ -610,7 +613,7 @@ export async function registerRoutes(
     }
   });
 
-  // ── BVN Verification via ninverify.ng ─────────────────────────────────────
+  // ── BVN Verification via Prembly (api.prembly.com) ─────────────────────────
   app.post("/api/verification/bvn", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -621,39 +624,40 @@ export async function registerRoutes(
         return res.status(400).json({ message: "BVN must be exactly 11 digits." });
       }
 
-      const apiKey = process.env.NINVERIFY_API_KEY;
-      if (!apiKey) {
-        console.warn("[BVN] NINVERIFY_API_KEY not set — running format-only check");
+      const apiKey = process.env.PREMBLY_API_KEY;
+      const appId  = process.env.PREMBLY_APP_ID;
+      if (!apiKey || !appId) {
+        console.warn("[BVN] PREMBLY_API_KEY/PREMBLY_APP_ID not set — running format-only check");
         return res.json({ valid: true, bvn, message: "BVN format validated (live lookup pending key).", demo: true });
       }
 
-      // ninverify.ng BVN lookup — fall back to format-only if API is unreachable
+      // Prembly BVN lookup
       let verifyData: any = null;
       try {
-        const verifyRes = await fetch("https://api.ninverify.ng/api/v1/bvn", {
+        const verifyRes = await fetch("https://api.prembly.com/identitypass/verification/bvn", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${apiKey}`,
+            "x-api-key":    apiKey,
+            "app-id":       appId,
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept":       "application/json",
           },
-          body: JSON.stringify({ bvn }),
-          signal: AbortSignal.timeout(10000),
+          body: JSON.stringify({ number: bvn }),
+          signal: AbortSignal.timeout(15000),
         });
         const raw = await verifyRes.text();
         try { verifyData = JSON.parse(raw); } catch { /* non-JSON response */ }
         if (verifyData && (!verifyRes.ok || verifyData.status === false)) {
           return res.status(400).json({
-            message: verifyData?.message || "BVN could not be verified. Please check the number and try again.",
+            message: verifyData?.detail || verifyData?.message || "BVN could not be verified. Please check the number and try again.",
           });
         }
       } catch (fetchErr: any) {
-        console.warn("[BVN] ninverify.ng unreachable — falling back to format-only validation:", fetchErr?.message);
-        // Fall back: accept valid-format BVN and continue
+        console.warn("[BVN] Prembly unreachable — falling back to format-only validation:", fetchErr?.message);
         return res.json({ valid: true, bvn, message: "BVN accepted (format validated). Proceeding.", demo: true });
       }
 
-      const bvnData = verifyData.data || verifyData;
+      const bvnData = (verifyData?.data) || verifyData;
       return res.json({
         valid: true,
         bvn,

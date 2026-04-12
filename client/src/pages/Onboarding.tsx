@@ -369,7 +369,7 @@ export default function Onboarding() {
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                      <Lock className="w-3.5 h-3.5 text-green-600" /> Verified securely via ninverify.ng • Data encrypted end-to-end
+                      <Lock className="w-3.5 h-3.5 text-green-600" /> Verified securely via Prembly IdentityPass • Data encrypted end-to-end
                     </p>
                   </div>
 

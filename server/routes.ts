@@ -347,48 +347,45 @@ export async function registerRoutes(
     })));
   });
 
-  // ── Helper: verify any Nigerian ID via Prembly (prembly.com) ─────────────
-  // Prembly supports NIN, BVN, VIN, Driver's License, Passport, and Liveness.
-  // Set PREMBLY_API_KEY and PREMBLY_APP_ID in secrets to enable live lookups.
+  // ── Helper: verify any Nigerian ID via Ninverify (ninverify.ng) ─────────
+  // Ninverify supports NIN, BVN, VIN (Voter's Card), Driver's Licence, Passport.
+  // Set NINVERIFY_API_KEY in secrets to enable live lookups.
   async function ninverifyLookup(idType: string, idBody: Record<string, string>): Promise<{ ok: boolean; data: any; message: string }> {
-    const apiKey = process.env.PREMBLY_API_KEY;
-    const appId  = process.env.PREMBLY_APP_ID || "tsia";
+    const apiKey = process.env.NINVERIFY_API_KEY;
 
     if (!apiKey) {
-      // No key configured — block verification instead of silently accepting
       return { ok: false, data: null, message: "Identity verification service is not configured. Please contact support." };
     }
 
-    // Prembly endpoint map — https://api.prembly.com/identitypass/verification/
+    // Ninverify endpoint map — https://api.ninverify.ng/api/v1/
     const endpointMap: Record<string, string> = {
-      nin:             "https://api.prembly.com/identitypass/verification/nin",
-      bvn:             "https://api.prembly.com/identitypass/verification/bvn",
-      voters_card:     "https://api.prembly.com/identitypass/verification/vin",
-      drivers_license: "https://api.prembly.com/identitypass/verification/drivers_license",
-      passport:        "https://api.prembly.com/identitypass/verification/passport",
-      national_id:     "https://api.prembly.com/identitypass/verification/nin",
+      nin:             "https://api.ninverify.ng/api/v1/nin",
+      bvn:             "https://api.ninverify.ng/api/v1/bvn",
+      voters_card:     "https://api.ninverify.ng/api/v1/vin",
+      drivers_license: "https://api.ninverify.ng/api/v1/drivers-license",
+      passport:        "https://api.ninverify.ng/api/v1/passport",
+      national_id:     "https://api.ninverify.ng/api/v1/nin",
     };
 
-    // Prembly body field map — all use "number" for the primary ID
+    // Ninverify body field map
     const bodyMap: Record<string, Record<string, string>> = {
-      nin:             { number: idBody.nin             || "" },
-      bvn:             { number: idBody.bvn             || "" },
-      voters_card:     { number: idBody.vin             || "" },
-      drivers_license: { number: idBody.license_no      || "" },
-      passport:        { number: idBody.passport_no     || "", last_name: idBody.last_name || "" },
-      national_id:     { number: idBody.nin             || "" },
+      nin:             { nin:         idBody.nin          || "" },
+      bvn:             { bvn:         idBody.bvn          || "" },
+      voters_card:     { vin:         idBody.vin          || "" },
+      drivers_license: { license_no:  idBody.license_no   || "" },
+      passport:        { passport_no: idBody.passport_no  || "", last_name: idBody.last_name || "" },
+      national_id:     { nin:         idBody.nin          || "" },
     };
 
     const url  = endpointMap[idType] || endpointMap.nin;
-    const body = bodyMap[idType]     || { number: Object.values(idBody)[0] || "" };
+    const body = bodyMap[idType]     || { nin: Object.values(idBody)[0] || "" };
 
     let resp: Response;
     try {
       resp = await fetch(url, {
         method: "POST",
         headers: {
-          "x-api-key":     apiKey,
-          "app-id":        appId,
+          "Authorization": `Bearer ${apiKey}`,
           "Content-Type":  "application/json",
           "Accept":        "application/json",
         },
@@ -407,25 +404,25 @@ export async function registerRoutes(
       return { ok: false, data: null, message: "Verification service returned an unexpected response. Please try again." };
     }
 
-    console.log(`[KYC] ${idType} → HTTP ${resp.status} | status=${json.status} | detail=${json.detail || json.message || ""}`);
+    console.log(`[KYC] ${idType} → HTTP ${resp.status} | status=${json.status} | message=${json.message || ""}`);
 
     if (!resp.ok || json.status === false) {
-      const errMsg = json?.detail || json?.message || "ID could not be verified. Please check your details and try again.";
+      const errMsg = json?.message || json?.error || "ID could not be verified. Please check your details and try again.";
       return { ok: false, data: null, message: errMsg };
     }
 
     const d = json.data || json;
     return {
       ok: true,
-      message: json.detail || json.message || "Verified",
+      message: json.message || "Verified",
       data: {
-        firstName:   d.firstName  || d.first_name  || d.firstname  || "",
-        lastName:    d.lastName   || d.last_name   || d.lastname   || "",
+        firstName:   d.firstName  || d.first_name  || d.firstname  || d.firstname  || "",
+        lastName:    d.lastName   || d.last_name   || d.lastname   || d.surname    || "",
         middleName:  d.middleName || d.middle_name || d.middlename || "",
         gender:      d.gender     || "",
-        phone:       d.phoneNumber || d.phone      || "",
-        dateOfBirth: d.dateOfBirth || d.dob        || d.birthdate  || "",
-        photo:       d.photo       || d.image      || null,
+        phone:       d.phoneNumber || d.phone_number || d.phone     || "",
+        dateOfBirth: d.dateOfBirth || d.date_of_birth || d.dob     || d.birthdate  || "",
+        photo:       d.photo       || d.image       || d.passport_photo || null,
       },
     };
   }
@@ -3835,26 +3832,60 @@ export async function registerRoutes(
     if (cached) return res.json({ accountName: cached, accountNumber, fromCache: true });
 
     const secretKey = process.env.SQUAD_SECRET_KEY;
+    // Helper to extract account name from Squad response
+    const extractName = (data: any): string =>
+      data?.data?.account_name ?? data?.data?.AccountName ?? data?.account_name ?? data?.AccountName ?? "";
+
     try {
-      const r = await fetch("https://api.squadco.com/bank/account/lookup", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
-        signal: AbortSignal.timeout(12000),
-      });
-      const data = await r.json() as any;
-      if (data.success) {
-        const accountName: string = data.data?.account_name ?? data.data?.AccountName ?? "";
-        if (accountName) {
-          bankResolveCache.set(cacheKey, accountName);
-          return res.json({ accountName, accountNumber });
+      // Primary endpoint: POST /bank/account/lookup
+      let accountName = "";
+      let lastMsg = "";
+      try {
+        const r = await fetch("https://api.squadco.com/bank/account/lookup", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
+          signal: AbortSignal.timeout(12000),
+        });
+        const data = await r.json() as any;
+        console.log(`[SQUAD] resolve-bank POST lookup → HTTP ${r.status} | success=${data.success} | name="${extractName(data)}" | msg="${data.message}"`);
+        if (data.success || r.ok) {
+          accountName = extractName(data);
+        }
+        if (!accountName) lastMsg = data.message || "";
+      } catch (e1: any) {
+        console.warn("[SQUAD] resolve-bank POST failed:", e1.message);
+      }
+
+      // Fallback endpoint: GET /payout/fetchBank
+      if (!accountName) {
+        try {
+          const qs = new URLSearchParams({ bank_code: bankCode, account_number: accountNumber }).toString();
+          const r2 = await fetch(`https://api.squadco.com/payout/fetchBank?${qs}`, {
+            headers: { "Authorization": `Bearer ${secretKey}` },
+            signal: AbortSignal.timeout(12000),
+          });
+          const data2 = await r2.json() as any;
+          console.log(`[SQUAD] resolve-bank GET fetchBank → HTTP ${r2.status} | success=${data2.success} | name="${extractName(data2)}" | msg="${data2.message}"`);
+          if (data2.success || r2.ok) {
+            accountName = extractName(data2);
+          }
+          if (!accountName) lastMsg = data2.message || lastMsg;
+        } catch (e2: any) {
+          console.warn("[SQUAD] resolve-bank GET fallback failed:", e2.message);
         }
       }
-      const msg: string = (data.message || "").toLowerCase();
+
+      if (accountName) {
+        bankResolveCache.set(cacheKey, accountName);
+        return res.json({ accountName, accountNumber });
+      }
+
+      const msg = lastMsg.toLowerCase();
       if (msg.includes("not found") || msg.includes("invalid") || msg.includes("does not exist")) {
         return res.json({ accountNotFound: true, message: "Account not found. Check the account number and bank." });
       }
-      return res.json({ message: data.message || "Could not verify account. Please double-check and proceed with caution.", unverified: true });
+      return res.json({ message: lastMsg || "Could not verify account. Please double-check and proceed with caution.", unverified: true });
     } catch (e: any) {
       return res.json({ message: "Verification service unreachable — confirm account details before sending.", unverified: true });
     }
@@ -4006,7 +4037,7 @@ export async function registerRoutes(
           headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             transaction_reference: txRef,
-            amount: netAmountNgn,
+            amount: netAmountNgn * 100,
             bank_code: bankCode,
             account_number: accountNumber,
             account_name: accountName,

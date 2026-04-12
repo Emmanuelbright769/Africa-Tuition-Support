@@ -409,6 +409,7 @@ export default function AffiliateDashboard() {
   const [ukNow, setUkNow] = useState(() => new Date());
   // Guard ref: declared here (with all other refs/state) so it is initialized before any function references it
   const botCompletingRef = useRef(false);
+  const botPendingToastRef = useRef(false); // prevent repeat "session pending" toasts
 
   // Determine if we're inside the trading window (Mon–Fri 1PM–1AM GMT; Sat before 1AM for Fri session tail)
   const ukHourNow = parseInt(ukNow.toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
@@ -438,6 +439,7 @@ export default function AffiliateDashboard() {
       if (r.ok) {
         // Confirmed server success — clear session
         setBotActivatedAt(null);
+        botPendingToastRef.current = false;
         try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
         const data = await r.json();
         queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
@@ -468,15 +470,21 @@ export default function AffiliateDashboard() {
         const status = r.status;
         if (status >= 400 && status < 500) {
           setBotActivatedAt(null);
+          botPendingToastRef.current = false;
           try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
           // Silently clear — no toast needed for stale/invalid sessions
-        } else if (isAutoOff) {
-          toast({ title: "Bot Session Pending", description: "Server unavailable. Your session is saved and will complete when the server recovers.", variant: "destructive" });
+        } else if (isAutoOff && !botPendingToastRef.current) {
+          // Only show this notification once — session will keep retrying silently
+          botPendingToastRef.current = true;
+          toast({ title: "Bot Session Saved", description: "Your bot session is saved and will complete automatically when reconnected.", className: "border-amber-500" });
         }
       }
     } catch {
-      // Network error — keep session alive so it retries when connectivity returns
-      if (isAutoOff) toast({ title: "Bot Session Pending", description: "Network error. Your bot session is saved and will complete automatically when you reconnect.", variant: "destructive" });
+      // Network error — keep session alive so it retries silently when connectivity returns
+      if (isAutoOff && !botPendingToastRef.current) {
+        botPendingToastRef.current = true;
+        toast({ title: "Bot Session Saved", description: "Your bot session is saved and will complete automatically when you reconnect.", className: "border-amber-500" });
+      }
     } finally {
       botCompletingRef.current = false;
     }

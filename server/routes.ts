@@ -764,10 +764,6 @@ export async function registerRoutes(
         });
       }
 
-      if (verification.portalFeePaid) {
-        return res.status(400).json({ message: "Fee already paid" });
-      }
-
       // ── Batch enrollment check ──────────────────────────────────────────────
       const BATCH_MAX = 15; // server-side only; never sent to client
       let batch = await storage.getCurrentBatch();
@@ -785,8 +781,14 @@ export async function registerRoutes(
       }
 
       if (!batch) {
-        // First-ever enrollment — create batch 1
-        batch = await storage.createBatch(1);
+        // Create new batch (first-ever OR previous batch expired after 30 days)
+        const allBatches = await storage.getAllBatches();
+        batch = await storage.createBatch((allBatches?.length ?? 0) + 1);
+      }
+
+      // Fee already paid for THIS batch — block re-payment
+      if (verification.portalFeePaid && (verification as any).paidBatchId === batch.id) {
+        return res.status(400).json({ message: "Fee already paid for this batch" });
       }
       // ────────────────────────────────────────────────────────────────────────
 
@@ -798,7 +800,8 @@ export async function registerRoutes(
       verification = await storage.updateVerification(verification.id, {
         portalFeePaid: true,
         commitmentStartDate: new Date(),
-      });
+        paidBatchId: batch.id,
+      } as any);
 
       await storage.createTransaction({
         userId,
@@ -830,7 +833,9 @@ export async function registerRoutes(
       let verification = await storage.getVerificationByUser(userId);
       if (!verification) return res.status(400).json({ message: "Start verification first" });
 
-      if (!verification.portalFeePaid) {
+      const currentBatch = await storage.getCurrentBatch();
+      const paidForCurrentBatch = currentBatch && (verification as any).paidBatchId === currentBatch.id;
+      if (!verification.portalFeePaid && !paidForCurrentBatch) {
         return res.status(400).json({ message: "You must pay the $3 verification fee before submitting WAEC results" });
       }
 
@@ -1198,20 +1203,25 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const batch = await storage.getCurrentBatch();
+      const verification = await storage.getVerificationByUser(userId);
+
       if (!batch) {
-        // No batch yet — enrollment is open (will create on first fee payment)
-        return res.json({ status: "open", nextOpenAt: null, enrolled: false });
+        // No batch yet (or previous batch expired) — enrollment is open
+        return res.json({ status: "open", nextOpenAt: null, enrolledInCurrentBatch: false });
       }
 
-      // Check if this user already paid their fee (i.e. enrolled in any batch)
-      const verification = await storage.getVerificationByUser(userId);
-      const enrolled = !!(verification?.portalFeePaid);
+      // Did user pay for THIS specific batch?
+      const enrolledInCurrentBatch = !!(verification?.portalFeePaid && (verification as any).paidBatchId === batch.id);
 
       if (batch.status === "open") {
-        return res.json({ status: "open", nextOpenAt: null, enrolled });
+        return res.json({ status: "open", nextOpenAt: null, enrolledInCurrentBatch });
       }
-      // Batch is closed — return when it re-opens
-      return res.json({ status: "closed", nextOpenAt: batch.nextOpenAt, enrolled });
+      // Batch is closed — always return countdown info so ALL users can see it
+      return res.json({
+        status: "closed",
+        nextOpenAt: batch.nextOpenAt,
+        enrolledInCurrentBatch,
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -4003,6 +4013,8 @@ export async function registerRoutes(
     await storage.createTransaction({ userId, type: "bill", amount: (-amountUsd).toFixed(2), fee: "0.00", paymentMethod: "wallet", description });
     const notif = await storage.createNotification({ userId, type: "wallet_credit", title: notifTitle, message: notifMessage, data: notifData, isRead: false });
     pushToUser(userId, "notification", notif);
+    // Spread referral commission to referrer (5% of transaction amount)
+    creditReferrerCommission(userId, amountUsd, `fintech ${service}`).catch(() => {});
     return await storage.getOrCreateWallet(userId);
   }
 
@@ -4063,6 +4075,8 @@ export async function registerRoutes(
       const msg = `₦${netAmountNgn.toLocaleString()} sent to ${accountName} (${accountNumber}). Processing within 24h. Ref: ${txRef}`;
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Initiated ✓", message: msg, data: { ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
+      // Spread referral commission (5% of transfer amount)
+      creditReferrerCommission(userId, transferAmount, "fintech bank_transfer").catch(() => {});
       const updated = await storage.getOrCreateWallet(userId);
       res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg });
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }

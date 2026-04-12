@@ -224,6 +224,7 @@ export interface IStorage {
 
   // Sponsorship Batches
   getCurrentBatch(): Promise<SponsorshipBatch | null>;
+  getAllBatches(): Promise<SponsorshipBatch[]>;
   createBatch(batchNumber: number): Promise<SponsorshipBatch>;
   incrementBatchEnrollment(id: number, maxSize: number): Promise<{ batch: SponsorshipBatch; wasClosed: boolean }>;
 
@@ -1400,17 +1401,25 @@ export class DatabaseStorage implements IStorage {
 
   // ─── Sponsorship Batches ────────────────────────────────────────────────────
   async getCurrentBatch(): Promise<SponsorshipBatch | null> {
-    // Return open batch first, then most recent closed batch if none open
+    // Return open batch first
     const [open] = await db.select().from(sponsorshipBatches)
       .where(eq(sponsorshipBatches.status, "open"))
       .orderBy(desc(sponsorshipBatches.id))
       .limit(1);
     if (open) return open;
+    // Return closed batch only if its reopen window has NOT yet passed
+    // Once nextOpenAt has passed, return null so a new batch will be created
     const [closed] = await db.select().from(sponsorshipBatches)
       .where(eq(sponsorshipBatches.status, "closed"))
       .orderBy(desc(sponsorshipBatches.id))
       .limit(1);
-    return closed ?? null;
+    if (!closed) return null;
+    if (closed.nextOpenAt && new Date() >= new Date(closed.nextOpenAt)) return null;
+    return closed;
+  }
+
+  async getAllBatches(): Promise<SponsorshipBatch[]> {
+    return db.select().from(sponsorshipBatches).orderBy(desc(sponsorshipBatches.id));
   }
 
   async createBatch(batchNumber: number): Promise<SponsorshipBatch> {

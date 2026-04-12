@@ -76,6 +76,7 @@ export default function StudentDashboard() {
   const { data: myLoans = [], refetch: refetchMyLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"] });
   const { data: walletData } = useQuery<any>({ queryKey: ["/api/wallet"] });
   const { data: batchStatus } = useQuery<any>({ queryKey: ["/api/sponsorship/batch-status"] });
+  const [batchCountdown, setBatchCountdown] = useState("");
 
   const walletActivated = walletData?.activated === true;
 
@@ -140,6 +141,24 @@ export default function StudentDashboard() {
     return () => window.removeEventListener("tsia:open-chat", handler);
   }, []);
 
+  // Live countdown for closed batch
+  useEffect(() => {
+    if (!batchStatus?.nextOpenAt) { setBatchCountdown(""); return; }
+    const due = new Date(batchStatus.nextOpenAt).getTime();
+    const update = () => {
+      const diff = due - Date.now();
+      if (diff <= 0) { setBatchCountdown("Opening now…"); return; }
+      const d = Math.floor(diff / 86400000);
+      const h = Math.floor((diff % 86400000) / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setBatchCountdown(`${d}d ${h}h ${m}m ${s}s`);
+    };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [batchStatus?.nextOpenAt]);
+
   if (authLoading || (!user && !authLoading)) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
@@ -151,9 +170,13 @@ export default function StudentDashboard() {
   const payoutMax        = verification?.payoutMax ? parseFloat(verification.payoutMax) : 0;
   const isVerified       = verification?.status === "verified";
   const isPending        = verification?.status === "pending";
-  const feePaid          = verification?.portalFeePaid;
+  // feePaid is true only when enrolled in the CURRENT open batch
+  // (so re-entry into a new batch works correctly after 30-day lockout)
+  const feePaid = batchStatus != null
+    ? (batchStatus.enrolledInCurrentBatch === true)
+    : (verification?.portalFeePaid === true);
   const showPendingApproval = isPending && feePaid;
-  const showGoToOnboarding  = !isVerified && !showPendingApproval && !feePaid;
+  const showGoToOnboarding  = !isVerified && !showPendingApproval && !feePaid && batchStatus?.status !== "closed";
 
   const themeOpts = [{ v: "light" as const, i: Sun }, { v: "dark" as const, i: Moon }, { v: "system" as const, i: Monitor }];
 
@@ -513,17 +536,37 @@ export default function StudentDashboard() {
                       </p>
                     );
                   })()}
-                  {/* Batch status banner */}
-                  {batchStatus?.status === "closed" && !batchStatus?.enrolled && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 mb-5 flex items-start gap-3">
-                      <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-blue-900 dark:text-blue-200 text-sm">Current Enrollment Batch Complete</p>
-                        <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">
-                          The current enrollment batch is complete. The next batch opens on{" "}
-                          <strong>{batchStatus.nextOpenAt ? new Date(batchStatus.nextOpenAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "a later date"}</strong>.
-                          You can still use all other platform features in the meantime.
-                        </p>
+                  {/* Batch status banner — shown to ALL users when batch is closed */}
+                  {batchStatus?.status === "closed" && (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-700 rounded-2xl p-4 mb-5">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="bg-blue-100 dark:bg-blue-800/50 p-2 rounded-lg shrink-0">
+                          <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-blue-900 dark:text-blue-200 text-sm">
+                            {batchStatus.enrolledInCurrentBatch
+                              ? "You're enrolled — next batch opens soon"
+                              : "Enrollment Batch Full"}
+                          </p>
+                          <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
+                            {batchStatus.enrolledInCurrentBatch
+                              ? "Your application is being reviewed. A new batch will open after 30 days — you will need to re-apply and pay the fee again to join."
+                              : "This batch has reached capacity. Wait for the next batch to open, then pay the fee and re-apply."}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Live countdown */}
+                      <div className="bg-white/60 dark:bg-black/20 rounded-xl p-3 flex items-center gap-3">
+                        <Hourglass className="w-4 h-4 text-blue-500 shrink-0" />
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-blue-500 font-semibold">Next batch opens in</p>
+                          <p className="text-lg font-bold text-blue-800 dark:text-blue-200 font-mono tracking-tight">
+                            {batchCountdown || (batchStatus.nextOpenAt
+                              ? new Date(batchStatus.nextOpenAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+                              : "Soon")}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}

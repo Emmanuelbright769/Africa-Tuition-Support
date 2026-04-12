@@ -59,6 +59,7 @@ export const verifications = pgTable("verifications", {
   waecPercentage: decimal("waec_percentage", { precision: 5, scale: 2 }),
   payoutMin: decimal("payout_min", { precision: 10, scale: 2 }),
   payoutMax: decimal("payout_max", { precision: 10, scale: 2 }),
+  paidBatchId: integer("paid_batch_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -248,7 +249,7 @@ export type TradeTransaction = typeof tradeTransactions.$inferSelect;
 export type WalletRecord = typeof wallets.$inferSelect;
 
 export const WAEC_GRADE_WEIGHTS: Record<string, number> = {
-  A1: 15, B2: 13, B3: 12, C4: 11, C5: 10, C6: 9, D7: 8, E8: 7, F9: 6,
+  A1: 20, B2: 12, B3: 11.5, C4: 11, C5: 10.5, C6: 10, D7: 9.5, E8: 9, F9: 8.5,
 };
 
 export const CURRENCY_RATES = {
@@ -271,7 +272,7 @@ export const WAEC_ELECTIVE_SUBJECTS = [
 export function calculateWaecPercentage(grades: string[]): number {
   const weights = grades.map(g => WAEC_GRADE_WEIGHTS[g.toUpperCase()] || 0);
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-  const maxPossible = grades.length * 15;
+  const maxPossible = grades.length * 20;
   if (maxPossible === 0) return 0;
   return Math.round((totalWeight / maxPossible) * 100 * 100) / 100;
 }

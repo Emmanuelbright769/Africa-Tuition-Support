@@ -5,6 +5,8 @@ const FROM_EMAIL = process.env.SMTP_FROM || process.env.FROM_EMAIL || "noreply@t
 const BREVO_API  = "https://api.brevo.com/v3/smtp/email";
 const RESEND_API = "https://api.resend.com/emails";
 
+export const ADMIN_EMAIL = "support@tsiforafrica.com";
+
 function baseTemplate(content: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -604,4 +606,261 @@ export async function sendReferralSignupEmail(to: string, firstName: string, ref
     ${btn("https://tsiforafrica.com/affiliate", "View My Referrals")}
   `);
   await sendEmail(to, subject, html);
+}
+
+// ─── Admin Notification Template ──────────────────────────────────────────────
+
+function adminActionTemplate(
+  emoji: string,
+  title: string,
+  badgeLabel: string,
+  badgeColor: string,
+  rows: Array<[string, string]>,
+  note?: string,
+  dashboardUrl = "https://tsiforafrica.com/admin",
+): string {
+  const rowsHtml = rows.map(([label, value]) => `
+    <tr>
+      <td style="color:#6b7c72;font-size:12px;font-weight:600;padding:7px 0;vertical-align:top;width:140px;">${label}</td>
+      <td style="color:#1a1a1a;font-size:14px;font-weight:600;padding:7px 0;">${value}</td>
+    </tr>
+  `).join("");
+
+  return baseTemplate(`
+    <!-- Badge -->
+    <div style="text-align:center;margin:0 0 20px;">
+      <span style="display:inline-block;background:${badgeColor};color:#fff;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:5px 16px;border-radius:50px;">${badgeLabel}</span>
+    </div>
+
+    <h2 style="color:#1a6b3c;margin:0 0 6px;font-size:21px;text-align:center;">${emoji} ${title}</h2>
+    <p style="color:#9caa9f;font-size:12px;text-align:center;margin:0 0 24px;">${new Date().toUTCString()}</p>
+
+    <div style="background:#f7f9f7;border:1px solid #d8e8dd;border-radius:16px;padding:20px 24px;margin:0 0 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        ${rowsHtml}
+      </table>
+    </div>
+
+    ${note ? `<div style="background:#fff8e6;border:1px solid #f0d070;border-radius:12px;padding:14px 18px;margin:0 0 20px;">
+      <p style="color:#7a5c00;font-size:13px;margin:0;">⚠️ ${note}</p>
+    </div>` : ""}
+
+    ${btn(dashboardUrl, "Open Admin Dashboard")}
+
+    <p style="color:#b5c0b8;font-size:11px;text-align:center;margin:16px 0 0;">
+      This is an automated admin alert from the TSIA platform. Do not reply.
+    </p>
+  `);
+}
+
+// ─── Admin: New User Registered ───────────────────────────────────────────────
+
+export async function sendAdminNewUserEmail(data: {
+  name: string; email: string; role: string; country?: string; phone?: string; referredBy?: string;
+}): Promise<void> {
+  const subject = `🆕 New ${data.role} joined — ${data.name}`;
+  const html = adminActionTemplate(
+    "🆕", `New ${data.role.charAt(0).toUpperCase() + data.role.slice(1)} Registered`,
+    "New User", "#3498db",
+    [
+      ["Full Name", data.name],
+      ["Email", data.email],
+      ["Role", data.role],
+      ...(data.country ? [["Country", data.country] as [string, string]] : []),
+      ...(data.phone ? [["Phone", data.phone] as [string, string]] : []),
+      ...(data.referredBy ? [["Referred By (code)", data.referredBy] as [string, string]] : []),
+    ],
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+// ─── Admin: Wallet Deposit Submitted ─────────────────────────────────────────
+
+export async function sendAdminDepositEmail(data: {
+  name: string; email: string; amount: string; txHash: string; walletType: string; userId: number;
+}): Promise<void> {
+  const subject = `💳 ACTION REQUIRED: Deposit $${data.amount} from ${data.name}`;
+  const html = adminActionTemplate(
+    "💳", `Wallet Deposit Awaiting Confirmation`,
+    "Action Required", "#e74c3c",
+    [
+      ["User", `${data.name} (ID: ${data.userId})`],
+      ["Email", data.email],
+      ["Amount", `$${data.amount} USD`],
+      ["Network", data.walletType.toUpperCase()],
+      ["Tx Hash", data.txHash || "Not provided"],
+    ],
+    "Log in to the Admin Dashboard and confirm or decline this deposit.",
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+// ─── Admin: Bank Withdrawal Requested ─────────────────────────────────────────
+
+export async function sendAdminWithdrawalEmail(data: {
+  name: string; email: string; amount: string; method: string; bankName?: string;
+  accountNumber?: string; accountName?: string; address?: string; network?: string; userId: number;
+}): Promise<void> {
+  const isCrypto = data.method === "crypto";
+  const subject = `🏦 ACTION REQUIRED: ${isCrypto ? "Crypto" : "Bank"} Withdrawal $${data.amount} — ${data.name}`;
+  const html = adminActionTemplate(
+    isCrypto ? "₿" : "🏦",
+    `${isCrypto ? "Crypto" : "Bank"} Withdrawal Request`,
+    "Action Required", "#e67e22",
+    [
+      ["User", `${data.name} (ID: ${data.userId})`],
+      ["Email", data.email],
+      ["Amount", `$${data.amount} USD`],
+      ...(isCrypto
+        ? [["Network", (data.network || "").toUpperCase()], ["Wallet Address", data.address || "—"]] as [string, string][]
+        : [["Bank", data.bankName || "—"], ["Account No.", data.accountNumber || "—"], ["Account Name", data.accountName || "—"]] as [string, string][]
+      ),
+    ],
+    "Process and approve/decline this withdrawal request from the Admin Dashboard.",
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+// ─── Admin: Verification Submitted (Academic / WAEC) ─────────────────────────
+
+export async function sendAdminVerificationEmail(data: {
+  name: string; email: string; tier?: string; payoutMin?: string; payoutMax?: string;
+  waecPercentage?: string; userId: number;
+}): Promise<void> {
+  const subject = `📋 ACTION REQUIRED: Verification Submission — ${data.name}`;
+  const html = adminActionTemplate(
+    "📋", "New Student Verification to Review",
+    "Pending Review", "#8e44ad",
+    [
+      ["Student", `${data.name} (ID: ${data.userId})`],
+      ["Email", data.email],
+      ...(data.waecPercentage ? [["WAEC Score", `${data.waecPercentage}%`] as [string, string]] : []),
+      ...(data.tier && data.tier !== "none" ? [["Tier", data.tier.charAt(0).toUpperCase() + data.tier.slice(1)] as [string, string]] : []),
+      ...(data.payoutMin && data.payoutMax ? [["Offer Range", `$${data.payoutMin} – $${data.payoutMax}`] as [string, string]] : []),
+    ],
+    "Review the student's KYC, WAEC results and approve or reject their offer from the Admin Dashboard.",
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+// ─── Admin: Portal Fee Paid (Ready for Review) ────────────────────────────────
+
+export async function sendAdminPortalFeeEmail(data: {
+  name: string; email: string; amount: string; userId: number;
+}): Promise<void> {
+  const subject = `✅ Portal Fee Paid — ${data.name} is ready for review`;
+  const html = adminActionTemplate(
+    "✅", "Student Paid Portal Fee",
+    "Ready to Review", "#27ae60",
+    [
+      ["Student", `${data.name} (ID: ${data.userId})`],
+      ["Email", data.email],
+      ["Fee Paid", `$${data.amount}`],
+      ["Status", "KYC + WAEC submitted — awaiting offer approval"],
+    ],
+    "Open the Admin Dashboard → Pending Verifications to approve or reject this student's offer.",
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+// ─── Admin: Loan Application Submitted ───────────────────────────────────────
+
+export async function sendAdminLoanEmail(data: {
+  name: string; email: string; amount: string; purpose: string; termMonths: number; role: string; userId: number;
+}): Promise<void> {
+  const subject = `💰 ACTION REQUIRED: Loan Application $${data.amount} — ${data.name}`;
+  const html = adminActionTemplate(
+    "💰", "New Loan Application",
+    "Action Required", "#c0392b",
+    [
+      ["Applicant", `${data.name} (ID: ${data.userId})`],
+      ["Email", data.email],
+      ["Role", data.role],
+      ["Amount", `$${data.amount} USD`],
+      ["Term", `${data.termMonths} months`],
+      ["Purpose", data.purpose || "—"],
+    ],
+    "Review and approve or reject this loan from the Admin Dashboard → Loans section.",
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+// ─── Admin: Sponsorship Plan Payment ─────────────────────────────────────────
+
+export async function sendAdminSponsorshipEmail(data: {
+  name: string; email: string; planYears: number; totalCost: string; totalPayout: string; userId: number;
+}): Promise<void> {
+  const subject = `🎓 Sponsorship Plan Payment — ${data.name} (${data.planYears}-Year)`;
+  const html = adminActionTemplate(
+    "🎓", `${data.planYears}-Year Sponsorship Plan Activated`,
+    "Disbursement Pending", "#1a6b3c",
+    [
+      ["Student", `${data.name} (ID: ${data.userId})`],
+      ["Email", data.email],
+      ["Plan", `${data.planYears}-Year`],
+      ["Amount Paid", `$${data.totalCost} (incl. service charge)`],
+      ["Disbursement Due", `$${data.totalPayout}`],
+    ],
+    "A disbursement is now pending for this student. Approve it from Admin Dashboard → Disbursements when ready.",
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+// ─── Admin: KYC / Biometric Submitted ────────────────────────────────────────
+
+export async function sendAdminKycEmail(data: {
+  name: string; email: string; kycType: string; userId: number;
+}): Promise<void> {
+  const subject = `🔍 KYC Submission — ${data.name} (${data.kycType})`;
+  const html = adminActionTemplate(
+    "🔍", `KYC Verification Submitted`,
+    "KYC Submitted", "#2980b9",
+    [
+      ["User", `${data.name} (ID: ${data.userId})`],
+      ["Email", data.email],
+      ["KYC Type", data.kycType],
+    ],
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+// ─── Admin: New E-Commerce Order ─────────────────────────────────────────────
+
+export async function sendAdminOrderEmail(data: {
+  buyerName: string; sellerName: string; productTitle: string;
+  totalAmount: string; commissionAmount: string; orderId: number;
+}): Promise<void> {
+  const subject = `🛒 New Order #${data.orderId} — $${data.totalAmount} (commission $${data.commissionAmount})`;
+  const html = adminActionTemplate(
+    "🛒", "New E-Commerce Order",
+    "Order Placed", "#16a085",
+    [
+      ["Order ID", `#${data.orderId}`],
+      ["Buyer", data.buyerName],
+      ["Seller", data.sellerName],
+      ["Product", data.productTitle],
+      ["Total", `$${data.totalAmount}`],
+      ["Platform Commission (8%)", `$${data.commissionAmount}`],
+    ],
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+// ─── Admin: Commission Withdrawal (Affiliate / Co-Affiliate) ──────────────────
+
+export async function sendAdminCommissionWithdrawalEmail(data: {
+  name: string; email: string; amount: string; type: string; userId: number;
+}): Promise<void> {
+  const subject = `💸 Commission Withdrawal — ${data.name} withdrawing $${data.amount}`;
+  const html = adminActionTemplate(
+    "💸", `${data.type} Commission Withdrawal`,
+    "Withdrawal", "#8e44ad",
+    [
+      ["User", `${data.name} (ID: ${data.userId})`],
+      ["Email", data.email],
+      ["Type", data.type],
+      ["Amount", `$${data.amount}`],
+    ],
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
 }

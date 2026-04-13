@@ -3,7 +3,7 @@ import { type Server } from "http";
 import { storage } from "./storage";
 import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import {
-  sendEmail,
+  sendEmail, ADMIN_EMAIL,
   sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail,
   sendOrderUpdateEmail, sendLoanUpdateEmail, sendVerificationUpdateEmail,
   sendReferralCommissionEmail, sendPriceDropEmail,
@@ -11,6 +11,10 @@ import {
   sendTourBookingEmail, sendQceActivationEmail, sendQceWithdrawalEmail,
   sendNewArrivalEmail, sendReferralSignupEmail,
   sendSupportContactToAdmin, sendSupportConfirmation,
+  sendAdminNewUserEmail, sendAdminDepositEmail, sendAdminWithdrawalEmail,
+  sendAdminVerificationEmail, sendAdminPortalFeeEmail, sendAdminLoanEmail,
+  sendAdminSponsorshipEmail, sendAdminKycEmail, sendAdminOrderEmail,
+  sendAdminCommissionWithdrawalEmail,
 } from "./email";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -139,6 +143,8 @@ export async function registerRoutes(
           }
           // Send real welcome email
           sendWelcomeEmail(email, firstName, targetRole as "student" | "affiliate").catch((err: any) => console.error("[EMAIL] Welcome send failed:", err?.message ?? err));
+          // Notify admin of new registration
+          sendAdminNewUserEmail({ name: `${firstName} ${lastName}`, email, role: targetRole, country: country || undefined, phone: phone || undefined, referredBy: referralCode || undefined }).catch(() => {});
         }
         return u;
       };
@@ -766,6 +772,19 @@ export async function registerRoutes(
         pushToUser(userId, "notification", kycNotif);
       } catch { /* non-critical */ }
 
+      // Notify admin — KYC submitted
+      try {
+        const kycUser = await storage.getUser(userId);
+        if (kycUser) {
+          sendAdminKycEmail({
+            name: `${kycUser.firstName} ${kycUser.lastName}`,
+            email: kycUser.email,
+            kycType: "BVN + GPS + Facial Biometric",
+            userId,
+          }).catch(() => {});
+        }
+      } catch { /* non-critical */ }
+
       res.json({ success: true, verification, message: "Wallet KYC completed. Your wallet is now fully unlocked." });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -900,6 +919,19 @@ export async function registerRoutes(
       // Uses Once variant to deduplicate if commission was already given at wallet-KYC time.
       creditReferrerCommissionOnce(userId, portalFee, "student subscription plan").catch(() => {});
 
+      // Notify admin — student paid portal fee and is ready for review
+      try {
+        const feeUser = await storage.getUser(userId);
+        if (feeUser) {
+          sendAdminPortalFeeEmail({
+            name: `${feeUser.firstName} ${feeUser.lastName}`,
+            email: feeUser.email,
+            amount: totalCharged.toFixed(2),
+            userId,
+          }).catch(() => {});
+        }
+      } catch { /* non-critical */ }
+
       res.json(verification);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -948,6 +980,22 @@ export async function registerRoutes(
         payoutMin: payoutInfo.min.toFixed(2),
         payoutMax: payoutInfo.max.toFixed(2),
       });
+
+      // Notify admin — student submitted WAEC results, awaiting review
+      try {
+        const academicUser = await storage.getUser(userId);
+        if (academicUser) {
+          sendAdminVerificationEmail({
+            name: `${academicUser.firstName} ${academicUser.lastName}`,
+            email: academicUser.email,
+            tier,
+            payoutMin: payoutInfo.min.toFixed(2),
+            payoutMax: payoutInfo.max.toFixed(2),
+            waecPercentage: percentage.toFixed(2),
+            userId,
+          }).catch(() => {});
+        }
+      } catch { /* non-critical */ }
 
       res.json({
         ...verification,
@@ -1094,6 +1142,20 @@ export async function registerRoutes(
         );
       } catch {}
 
+      // Notify admin — bank withdrawal needs manual processing
+      if (user) {
+        sendAdminWithdrawalEmail({
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          amount: withdrawAmount.toFixed(2),
+          method: "bank",
+          bankName,
+          accountNumber,
+          accountName,
+          userId,
+        }).catch(() => {});
+      }
+
       const updatedWallet = await storage.getOrCreateWallet(userId);
       res.json({
         wallet: updatedWallet,
@@ -1210,6 +1272,19 @@ export async function registerRoutes(
           </div>`
         );
       } catch {}
+
+      // Notify admin — crypto withdrawal to process
+      if (cryptoUser) {
+        sendAdminWithdrawalEmail({
+          name: `${cryptoUser.firstName} ${cryptoUser.lastName}`,
+          email: cryptoUser.email,
+          amount: withdrawAmt.toFixed(2),
+          method: "crypto",
+          network: networkLabel,
+          address: address.trim(),
+          userId,
+        }).catch(() => {});
+      }
 
       const updated = await storage.getOrCreateWallet(userId);
       res.json({
@@ -1338,6 +1413,21 @@ export async function registerRoutes(
           isRead: false,
         });
         pushToUser(userId, "notification", planNotif);
+      } catch { /* non-critical */ }
+
+      // ── 12. Notify admin — disbursement pending ────────────────────────────
+      try {
+        const planStudent = await storage.getUser(userId);
+        if (planStudent) {
+          sendAdminSponsorshipEmail({
+            name: `${planStudent.firstName} ${planStudent.lastName}`,
+            email: planStudent.email,
+            planYears,
+            totalCost: totalCost.toFixed(2),
+            totalPayout,
+            userId,
+          }).catch(() => {});
+        }
       } catch { /* non-critical */ }
 
       res.json({ ...plan, totalCost, serviceCharge, totalPayout });
@@ -1541,6 +1631,16 @@ export async function registerRoutes(
       pushToUser(userId, "notification", notif);
 
       const updatedTrade = await storage.getOrCreateTradeWallet(userId);
+
+      // Notify admin — affiliate commission withdrawal request
+      sendAdminCommissionWithdrawalEmail({
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        amount: withdrawAmount.toFixed(4),
+        reference: txRef,
+        userId,
+      }).catch(() => {});
+
       res.json({
         success: true,
         reference: txRef,
@@ -3601,6 +3701,16 @@ export async function registerRoutes(
         purpose: purpose || null,
         status: "pending",
       });
+      // Notify admin — new loan application needs approval
+      sendAdminLoanEmail({
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        amount: parseFloat(amountUsd).toFixed(2),
+        purpose: purpose || "Not specified",
+        termMonths: parseInt(termMonths),
+        role: user.role,
+        userId,
+      }).catch(() => {});
       res.json(loan);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3932,6 +4042,18 @@ export async function registerRoutes(
     if (!txHash || txHash.trim().length < 10) return res.status(400).json({ message: "Valid transaction hash is required" });
     try {
       const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "pending" });
+      // Notify admin immediately — deposit awaits confirmation
+      const depositUser = await storage.getUser(userId);
+      if (depositUser) {
+        sendAdminDepositEmail({
+          name: `${depositUser.firstName} ${depositUser.lastName}`,
+          email: depositUser.email,
+          amount: amount.toFixed(2),
+          txHash: txHash.trim(),
+          walletType: walletType || "trc20",
+          userId,
+        }).catch(() => {});
+      }
       res.json({ deposit, message: "Deposit submitted. Your wallet will be credited after confirmation (within 30 minutes)." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4796,6 +4918,27 @@ export async function registerRoutes(
         ]);
         pushToUser(userId, "notification", buyerNotif);
         pushToUser(prod.sellerId, "notification", sellerNotif);
+      } catch { /* non-critical */ }
+
+      // Credit 5% referral commission to buyer's referrer on purchase
+      creditReferrerCommission(userId, totalAmount, "e-commerce purchase").catch(() => {});
+
+      // Notify admin — new marketplace order with commission
+      try {
+        const [orderBuyer, orderSeller] = await Promise.all([
+          storage.getUser(userId),
+          storage.getUser(prod.sellerId),
+        ]);
+        sendAdminOrderEmail({
+          buyerName: orderBuyer ? `${orderBuyer.firstName} ${orderBuyer.lastName}` : `User #${userId}`,
+          sellerName: orderSeller ? `${orderSeller.firstName} ${orderSeller.lastName}` : `User #${prod.sellerId}`,
+          productTitle: prod.title,
+          quantity: qty,
+          totalAmount: totalAmount.toFixed(2),
+          commission: commissionAmount.toFixed(2),
+          sellerReceives: sellerReceives.toFixed(2),
+          orderId: order.id,
+        }).catch(() => {});
       } catch { /* non-critical */ }
 
       res.json({ order, message: `Order placed! $${totalAmount.toFixed(2)} deducted. TSIA commission: $${commissionAmount.toFixed(2)} (${(ECOMMERCE.COMMISSION_RATE * 100)}%).` });

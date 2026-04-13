@@ -478,7 +478,7 @@ export default function Onboarding() {
                               <SelectTrigger className="h-9 text-sm" data-testid={`select-elective-${idx}`}>
                                 <SelectValue placeholder={`Elective Subject ${idx + 1}`} />
                               </SelectTrigger>
-                              <SelectContent>
+                              <SelectContent position="popper" className="max-h-64 overflow-y-auto">
                                 {WAEC_ELECTIVE_SUBJECTS.filter(s => !electives.includes(s) || electives[idx] === s).map(s =>
                                   <SelectItem key={s} value={s}>{s}</SelectItem>
                                 )}

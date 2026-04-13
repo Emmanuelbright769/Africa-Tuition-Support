@@ -865,9 +865,22 @@ export async function registerRoutes(
       const totalCharged = portalFee + serviceCharge;
       const ngnEquivalent = Math.round(totalCharged * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
 
+      // ── Debit wallet — must have sufficient balance ──────────────────────────
+      const feeWallet = await storage.getOrCreateWallet(userId);
+      const feeWalletBalance = parseFloat(feeWallet.balance);
+      if (feeWalletBalance < totalCharged) {
+        const shortfall = (totalCharged - feeWalletBalance).toFixed(2);
+        return res.status(402).json({
+          code: "INSUFFICIENT_BALANCE",
+          message: `Insufficient wallet balance. You need $${totalCharged.toFixed(2)} (fee + $${serviceCharge.toFixed(2)} service charge) but have $${feeWalletBalance.toFixed(2)}. Please fund your wallet with at least $${shortfall} more to continue.`,
+          required: totalCharged,
+          available: feeWalletBalance,
+        });
+      }
+      await storage.updateWalletBalance(userId, (feeWalletBalance - totalCharged).toFixed(2));
+
       verification = await storage.updateVerification(verification.id, {
         portalFeePaid: true,
-        commitmentStartDate: new Date(),
         paidBatchId: batch.id,
       } as any);
 
@@ -1231,31 +1244,103 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      // Check for existing plan and 365-day lock
+      // ── 1. Require verified offer ─────────────────────────────────────────
+      const verification = await storage.getVerificationByUser(userId);
+      if (!verification || verification.status !== "verified") {
+        return res.status(400).json({ message: "Your offer must be approved by the TSIA team before selecting a sponsorship plan." });
+      }
+
+      // ── 2. Check 30-day commitment window (starts at admin approval) ──────
+      const approvalDate = verification.commitmentStartDate;
+      if (!approvalDate) {
+        return res.status(400).json({ message: "No offer approval date found. Please contact support." });
+      }
+      const windowEnd = new Date(approvalDate).getTime() + (30 * 24 * 60 * 60 * 1000);
+      if (Date.now() > windowEnd) {
+        return res.status(400).json({
+          code: "WINDOW_EXPIRED",
+          message: "Your 30-day commitment window has expired. Please contact support to discuss re-enrollment.",
+        });
+      }
+
+      // ── 3. Check for existing active plan (365-day lock) ──────────────────
       const existing = await storage.getSponsorshipPlanByUser(userId);
       if (existing) {
         const planAge = Math.floor((Date.now() - new Date(existing.createdAt).getTime()) / 86400000);
         const daysLeft = Math.max(0, 365 - planAge);
         if (daysLeft > 0) {
-          return res.status(400).json({ message: `Your current plan is locked for ${daysLeft} more day(s). You can change it after 365 days.`, daysLeft });
+          return res.status(400).json({ message: `Your current plan is active for ${daysLeft} more day(s). You can renew after 365 days.`, daysLeft });
         }
       }
 
+      // ── 4. Plan cost + service charge ──────────────────────────────────────
       const { planYears } = req.body;
-      const planMap: Record<number, { cost: string; payout: string }> = {
-        1: { cost: "35.00", payout: "230.00" },
-        2: { cost: "45.00", payout: "460.00" },
-        3: { cost: "50.00", payout: "690.00" },
-      };
-      const planInfo = planMap[planYears];
-      if (!planInfo) return res.status(400).json({ message: "Invalid plan" });
+      const planBaseCost: Record<number, number> = { 1: 35, 2: 45, 3: 50 };
+      const baseCost = planBaseCost[planYears];
+      if (!baseCost) return res.status(400).json({ message: "Invalid plan. Choose 1, 2, or 3 years." });
 
-      const plan = await storage.createSponsorshipPlan({
-        userId, planYears, annualCost: planInfo.cost, maxPayout: planInfo.payout, active: true,
+      const SERVICE_CHARGE_RATE = 0.10;
+      const serviceCharge = parseFloat((baseCost * SERVICE_CHARGE_RATE).toFixed(2));
+      const totalCost = parseFloat((baseCost + serviceCharge).toFixed(2));
+      const ngnEquivalent = Math.round(totalCost * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+
+      // ── 5. Check wallet balance and debit ─────────────────────────────────
+      const planWallet = await storage.getOrCreateWallet(userId);
+      const planWalletBalance = parseFloat(planWallet.balance);
+      if (planWalletBalance < totalCost) {
+        const shortfall = (totalCost - planWalletBalance).toFixed(2);
+        return res.status(402).json({
+          code: "INSUFFICIENT_BALANCE",
+          message: `Insufficient wallet balance. The ${planYears}-year plan costs $${baseCost.toFixed(2)} + $${serviceCharge.toFixed(2)} service charge = $${totalCost.toFixed(2)}. Your balance is $${planWalletBalance.toFixed(2)}. Please fund your wallet with at least $${shortfall} more.`,
+          required: totalCost,
+          available: planWalletBalance,
+        });
+      }
+      await storage.updateWalletBalance(userId, (planWalletBalance - totalCost).toFixed(2));
+
+      // ── 6. Create payment transaction ──────────────────────────────────────
+      await storage.createTransaction({
+        userId,
+        type: "plan_payment",
+        amount: `-${totalCost.toFixed(2)}`,
+        fee: serviceCharge.toFixed(2),
+        paymentMethod: "wallet",
+        description: `${planYears}-year TSIA Sponsorship Plan payment — $${baseCost.toFixed(2)} + $${serviceCharge.toFixed(2)} service charge = $${totalCost.toFixed(2)} (₦${ngnEquivalent.toLocaleString()})`,
       });
 
-      await storage.createDisbursement({ userId, amount: planInfo.payout, status: "pending" });
-      res.json(plan);
+      // ── 7. Payout based on student's actual WAEC tier ─────────────────────
+      const payoutPerYear = parseFloat(verification.payoutMax || "230.00");
+      const totalPayout = (payoutPerYear * planYears).toFixed(2);
+
+      // ── 8. Create sponsorship plan ────────────────────────────────────────
+      const plan = await storage.createSponsorshipPlan({
+        userId,
+        planYears,
+        annualCost: baseCost.toFixed(2),
+        maxPayout: totalPayout,
+        active: true,
+      });
+
+      // ── 9. Create pending disbursement ────────────────────────────────────
+      await storage.createDisbursement({ userId, amount: totalPayout, status: "pending" });
+
+      // ── 10. Credit 5% referral commission to referrer ─────────────────────
+      creditReferrerCommission(userId, baseCost, "sponsorship plan payment").catch(() => {});
+
+      // ── 11. Notify student ─────────────────────────────────────────────────
+      try {
+        const planNotif = await storage.createNotification({
+          userId,
+          type: "verification_update",
+          title: "Sponsorship Plan Active ✓",
+          message: `Your ${planYears}-year TSIA sponsorship plan is now active. $${totalCost.toFixed(2)} has been deducted from your wallet. Your $${totalPayout} disbursement is pending admin approval.`,
+          data: { planYears, totalCost, totalPayout },
+          isRead: false,
+        });
+        pushToUser(userId, "notification", planNotif);
+      } catch { /* non-critical */ }
+
+      res.json({ ...plan, totalCost, serviceCharge, totalPayout });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -2562,7 +2647,11 @@ export async function registerRoutes(
       const { approve, reason } = req.body;
       const vId = parseInt(req.params.verificationId);
       const status = approve ? "verified" : "rejected";
-      const updated = await storage.updateVerification(vId, { status });
+      const verificationUpdate: any = { status };
+      if (approve) {
+        verificationUpdate.commitmentStartDate = new Date(); // 30-day plan-selection window starts now
+      }
+      const updated = await storage.updateVerification(vId, verificationUpdate);
       // Notify student
       try {
         const verUser = await storage.getUser(updated.userId);
@@ -2572,9 +2661,9 @@ export async function registerRoutes(
         const notif = await storage.createNotification({
           userId: updated.userId,
           type: "verification_update",
-          title: approve ? "Verification Approved ✓" : "Verification Update",
+          title: approve ? "Offer Approved — Select Your Plan ✓" : "Verification Update",
           message: approve
-            ? "Congratulations! Your identity has been verified. You now have full access to all TSIA features and your wallet will be funded shortly."
+            ? "Congratulations! Your TSIA offer has been approved. You now have 30 days to select and pay for your sponsorship plan. Go to your Student Dashboard → Sponsorship section to choose your plan and complete payment from your wallet."
             : `Your verification was not approved. ${reason ? `Reason: ${reason}` : "Please contact support or resubmit your documents."}`,
           data: { verificationId: vId, status, reason },
           isRead: false,

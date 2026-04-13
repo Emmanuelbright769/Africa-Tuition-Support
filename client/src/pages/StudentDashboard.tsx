@@ -106,12 +106,21 @@ export default function StudentDashboard() {
   const selectPlanMutation = useMutation({
     mutationFn: async (planYears: number) => {
       const res = await apiRequest("POST", "/api/sponsorship/select", { planYears });
-      return res.json();
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.message || "Plan selection failed");
+      return body;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sponsorship/plan"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      toast({ title: "Plan Selected", description: "Your sponsorship plan has been submitted for review." });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      toast({
+        title: "Sponsorship Plan Active ✓",
+        description: `Your ${data.planYears}-year plan is active. $${data.totalCost} debited from wallet. Disbursement of $${data.maxPayout} is pending admin approval.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Plan selection failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -524,16 +533,41 @@ export default function StudentDashboard() {
                   {(() => {
                     const planAge = plan?.createdAt ? Math.floor((Date.now() - new Date(plan.createdAt).getTime()) / 86400000) : 0;
                     const planDaysLeft = plan ? Math.max(0, 365 - planAge) : 0;
+                    // 30-day commitment window from admin approval
+                    const approvalDate = verification?.commitmentStartDate ? new Date(verification.commitmentStartDate) : null;
+                    const windowEnd = approvalDate ? approvalDate.getTime() + 30 * 24 * 60 * 60 * 1000 : null;
+                    const windowDaysLeft = windowEnd ? Math.max(0, Math.ceil((windowEnd - Date.now()) / 86400000)) : null;
+                    const withinWindow = windowEnd ? Date.now() < windowEnd : false;
                     return (
-                      <p className="text-muted-foreground text-sm mb-4">
-                        {plan && planDaysLeft > 0
-                          ? `Active ${plan.planYears}-year plan. You can switch plans in ${planDaysLeft} day(s).`
-                          : plan && planDaysLeft === 0
-                          ? `Your ${plan.planYears}-year plan has completed 365 days. You may select a new plan.`
-                          : isVerified
-                          ? "Your account is verified — select a plan immediately to begin receiving funding."
-                          : "Complete verification to unlock plans."}
-                      </p>
+                      <>
+                        <p className="text-muted-foreground text-sm mb-4">
+                          {plan && planDaysLeft > 0
+                            ? `Active ${plan.planYears}-year plan. You can renew after ${planDaysLeft} day(s).`
+                            : plan && planDaysLeft === 0
+                            ? `Your ${plan.planYears}-year plan has completed 365 days. You may select a new plan.`
+                            : isVerified && withinWindow
+                            ? `Your offer is approved! Select and pay for a plan within your ${windowDaysLeft}-day commitment window.`
+                            : isVerified && !withinWindow && !plan
+                            ? "Your 30-day commitment window has expired. Please contact support."
+                            : "Complete verification to unlock sponsorship plans."}
+                        </p>
+                        {/* 30-day commitment window countdown banner */}
+                        {isVerified && withinWindow && !plan && (
+                          <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-700 rounded-2xl p-4 mb-5">
+                            <div className="flex items-start gap-3">
+                              <div className="bg-green-100 dark:bg-green-800/50 p-2 rounded-lg shrink-0">
+                                <Clock className="w-4 h-4 text-green-600 dark:text-green-400" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-green-900 dark:text-green-200 text-sm">Commitment Window Open</p>
+                                <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+                                  You have <strong>{windowDaysLeft} day{windowDaysLeft !== 1 ? "s" : ""}</strong> to select and pay for your plan. Payment is debited from your wallet. Window closes on <strong>{windowEnd ? new Date(windowEnd).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : ""}</strong>.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     );
                   })()}
                   {/* Batch status banner — shown to ALL users when batch is closed */}
@@ -572,43 +606,69 @@ export default function StudentDashboard() {
                   )}
                 </motion.div>
                 <motion.div variants={itemVariants}>
-                  <div className="grid sm:grid-cols-3 gap-5">
-                    {[
-                      { years: 1, price: 35, payout: 230, coverage: "~85%" },
-                      { years: 2, price: 45, payout: 460, coverage: "~90%", popular: true },
-                      { years: 3, price: 50, payout: 690, coverage: "~92%" },
-                    ].map(p => {
-                      const isActive = plan?.planYears === p.years;
-                      const planAge = plan?.createdAt ? Math.floor((Date.now() - new Date(plan.createdAt).getTime()) / 86400000) : 0;
-                      const planDaysLeft = plan ? Math.max(0, 365 - planAge) : 0;
-                      const canSelect = isVerified && (!plan || planDaysLeft === 0) && !isActive;
-                      return (
-                        <div key={p.years} className={`relative rounded-2xl p-6 transition-all ${isActive ? 'border-2 border-primary bg-primary/5 shadow-lg' : p.popular ? 'border-2 border-primary/30' : 'border'}`}>
-                          {p.popular && !isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Recommended</div>}
-                          {isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Active</div>}
-                          <div className="flex items-start justify-between mb-1">
-                            <h4 className="font-semibold text-lg">{p.years}-Year Plan</h4>
-                            <span className="text-[10px] font-bold bg-tsia-green/10 text-tsia-green border border-tsia-green/20 rounded-full px-2 py-0.5">{p.coverage} sponsored</span>
-                          </div>
-                          <div className="text-4xl font-bold mb-4">${p.price}<span className="text-sm font-medium text-muted-foreground">/yr</span></div>
-                          <ul className="space-y-3 mb-8 text-sm font-medium">
-                            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Up to ${p.payout} payout</li>
-                            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> {p.coverage} academic cost covered</li>
-                            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Wallet access</li>
-                          </ul>
-                          <Button
-                            variant={isActive || p.popular ? 'default' : 'outline'}
-                            className="w-full h-11 font-semibold"
-                            disabled={!canSelect || selectPlanMutation.isPending}
-                            onClick={() => selectPlanMutation.mutate(p.years)}
-                            data-testid={`button-plan-${p.years}`}
-                          >
-                            {isActive ? 'Active ✓' : !isVerified ? 'Verify first' : plan && planDaysLeft > 0 ? `Locked (${planDaysLeft}d)` : 'Select plan'}
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {(() => {
+                    // Compute commitment window for plan cards
+                    const planAge = plan?.createdAt ? Math.floor((Date.now() - new Date(plan.createdAt).getTime()) / 86400000) : 0;
+                    const planDaysLeft = plan ? Math.max(0, 365 - planAge) : 0;
+                    const approvalDate = verification?.commitmentStartDate ? new Date(verification.commitmentStartDate) : null;
+                    const windowEnd = approvalDate ? approvalDate.getTime() + 30 * 24 * 60 * 60 * 1000 : null;
+                    const withinWindow = windowEnd ? Date.now() < windowEnd : false;
+                    // User's actual payout per year from their tier
+                    const tierPayoutMax = payoutMax || 230;
+                    const tierPayoutMin = payoutMin || 225;
+                    const SERVICE_CHARGE = 0.10;
+                    return (
+                      <div className="grid sm:grid-cols-3 gap-5">
+                        {[
+                          { years: 1, price: 35, coverage: "~85%" },
+                          { years: 2, price: 45, coverage: "~90%", popular: true },
+                          { years: 3, price: 50, coverage: "~92%" },
+                        ].map(p => {
+                          const isActive = plan?.planYears === p.years;
+                          const canSelect = isVerified && withinWindow && (!plan || planDaysLeft === 0) && !isActive;
+                          const serviceCharge = parseFloat((p.price * SERVICE_CHARGE).toFixed(2));
+                          const totalCost = p.price + serviceCharge;
+                          const totalPayoutMin = tierPayoutMin * p.years;
+                          const totalPayoutMax = tierPayoutMax * p.years;
+                          return (
+                            <div key={p.years} className={`relative rounded-2xl p-6 transition-all ${isActive ? 'border-2 border-primary bg-primary/5 shadow-lg' : p.popular ? 'border-2 border-primary/30' : 'border'}`}>
+                              {p.popular && !isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Recommended</div>}
+                              {isActive && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">Active</div>}
+                              <div className="flex items-start justify-between mb-1">
+                                <h4 className="font-semibold text-lg">{p.years}-Year Plan</h4>
+                                <span className="text-[10px] font-bold bg-tsia-green/10 text-tsia-green border border-tsia-green/20 rounded-full px-2 py-0.5">{p.coverage} sponsored</span>
+                              </div>
+                              <div className="text-4xl font-bold mb-1">${p.price}<span className="text-sm font-medium text-muted-foreground">/yr</span></div>
+                              <p className="text-[11px] text-muted-foreground mb-4">+${serviceCharge.toFixed(2)} service charge = <strong>${totalCost.toFixed(2)} total</strong></p>
+                              <ul className="space-y-3 mb-8 text-sm font-medium">
+                                <li className="flex items-center gap-2">
+                                  <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                                  {isVerified && tierPayoutMax > 0
+                                    ? `$${totalPayoutMin.toFixed(0)}–$${totalPayoutMax.toFixed(0)} payout`
+                                    : "Payout based on your tier"}
+                                </li>
+                                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary shrink-0" /> {p.coverage} academic cost covered</li>
+                                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary shrink-0" /> Full wallet access</li>
+                              </ul>
+                              <Button
+                                variant={isActive || p.popular ? 'default' : 'outline'}
+                                className="w-full h-11 font-semibold"
+                                disabled={!canSelect || selectPlanMutation.isPending}
+                                onClick={() => selectPlanMutation.mutate(p.years)}
+                                data-testid={`button-plan-${p.years}`}
+                              >
+                                {isActive ? 'Active ✓'
+                                  : !isVerified ? 'Verify first'
+                                  : !withinWindow && !plan ? 'Window expired'
+                                  : plan && planDaysLeft > 0 ? `Locked (${planDaysLeft}d)`
+                                  : `Pay $${totalCost.toFixed(2)} — Select`}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </motion.div>
               </>
             )}

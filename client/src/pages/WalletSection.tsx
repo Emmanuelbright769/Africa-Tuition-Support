@@ -1065,17 +1065,15 @@ export default function WalletSection() {
               >
                 {cwOtpLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-1.5" /> Sending…</> : cwOtpSent ? "Resend OTP" : "Send OTP to Email"}
               </Button>
-              {cwOtpSent && (
-                <div>
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enter 6-Digit OTP</Label>
-                  <Input
-                    type="text" inputMode="numeric" maxLength={6} placeholder="e.g. 847291"
-                    value={cwOtpCode} onChange={e => setCwOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    className="mt-1.5 h-12 text-center text-2xl font-black tracking-widest rounded-xl border-amber-300"
-                    data-testid="input-cw-otp"
-                  />
-                </div>
-              )}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enter 6-Digit OTP</Label>
+                <Input
+                  type="text" inputMode="numeric" maxLength={6} placeholder="e.g. 847291"
+                  value={cwOtpCode} onChange={e => setCwOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  className="mt-1.5 h-12 text-center text-2xl font-black tracking-widest rounded-xl border-amber-300"
+                  data-testid="input-cw-otp"
+                />
+              </div>
             </div>
 
             {/* CTA */}

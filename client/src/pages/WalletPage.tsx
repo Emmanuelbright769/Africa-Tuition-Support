@@ -1043,9 +1043,9 @@ export default function WalletPage() {
 
       {/* ══ WITHDRAW — STEP 2: CRYPTO FORM ══ */}
       <Dialog open={cwOpen} onOpenChange={v => { setCwOpen(v); if (!v) { setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); } }}>
-        <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !h-full !rounded-none !m-0 !p-0 !border-0 overflow-hidden bg-background">
-          <div className="flex flex-col h-full">
-            <div className="bg-gradient-to-br from-amber-500 to-amber-700 px-6 pt-14 pb-6 text-white shrink-0">
+        <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !rounded-none !m-0 !p-0 !border-0 !overflow-y-auto bg-background">
+          <div>
+            <div className="bg-gradient-to-br from-amber-500 to-amber-700 px-6 pt-14 pb-6 text-white sticky top-0 z-10">
               <button onClick={() => { setCwOpen(false); setWithdrawChoiceOpen(true); }} className="flex items-center gap-1 text-white/70 hover:text-white text-xs mb-3 transition-colors">
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
@@ -1060,7 +1060,7 @@ export default function WalletPage() {
               </div>
             </div>
 
-            <div className="p-5 pb-10 space-y-4 overflow-y-auto flex-1 min-h-0">
+            <div className="p-5 pb-16 space-y-4">
               {/* Network */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Select Network</p>
@@ -1203,10 +1203,10 @@ export default function WalletPage() {
 
       {/* ══ BANK WITHDRAWAL — STEP 2: FORM ══ */}
       <Dialog open={bwOpen} onOpenChange={v => { setBwOpen(v); if (!v) { setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); } }}>
-        <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !h-full !rounded-none !m-0 !p-0 !border-0 overflow-hidden bg-background">
-          <div className="flex flex-col h-full">
+        <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !rounded-none !m-0 !p-0 !border-0 !overflow-y-auto bg-background">
+          <div>
             {/* Header */}
-            <div className="bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] px-6 pt-14 pb-6 text-white shrink-0">
+            <div className="bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] px-6 pt-14 pb-6 text-white sticky top-0 z-10">
               <button onClick={() => { setBwOpen(false); setWithdrawChoiceOpen(true); }} className="flex items-center gap-1 text-white/70 hover:text-white text-xs mb-3 transition-colors">
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
@@ -1221,7 +1221,7 @@ export default function WalletPage() {
               </div>
             </div>
 
-            <div className="p-5 pb-10 space-y-4 overflow-y-auto flex-1 min-h-0">
+            <div className="p-5 pb-16 space-y-4">
               {/* Bank selector */}
               <div>
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Select Your Bank</Label>

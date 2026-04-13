@@ -116,6 +116,13 @@ export default function WalletPage() {
   const [cwAmount, setCwAmount]           = useState("");
   const [cwSuccessOpen, setCwSuccessOpen] = useState(false);
   const [cwSuccessData, setCwSuccessData] = useState<{ amount: number; netAmount: number; fee: number; network: string } | null>(null);
+  // Withdrawal OTP state
+  const [bwOtpCode, setBwOtpCode]         = useState("");
+  const [bwOtpSent, setBwOtpSent]         = useState(false);
+  const [bwOtpLoading, setBwOtpLoading]   = useState(false);
+  const [cwOtpCode, setCwOtpCode]         = useState("");
+  const [cwOtpSent, setCwOtpSent]         = useState(false);
+  const [cwOtpLoading, setCwOtpLoading]   = useState(false);
 
   // ── History ─────────────────────────────────────────────────────────────
   const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "sent" | "received" | "bills">("ledger");
@@ -267,14 +274,15 @@ export default function WalletPage() {
       const amount = parseFloat(cwAmount);
       if (!amount || amount < 1) throw new Error("Minimum withdrawal is $1");
       if (!cwAddress.trim()) throw new Error("USDT wallet address is required");
-      const res = await apiRequest("POST", "/api/wallet/withdraw-crypto", { amount, network: cwNetwork, address: cwAddress.trim() });
+      if (!cwOtpCode.trim() || cwOtpCode.trim().length !== 6) throw new Error("Enter the 6-digit OTP sent to your email");
+      const res = await apiRequest("POST", "/api/wallet/withdraw-crypto", { amount, network: cwNetwork, address: cwAddress.trim(), otpCode: cwOtpCode.trim() });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
       return d;
     },
     onSuccess: (d: any) => {
       setCwSuccessData({ amount: parseFloat(cwAmount), netAmount: d.netAmount, fee: d.fee, network: cwNetwork });
-      setCwOpen(false); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20");
+      setCwOpen(false); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); setCwOtpCode(""); setCwOtpSent(false);
       setCwSuccessOpen(true);
       refetchWallet();
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/withdrawals"] });
@@ -290,12 +298,14 @@ export default function WalletPage() {
       if (!effectiveBankName) throw new Error("Please select or enter your bank name");
       if (!bwAccount || bwAccount.length !== 10 || !/^\d+$/.test(bwAccount)) throw new Error("Account number must be exactly 10 digits");
       if (!bwAccountName.trim()) throw new Error("Account name is required");
+      if (!bwOtpCode.trim() || bwOtpCode.trim().length !== 6) throw new Error("Enter the 6-digit OTP sent to your email");
       const res = await apiRequest("POST", "/api/wallet/withdraw", {
         amount,
         bankName: effectiveBankName,
         bankCode: bwBankCode,
         accountNumber: bwAccount,
         accountName: bwAccountName.trim(),
+        otpCode: bwOtpCode.trim(),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
@@ -314,11 +324,42 @@ export default function WalletPage() {
       setBwOpen(false);
       setBwSuccessOpen(true);
       setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount("");
+      setBwOtpCode(""); setBwOtpSent(false);
       refetchWallet();
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
     },
     onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
+
+  const requestBwOtp = async () => {
+    const amount = parseFloat(bwAmount);
+    if (!amount || amount < 1) { toast({ title: "Enter a valid amount first", variant: "destructive" }); return; }
+    setBwOtpLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/wallet/withdrawal-otp/request", { amount, type: "bank" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      setBwOtpSent(true);
+      toast({ title: "OTP Sent ✓", description: d.message, className: "border-tsia-green" });
+    } catch (e: any) {
+      toast({ title: "Could not send OTP", description: e.message, variant: "destructive" });
+    } finally { setBwOtpLoading(false); }
+  };
+
+  const requestCwOtp = async () => {
+    const amount = parseFloat(cwAmount);
+    if (!amount || amount < 1) { toast({ title: "Enter a valid amount first", variant: "destructive" }); return; }
+    setCwOtpLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/wallet/withdrawal-otp/request", { amount, type: "crypto" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      setCwOtpSent(true);
+      toast({ title: "OTP Sent ✓", description: d.message, className: "border-tsia-green" });
+    } catch (e: any) {
+      toast({ title: "Could not send OTP", description: e.message, variant: "destructive" });
+    } finally { setCwOtpLoading(false); }
+  };
 
   // ── KYC handlers ─────────────────────────────────────────────────────────
   const handleKycVerifyBvn = async () => {
@@ -1088,11 +1129,42 @@ export default function WalletPage() {
                 </p>
               </div>
 
+              {/* OTP Section */}
+              <div className="rounded-2xl border-2 border-dashed border-amber-300 dark:border-amber-600 bg-amber-50/60 dark:bg-amber-900/10 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm font-bold text-amber-800 dark:text-amber-300">Email OTP Required</span>
+                </div>
+                <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                  An OTP will be sent to your registered email to authorise this withdrawal. Valid for 10 minutes.
+                </p>
+                <Button
+                  type="button" size="sm"
+                  className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm"
+                  onClick={requestCwOtp}
+                  disabled={cwOtpLoading || !cwAmount || parseFloat(cwAmount) < 1 || !cwAddress.trim()}
+                  data-testid="btn-cw-request-otp"
+                >
+                  {cwOtpLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-1.5" /> Sending…</> : cwOtpSent ? "Resend OTP" : "Send OTP to Email"}
+                </Button>
+                {cwOtpSent && (
+                  <div>
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enter 6-Digit OTP</Label>
+                    <Input
+                      type="text" inputMode="numeric" maxLength={6} placeholder="e.g. 847291"
+                      value={cwOtpCode} onChange={e => setCwOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      className="mt-1.5 h-12 text-center text-2xl font-black tracking-widest rounded-xl border-amber-300"
+                      data-testid="input-cw-otp"
+                    />
+                  </div>
+                )}
+              </div>
+
               {/* CTA */}
               <Button
                 className="w-full h-12 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-base"
                 onClick={() => cryptoWithdrawMutation.mutate()}
-                disabled={cryptoWithdrawMutation.isPending || !cwAmount || parseFloat(cwAmount) < 1 || !cwAddress.trim() || parseFloat(cwAmount) > balance || (balance - parseFloat(cwAmount || "0")) < 2}
+                disabled={cryptoWithdrawMutation.isPending || !cwAmount || parseFloat(cwAmount) < 1 || !cwAddress.trim() || parseFloat(cwAmount) > balance || (balance - parseFloat(cwAmount || "0")) < 2 || cwOtpCode.length !== 6}
                 data-testid="btn-confirm-crypto-wd"
               >
                 {cryptoWithdrawMutation.isPending
@@ -1238,6 +1310,37 @@ export default function WalletPage() {
                 </p>
               </div>
 
+              {/* OTP Section */}
+              <div className="rounded-2xl border-2 border-dashed border-[#1a5c38]/40 dark:border-[#2d9d5c]/40 bg-green-50/60 dark:bg-green-900/10 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-[#1a5c38]" />
+                  <span className="text-sm font-bold text-[#1a5c38] dark:text-green-300">Email OTP Required</span>
+                </div>
+                <p className="text-xs text-[#2d6e44] dark:text-green-400 leading-relaxed">
+                  An OTP will be sent to your registered email to authorise this withdrawal. Valid for 10 minutes.
+                </p>
+                <Button
+                  type="button" size="sm"
+                  className="w-full h-9 bg-[#1a5c38] hover:bg-[#1e6b42] text-white font-bold rounded-xl text-sm"
+                  onClick={requestBwOtp}
+                  disabled={bwOtpLoading || !bwAmount || parseFloat(bwAmount) < 1 || bwAccount.length !== 10 || !bwAccountName.trim() || (!bwBankName || (bwBankName === "__other__" && !bwBankOther.trim()))}
+                  data-testid="btn-bw-request-otp"
+                >
+                  {bwOtpLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-1.5" /> Sending…</> : bwOtpSent ? "Resend OTP" : "Send OTP to Email"}
+                </Button>
+                {bwOtpSent && (
+                  <div>
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enter 6-Digit OTP</Label>
+                    <Input
+                      type="text" inputMode="numeric" maxLength={6} placeholder="e.g. 847291"
+                      value={bwOtpCode} onChange={e => setBwOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      className="mt-1.5 h-12 text-center text-2xl font-black tracking-widest rounded-xl border-[#1a5c38]/30"
+                      data-testid="input-bw-otp"
+                    />
+                  </div>
+                )}
+              </div>
+
               {/* Submit */}
               <Button
                 className="w-full h-12 bg-[#1a5c38] hover:bg-[#1e6b42] text-white font-black rounded-2xl text-base"
@@ -1249,7 +1352,8 @@ export default function WalletPage() {
                   (balance - parseFloat(bwAmount || "0")) < 2 ||
                   bwAccount.length !== 10 ||
                   !bwAccountName.trim() ||
-                  (!bwBankName || (bwBankName === "__other__" && !bwBankOther.trim()))
+                  (!bwBankName || (bwBankName === "__other__" && !bwBankOther.trim())) ||
+                  bwOtpCode.length !== 6
                 }
                 data-testid="btn-confirm-bank-wd"
               >

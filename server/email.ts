@@ -205,6 +205,46 @@ export async function sendOtpEmail(to: string, code: string, isSignup = false): 
   await sendEmail(to, subject, html);
 }
 
+// ─── Withdrawal OTP ───────────────────────────────────────────────────────────
+
+export async function sendWithdrawalOtpEmail(
+  to: string,
+  firstName: string,
+  code: string,
+  amount: string,
+  type: "bank" | "crypto" | "general",
+): Promise<void> {
+  const typeLabel = type === "bank" ? "Bank Withdrawal" : type === "crypto" ? "USDT Crypto Withdrawal" : "Withdrawal";
+  const subject = `Your TSIA Withdrawal OTP — ${typeLabel}`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">Withdrawal Security Code</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 6px;line-height:1.6;">
+      Hi <strong>${firstName}</strong>, you requested a withdrawal of <strong>$${amount}</strong> via <strong>${typeLabel}</strong>.
+    </p>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;line-height:1.6;">
+      Use the one-time code below to authorise this transaction. It expires in <strong>10 minutes</strong>.
+    </p>
+
+    <!-- OTP Box -->
+    <div style="background:#fff8e1;border:2px dashed #d97706;border-radius:16px;padding:28px;text-align:center;margin:0 0 24px;">
+      <p style="color:#92400e;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin:0 0 10px;">Withdrawal OTP</p>
+      <p style="color:#b45309;font-size:48px;font-weight:900;letter-spacing:12px;margin:0;font-family:monospace;">${code}</p>
+      <p style="color:#9caa9f;font-size:11px;margin:12px 0 0;">Valid for 10 minutes · Do not share this code</p>
+    </div>
+
+    <div style="background:#fef3c7;border-left:4px solid #d97706;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
+      <p style="color:#92400e;font-size:13px;margin:0;line-height:1.5;">
+        <strong>⚠ Security Notice:</strong> If you did not request this withdrawal, please contact support immediately at support@tsiforafrica.com. Your funds are safe until this code is used.
+      </p>
+    </div>
+
+    <p style="color:#9caa9f;font-size:13px;margin:0;text-align:center;">
+      Never share this code with anyone — TSIA staff will never ask for it.
+    </p>
+  `);
+  await sendEmail(to, subject, html);
+}
+
 // ─── Welcome ──────────────────────────────────────────────────────────────────
 
 export async function sendWelcomeEmail(to: string, firstName: string, role: "student" | "affiliate"): Promise<void> {

@@ -900,6 +900,18 @@ export const insertWithdrawalRequestSchema = createInsertSchema(withdrawalReques
 export type InsertWithdrawalRequest = z.infer<typeof insertWithdrawalRequestSchema>;
 export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;
 
+// ─── WITHDRAWAL OTPs ──────────────────────────────────────────────────────────
+export const withdrawalOtps = pgTable("withdrawal_otps", {
+  id:        serial("id").primaryKey(),
+  userId:    integer("user_id").notNull().references(() => users.id),
+  code:      varchar("code", { length: 6 }).notNull(),
+  purpose:   varchar("purpose", { length: 50 }).notNull().default("withdrawal"),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt:    timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type WithdrawalOtp = typeof withdrawalOtps.$inferSelect;
+
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [
   { id: "binance", name: "Binance", specialty: "Crypto & Futures", rating: 4.9, minDeposit: 10, fee: "0.1%", description: "World's largest crypto exchange with deep liquidity." },

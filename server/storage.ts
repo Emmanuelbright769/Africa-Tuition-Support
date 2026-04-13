@@ -1,4 +1,4 @@
-import { eq, desc, and, gt, gte, lte, count, sql, ne, like, ilike, or, not } from "drizzle-orm";
+import { eq, desc, and, gt, gte, lte, count, sql, ne, like, ilike, or, not, isNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
@@ -12,7 +12,7 @@ import {
   qceSavings, qceTransactions,
   priceAlerts, categorySubscriptions,
   sponsorCohorts, cohortCodes, sponsorshipBatches,
-  withdrawalRequests,
+  withdrawalRequests, withdrawalOtps,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -233,6 +233,10 @@ export interface IStorage {
 
   // Referral stats (activated vs pending)
   getActivatedReferralsByCode(affiliateCode: string): Promise<User[]>;
+
+  // Withdrawal OTPs
+  createWithdrawalOtp(userId: number, code: string, purpose: string): Promise<void>;
+  verifyAndConsumeWithdrawalOtp(userId: number, code: string, purpose: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1524,6 +1528,30 @@ export class DatabaseStorage implements IStorage {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
     return await db.select().from(withdrawalRequests)
       .where(and(eq(withdrawalRequests.status, "pending"), lte(withdrawalRequests.createdAt, cutoff)));
+  }
+
+  // ─── Withdrawal OTPs ─────────────────────────────────────────────────────────
+  async createWithdrawalOtp(userId: number, code: string, purpose: string): Promise<void> {
+    // Invalidate any existing unused OTPs for this user + purpose first
+    await db.delete(withdrawalOtps)
+      .where(and(eq(withdrawalOtps.userId, userId), eq(withdrawalOtps.purpose, purpose), isNull(withdrawalOtps.usedAt)));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    await db.insert(withdrawalOtps).values({ userId, code, purpose, expiresAt });
+  }
+
+  async verifyAndConsumeWithdrawalOtp(userId: number, code: string, purpose: string): Promise<boolean> {
+    const now = new Date();
+    const [otp] = await db.select().from(withdrawalOtps)
+      .where(and(
+        eq(withdrawalOtps.userId, userId),
+        eq(withdrawalOtps.code, code),
+        eq(withdrawalOtps.purpose, purpose),
+        isNull(withdrawalOtps.usedAt),
+        gt(withdrawalOtps.expiresAt, now),
+      )).limit(1);
+    if (!otp) return false;
+    await db.update(withdrawalOtps).set({ usedAt: now }).where(eq(withdrawalOtps.id, otp.id));
+    return true;
   }
 }
 

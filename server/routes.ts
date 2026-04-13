@@ -15,6 +15,7 @@ import {
   sendAdminVerificationEmail, sendAdminPortalFeeEmail, sendAdminLoanEmail,
   sendAdminSponsorshipEmail, sendAdminKycEmail, sendAdminOrderEmail,
   sendAdminCommissionWithdrawalEmail,
+  sendWithdrawalOtpEmail,
 } from "./email";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -1051,12 +1052,38 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message ?? "Bank lookup error" }); }
   });
 
+  // ─── WITHDRAWAL OTP REQUEST ──────────────────────────────────────────────────
+  app.post("/api/wallet/withdrawal-otp/request", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { amount, type } = req.body;
+      if (!amount || isNaN(parseFloat(amount))) return res.status(400).json({ message: "A valid amount is required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const purpose = type === "crypto" ? "crypto_withdrawal" : "bank_withdrawal";
+      const code = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit OTP
+      await storage.createWithdrawalOtp(userId, code, purpose);
+      await sendWithdrawalOtpEmail(user.email, user.firstName, code, parseFloat(amount).toFixed(2), type === "crypto" ? "crypto" : "bank");
+      res.json({ success: true, message: `OTP sent to ${user.email.replace(/(.{2}).+(@.+)/, "$1***$2")}` });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/wallet/withdraw", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { amount, bankName, bankCode, accountNumber, accountName } = req.body;
+      const { amount, bankName, bankCode, accountNumber, accountName, otpCode } = req.body;
+      if (!otpCode || otpCode.trim().length !== 6) {
+        return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this withdrawal" });
+      }
+      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, otpCode.trim(), "bank_withdrawal");
+      if (!otpValid) {
+        return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
+      }
       if (!bankName || !accountNumber || !accountName) {
         return res.status(400).json({ message: "Bank name, account number and account name are required" });
       }
@@ -1182,7 +1209,14 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { amount, network, address } = req.body;
+      const { amount, network, address, otpCode } = req.body;
+      if (!otpCode || otpCode.trim().length !== 6) {
+        return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this withdrawal" });
+      }
+      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, otpCode.trim(), "crypto_withdrawal");
+      if (!otpValid) {
+        return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
+      }
       if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) < 1) {
         return res.status(400).json({ message: "Minimum withdrawal amount is $1" });
       }

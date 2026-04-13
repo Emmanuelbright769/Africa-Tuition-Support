@@ -1060,7 +1060,7 @@ export default function WalletPage() {
               </div>
             </div>
 
-            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+            <div className="p-5 pb-10 space-y-4 overflow-y-auto flex-1 min-h-0">
               {/* Network */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Select Network</p>
@@ -1221,7 +1221,7 @@ export default function WalletPage() {
               </div>
             </div>
 
-            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+            <div className="p-5 pb-10 space-y-4 overflow-y-auto flex-1 min-h-0">
               {/* Bank selector */}
               <div>
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Select Your Bank</Label>

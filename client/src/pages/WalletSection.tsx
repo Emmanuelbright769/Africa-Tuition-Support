@@ -943,7 +943,7 @@ export default function WalletSection() {
             </div>
           </div>
 
-          <div className="p-5 space-y-4 overflow-y-auto flex-1">
+          <div className="p-5 pb-10 space-y-4 overflow-y-auto flex-1 min-h-0">
             {/* Network Selector */}
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Select Network</p>

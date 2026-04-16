@@ -125,7 +125,7 @@ export default function WalletPage() {
   const [cwOtpLoading, setCwOtpLoading]   = useState(false);
 
   // ── History ─────────────────────────────────────────────────────────────
-  const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "sent" | "received" | "bills">("ledger");
+  const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "sent" | "received" | "bills" | "withdrawals">("ledger");
 
   // ── KYC state ───────────────────────────────────────────────────────────
   const [kycBvn, setKycBvn]                   = useState("");
@@ -148,8 +148,9 @@ export default function WalletPage() {
   const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"], refetchInterval: 5000, staleTime: 3000 });
   const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 10000 });
   const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"], refetchInterval: 10000 });
-  const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 15000 });
-  const { data: txLedger = [] }  = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 10000 });
+  const { data: bills = [] }         = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 15000 });
+  const { data: txLedger = [] }      = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 10000 });
+  const { data: withdrawals = [] }   = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"], refetchInterval: 15000 });
 
   // SSE: immediately refetch when server pushes a wallet_credit / wallet_activation event
   useEffect(() => {
@@ -831,10 +832,10 @@ export default function WalletPage() {
           <motion.div initial="hidden" animate="visible" variants={fade}>
             <h3 className="font-bold text-sm mb-3">Transaction History</h3>
             <div className="flex bg-muted/40 rounded-2xl p-1 text-xs mb-4 overflow-x-auto gap-0.5">
-              {(["ledger", "deposits", "sent", "received", "bills"] as const).map(tab => (
+              {(["ledger", "deposits", "withdrawals", "sent", "received", "bills"] as const).map(tab => (
                 <button key={tab} onClick={() => setHistoryTab(tab)}
                   className={`flex-1 py-2 rounded-xl font-semibold capitalize transition-all whitespace-nowrap px-2 ${historyTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
-                  {tab === "ledger" ? "All" : tab === "sent" ? "Sent" : tab === "received" ? "Received" : tab === "deposits" ? "Deposits" : "Bills"}
+                  {tab === "ledger" ? "All" : tab === "sent" ? "Sent" : tab === "received" ? "Received" : tab === "deposits" ? "Deposits" : tab === "withdrawals" ? "Withdrawals" : "Bills"}
                 </button>
               ))}
             </div>
@@ -910,6 +911,40 @@ export default function WalletPage() {
                   {statusBadge(d.status)}
                 </div>
               )))}
+
+              {historyTab === "withdrawals" && (withdrawals.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <ArrowUpRight className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No withdrawals yet</p>
+                </div>
+              ) : withdrawals.map((w: any) => {
+                const isCrypto = w.type === "crypto_withdrawal";
+                const networkMatch = isCrypto ? w.description?.match(/\(([^)]+?)\)/) : null;
+                const networkLabel = networkMatch ? networkMatch[1] : "";
+                const addrMatch = isCrypto ? w.description?.match(/to ([^\s|]+)/) : null;
+                const addrShort = addrMatch ? addrMatch[1] : "";
+                const bankDest = !isCrypto ? w.description?.split(" to ")?.[1]?.split(" —")?.[0] : null;
+                return (
+                  <div key={w.id} className="flex items-center justify-between bg-card rounded-2xl px-4 py-3 border" data-testid={`row-withdrawal-${w.id}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isCrypto ? "bg-amber-50 dark:bg-amber-900/20" : "bg-blue-50 dark:bg-blue-900/20"}`}>
+                        {isCrypto ? <Coins className="w-4 h-4 text-amber-500" /> : <Banknote className="w-4 h-4 text-blue-500" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm">{isCrypto ? "Crypto Withdrawal" : "Bank Withdrawal"}</p>
+                        <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">
+                          {isCrypto ? `${networkLabel}${addrShort ? " · " + addrShort : ""}` : bankDest || w.description}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">{new Date(w.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <p className="font-bold text-sm text-red-500">−${Math.abs(parseFloat(w.amount)).toFixed(2)}</p>
+                      {statusBadge(w.status)}
+                    </div>
+                  </div>
+                );
+              }))}
 
               {historyTab === "sent" && (transfers.filter(t => t.senderId === user?.id).length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">

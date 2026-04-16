@@ -77,6 +77,8 @@ export default function StudentDashboard() {
   const { data: walletData } = useQuery<any>({ queryKey: ["/api/wallet"] });
   const { data: batchStatus } = useQuery<any>({ queryKey: ["/api/sponsorship/batch-status"] });
   const [batchCountdown, setBatchCountdown] = useState("");
+  const [commitmentCountdown, setCommitmentCountdown] = useState("");
+  const [planCountdown, setPlanCountdown] = useState("");
 
   const walletActivated = walletData?.activated === true;
 
@@ -167,6 +169,44 @@ export default function StudentDashboard() {
     const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
   }, [batchStatus?.nextOpenAt]);
+
+  // Live countdown for 30-day commitment window
+  useEffect(() => {
+    const ver = verification as any;
+    if (!ver?.commitmentStartDate) { setCommitmentCountdown(""); return; }
+    const due = new Date(ver.commitmentStartDate).getTime() + 30 * 24 * 60 * 60 * 1000;
+    const update = () => {
+      const diff = due - Date.now();
+      if (diff <= 0) { setCommitmentCountdown("EXPIRED"); return; }
+      const d = Math.floor(diff / 86400000);
+      const h = String(Math.floor((diff % 86400000) / 3600000)).padStart(2, "0");
+      const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, "0");
+      const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
+      setCommitmentCountdown(`${d}d ${h}:${m}:${s}`);
+    };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [(verification as any)?.commitmentStartDate]);
+
+  // Live countdown for 365-day active sponsorship plan
+  useEffect(() => {
+    const p = plan as any;
+    if (!p?.createdAt) { setPlanCountdown(""); return; }
+    const due = new Date(p.createdAt).getTime() + 365 * 24 * 60 * 60 * 1000;
+    const update = () => {
+      const diff = due - Date.now();
+      if (diff <= 0) { setPlanCountdown("Renewal available"); return; }
+      const d = Math.floor(diff / 86400000);
+      const h = String(Math.floor((diff % 86400000) / 3600000)).padStart(2, "0");
+      const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, "0");
+      const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
+      setPlanCountdown(`${d}d ${h}:${m}:${s}`);
+    };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [(plan as any)?.createdAt]);
 
   if (authLoading || (!user && !authLoading)) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
@@ -395,28 +435,35 @@ export default function StudentDashboard() {
                       )}
                     </div>
                     {feePaid && (
-                      <div className="bg-white/10 border border-white/20 px-8 py-4 rounded-xl text-center backdrop-blur-md shrink-0">
+                      <div className="bg-white/10 border border-white/20 px-6 py-4 rounded-xl text-center backdrop-blur-md shrink-0 min-w-[140px]">
                         {plan ? (() => {
-                          const planAge = Math.floor((Date.now() - new Date(plan.createdAt).getTime()) / 86400000);
+                          const planAge = Math.floor((Date.now() - new Date((plan as any).createdAt).getTime()) / 86400000);
                           const planDaysLeft = Math.max(0, 365 - planAge);
                           return planDaysLeft > 0 ? (
                             <>
-                              <div className="text-xs font-semibold text-slate-300 mb-2">Plan change in</div>
-                              <div className="text-4xl font-bold font-mono flex items-center justify-center gap-2">
-                                <Clock className="w-7 h-7 text-tsia-gold" />
-                                {planDaysLeft} <span className="text-lg font-normal text-slate-400 font-sans">days</span>
+                              <div className="text-[10px] font-bold text-slate-300 mb-1.5 uppercase tracking-widest">Active plan expires in</div>
+                              <div className="text-tsia-gold font-black font-mono text-lg leading-tight">
+                                {planCountdown || `${planDaysLeft}d`}
                               </div>
+                              <div className="text-[10px] text-slate-400 mt-1">{(plan as any).planYears}-year plan</div>
                             </>
                           ) : (
                             <>
-                              <div className="text-xs font-semibold text-slate-300 mb-2">Plan change</div>
-                              <div className="text-2xl font-bold text-tsia-gold">Available now!</div>
+                              <div className="text-[10px] font-semibold text-slate-300 mb-1.5 uppercase tracking-widest">Plan renewal</div>
+                              <div className="text-tsia-gold font-black text-base">Available!</div>
                             </>
                           );
-                        })() : (
+                        })() : isVerified ? (
                           <>
-                            <div className="text-xs font-semibold text-slate-300 mb-2">Plan status</div>
-                            <div className="text-2xl font-bold text-tsia-gold">{isVerified ? "Select now!" : "Pending"}</div>
+                            <div className="text-[10px] font-bold text-slate-300 mb-1.5 uppercase tracking-widest">Commitment clock</div>
+                            <div className="text-tsia-gold font-black font-mono text-base leading-tight">
+                              {commitmentCountdown || "—"}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[10px] font-semibold text-slate-300 mb-1.5 uppercase tracking-widest">Plan status</div>
+                            <div className="text-tsia-gold font-black text-base">Pending</div>
                           </>
                         )}
                       </div>
@@ -551,21 +598,51 @@ export default function StudentDashboard() {
                             ? "Your 30-day commitment window has expired. Please contact support."
                             : "Complete verification to unlock sponsorship plans."}
                         </p>
-                        {/* 30-day commitment window countdown banner */}
-                        {isVerified && withinWindow && !plan && (
-                          <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-700 rounded-2xl p-4 mb-5">
-                            <div className="flex items-start gap-3">
-                              <div className="bg-green-100 dark:bg-green-800/50 p-2 rounded-lg shrink-0">
-                                <Clock className="w-4 h-4 text-green-600 dark:text-green-400" />
+                        {/* Commitment Clock — 30-day window */}
+                        {isVerified && !plan && windowEnd && (
+                          (() => {
+                            const urgent = (windowDaysLeft ?? 0) <= 5;
+                            const expired = !withinWindow;
+                            return (
+                              <div className={`rounded-2xl overflow-hidden mb-5 border ${expired ? "border-red-300 dark:border-red-700" : urgent ? "border-amber-300 dark:border-amber-700" : "border-tsia-green/40 dark:border-tsia-green/30"}`}>
+                                {/* Header strip */}
+                                <div className={`px-4 py-2.5 flex items-center gap-2 ${expired ? "bg-red-600" : urgent ? "bg-amber-500" : "bg-tsia-green"}`}>
+                                  <Hourglass className="w-4 h-4 text-white" />
+                                  <span className="text-white text-xs font-bold uppercase tracking-wider">
+                                    {expired ? "Commitment Window Expired" : "Commitment Clock — Act Now"}
+                                  </span>
+                                </div>
+                                {/* Body */}
+                                <div className={`p-4 ${expired ? "bg-red-50 dark:bg-red-900/20" : urgent ? "bg-amber-50 dark:bg-amber-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
+                                  {!expired ? (
+                                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                                      {/* Live timer */}
+                                      <div className="text-center shrink-0">
+                                        <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${urgent ? "text-amber-600" : "text-tsia-green"}`}>Time remaining</p>
+                                        <p className={`text-2xl font-black font-mono tracking-tight ${urgent ? "text-amber-700 dark:text-amber-400" : "text-tsia-green"}`}>
+                                          {commitmentCountdown || `${windowDaysLeft}d`}
+                                        </p>
+                                      </div>
+                                      <div className={`hidden sm:block w-px self-stretch ${urgent ? "bg-amber-300" : "bg-tsia-green/30"}`} />
+                                      <div className="flex-1 text-center sm:text-left">
+                                        <p className={`text-sm font-bold mb-0.5 ${urgent ? "text-amber-800 dark:text-amber-300" : "text-green-800 dark:text-green-200"}`}>
+                                          {urgent ? "⚠ Deadline approaching — select your plan now!" : "Your offer is approved! Select and pay for a plan."}
+                                        </p>
+                                        <p className={`text-xs ${urgent ? "text-amber-700 dark:text-amber-400" : "text-green-700 dark:text-green-400"}`}>
+                                          Payment is debited directly from your wallet. Deadline: <strong>{new Date(windowEnd).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</strong>.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="text-center py-1">
+                                      <p className="text-red-700 dark:text-red-400 font-bold text-sm">Your 30-day commitment window has closed.</p>
+                                      <p className="text-red-600 dark:text-red-500 text-xs mt-0.5">Contact support at <span className="font-semibold underline">support@tsiforafrica.com</span> to discuss re-enrollment options.</p>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-bold text-green-900 dark:text-green-200 text-sm">Commitment Window Open</p>
-                                <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
-                                  You have <strong>{windowDaysLeft} day{windowDaysLeft !== 1 ? "s" : ""}</strong> to select and pay for your plan. Payment is debited from your wallet. Window closes on <strong>{windowEnd ? new Date(windowEnd).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : ""}</strong>.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
+                            );
+                          })()
                         )}
                       </>
                     );
@@ -670,6 +747,59 @@ export default function StudentDashboard() {
                     );
                   })()}
                 </motion.div>
+
+                {/* 365-Day Active Sponsorship Countdown */}
+                {plan && (() => {
+                  const planAge = Math.floor((Date.now() - new Date((plan as any).createdAt).getTime()) / 86400000);
+                  const planDaysLeft = Math.max(0, 365 - planAge);
+                  const expiryDate = new Date(new Date((plan as any).createdAt).getTime() + 365 * 24 * 60 * 60 * 1000);
+                  const pct = Math.min(100, Math.round((planAge / 365) * 100));
+                  return planDaysLeft > 0 ? (
+                    <motion.div variants={itemVariants} className="rounded-2xl overflow-hidden border border-tsia-green/30 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
+                      <div className="px-4 py-2.5 bg-tsia-green flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-white" />
+                          <span className="text-white text-xs font-bold uppercase tracking-wider">Active Sponsorship Period</span>
+                        </div>
+                        <span className="text-white/80 text-[10px] font-semibold">{(plan as any).planYears}-Year Plan</span>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest text-tsia-green font-bold mb-0.5">Time remaining</p>
+                            <p className="text-2xl font-black font-mono text-tsia-green tracking-tight">{planCountdown || `${planDaysLeft}d`}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-0.5">Expires on</p>
+                            <p className="text-sm font-bold text-foreground">{expiryDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+                            <p className="text-[10px] text-muted-foreground">{planAge} of 365 days elapsed</p>
+                          </div>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="space-y-1">
+                          <div className="w-full bg-tsia-green/10 rounded-full h-2.5 overflow-hidden">
+                            <div className="h-full bg-tsia-green rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <div className="flex justify-between text-[10px] text-muted-foreground font-semibold">
+                            <span>Plan started</span>
+                            <span>{pct}% elapsed</span>
+                            <span>365 days</span>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div variants={itemVariants} className="rounded-2xl border border-tsia-gold/40 bg-amber-50 dark:bg-amber-900/20 p-4 flex items-center gap-3">
+                      <div className="w-10 h-10 bg-tsia-gold/20 rounded-full flex items-center justify-center shrink-0">
+                        <Trophy className="w-5 h-5 text-tsia-gold" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-amber-900 dark:text-amber-200 text-sm">Your {(plan as any).planYears}-year plan has completed its 365-day period.</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400">You may now select a new sponsorship plan above.</p>
+                      </div>
+                    </motion.div>
+                  );
+                })()}
               </>
             )}
 

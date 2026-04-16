@@ -192,16 +192,6 @@ function ReferralSection({ referralStats, referrals, navigate }: {
         </Card>
       </motion.div>
 
-      {/* ── Commission note ── */}
-      <motion.div variants={itemVariants}>
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 flex items-start gap-3">
-          <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-          <p className="text-sm text-blue-800 dark:text-blue-300">
-            {referralStats?.commissionNote ?? "You earn 5% of every deposit and bot earning made by members who signed up with your referral code."}
-          </p>
-        </div>
-      </motion.div>
-
       {/* ── Recent Commission Transactions ── */}
       {recentCommissions.length > 0 && (
         <motion.div variants={itemVariants}>

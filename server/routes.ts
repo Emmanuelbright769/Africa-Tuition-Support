@@ -1580,7 +1580,6 @@ export async function registerRoutes(
         totalCommissionEarned: parseFloat(totalCommissionEarned.toFixed(4)),
         commissionCount,
         commissionBalance: parseFloat(commissionBalance.toFixed(4)),
-        commissionNote: "As a TSIA Affiliate Trust Funder, you earn 5% commission on every transaction your referred Trust Fund members make — including trust fund investments, wallet deposits, student subscriptions, trade market activity, fintech payments, marketplace purchases, bot earnings, and withdrawals.",
         recentCommissions: (recentCommissions.rows as any[]).map(r => ({
           amount: parseFloat(parseFloat(r.amount_usd).toFixed(4)),
           note: r.note,

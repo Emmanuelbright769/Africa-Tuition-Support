@@ -1580,7 +1580,7 @@ export async function registerRoutes(
         totalCommissionEarned: parseFloat(totalCommissionEarned.toFixed(4)),
         commissionCount,
         commissionBalance: parseFloat(commissionBalance.toFixed(4)),
-        commissionNote: "You earn 5% from every transaction your referrals make — including wallet deposits, student subscriptions, trust fund investments, trade market activity, fintech payments, marketplace purchases, bank & crypto withdrawals, bot earnings, and trust fund withdrawals.",
+        commissionNote: "As a TSIA Affiliate Trust Funder, you earn 5% commission on every transaction your referred Trust Fund members make — including trust fund investments, wallet deposits, student subscriptions, trade market activity, fintech payments, marketplace purchases, bot earnings, and withdrawals.",
         recentCommissions: (recentCommissions.rows as any[]).map(r => ({
           amount: parseFloat(parseFloat(r.amount_usd).toFixed(4)),
           note: r.note,
@@ -4238,10 +4238,25 @@ export async function registerRoutes(
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required" });
     try {
-      const user = await storage.getUserByEmail(email.trim().toLowerCase());
-      if (!user) return res.status(404).json({ message: "No TSIA member found with that email" });
-      if (user.id === userId) return res.status(400).json({ message: "You cannot send money to yourself" });
-      res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email });
+      const allUsers = await storage.getUsersByEmail(email.trim().toLowerCase());
+      if (!allUsers.length) return res.status(404).json({ message: "No TSIA member found with that email" });
+      // Filter out the sender themselves
+      const others = allUsers.filter(u => u.id !== userId);
+      if (!others.length) return res.status(400).json({ message: "You cannot send money to yourself" });
+      // Primary user (first found)
+      const primary = others[0];
+      // Build variants list — each distinct role the email has
+      const variants = others.map(u => ({ id: u.id, role: u.role }));
+      const isDual = variants.some(v => v.role === "student") && variants.some(v => v.role === "affiliate");
+      res.json({
+        id: primary.id,
+        firstName: primary.firstName,
+        lastName: primary.lastName,
+        email: primary.email,
+        role: primary.role,
+        isDual,
+        variants,
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -4278,28 +4293,41 @@ export async function registerRoutes(
   app.post("/api/wallet/send", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const { recipientId, amount, note } = req.body;
-    if (!recipientId || !amount || amount <= 0) return res.status(400).json({ message: "Invalid transfer details" });
+    // recipientId is the resolved userId; recipientRole + recipientEmail allow role-based lookup for dual-account users
+    const { recipientId, recipientEmail, recipientRole, amount, note } = req.body;
+    if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid transfer details" });
     try {
+      // Resolve actual recipient — prefer role-based lookup when a dual-account user picked a specific dashboard
+      let resolvedId: number = recipientId;
+      if (recipientEmail && recipientRole) {
+        const byRole = await storage.getUserByEmailAndRole(recipientEmail.trim().toLowerCase(), recipientRole);
+        if (!byRole) return res.status(404).json({ message: `No ${recipientRole} account found for that email` });
+        resolvedId = byRole.id;
+      }
+      if (!resolvedId) return res.status(400).json({ message: "Recipient not specified" });
+      if (resolvedId === userId) return res.status(400).json({ message: "You cannot send money to yourself" });
+
       const senderWallet    = await storage.getOrCreateWallet(userId);
       const senderBalance   = parseFloat(senderWallet.balance);
       if (senderBalance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${senderBalance.toFixed(2)}` });
-      const recipient = await storage.getUser(recipientId);
+      const recipient = await storage.getUser(resolvedId);
       if (!recipient) return res.status(404).json({ message: "Recipient not found" });
+      const sender = await storage.getUser(userId);
+      const walletLabel = recipient.role === "student" ? "Student Wallet" : "Affiliate Wallet";
       // Deduct from sender
       await storage.updateWalletBalance(userId, (senderBalance - amount).toFixed(2));
       // Credit recipient
-      const recipientWallet  = await storage.getOrCreateWallet(recipientId);
+      const recipientWallet  = await storage.getOrCreateWallet(resolvedId);
       const recipientBalance = parseFloat(recipientWallet.balance);
-      await storage.updateWalletBalance(recipientId, (recipientBalance + amount).toFixed(2));
+      await storage.updateWalletBalance(resolvedId, (recipientBalance + amount).toFixed(2));
       // Record transfer
-      await storage.createWalletTransfer({ senderId: userId, recipientId, amount, note });
+      await storage.createWalletTransfer({ senderId: userId, recipientId: resolvedId, amount, note });
       // Record transaction entries for both parties
-      await storage.createTransaction({ userId, type: "transfer", amount: (-amount).toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `P2P transfer to ${recipient.firstName} ${recipient.lastName}${note ? ` — ${note}` : ""}` });
-      await storage.createTransaction({ userId: recipientId, type: "transfer", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `P2P transfer from ${(await storage.getUser(userId))?.firstName ?? "User"}${note ? ` — ${note}` : ""}` });
+      await storage.createTransaction({ userId, type: "transfer", amount: (-amount).toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `TSIA transfer to ${recipient.firstName} ${recipient.lastName} (${walletLabel})${note ? ` — ${note}` : ""}` });
+      await storage.createTransaction({ userId: resolvedId, type: "transfer", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `TSIA transfer from ${sender?.firstName ?? "Member"}${note ? ` — ${note}` : ""}` });
       // Credit 5% referral commission on sender's wallet activity
-      creditReferrerCommission(userId, amount, "p2p wallet transfer").catch(() => {});
-      res.json({ message: `$${amount.toFixed(2)} sent to ${recipient.firstName} ${recipient.lastName} successfully` });
+      creditReferrerCommission(userId, amount, "tsia member transfer").catch(() => {});
+      res.json({ message: `$${amount.toFixed(2)} sent to ${recipient.firstName} ${recipient.lastName}'s ${walletLabel} successfully` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

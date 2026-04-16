@@ -170,7 +170,8 @@ export default function FinancialHub() {
   // ── Send-to-TSIA state ────────────────────────────────────────────────────
   const [tsiaEmail, setTsiaEmail]         = useState("");
   const [tsiaLooking, setTsiaLooking]     = useState(false);
-  const [tsiaUser, setTsiaUser]           = useState<{ id: number; firstName: string; lastName: string; email: string } | null>(null);
+  const [tsiaUser, setTsiaUser]           = useState<{ id: number; firstName: string; lastName: string; email: string; role?: string; isDual?: boolean; variants?: { id: number; role: string }[] } | null>(null);
+  const [recipientRoleChoice, setRecipientRoleChoice] = useState<"student" | "affiliate">("student");
   const [memberSuggestions, setMemberSuggestions] = useState<{ id: number; firstName: string; lastName: string; email: string }[]>([]);
   const [showSuggestions, setShowSuggestions]     = useState(false);
 
@@ -281,7 +282,13 @@ export default function FinancialHub() {
   const sendTsiaMutation = useMutation({
     mutationFn: async () => {
       if (!tsiaUser) throw new Error("No recipient selected");
-      const res = await apiRequest("POST", "/api/wallet/send", { recipientId: tsiaUser.id, amount: parseFloat(amount), note });
+      const payload: Record<string, unknown> = { recipientId: tsiaUser.id, amount: parseFloat(amount), note };
+      // If dual-account member, pass email + chosen role so backend can route to correct wallet
+      if (tsiaUser.isDual && tsiaUser.email) {
+        payload.recipientEmail = tsiaUser.email;
+        payload.recipientRole  = recipientRoleChoice;
+      }
+      const res = await apiRequest("POST", "/api/wallet/send", payload);
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
@@ -346,7 +353,7 @@ export default function FinancialHub() {
   const resetSend = () => {
     setAmount("0"); setNote(""); setSendMode("bank"); setBankSearch(""); setSelectedBank(null);
     setAcctNumber(""); setResolvedName(null); setResolveError(null); setResolveWarning(false);
-    setTsiaEmail(""); setTsiaUser(null);
+    setTsiaEmail(""); setTsiaUser(null); setRecipientRoleChoice("student");
   };
   const resetBill = () => {
     setAmount("0"); setBillRef(""); setSelectedService(null); setBillStep("details");
@@ -363,6 +370,9 @@ export default function FinancialHub() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
       setTsiaUser(d);
+      // Auto-select student role by default if dual-account member
+      if (d.isDual) setRecipientRoleChoice("student");
+      else setRecipientRoleChoice(d.role === "affiliate" ? "affiliate" : "student");
     } catch (e: any) { toast({ title: "Not found", description: e.message, variant: "destructive" }); }
     finally { setTsiaLooking(false); }
   };
@@ -670,15 +680,53 @@ export default function FinancialHub() {
             </div>
 
             {tsiaUser && (
-              <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4">
-                <div className="w-12 h-12 rounded-full bg-tsia-green flex items-center justify-center text-white text-xl font-black">
-                  {tsiaUser.firstName[0].toUpperCase()}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4">
+                  <div className="w-12 h-12 rounded-full bg-tsia-green flex items-center justify-center text-white text-xl font-black">
+                    {tsiaUser.firstName[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold">{tsiaUser.firstName} {tsiaUser.lastName}</p>
+                    <p className="text-xs text-muted-foreground">{tsiaUser.email}</p>
+                    {!tsiaUser.isDual && (
+                      <p className="text-xs font-semibold mt-0.5" style={{ color: tsiaUser.role === "affiliate" ? "#b45309" : "#1a6b42" }}>
+                        {tsiaUser.role === "affiliate" ? "Affiliate Wallet" : "Student Wallet"}
+                      </p>
+                    )}
+                  </div>
+                  <CheckCircle2 className="w-5 h-5 text-tsia-green" />
                 </div>
-                <div className="flex-1">
-                  <p className="font-bold">{tsiaUser.firstName} {tsiaUser.lastName}</p>
-                  <p className="text-xs text-muted-foreground">{tsiaUser.email}</p>
-                </div>
-                <CheckCircle2 className="w-5 h-5 text-tsia-green" />
+
+                {/* Dual-account wallet selector */}
+                {tsiaUser.isDual && (
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 rounded-2xl p-4 space-y-2">
+                    <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />
+                      This member has both Student &amp; Affiliate accounts — choose which wallet to send to:
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setRecipientRoleChoice("student")}
+                        className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${recipientRoleChoice === "student" ? "bg-tsia-green text-white border-tsia-green" : "bg-background text-foreground border-border"}`}
+                        data-testid="btn-wallet-student"
+                      >
+                        <Building2 className="w-4 h-4" /> Student Wallet
+                      </button>
+                      <button
+                        onClick={() => setRecipientRoleChoice("affiliate")}
+                        className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${recipientRoleChoice === "affiliate" ? "bg-amber-600 text-white border-amber-600" : "bg-background text-foreground border-border"}`}
+                        data-testid="btn-wallet-affiliate"
+                      >
+                        <Users className="w-4 h-4" /> Affiliate Wallet
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-amber-600 text-center">
+                      {recipientRoleChoice === "student"
+                        ? "Money will enter their Student Dashboard wallet"
+                        : "Money will enter their Affiliate Dashboard wallet"}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

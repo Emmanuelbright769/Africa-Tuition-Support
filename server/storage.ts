@@ -5,7 +5,7 @@ import {
   leadershipInquiries, otpCodes, fileUploads, coAffiliates,
   tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
   landlordProperties, tenancyLeases, tenancyPayments, loans,
-  products, orders, walletDeposits, walletTransfers, billPayments,
+  products, orders, orderTracking, walletDeposits, walletTransfers, billPayments,
   productRatings,
   ecommerceChats, ecommerceChatMessages,
   notifications, callSessions, forumTopics, forumPosts,
@@ -31,6 +31,7 @@ import {
   type Product, type InsertProduct,
   type ProductRating, type InsertProductRating,
   type Order, type InsertOrder,
+  type OrderTracking, type InsertOrderTracking,
   type WalletDeposit, type InsertWalletDeposit,
   type WalletTransfer, type BillPayment,
   type EcommerceChat, type InsertEcommerceChat,
@@ -141,9 +142,12 @@ export interface IStorage {
   getProductRatingSummary(productId: number): Promise<{ avgRating: number; count: number }>;
   getUserRatingForProduct(productId: number, userId: number): Promise<ProductRating | undefined>;
   createOrder(data: InsertOrder): Promise<Order>;
+  getOrderById(id: number): Promise<Order | undefined>;
   getOrdersByBuyer(buyerId: number): Promise<(Order & { product: Product; sellerName: string })[]>;
   getOrdersBySeller(sellerId: number): Promise<(Order & { product: Product; buyerName: string })[]>;
-  updateOrderStatus(id: number, status: string): Promise<Order>;
+  updateOrderStatus(id: number, status: string, extra?: { trackingNumber?: string; escrowReleased?: boolean }): Promise<Order>;
+  createOrderTracking(data: { orderId: number; statusLabel: string; description: string; location?: string }): Promise<OrderTracking>;
+  getOrderTracking(orderId: number): Promise<OrderTracking[]>;
 
   // E-Commerce Chat
   getOrCreateChat(productId: number, buyerId: number, sellerId: number): Promise<EcommerceChat>;
@@ -826,9 +830,31 @@ export class DatabaseStorage implements IStorage {
     return rows.map(r => ({ ...r, product: { title: r.productTitle, price: r.productPrice } as any, buyerName: `${r.buyerFirst} ${r.buyerLast}` })) as any[];
   }
 
-  async updateOrderStatus(id: number, status: string): Promise<Order> {
-    const [o] = await db.update(orders).set({ status: status as any, updatedAt: new Date() }).where(eq(orders.id, id)).returning();
+  async getOrderById(id: number): Promise<Order | undefined> {
+    const [o] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
     return o;
+  }
+
+  async updateOrderStatus(id: number, status: string, extra?: { trackingNumber?: string; escrowReleased?: boolean }): Promise<Order> {
+    const set: any = { status: status as any, updatedAt: new Date() };
+    if (extra?.trackingNumber !== undefined) set.trackingNumber = extra.trackingNumber;
+    if (extra?.escrowReleased !== undefined) set.escrowReleased = extra.escrowReleased;
+    const [o] = await db.update(orders).set(set).where(eq(orders.id, id)).returning();
+    return o;
+  }
+
+  async createOrderTracking(data: { orderId: number; statusLabel: string; description: string; location?: string }): Promise<OrderTracking> {
+    const [t] = await db.insert(orderTracking).values({
+      orderId: data.orderId,
+      statusLabel: data.statusLabel,
+      description: data.description,
+      location: data.location ?? null,
+    }).returning();
+    return t;
+  }
+
+  async getOrderTracking(orderId: number): Promise<OrderTracking[]> {
+    return db.select().from(orderTracking).where(eq(orderTracking.orderId, orderId)).orderBy(desc(orderTracking.createdAt));
   }
 
   async rateProduct(data: InsertProductRating): Promise<ProductRating> {

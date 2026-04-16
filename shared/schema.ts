@@ -507,11 +507,26 @@ export const orders = pgTable("orders", {
   commissionAmount: decimal("commission_amount", { precision: 10, scale: 2 }).notNull(),
   sellerReceives:   decimal("seller_receives", { precision: 10, scale: 2 }).notNull(),
   status:           orderStatusEnum("status").notNull().default("pending"),
+  escrowReleased:   boolean("escrow_released").notNull().default(false),
+  trackingNumber:   text("tracking_number"),
   deliveryAddress:  text("delivery_address"),
   note:             text("note"),
   createdAt:        timestamp("created_at").defaultNow().notNull(),
   updatedAt:        timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const orderTracking = pgTable("order_tracking", {
+  id:          integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  orderId:     integer("order_id").notNull().references(() => orders.id),
+  statusLabel: text("status_label").notNull(),
+  description: text("description").notNull(),
+  location:    text("location"),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertOrderTrackingSchema = createInsertSchema(orderTracking).omit({ id: true, createdAt: true });
+export type InsertOrderTracking = z.infer<typeof insertOrderTrackingSchema>;
+export type OrderTracking = typeof orderTracking.$inferSelect;
 
 // Student / user wallet deposit requests (for funding main wallet via USDT)
 export const walletDeposits = pgTable("wallet_deposits", {

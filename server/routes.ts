@@ -21,7 +21,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, users, loans, transactions, tradeTransactions, orders, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -1580,7 +1580,7 @@ export async function registerRoutes(
         totalCommissionEarned: parseFloat(totalCommissionEarned.toFixed(4)),
         commissionCount,
         commissionBalance: parseFloat(commissionBalance.toFixed(4)),
-        commissionNote: "You earn 5% from every transaction your referrals make — including wallet deposits, student subscriptions, trust fund investments, trade market activity, fintech payments, P2P transfers, bank & crypto withdrawals, bot earnings, and trust fund withdrawals.",
+        commissionNote: "You earn 5% from every transaction your referrals make — including wallet deposits, student subscriptions, trust fund investments, trade market activity, fintech payments, marketplace purchases, bank & crypto withdrawals, bot earnings, and trust fund withdrawals.",
         recentCommissions: (recentCommissions.rows as any[]).map(r => ({
           amount: parseFloat(parseFloat(r.amount_usd).toFixed(4)),
           note: r.note,
@@ -4908,21 +4908,22 @@ export async function registerRoutes(
       const commissionAmount = +(totalAmount * ECOMMERCE.COMMISSION_RATE).toFixed(2);
       const sellerReceives = +(totalAmount - commissionAmount).toFixed(2);
 
-      // Deduct from buyer wallet
+      // Deduct from buyer wallet — funds held in escrow until delivery confirmed
       const buyerWallet = await storage.getOrCreateWallet(userId);
       if (parseFloat(buyerWallet.balance) < totalAmount) return res.status(400).json({ message: `Insufficient wallet balance. Need $${totalAmount.toFixed(2)}` });
       await storage.updateWalletBalance(userId, (parseFloat(buyerWallet.balance) - totalAmount).toFixed(2));
 
-      // Credit seller wallet (minus commission)
-      const sellerWallet = await storage.getOrCreateWallet(prod.sellerId);
-      await storage.updateWalletBalance(prod.sellerId, (parseFloat(sellerWallet.balance) + sellerReceives).toFixed(2));
+      // NOTE: Seller wallet NOT credited yet — funds stay in platform escrow until buyer confirms receipt
 
       // Update stock
       const newStock = prod.stock - qty;
       await storage.updateProduct(prod.id, { stock: newStock, ...(newStock === 0 ? { status: "sold" } : {}) });
 
-      // Create order record
-      const order = await storage.createOrder({ buyerId: userId, sellerId: prod.sellerId, productId: prod.id, quantity: qty, unitPrice: unitPrice.toFixed(2), totalAmount: totalAmount.toFixed(2), commissionRate: ECOMMERCE.COMMISSION_RATE.toFixed(4), commissionAmount: commissionAmount.toFixed(2), sellerReceives: sellerReceives.toFixed(2), status: "confirmed", deliveryAddress: deliveryAddress || null, note: note || null });
+      // Create order record (escrowReleased=false, status=pending)
+      const order = await storage.createOrder({ buyerId: userId, sellerId: prod.sellerId, productId: prod.id, quantity: qty, unitPrice: unitPrice.toFixed(2), totalAmount: totalAmount.toFixed(2), commissionRate: ECOMMERCE.COMMISSION_RATE.toFixed(4), commissionAmount: commissionAmount.toFixed(2), sellerReceives: sellerReceives.toFixed(2), status: "pending", escrowReleased: false, deliveryAddress: deliveryAddress || null, note: note || null });
+
+      // Auto-add first tracking entry
+      await storage.createOrderTracking({ orderId: order.id, statusLabel: "Order Placed", description: `Payment of $${totalAmount.toFixed(2)} held in TSIA escrow. Awaiting seller confirmation.` });
 
       // Notify buyer and seller
       try {
@@ -4930,22 +4931,22 @@ export async function registerRoutes(
           storage.getUser(userId),
           storage.getUser(prod.sellerId),
         ]);
-        if (buyerUser) sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, "confirmed", prod.title, order.id).catch((err: any) => console.error("[EMAIL] Order email failed:", err?.message ?? err));
+        if (buyerUser) sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, "pending", prod.title, order.id).catch((err: any) => console.error("[EMAIL] Order email failed:", err?.message ?? err));
         if (sellerUser) sendNewSaleEmail(sellerUser.email, sellerUser.firstName, prod.title, sellerReceives.toFixed(2), order.id).catch((err: any) => console.error("[EMAIL] New sale email failed:", err?.message ?? err));
         const [buyerNotif, sellerNotif] = await Promise.all([
           storage.createNotification({
             userId,
             type: "order_update",
-            title: "Order Confirmed",
-            message: `Your order for "${prod.title}" (x${qty}) has been confirmed. $${totalAmount.toFixed(2)} deducted from your wallet.`,
+            title: "Order Placed — In Escrow",
+            message: `Your order for "${prod.title}" (x${qty}) is placed. $${totalAmount.toFixed(2)} is held in escrow until you confirm delivery.`,
             data: { orderId: order.id, productId: prod.id },
             isRead: false,
           }),
           storage.createNotification({
             userId: prod.sellerId,
             type: "order_update",
-            title: "New Sale",
-            message: `Your listing "${prod.title}" was purchased (x${qty}). You received $${sellerReceives.toFixed(2)} in your wallet.`,
+            title: "New Sale — Action Required",
+            message: `"${prod.title}" was ordered (x${qty}). Confirm and ship to release $${sellerReceives.toFixed(2)} from escrow to your wallet.`,
             data: { orderId: order.id, productId: prod.id },
             isRead: false,
           }),
@@ -4954,28 +4955,18 @@ export async function registerRoutes(
         pushToUser(prod.sellerId, "notification", sellerNotif);
       } catch { /* non-critical */ }
 
-      // Credit 5% referral commission to buyer's referrer on purchase
-      creditReferrerCommission(userId, totalAmount, "e-commerce purchase").catch(() => {});
-
-      // Notify admin — new marketplace order with commission
+      // Notify admin
       try {
-        const [orderBuyer, orderSeller] = await Promise.all([
-          storage.getUser(userId),
-          storage.getUser(prod.sellerId),
-        ]);
+        const [orderBuyer, orderSeller] = await Promise.all([storage.getUser(userId), storage.getUser(prod.sellerId)]);
         sendAdminOrderEmail({
           buyerName: orderBuyer ? `${orderBuyer.firstName} ${orderBuyer.lastName}` : `User #${userId}`,
           sellerName: orderSeller ? `${orderSeller.firstName} ${orderSeller.lastName}` : `User #${prod.sellerId}`,
-          productTitle: prod.title,
-          quantity: qty,
-          totalAmount: totalAmount.toFixed(2),
-          commission: commissionAmount.toFixed(2),
-          sellerReceives: sellerReceives.toFixed(2),
-          orderId: order.id,
+          productTitle: prod.title, quantity: qty, totalAmount: totalAmount.toFixed(2),
+          commission: commissionAmount.toFixed(2), sellerReceives: sellerReceives.toFixed(2), orderId: order.id,
         }).catch(() => {});
       } catch { /* non-critical */ }
 
-      res.json({ order, message: `Order placed! $${totalAmount.toFixed(2)} deducted. TSIA commission: $${commissionAmount.toFixed(2)} (${(ECOMMERCE.COMMISSION_RATE * 100)}%).` });
+      res.json({ order, message: `Order placed! $${totalAmount.toFixed(2)} is held in escrow and will be released to the seller once you confirm receipt.` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -4991,23 +4982,105 @@ export async function registerRoutes(
     try { res.json(await storage.getOrdersBySeller(userId)); } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Seller updates order status (confirm / ship) — optionally adds tracking number when shipping
   app.patch("/api/orders/:id/status", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const { status } = req.body;
+    const { status, trackingNumber, trackingLocation } = req.body;
     try {
-      const order = await storage.updateOrderStatus(parseInt(req.params.id), status);
-      // Email buyer about order status change
+      const existing = await storage.getOrderById(parseInt(req.params.id));
+      if (!existing) return res.status(404).json({ message: "Order not found" });
+      if (existing.sellerId !== userId) return res.status(403).json({ message: "Only the seller can update this order" });
+      const order = await storage.updateOrderStatus(parseInt(req.params.id), status, trackingNumber ? { trackingNumber } : undefined);
+      // Add tracking entry
+      const labelMap: Record<string, string> = { confirmed: "Confirmed by Seller", shipped: "Shipped", cancelled: "Cancelled" };
+      const descMap: Record<string, string> = {
+        confirmed: "Seller has confirmed your order and is preparing it for dispatch.",
+        shipped: trackingNumber ? `Item dispatched. Tracking number: ${trackingNumber}` : "Item has been dispatched by the seller.",
+        cancelled: "Order was cancelled by the seller.",
+      };
+      if (labelMap[status]) {
+        await storage.createOrderTracking({ orderId: order.id, statusLabel: labelMap[status], description: descMap[status] ?? status, location: trackingLocation || undefined });
+      }
+      // Notify buyer
       try {
-        const [buyerUser, prod] = await Promise.all([
-          storage.getUser(order.buyerId),
-          storage.getProductById(order.productId),
-        ]);
-        if (buyerUser && prod) {
-          sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, status, prod.title, order.id).catch((err: any) => console.error("[EMAIL] Order email failed:", err?.message ?? err));
-        }
+        const [buyerUser, prod] = await Promise.all([storage.getUser(order.buyerId), storage.getProductById(order.productId)]);
+        if (buyerUser && prod) sendOrderUpdateEmail(buyerUser.email, buyerUser.firstName, status, prod.title, order.id).catch(() => {});
+        const notif = await storage.createNotification({ userId: order.buyerId, type: "order_update", title: `Order ${labelMap[status] ?? status}`, message: descMap[status] ?? `Order #${order.id} status changed to ${status}`, data: { orderId: order.id }, isRead: false });
+        pushToUser(order.buyerId, "notification", notif);
       } catch { /* non-critical */ }
       res.json(order);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Buyer marks order as received — releases escrow to seller
+  app.post("/api/orders/:id/mark-received", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const order = await storage.getOrderById(parseInt(req.params.id));
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.buyerId !== userId) return res.status(403).json({ message: "Only the buyer can confirm receipt" });
+      if (order.escrowReleased) return res.status(400).json({ message: "Escrow already released for this order" });
+
+      const sellerReceives = parseFloat(order.sellerReceives);
+      const commissionAmount = parseFloat(order.commissionAmount);
+      const totalAmount = parseFloat(order.totalAmount);
+
+      // Release escrow: credit seller wallet
+      const sellerWallet = await storage.getOrCreateWallet(order.sellerId);
+      await storage.updateWalletBalance(order.sellerId, (parseFloat(sellerWallet.balance) + sellerReceives).toFixed(2));
+      await storage.createTransaction({ userId: order.sellerId, type: "credit", amount: sellerReceives.toFixed(2), fee: commissionAmount.toFixed(2), paymentMethod: "escrow", description: `Sale proceeds released — Order #${order.id} (buyer confirmed receipt)` });
+
+      // Update order to delivered + escrowReleased
+      await storage.updateOrderStatus(order.id, "delivered", { escrowReleased: true });
+      await storage.createOrderTracking({ orderId: order.id, statusLabel: "Delivered", description: "Buyer confirmed receipt. Escrow released — seller has been paid." });
+
+      // Credit referral commissions on the transaction
+      creditReferrerCommission(userId, totalAmount, "e-commerce purchase confirmed").catch(() => {});
+
+      // Notify seller
+      try {
+        const [buyerUser, sellerUser, prod] = await Promise.all([storage.getUser(userId), storage.getUser(order.sellerId), storage.getProductById(order.productId)]);
+        const notif = await storage.createNotification({ userId: order.sellerId, type: "wallet_credit", title: "Payment Released!", message: `$${sellerReceives.toFixed(2)} has been released to your wallet for Order #${order.id} ("${prod?.title ?? "item"}")`, data: { orderId: order.id }, isRead: false });
+        pushToUser(order.sellerId, "notification", notif);
+        if (sellerUser && prod) sendOrderUpdateEmail(sellerUser.email, sellerUser.firstName, "delivered", prod.title, order.id).catch(() => {});
+      } catch { /* non-critical */ }
+
+      res.json({ message: `Receipt confirmed. $${sellerReceives.toFixed(2)} released to seller.` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Seller adds a real-time tracking update
+  app.post("/api/orders/:id/tracking", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { statusLabel, description, location } = req.body;
+    if (!statusLabel || !description) return res.status(400).json({ message: "statusLabel and description are required" });
+    try {
+      const order = await storage.getOrderById(parseInt(req.params.id));
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.sellerId !== userId) return res.status(403).json({ message: "Only the seller can add tracking updates" });
+      const tracking = await storage.createOrderTracking({ orderId: order.id, statusLabel, description, location: location || undefined });
+      // Push tracking update to buyer
+      try {
+        const notif = await storage.createNotification({ userId: order.buyerId, type: "order_update", title: `Tracking: ${statusLabel}`, message: description, data: { orderId: order.id }, isRead: false });
+        pushToUser(order.buyerId, "notification", notif);
+      } catch { /* non-critical */ }
+      res.json(tracking);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Get tracking timeline for an order
+  app.get("/api/orders/:id/tracking", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const order = await storage.getOrderById(parseInt(req.params.id));
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.buyerId !== userId && order.sellerId !== userId) return res.status(403).json({ message: "Access denied" });
+      const tracking = await storage.getOrderTracking(order.id);
+      res.json(tracking);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

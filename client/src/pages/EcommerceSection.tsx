@@ -15,7 +15,8 @@ import {
   Tag, Truck, CheckCircle2, X, Camera, TrendingUp, Loader2, Heart,
   Filter, ChevronRight, ChevronLeft, BadgePercent, Bell, Zap, ArrowRight, Flame,
   Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, MessageCircle,
-  Mail, HandCoins, AlertCircle, ArrowLeftRight, User, Expand
+  Mail, HandCoins, AlertCircle, ArrowLeftRight, User, Expand,
+  Lock, PackageOpen, Clock, ChevronUp, Send
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ECOMMERCE } from "@shared/schema";
@@ -39,8 +40,13 @@ type Order = {
   id: number; buyerId: number; sellerId: number; productId: number; quantity: number;
   unitPrice: string; totalAmount: string; commissionAmount: string; sellerReceives: string;
   status: string; deliveryAddress: string | null; note: string | null;
+  escrowReleased: boolean; trackingNumber: string | null;
   createdAt: string; product?: { title: string; price: string };
   sellerName?: string; buyerName?: string;
+};
+type TrackingEntry = {
+  id: number; orderId: number; statusLabel: string; description: string;
+  location: string | null; createdAt: string;
 };
 type Tab = "browse" | "my-listings" | "purchases" | "sales";
 
@@ -485,7 +491,7 @@ function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
                   <span className="text-sm text-muted-foreground">Estimated total ({cartItems.length} item{cartItems.length !== 1 ? "s" : ""})</span>
                   <span className="font-black text-lg text-tsia-green">${totalValue.toFixed(2)}</span>
                 </div>
-                <p className="text-[11px] text-muted-foreground text-center">Prices may vary after P2P negotiation. Buy each item separately via the P2P order flow.</p>
+                <p className="text-[11px] text-muted-foreground text-center">Prices may vary after negotiation. Buy each item separately — your payment is held in escrow until you confirm receipt.</p>
               </div>
             )}
           </motion.div>
@@ -820,14 +826,44 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
   );
 }
 
-// ─── P2P Trade Modal ────────────────────────────────────────────────────────
-function P2PTradeModal({ product, open, onClose, walletBalance, onChat }: {
+// ─── Tracking Timeline ───────────────────────────────────────────────────────
+function TrackingTimeline({ orderId }: { orderId: number }) {
+  const { data: tracking = [], isLoading } = useQuery<TrackingEntry[]>({
+    queryKey: [`/api/orders/${orderId}/tracking`],
+    refetchInterval: 30000,
+  });
+  if (isLoading) return <div className="flex items-center gap-2 text-xs text-muted-foreground py-3"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading tracking…</div>;
+  if (!tracking.length) return <p className="text-xs text-muted-foreground py-2">No tracking updates yet.</p>;
+  return (
+    <div className="mt-3 space-y-0">
+      {[...tracking].reverse().map((t, i) => (
+        <div key={t.id} className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <div className={`w-3 h-3 rounded-full shrink-0 mt-0.5 ${i === 0 ? "bg-tsia-green" : "bg-muted-foreground/30"}`} />
+            {i < tracking.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
+          </div>
+          <div className="pb-4 flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-bold ${i === 0 ? "text-tsia-green" : "text-foreground"}`}>{t.statusLabel}</span>
+              {t.location && <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><MapPin className="w-2.5 h-2.5" />{t.location}</span>}
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">{t.description}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{new Date(t.createdAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Purchase Modal (Escrow) ─────────────────────────────────────────────────
+function PurchaseModal({ product, open, onClose, walletBalance, onChat }: {
   product: Product | null; open: boolean; onClose: () => void; walletBalance: number; onChat?: () => void;
 }) {
   const { toast } = useToast();
   const { formatAmount } = useLocalCurrency();
   const [qty, setQty] = useState(1);
-  const [step, setStep] = useState<"review" | "confirm">("review");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
 
   const total = product ? parseFloat(product.price) * qty : 0;
   const commission = total * ECOMMERCE.COMMISSION_RATE;
@@ -836,16 +872,12 @@ function P2PTradeModal({ product, open, onClose, walletBalance, onChat }: {
 
   const buyMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/orders", data); return res.json(); },
-    onSuccess: (res: any) => {
-      toast({
-        title: "P2P Order Placed!",
-        description: "Your TSIA wallet has been debited. Contact the seller to complete the trade.",
-        className: "border-tsia-green",
-      });
+    onSuccess: () => {
+      toast({ title: "Order Placed — Funds in Escrow", description: "Your payment is secured. Release it to the seller once you receive your item.", className: "border-tsia-green" });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/purchases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      onClose(); setQty(1); setStep("review");
+      onClose(); setQty(1); setDeliveryAddress("");
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -854,18 +886,18 @@ function P2PTradeModal({ product, open, onClose, walletBalance, onChat }: {
   const img = product.images?.[0];
 
   return (
-    <Dialog open={open} onOpenChange={() => { onClose(); setStep("review"); setQty(1); }}>
+    <Dialog open={open} onOpenChange={() => { onClose(); setQty(1); setDeliveryAddress(""); }}>
       <DialogContent className="max-w-sm p-0 overflow-hidden rounded-2xl">
-        {/* P2P Header */}
-        <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-5 pt-5 pb-4">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#1a5c38] to-[#0e3d25] px-5 pt-5 pb-4">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-6 h-6 bg-tsia-green rounded-full flex items-center justify-center">
-              <ArrowLeftRight className="w-3 h-3 text-white" />
+            <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center">
+              <Lock className="w-3 h-3 text-white" />
             </div>
-            <span className="text-xs font-bold text-tsia-green uppercase tracking-widest">P2P Trade</span>
+            <span className="text-xs font-bold text-white/80 uppercase tracking-widest">Escrow-Protected Order</span>
           </div>
           <h2 className="text-white font-bold text-lg leading-tight">{product.title}</h2>
-          <p className="text-slate-400 text-xs mt-0.5">Seller: {product.sellerName}</p>
+          <p className="text-white/60 text-xs mt-0.5">Seller: {product.sellerName}</p>
         </div>
 
         <div className="p-5 space-y-4">
@@ -878,9 +910,7 @@ function P2PTradeModal({ product, open, onClose, walletBalance, onChat }: {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-2xl font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
                 <span className="text-xs text-muted-foreground">({formatAmount(parseFloat(product.price))})</span>
-                {product.negotiable && (
-                  <span className="text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300 px-2 py-0.5 rounded-full">Negotiable</span>
-                )}
+                {product.negotiable && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300 px-2 py-0.5 rounded-full">Negotiable</span>}
               </div>
               <p className="text-xs text-muted-foreground capitalize">{product.condition} · {CATEGORY_LABELS[product.category]}</p>
             </div>
@@ -899,62 +929,57 @@ function P2PTradeModal({ product, open, onClose, walletBalance, onChat }: {
             </div>
           )}
 
-          {/* P2P Payment Instructions */}
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 space-y-3">
-            <p className="text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5" /> How P2P Payment Works
-            </p>
-            <div className="space-y-2">
-              {[
-                { n: "1", text: product.negotiable ? "Chat with seller to agree on final price & terms" : "Review the listed price and confirm with seller" },
-                { n: "2", text: "Get the seller's TSIA email address from the chat" },
-                { n: "3", text: "Place order here — your wallet is debited to TSIA escrow" },
-                { n: "4", text: "Seller confirms receipt and discusses shipping in chat" },
-              ].map(s => (
-                <div key={s.n} className="flex items-start gap-2">
-                  <span className="w-5 h-5 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-700 dark:text-blue-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{s.n}</span>
-                  <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">{s.text}</p>
-                </div>
-              ))}
-            </div>
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2 flex items-start gap-2 mt-1">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                <strong>Security note:</strong> Only use TSIA email addresses for payments. Do not send money to external accounts to avoid fraud.
-              </p>
-            </div>
+          {/* Delivery address */}
+          <div>
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Delivery Address</Label>
+            <Input placeholder="e.g. 14 Lagos Street, Abuja" value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} className="mt-1.5 rounded-xl text-sm" />
+          </div>
+
+          {/* Escrow explanation */}
+          <div className="bg-[#1a5c38]/8 dark:bg-[#1a5c38]/20 border border-[#1a5c38]/20 rounded-xl p-4 space-y-2">
+            <p className="text-xs font-bold text-[#1a5c38] dark:text-green-400 flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> How Escrow Protection Works</p>
+            {[
+              "Your payment is held securely by TSIA — the seller doesn't receive it yet.",
+              "Seller confirms, ships, and adds real-time tracking updates.",
+              "Once you receive your item, tap \"Mark as Received\" to release payment.",
+              "Seller gets paid instantly. Both parties are protected.",
+            ].map((s, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="w-4 h-4 rounded-full bg-[#1a5c38]/20 text-[#1a5c38] dark:text-green-400 text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
+                <p className="text-[11px] text-[#1a5c38]/80 dark:text-green-400/80 leading-relaxed">{s}</p>
+              </div>
+            ))}
           </div>
 
           {/* Order summary */}
           <div className="bg-muted/40 rounded-xl p-3 text-sm space-y-1.5">
             <div className="flex justify-between text-muted-foreground text-xs"><span>Unit price × {qty}</span><span>${(parseFloat(product.price) * qty).toFixed(2)}</span></div>
-            <div className="flex justify-between text-xs text-muted-foreground"><span>TSIA fee (8%)</span><span>−${commission.toFixed(2)}</span></div>
-            <div className="flex justify-between text-xs text-muted-foreground"><span>Seller receives</span><span>${sellerReceives.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold border-t pt-1.5 text-sm"><span>You pay</span><span className="text-tsia-green">${total.toFixed(2)} <span className="font-normal text-xs text-muted-foreground">({formatAmount(total)})</span></span></div>
+            <div className="flex justify-between text-xs text-muted-foreground"><span>TSIA marketplace fee (8%)</span><span>−${commission.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold border-t pt-1.5 text-sm"><span>You pay (held in escrow)</span><span className="text-tsia-green">${total.toFixed(2)}</span></div>
           </div>
 
           {/* Wallet status */}
           <div className={`rounded-xl p-3 text-sm flex items-center gap-2 ${canAfford ? "bg-green-50 dark:bg-green-900/20 text-green-700" : "bg-red-50 dark:bg-red-900/20 text-red-600"}`}>
             {canAfford ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <X className="w-4 h-4 shrink-0" />}
-            {canAfford ? `Wallet balance: $${walletBalance.toFixed(2)} — Sufficient` : `Insufficient funds — need $${(total - walletBalance).toFixed(2)} more`}
+            {canAfford ? `Wallet: $${walletBalance.toFixed(2)} — Sufficient` : `Insufficient — need $${(total - walletBalance).toFixed(2)} more`}
           </div>
         </div>
 
         {/* Action buttons */}
         <div className="px-5 pb-5 flex gap-2">
           {onChat && (
-            <Button variant="outline" className="flex-1 rounded-xl h-11 font-semibold" onClick={() => { onClose(); onChat(); }} data-testid="btn-p2p-chat">
+            <Button variant="outline" className="flex-1 rounded-xl h-11 font-semibold" onClick={() => { onClose(); onChat(); }} data-testid="btn-chat-seller">
               <MessageCircle className="w-4 h-4 mr-1.5" />
               {product.negotiable ? "Negotiate" : "Chat Seller"}
             </Button>
           )}
           <Button
-            onClick={() => buyMutation.mutate({ productId: product.id, quantity: qty })}
+            onClick={() => buyMutation.mutate({ productId: product.id, quantity: qty, deliveryAddress: deliveryAddress || undefined })}
             disabled={buyMutation.isPending || !canAfford}
             data-testid="button-confirm-purchase"
             className="flex-1 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-xl h-11"
           >
-            {buyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <ArrowLeftRight className="w-4 h-4 mr-1.5" />}
+            {buyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Lock className="w-4 h-4 mr-1.5" />}
             Place Order
           </Button>
         </div>
@@ -1169,8 +1194,8 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
           ) : (
             <>
               <Button onClick={onBuy} disabled={product.stock === 0} className="w-full py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base" data-testid={`btn-detail-buy-${product.id}`}>
-                <ArrowLeftRight className="w-5 h-5 mr-2" />
-                {product.negotiable ? "Negotiate & Trade" : "Place P2P Order"}
+                <Lock className="w-5 h-5 mr-2" />
+                {product.negotiable ? "Negotiate & Buy" : "Buy with Escrow"}
                 {" "}— ${parseFloat(product.price).toFixed(2)}
               </Button>
               {onCart && (
@@ -1232,6 +1257,15 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   const [cart, setCart] = useState<Set<number>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("tsia_cart") || "[]")); } catch { return new Set(); }
   });
+
+  // Escrow / tracking state
+  const [expandedTracking, setExpandedTracking] = useState<Set<number>>(new Set());
+  const [shipOrderId, setShipOrderId] = useState<number | null>(null);
+  const [shipTrackingNumber, setShipTrackingNumber] = useState("");
+  const [trackUpdateOrderId, setTrackUpdateOrderId] = useState<number | null>(null);
+  const [trackLabel, setTrackLabel] = useState("");
+  const [trackDesc, setTrackDesc] = useState("");
+  const [trackLocation, setTrackLocation] = useState("");
 
   // Auto-open chat drawer if initialOpenChatId is set
   useEffect(() => {
@@ -1332,8 +1366,38 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   const handleBuy = (p: Product) => { setBuyProduct(p); setBuyOpen(true); };
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({id, status}: {id: number; status: string}) => { const res = await apiRequest("PATCH", `/api/orders/${id}/status`, { status }); return res.json(); },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/orders/sales"] }),
+    mutationFn: async ({id, status, trackingNumber, trackingLocation}: {id: number; status: string; trackingNumber?: string; trackingLocation?: string}) => {
+      const res = await apiRequest("PATCH", `/api/orders/${id}/status`, { status, trackingNumber, trackingLocation });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/sales"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/purchases"] });
+      setShipOrderId(null); setShipTrackingNumber("");
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const markReceivedMutation = useMutation({
+    mutationFn: async (orderId: number) => { const res = await apiRequest("POST", `/api/orders/${orderId}/mark-received`, {}); return res.json(); },
+    onSuccess: (data: any) => {
+      toast({ title: "Receipt Confirmed!", description: data.message, className: "border-tsia-green" });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const addTrackingMutation = useMutation({
+    mutationFn: async ({orderId, statusLabel, description, location}: {orderId: number; statusLabel: string; description: string; location?: string}) => {
+      const res = await apiRequest("POST", `/api/orders/${orderId}/tracking`, { statusLabel, description, location });
+      return res.json();
+    },
+    onSuccess: (_: any, vars: any) => {
+      toast({ title: "Tracking Updated", description: "Buyer has been notified.", className: "border-tsia-green" });
+      queryClient.invalidateQueries({ queryKey: [`/api/orders/${vars.orderId}/tracking`] });
+      setTrackUpdateOrderId(null); setTrackLabel(""); setTrackDesc(""); setTrackLocation("");
+    },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
@@ -1538,8 +1602,8 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                                   title={cart.has(p.id) ? "Remove from cart" : "Add to cart"}>
                                   <ShoppingCart className="w-4 h-4" />
                                 </button>
-                                <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-9 h-9 bg-tsia-green rounded-xl flex items-center justify-center shrink-0" title="Place P2P Order">
-                                  <ArrowLeftRight className="w-4 h-4 text-white" />
+                                <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-9 h-9 bg-tsia-green rounded-xl flex items-center justify-center shrink-0" title="Buy (Escrow Protected)">
+                                  <Lock className="w-4 h-4 text-white" />
                                 </button>
                               </>
                             )}
@@ -1616,23 +1680,67 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
               <p className="text-muted-foreground text-sm mb-4">Browse the marketplace and place your first order.</p>
               <Button onClick={() => setTab("browse")} variant="outline" className="rounded-2xl"><ShoppingBag className="w-4 h-4 mr-1.5" /> Shop now</Button>
             </div>
-          ) : (purchases as Order[]).map(o => (
-            <div key={o.id} data-testid={`row-purchase-${o.id}`} className="bg-card border rounded-2xl p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">{o.product?.title ?? "Product"}</p>
-                  <p className="text-xs text-muted-foreground">From {o.sellerName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{new Date(o.createdAt).toLocaleDateString("en-GB", {day:"2-digit", month:"short", year:"numeric"})}</p>
-                  {o.deliveryAddress && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Truck className="w-3 h-3" />{o.deliveryAddress}</p>}
+          ) : (purchases as Order[]).map(o => {
+            const trackingOpen = expandedTracking.has(o.id);
+            const canMarkReceived = !o.escrowReleased && ["pending","confirmed","shipped"].includes(o.status);
+            return (
+              <div key={o.id} data-testid={`row-purchase-${o.id}`} className="bg-card border rounded-2xl p-4 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm">{o.product?.title ?? "Product"}</p>
+                    <p className="text-xs text-muted-foreground">From {o.sellerName} · Order #{o.id}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString("en-GB", {day:"2-digit", month:"short", year:"numeric"})}</p>
+                    {o.deliveryAddress && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Truck className="w-3 h-3" />{o.deliveryAddress}</p>}
+                    {o.trackingNumber && <p className="text-xs text-amber-600 font-mono mt-1 flex items-center gap-1"><Package className="w-3 h-3" />Tracking: {o.trackingNumber}</p>}
+                  </div>
+                  <div className="text-right ml-3 shrink-0">
+                    <p className="font-black text-base">${parseFloat(o.totalAmount).toFixed(2)}</p>
+                    <Badge className={`${STATUS_COLORS[o.status] || ""} text-[10px] mt-1 rounded-full`}>{o.status}</Badge>
+                    {!o.escrowReleased && o.status !== "cancelled" && (
+                      <div className="mt-1 flex items-center gap-1 justify-end">
+                        <Lock className="w-2.5 h-2.5 text-amber-500" />
+                        <span className="text-[9px] font-bold text-amber-600">In Escrow</span>
+                      </div>
+                    )}
+                    {o.escrowReleased && (
+                      <div className="mt-1 flex items-center gap-1 justify-end">
+                        <CheckCircle2 className="w-2.5 h-2.5 text-tsia-green" />
+                        <span className="text-[9px] font-bold text-tsia-green">Paid to Seller</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right ml-3 shrink-0">
-                  <p className="font-black text-base">${parseFloat(o.totalAmount).toFixed(2)}</p>
-                  <p className="text-[10px] text-muted-foreground">{formatAmount(parseFloat(o.totalAmount))}</p>
-                  <Badge className={`${STATUS_COLORS[o.status] || ""} text-[10px] mt-1 rounded-full`}>{o.status}</Badge>
-                </div>
+
+                {/* Tracking toggle */}
+                <button
+                  onClick={() => setExpandedTracking(s => { const n = new Set(s); n.has(o.id) ? n.delete(o.id) : n.add(o.id); return n; })}
+                  className="w-full flex items-center justify-between text-xs font-semibold text-tsia-green py-1 border-t border-border/40"
+                  data-testid={`btn-tracking-${o.id}`}
+                >
+                  <span className="flex items-center gap-1.5"><Truck className="w-3.5 h-3.5" /> Track Delivery</span>
+                  {trackingOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+                {trackingOpen && <TrackingTimeline orderId={o.id} />}
+
+                {/* Mark as Received */}
+                {canMarkReceived && (
+                  <Button
+                    size="sm"
+                    className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-xl h-9 text-xs"
+                    onClick={() => markReceivedMutation.mutate(o.id)}
+                    disabled={markReceivedMutation.isPending}
+                    data-testid={`btn-received-${o.id}`}
+                  >
+                    {markReceivedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <PackageOpen className="w-3.5 h-3.5 mr-1.5" />}
+                    I Received My Item — Release Payment
+                  </Button>
+                )}
+                {o.escrowReleased && (
+                  <p className="text-[11px] text-center text-tsia-green font-semibold flex items-center justify-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> Payment released to seller · Order complete</p>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -1646,34 +1754,101 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
               <p className="text-muted-foreground text-sm mb-4">List a product to start earning.</p>
               <Button onClick={() => setListOpen(true)} className="bg-tsia-green text-white rounded-2xl"><Tag className="w-4 h-4 mr-1.5" /> List a Product</Button>
             </div>
-          ) : (sales as Order[]).map(o => (
-            <div key={o.id} data-testid={`row-sale-${o.id}`} className="bg-card border rounded-2xl p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">{o.product?.title ?? "Product"}</p>
-                  <p className="text-xs text-muted-foreground">By {o.buyerName}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString("en-GB", {day:"2-digit", month:"short", year:"numeric"})}</p>
+          ) : (sales as Order[]).map(o => {
+            const trackingOpen = expandedTracking.has(o.id);
+            const isShippingThis = shipOrderId === o.id;
+            const isTrackingThis = trackUpdateOrderId === o.id;
+            return (
+              <div key={o.id} data-testid={`row-sale-${o.id}`} className="bg-card border rounded-2xl p-4 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm">{o.product?.title ?? "Product"}</p>
+                    <p className="text-xs text-muted-foreground">Buyer: {o.buyerName} · Order #{o.id}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString("en-GB", {day:"2-digit", month:"short", year:"numeric"})}</p>
+                    {o.trackingNumber && <p className="text-xs text-amber-600 font-mono mt-1 flex items-center gap-1"><Package className="w-3 h-3" />Tracking: {o.trackingNumber}</p>}
+                  </div>
+                  <div className="text-right ml-3 shrink-0">
+                    {o.escrowReleased
+                      ? <p className="font-black text-base text-tsia-green">+${parseFloat(o.sellerReceives).toFixed(2)}</p>
+                      : <div><p className="font-black text-base text-amber-600">${parseFloat(o.sellerReceives).toFixed(2)}</p><div className="flex items-center gap-1 justify-end mt-0.5"><Lock className="w-2.5 h-2.5 text-amber-500" /><span className="text-[9px] text-amber-600 font-bold">Pending</span></div></div>
+                    }
+                    <p className="text-[10px] text-muted-foreground">after 8% fee</p>
+                    <Badge className={`${STATUS_COLORS[o.status] || ""} text-[10px] mt-1 rounded-full`}>{o.status}</Badge>
+                  </div>
                 </div>
-                <div className="text-right ml-3 shrink-0">
-                  <p className="font-black text-base text-tsia-green">+${parseFloat(o.sellerReceives).toFixed(2)}</p>
-                  <p className="text-[10px] text-muted-foreground">after 8% fee</p>
-                  <Badge className={`${STATUS_COLORS[o.status] || ""} text-[10px] mt-1 rounded-full`}>{o.status}</Badge>
-                </div>
+
+                {/* Seller actions */}
+                {o.status === "pending" && (
+                  <Button size="sm" className="w-full h-9 text-xs rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                    onClick={() => updateStatusMutation.mutate({id: o.id, status: "confirmed"})} disabled={updateStatusMutation.isPending}
+                    data-testid={`btn-confirm-${o.id}`}>
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Confirm Order
+                  </Button>
+                )}
+
+                {o.status === "confirmed" && !isShippingThis && (
+                  <Button size="sm" variant="outline" className="w-full h-9 text-xs rounded-xl border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                    onClick={() => setShipOrderId(o.id)} data-testid={`btn-ship-open-${o.id}`}>
+                    <Truck className="w-3.5 h-3.5 mr-1.5" /> Mark as Shipped
+                  </Button>
+                )}
+
+                {o.status === "confirmed" && isShippingThis && (
+                  <div className="space-y-2 bg-muted/40 rounded-xl p-3">
+                    <p className="text-xs font-semibold">Add tracking number (optional)</p>
+                    <Input placeholder="e.g. NG1234567890" value={shipTrackingNumber} onChange={e => setShipTrackingNumber(e.target.value)} className="h-9 text-xs rounded-xl font-mono" />
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="flex-1 h-8 text-xs rounded-xl" onClick={() => setShipOrderId(null)}>Cancel</Button>
+                      <Button size="sm" className="flex-1 h-8 text-xs rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                        onClick={() => updateStatusMutation.mutate({id: o.id, status: "shipped", trackingNumber: shipTrackingNumber || undefined})}
+                        disabled={updateStatusMutation.isPending} data-testid={`btn-ship-confirm-${o.id}`}>
+                        {updateStatusMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Truck className="w-3.5 h-3.5 mr-1" />} Confirm Shipped
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Add tracking update (available once shipped) */}
+                {["shipped","confirmed","pending"].includes(o.status) && !o.escrowReleased && !isTrackingThis && (
+                  <button className="w-full flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border-t border-border/40 pt-2"
+                    onClick={() => setTrackUpdateOrderId(o.id)} data-testid={`btn-add-tracking-${o.id}`}>
+                    <MapPin className="w-3 h-3" /> Add tracking update
+                  </button>
+                )}
+
+                {isTrackingThis && (
+                  <div className="space-y-2 bg-muted/40 rounded-xl p-3 border-t border-border/40">
+                    <p className="text-xs font-semibold flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Add Tracking Update</p>
+                    <Input placeholder="Status (e.g. In Transit, Out for Delivery)" value={trackLabel} onChange={e => setTrackLabel(e.target.value)} className="h-9 text-xs rounded-xl" />
+                    <Input placeholder="Description" value={trackDesc} onChange={e => setTrackDesc(e.target.value)} className="h-9 text-xs rounded-xl" />
+                    <Input placeholder="Location (optional, e.g. Lagos Hub)" value={trackLocation} onChange={e => setTrackLocation(e.target.value)} className="h-9 text-xs rounded-xl" />
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="flex-1 h-8 text-xs rounded-xl" onClick={() => { setTrackUpdateOrderId(null); setTrackLabel(""); setTrackDesc(""); setTrackLocation(""); }}>Cancel</Button>
+                      <Button size="sm" className="flex-1 h-8 text-xs rounded-xl bg-tsia-green hover:bg-tsia-green/90 text-white font-bold"
+                        onClick={() => addTrackingMutation.mutate({orderId: o.id, statusLabel: trackLabel, description: trackDesc, location: trackLocation || undefined})}
+                        disabled={addTrackingMutation.isPending || !trackLabel || !trackDesc} data-testid={`btn-tracking-submit-${o.id}`}>
+                        {addTrackingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Send className="w-3.5 h-3.5 mr-1" />} Send Update
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tracking timeline toggle */}
+                <button
+                  onClick={() => setExpandedTracking(s => { const n = new Set(s); n.has(o.id) ? n.delete(o.id) : n.add(o.id); return n; })}
+                  className="w-full flex items-center justify-between text-xs text-muted-foreground hover:text-foreground border-t border-border/40 pt-2"
+                >
+                  <span className="flex items-center gap-1.5"><Clock className="w-3 h-3" /> {trackingOpen ? "Hide" : "View"} tracking timeline</span>
+                  {trackingOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+                {trackingOpen && <TrackingTimeline orderId={o.id} />}
+
+                {o.escrowReleased && (
+                  <p className="text-[11px] text-center text-tsia-green font-semibold flex items-center justify-center gap-1.5 border-t border-border/40 pt-2"><CheckCircle2 className="w-3.5 h-3.5" /> Payment released to your wallet · Completed</p>
+                )}
               </div>
-              {o.status === "confirmed" && (
-                <Button size="sm" variant="outline" className="w-full h-8 text-xs rounded-xl border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 mt-1"
-                  onClick={() => updateStatusMutation.mutate({id: o.id, status: "shipped"})} data-testid={`btn-ship-${o.id}`}>
-                  <Truck className="w-3.5 h-3.5 mr-1.5" /> Mark as Shipped
-                </Button>
-              )}
-              {o.status === "shipped" && (
-                <Button size="sm" variant="outline" className="w-full h-8 text-xs rounded-xl border-green-300 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 mt-1"
-                  onClick={() => updateStatusMutation.mutate({id: o.id, status: "delivered"})} data-testid={`btn-deliver-${o.id}`}>
-                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Mark as Delivered
-                </Button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -1719,7 +1894,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
           toast({ title: wasIn ? "Removed from cart" : "Saved to cart", description: wasIn ? `${selectedProduct.title} removed.` : `${selectedProduct.title} saved to your cart.` });
         }}
       />
-      <P2PTradeModal
+      <PurchaseModal
         product={buyProduct}
         open={buyOpen}
         onClose={() => setBuyOpen(false)}

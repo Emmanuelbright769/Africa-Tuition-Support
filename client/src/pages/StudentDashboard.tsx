@@ -505,7 +505,11 @@ export default function StudentDashboard() {
                         <h3 className="text-3xl font-bold mb-1 tracking-tight" data-testid="text-tier">{tierLabel} Tier</h3>
                         {waecPct !== null && <p className="text-lg font-semibold text-primary mb-2">{waecPct}% Score</p>}
                         <p className="text-sm text-muted-foreground mb-3">{tier !== "none" ? "Based on your WAEC results" : "Complete onboarding to set tier"}</p>
-                        {payoutMax > 0 && (
+                        {payoutMax > 0 && (() => {
+                          if (!plan) return true;
+                          const pAge = Math.floor((Date.now() - new Date((plan as any).createdAt).getTime()) / 86400000);
+                          return Math.max(0, 365 - pAge) === 0;
+                        })() && (
                           <div className="flex flex-wrap items-center gap-2 mt-1">
                             <Badge variant="secondary" className="px-4 py-1.5 text-sm font-semibold">Payout: ${payoutMin} – ${payoutMax}</Badge>
                             <button
@@ -715,8 +719,8 @@ export default function StudentDashboard() {
                                 <h4 className="font-semibold text-lg">{p.years}-Year Plan</h4>
                                 <span className="text-[10px] font-bold bg-tsia-green/10 text-tsia-green border border-tsia-green/20 rounded-full px-2 py-0.5">{p.coverage} sponsored</span>
                               </div>
-                              <div className="text-4xl font-bold mb-1">${p.price}<span className="text-sm font-medium text-muted-foreground">/yr</span></div>
-                              <p className="text-[11px] text-muted-foreground mb-4">+${serviceCharge.toFixed(2)} service charge = <strong>${totalCost.toFixed(2)} total</strong></p>
+                              <div className="text-4xl font-bold mb-1">${totalCost.toFixed(2)}<span className="text-sm font-medium text-muted-foreground"> total</span></div>
+                              <p className="text-[11px] text-muted-foreground mb-4">${p.price.toFixed(2)} base + ${serviceCharge.toFixed(2)} service charge (10%)</p>
                               <ul className="space-y-3 mb-8 text-sm font-medium">
                                 <li className="flex items-center gap-2">
                                   <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />

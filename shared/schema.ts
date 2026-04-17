@@ -249,7 +249,7 @@ export type TradeTransaction = typeof tradeTransactions.$inferSelect;
 export type WalletRecord = typeof wallets.$inferSelect;
 
 export const WAEC_GRADE_WEIGHTS: Record<string, number> = {
-  A1: 20, B2: 12, B3: 11.5, C4: 11, C5: 10.5, C6: 10, D7: 9.5, E8: 9, F9: 8.5,
+  A1: 20, B2: 12, B3: 11.5, C4: 11, C5: 10.5, C6: 10, D7: 10, E8: 9, F9: 8.5,
 };
 
 export const CURRENCY_RATES = {

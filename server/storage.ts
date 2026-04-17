@@ -309,6 +309,10 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(walletTransfers).where(
         or(eq(walletTransfers.senderId, id), eq(walletTransfers.recipientId, id))
       );
+      // 10a. withdrawal OTPs
+      await tx.delete(withdrawalOtps).where(eq(withdrawalOtps.userId, id));
+      // 10b. withdrawal requests
+      await tx.delete(withdrawalRequests).where(eq(withdrawalRequests.userId, id));
       // 11. transactions
       await tx.delete(transactions).where(eq(transactions.userId, id));
       // 12. disbursements

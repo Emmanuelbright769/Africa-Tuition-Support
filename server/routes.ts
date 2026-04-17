@@ -1382,13 +1382,14 @@ export async function registerRoutes(
         }
       }
 
-      // ── 4. Plan cost + service charge ──────────────────────────────────────
+      // ── 4. Plan cost + service charge (from DB / defaults) ────────────────
       const { planYears } = req.body;
-      const planBaseCost: Record<number, number> = { 1: 35, 2: 45, 3: 50 };
-      const baseCost = planBaseCost[planYears];
+      const planPrices = await storage.getPlanPrices();
+      const planBaseCostMap: Record<number, number> = { 1: planPrices.plan1yr, 2: planPrices.plan2yr, 3: planPrices.plan3yr };
+      const baseCost = planBaseCostMap[planYears];
       if (!baseCost) return res.status(400).json({ message: "Invalid plan. Choose 1, 2, or 3 years." });
 
-      const SERVICE_CHARGE_RATE = 0.10;
+      const SERVICE_CHARGE_RATE = planPrices.serviceChargeRate;
       const serviceCharge = parseFloat((baseCost * SERVICE_CHARGE_RATE).toFixed(2));
       const totalCost = parseFloat((baseCost + serviceCharge).toFixed(2));
       const ngnEquivalent = Math.round(totalCost * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
@@ -2848,6 +2849,58 @@ export async function registerRoutes(
       });
 
       res.json(disbursement);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── Public: plan prices (always from DB / defaults) ──────────────────────
+  app.get("/api/platform/plan-prices", async (_req, res) => {
+    try {
+      const prices = await storage.getPlanPrices();
+      res.json(prices);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── Admin: get all platform settings ─────────────────────────────────────
+  app.get("/api/admin/platform-settings", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const settings = await storage.getAllPlatformSettings();
+      const prices = await storage.getPlanPrices();
+      res.json({ settings, prices });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── Admin: update platform settings ──────────────────────────────────────
+  app.put("/api/admin/platform-settings", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const { plan1yr, plan2yr, plan3yr, serviceChargeRate } = req.body;
+      const updates: { key: string; val: number; min: number; max: number; label: string }[] = [
+        { key: "plan_1yr_base", val: parseFloat(plan1yr), min: 1, max: 9999, label: "1-year plan price" },
+        { key: "plan_2yr_base", val: parseFloat(plan2yr), min: 1, max: 9999, label: "2-year plan price" },
+        { key: "plan_3yr_base", val: parseFloat(plan3yr), min: 1, max: 9999, label: "3-year plan price" },
+        { key: "plan_service_charge_rate", val: parseFloat(serviceChargeRate) / 100, min: 0, max: 1, label: "service charge rate" },
+      ];
+      for (const u of updates) {
+        if (isNaN(u.val) || u.val < u.min || u.val > u.max) {
+          return res.status(400).json({ message: `Invalid value for ${u.label}` });
+        }
+        await storage.setPlatformSetting(u.key, u.val.toString());
+      }
+      const prices = await storage.getPlanPrices();
+      res.json({ message: "Settings updated successfully", prices });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

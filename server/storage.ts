@@ -13,6 +13,7 @@ import {
   priceAlerts, categorySubscriptions,
   sponsorCohorts, cohortCodes, sponsorshipBatches,
   withdrawalRequests, withdrawalOtps,
+  platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -241,6 +242,12 @@ export interface IStorage {
   // Withdrawal OTPs
   createWithdrawalOtp(userId: number, code: string, purpose: string): Promise<void>;
   verifyAndConsumeWithdrawalOtp(userId: number, code: string, purpose: string): Promise<boolean>;
+
+  // Platform settings
+  getPlatformSetting(key: string): Promise<string | null>;
+  getAllPlatformSettings(): Promise<PlatformSetting[]>;
+  setPlatformSetting(key: string, value: string): Promise<void>;
+  getPlanPrices(): Promise<{ plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1578,6 +1585,34 @@ export class DatabaseStorage implements IStorage {
     if (!otp) return false;
     await db.update(withdrawalOtps).set({ usedAt: now }).where(eq(withdrawalOtps.id, otp.id));
     return true;
+  }
+
+  // ── Platform settings ─────────────────────────────────────────────────────
+  async getPlatformSetting(key: string): Promise<string | null> {
+    const [row] = await db.select().from(platformSettings).where(eq(platformSettings.key, key)).limit(1);
+    return row?.value ?? null;
+  }
+
+  async getAllPlatformSettings(): Promise<PlatformSetting[]> {
+    return db.select().from(platformSettings);
+  }
+
+  async setPlatformSetting(key: string, value: string): Promise<void> {
+    await db.insert(platformSettings)
+      .values({ key, value, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: platformSettings.key, set: { value, updatedAt: new Date() } });
+  }
+
+  async getPlanPrices(): Promise<{ plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }> {
+    const rows = await db.select().from(platformSettings)
+      .where(sql`key IN ('plan_1yr_base','plan_2yr_base','plan_3yr_base','plan_service_charge_rate')`);
+    const map = Object.fromEntries(rows.map(r => [r.key, parseFloat(r.value)]));
+    return {
+      plan1yr:           map["plan_1yr_base"]            ?? DEFAULT_PLAN_PRICES.plan_1yr_base,
+      plan2yr:           map["plan_2yr_base"]            ?? DEFAULT_PLAN_PRICES.plan_2yr_base,
+      plan3yr:           map["plan_3yr_base"]            ?? DEFAULT_PLAN_PRICES.plan_3yr_base,
+      serviceChargeRate: map["plan_service_charge_rate"] ?? DEFAULT_PLAN_PRICES.plan_service_charge_rate,
+    };
   }
 }
 

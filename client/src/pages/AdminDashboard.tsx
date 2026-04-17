@@ -16,7 +16,7 @@ import {
   ArrowLeftRight, Bell, Landmark, XCircle, AlertTriangle, RefreshCw,
   ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
   Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight, GitBranch,
-  Banknote, Copy, Phone, ThumbsUp, ThumbsDown
+  Banknote, Copy, Phone, ThumbsUp, ThumbsDown, Settings, Save, Percent
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -93,6 +93,7 @@ const NAV = [
   { id: "trustfunders", icon: Award,          label: "Trust Funders" },
   { id: "messages",     icon: MessageSquare,  label: "Forum Messages" },
   { id: "notifications", icon: Bell,          label: "Notifications" },
+  { id: "settings",     icon: Settings,      label: "Plan Settings" },
 ];
 
 // ─── AdminDashboard ───────────────────────────────────────────────────────────
@@ -127,6 +128,8 @@ export default function AdminDashboard() {
   const [cwdFilter, setCwdFilter] = useState<"all" | "pending" | "approved" | "declined" | "refunded">("all");
   const [wdNoteDialogId, setWdNoteDialogId] = useState<number | null>(null);
   const [wdNote, setWdNote]               = useState("");
+  const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "" });
+  const [settingsSaved, setSettingsSaved] = useState(false);
   const [wdAction, setWdAction]           = useState<"approve" | "decline" | null>(null);
   const [wdCopied, setWdCopied]           = useState<string | null>(null);
 
@@ -150,6 +153,7 @@ export default function AdminDashboard() {
   const { data: allTrustFunders = [] }     = useQuery({ queryKey: ["/api/admin/co-affiliates"], enabled: activeTab === "trustfunders" });
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 30000 });
+  const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
   const verifyMutation = useMutation({
@@ -293,6 +297,23 @@ export default function AdminDashboard() {
     onError: (e: any) => toast({ title: "Action failed", description: e.message, variant: "destructive" }),
   });
 
+  const saveSettingsMutation = useMutation({
+    mutationFn: async (form: { plan1yr: string; plan2yr: string; plan3yr: string; serviceChargeRate: string }) => {
+      const res = await apiRequest("PUT", "/api/admin/platform-settings", form);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/platform/plan-prices"] });
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+      toast({ title: "Plan Prices Updated ✓", description: "New prices are live for all students immediately." });
+    },
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+
   const confirmDepositMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("POST", `/api/admin/wallet-deposit/${id}/confirm`);
@@ -384,6 +405,17 @@ export default function AdminDashboard() {
     if (!user || user.role !== "admin") { timerRef.current = setTimeout(() => setLocation("/login"), 200); }
     return () => clearTimeout(timerRef.current);
   }, [authLoading, user]);
+
+  useEffect(() => {
+    if (!platformSettingsData?.prices) return;
+    const p = platformSettingsData.prices;
+    setSettingsForm(f => f.plan1yr ? f : {
+      plan1yr: p.plan1yr.toString(),
+      plan2yr: p.plan2yr.toString(),
+      plan3yr: p.plan3yr.toString(),
+      serviceChargeRate: (p.serviceChargeRate * 100).toFixed(2),
+    });
+  }, [platformSettingsData]);
 
   if (authLoading || (!user && !authLoading)) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin w-8 h-8 border-4 border-tsia-green border-t-transparent rounded-full" /></div>;
 
@@ -1827,6 +1859,107 @@ export default function AdminDashboard() {
                 <p className="text-xs text-slate-500 text-center">To notify a specific user, go to the Users or Affiliates tab and use the Notify button on their row.</p>
               </motion.div>
             )}
+
+            {activeTab === "settings" && (() => {
+              const prices = platformSettingsData?.prices;
+              const base = prices
+                ? { plan1yr: prices.plan1yr.toString(), plan2yr: prices.plan2yr.toString(), plan3yr: prices.plan3yr.toString(), serviceChargeRate: (prices.serviceChargeRate * 100).toFixed(2) }
+                : { plan1yr: "35", plan2yr: "45", plan3yr: "50", serviceChargeRate: "10.00" };
+              const currentForm = settingsForm.plan1yr ? settingsForm : base;
+              const updateForm = (k: keyof typeof settingsForm, v: string) => setSettingsForm(f => ({ ...(f.plan1yr ? f : base), [k]: v }));
+              const s1 = parseFloat(currentForm.plan1yr) || 35;
+              const s2 = parseFloat(currentForm.plan2yr) || 45;
+              const s3 = parseFloat(currentForm.plan3yr) || 50;
+              const sc = parseFloat(currentForm.serviceChargeRate) || 10;
+              return (
+                <motion.div key="settings" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-6 max-w-2xl">
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader className="border-b pb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-tsia-green/10 flex items-center justify-center"><Settings className="w-5 h-5 text-tsia-green" /></div>
+                        <div>
+                          <CardTitle className="text-base">Sponsorship Plan Prices</CardTitle>
+                          <CardDescription>Update the base price students pay for each plan. Changes take effect immediately.</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-5">
+                      <div className="grid grid-cols-3 gap-4">
+                        {[
+                          { key: "plan1yr" as const, label: "1-Year Plan", icon: "1" },
+                          { key: "plan2yr" as const, label: "2-Year Plan", icon: "2" },
+                          { key: "plan3yr" as const, label: "3-Year Plan", icon: "3" },
+                        ].map(({ key, label, icon }) => (
+                          <div key={key} className="space-y-2">
+                            <Label className="font-semibold text-sm">{label}</Label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">$</span>
+                              <Input
+                                type="number"
+                                min="1"
+                                step="0.01"
+                                className="pl-7 h-11 bg-muted/30 font-semibold text-base"
+                                value={settingsForm.plan1yr ? settingsForm[key] : currentForm[key]}
+                                onChange={e => updateForm(key, e.target.value)}
+                                data-testid={`input-price-${key}`}
+                              />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">
+                              +{sc}% charge = <strong>${(parseFloat(settingsForm.plan1yr ? settingsForm[key] : currentForm[key]) * (1 + sc / 100)).toFixed(2)} total</strong>
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="font-semibold text-sm">Service Charge Rate (%)</Label>
+                        <div className="relative max-w-[200px]">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            className="pr-8 h-11 bg-muted/30 font-semibold"
+                            value={settingsForm.plan1yr ? settingsForm.serviceChargeRate : currentForm.serviceChargeRate}
+                            onChange={e => updateForm("serviceChargeRate", e.target.value)}
+                            data-testid="input-service-charge-rate"
+                          />
+                          <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        </div>
+                        <p className="text-xs text-muted-foreground">This percentage is added on top of the base price as a service charge.</p>
+                      </div>
+
+                      <div className="bg-slate-50 rounded-xl border p-4 space-y-2">
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Price Preview</p>
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          {[{ label: "1-Year", base: s1 }, { label: "2-Year", base: s2 }, { label: "3-Year", base: s3 }].map(p => (
+                            <div key={p.label} className="bg-white rounded-lg border p-3">
+                              <p className="text-xs text-slate-500 mb-1">{p.label}</p>
+                              <p className="text-lg font-bold text-tsia-green">${(p.base * (1 + sc / 100)).toFixed(2)}</p>
+                              <p className="text-[10px] text-slate-400">${p.base.toFixed(2)} + {sc}%</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <Button
+                        className="w-full h-11 font-semibold bg-tsia-green hover:bg-tsia-green/90"
+                        disabled={saveSettingsMutation.isPending}
+                        onClick={() => saveSettingsMutation.mutate(settingsForm.plan1yr ? settingsForm : currentForm)}
+                        data-testid="button-save-settings"
+                      >
+                        {saveSettingsMutation.isPending
+                          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Saving...</>
+                          : settingsSaved
+                            ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Saved!</>
+                            : <><Save className="w-4 h-4 mr-2" /> Save Plan Prices</>}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                  <p className="text-xs text-slate-500 text-center">Changes apply to all new plan purchases immediately. Existing plans are not affected.</p>
+                </motion.div>
+              );
+            })()}
 
           </AnimatePresence>
         </main>

@@ -76,6 +76,7 @@ export default function StudentDashboard() {
   const { data: myLoans = [], refetch: refetchMyLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"] });
   const { data: walletData } = useQuery<any>({ queryKey: ["/api/wallet"] });
   const { data: batchStatus } = useQuery<any>({ queryKey: ["/api/sponsorship/batch-status"] });
+  const { data: planPrices }  = useQuery<{ plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }>({ queryKey: ["/api/platform/plan-prices"] });
   const [batchCountdown, setBatchCountdown] = useState("");
   const [commitmentCountdown, setCommitmentCountdown] = useState("");
   const [planCountdown, setPlanCountdown] = useState("");
@@ -697,13 +698,13 @@ export default function StudentDashboard() {
                     // User's actual payout per year from their tier
                     const tierPayoutMax = payoutMax || 230;
                     const tierPayoutMin = payoutMin || 225;
-                    const SERVICE_CHARGE = 0.10;
+                    const SERVICE_CHARGE = planPrices?.serviceChargeRate ?? 0.10;
                     return (
                       <div className="grid sm:grid-cols-3 gap-5">
                         {[
-                          { years: 1, price: 35, coverage: "~85%" },
-                          { years: 2, price: 45, coverage: "~90%", popular: true },
-                          { years: 3, price: 50, coverage: "~92%" },
+                          { years: 1, price: planPrices?.plan1yr ?? 35, coverage: "~85%" },
+                          { years: 2, price: planPrices?.plan2yr ?? 45, coverage: "~90%", popular: true },
+                          { years: 3, price: planPrices?.plan3yr ?? 50, coverage: "~92%" },
                         ].map(p => {
                           const isActive = plan?.planYears === p.years;
                           const canSelect = isVerified && withinWindow && (!plan || planDaysLeft === 0) && !isActive;

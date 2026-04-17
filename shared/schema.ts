@@ -927,6 +927,22 @@ export const withdrawalOtps = pgTable("withdrawal_otps", {
 });
 export type WithdrawalOtp = typeof withdrawalOtps.$inferSelect;
 
+// ─── PLATFORM SETTINGS ───────────────────────────────────────────────────────
+export const platformSettings = pgTable("platform_settings", {
+  key:       varchar("key", { length: 100 }).primaryKey(),
+  value:     text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PlatformSetting = typeof platformSettings.$inferSelect;
+
+// Default plan prices — used as fallback if DB record absent
+export const DEFAULT_PLAN_PRICES = {
+  plan_1yr_base: 35,
+  plan_2yr_base: 45,
+  plan_3yr_base: 50,
+  plan_service_charge_rate: 0.10,
+} as const;
+
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [
   { id: "binance", name: "Binance", specialty: "Crypto & Futures", rating: 4.9, minDeposit: 10, fee: "0.1%", description: "World's largest crypto exchange with deep liquidity." },

@@ -2134,7 +2134,11 @@ export async function registerRoutes(
       await storage.addToTotalInvested(userId, userCredit.toFixed(6));
       // If ROI was previously complete, reset for new trading cycle
       const postDepositWallet = await storage.getOrCreateTradeWallet(userId);
-      if (postDepositWallet.roiComplete) await storage.resetRoiForNewCycle(userId);
+      if (postDepositWallet.roiComplete) {
+        await storage.resetRoiForNewCycle(userId);
+      }
+      // Track locked principal (net amount in trade balance from this deposit)
+      await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
       await storage.addToReserveFund(reserveCut.toFixed(6));
 
       // Credit 5% directly to the specific referrer (if any), otherwise shared pool
@@ -2205,7 +2209,11 @@ export async function registerRoutes(
       await storage.addToTotalInvested(userId, userCredit.toFixed(6));
       // If ROI was previously complete, reset for new trading cycle
       const fwPostWallet = await storage.getOrCreateTradeWallet(userId);
-      if (fwPostWallet.roiComplete) await storage.resetRoiForNewCycle(userId);
+      if (fwPostWallet.roiComplete) {
+        await storage.resetRoiForNewCycle(userId);
+      }
+      // Track locked principal (net amount in trade balance from this funding)
+      await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
       await storage.addToReserveFund(reserveCut.toFixed(6));
       // Credit 5% directly to specific referrer (if any), otherwise shared pool
       const fwRefResult = await creditReferrerCommission(userId, amount, "trade funding");
@@ -2244,8 +2252,14 @@ export async function registerRoutes(
       const amount = parseFloat(amountUsd);
       if (isNaN(amount) || amount < 1) return res.status(400).json({ message: "Minimum transfer is $1." });
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
-      if (parseFloat(tradeWallet.tradeBalance) < amount) {
-        return res.status(400).json({ message: `Insufficient trade balance. Available: $${parseFloat(tradeWallet.tradeBalance).toFixed(2)}` });
+      const twBalance = parseFloat(tradeWallet.tradeBalance);
+      const twLocked = tradeWallet.roiComplete ? 0 : parseFloat(tradeWallet.lockedPrincipal ?? "0");
+      const twWithdrawable = Math.max(0, twBalance - twLocked);
+      if (amount > twWithdrawable) {
+        if (twLocked > 0 && !tradeWallet.roiComplete) {
+          return res.status(400).json({ message: `Only trade earnings ($${twWithdrawable.toFixed(2)}) can be transferred before 100% ROI is achieved. Your invested principal ($${twLocked.toFixed(2)}) is locked until the bot completes your full return.` });
+        }
+        return res.status(400).json({ message: `Insufficient trade balance. Available: $${twWithdrawable.toFixed(2)}` });
       }
       // Deduct from trade wallet
       await storage.updateTradeBalance(userId, (-amount).toFixed(6));
@@ -2291,8 +2305,13 @@ export async function registerRoutes(
 
       const wallet = await storage.getOrCreateTradeWallet(userId);
       const currentBalance = parseFloat(wallet.tradeBalance);
-      if (currentBalance < amount) {
-        return res.status(400).json({ message: `Insufficient balance. Available: $${currentBalance.toFixed(2)}` });
+      const wdLocked = wallet.roiComplete ? 0 : parseFloat(wallet.lockedPrincipal ?? "0");
+      const wdWithdrawable = Math.max(0, currentBalance - wdLocked);
+      if (amount > wdWithdrawable) {
+        if (wdLocked > 0 && !wallet.roiComplete) {
+          return res.status(400).json({ message: `Only trade earnings ($${wdWithdrawable.toFixed(2)}) can be withdrawn before 100% ROI is achieved. Your invested principal ($${wdLocked.toFixed(2)}) is locked until the bot completes your full return.` });
+        }
+        return res.status(400).json({ message: `Insufficient balance. Available: $${wdWithdrawable.toFixed(2)}` });
       }
 
       // ── For bank withdrawals: call Squad payout API ───────────────────────
@@ -2403,14 +2422,13 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      // activatedAt is the timestamp (ms) when the bot was started — fall back to DB value if missing
-      const { activatedAt: clientActivatedAt } = req.body as { activatedAt?: number };
       const wallet0 = await storage.getOrCreateTradeWallet(userId);
-      // Determine the actual session start: prefer client-provided timestamp, fall back to DB
-      let activatedAt: number | undefined = clientActivatedAt && Number.isFinite(clientActivatedAt) ? clientActivatedAt : undefined;
-      if (!activatedAt && wallet0.botActivatedAt) {
-        activatedAt = new Date(wallet0.botActivatedAt).getTime();
+      // IDEMPOTENCY: only use the DB-stored botActivatedAt — never accept client-provided timestamp
+      // This prevents duplicate completions from multiple tabs or page refreshes
+      if (!wallet0.botActivatedAt) {
+        return res.status(400).json({ message: "No active bot session found. The session may have already been completed." });
       }
+      const activatedAt = new Date(wallet0.botActivatedAt).getTime();
 
       const wallet = wallet0;
       const balance = parseFloat(wallet.tradeBalance);

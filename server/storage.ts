@@ -107,6 +107,8 @@ export interface IStorage {
   addToTotalInvested(userId: number, amount: string): Promise<TradeWallet>;
   markRoiComplete(userId: number): Promise<TradeWallet>;
   resetRoiForNewCycle(userId: number): Promise<void>;
+  addToLockedPrincipal(userId: number, amount: string): Promise<TradeWallet>;
+  clearLockedPrincipal(userId: number): Promise<TradeWallet>;
   addReferralCommission(userId: number, amount: string): Promise<TradeWallet>;
   subtractReferralCommission(userId: number, amount: string): Promise<TradeWallet>;
   setBotActivatedAt(userId: number, ts: Date | null): Promise<TradeWallet>;
@@ -614,7 +616,23 @@ export class DatabaseStorage implements IStorage {
 
   async markRoiComplete(userId: number): Promise<TradeWallet> {
     const [updated] = await db.update(tradeWallets)
-      .set({ roiComplete: true, tradeBalance: "0.000000", totalBotEarnings: "0.000000", totalInvested: "0.000000", botActivatedAt: null, updatedAt: new Date() })
+      .set({ roiComplete: true, lockedPrincipal: "0.000000", botActivatedAt: null, updatedAt: new Date() })
+      .where(eq(tradeWallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async addToLockedPrincipal(userId: number, amount: string): Promise<TradeWallet> {
+    const [updated] = await db.update(tradeWallets)
+      .set({ lockedPrincipal: sql`locked_principal + ${amount}::decimal`, updatedAt: new Date() })
+      .where(eq(tradeWallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async clearLockedPrincipal(userId: number): Promise<TradeWallet> {
+    const [updated] = await db.update(tradeWallets)
+      .set({ lockedPrincipal: "0.000000", updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId))
       .returning();
     return updated;
@@ -622,7 +640,7 @@ export class DatabaseStorage implements IStorage {
 
   async resetRoiForNewCycle(userId: number): Promise<void> {
     await db.update(tradeWallets)
-      .set({ roiComplete: false, updatedAt: new Date() })
+      .set({ roiComplete: false, totalBotEarnings: "0.000000", totalInvested: "0.000000", lockedPrincipal: "0.000000", updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId));
   }
 

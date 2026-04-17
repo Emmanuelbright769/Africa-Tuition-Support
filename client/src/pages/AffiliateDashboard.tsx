@@ -819,11 +819,13 @@ export default function AffiliateDashboard() {
   const myWithdrawn        = myCoAff ? parseFloat(myCoAff.withdrawnAmount ?? "0") : 0;
   const myAmountPaid       = myCoAff ? parseFloat(myCoAff.amountPaid) : 0;
   const mySharePct         = myCoAff ? (parseFloat(myCoAff.sharePercentage) * 100).toFixed(6) : "0";
-  const tradeBalance   = parseFloat(tradeWallet?.tradeBalance ?? "0");
-  const totalInvested  = parseFloat(tradeWallet?.totalInvested ?? "0");
-  const totalBotEarned = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
-  const roiComplete    = !!(tradeWallet?.roiComplete);
-  const roiProgress    = totalInvested > 0 ? Math.min(100, (totalBotEarned / totalInvested) * 100) : 0;
+  const tradeBalance     = parseFloat(tradeWallet?.tradeBalance ?? "0");
+  const totalInvested    = parseFloat(tradeWallet?.totalInvested ?? "0");
+  const totalBotEarned   = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
+  const roiComplete      = !!(tradeWallet?.roiComplete);
+  const roiProgress      = totalInvested > 0 ? Math.min(100, (totalBotEarned / totalInvested) * 100) : 0;
+  const lockedPrincipal  = roiComplete ? 0 : parseFloat(tradeWallet?.lockedPrincipal ?? "0");
+  const withdrawableAmt  = Math.max(0, tradeBalance - lockedPrincipal);
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);
 
@@ -1312,22 +1314,48 @@ export default function AffiliateDashboard() {
                 <motion.div variants={itemVariants}>
                   <div className="rounded-2xl border overflow-hidden shadow-sm">
                     {/* Balance row */}
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 px-4 py-3 flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Trade Wallet Balance</p>
-                        <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                          {tradeBalanceHidden ? "••••••" : `$${tradeBalance.toFixed(2)}`}
-                        </p>
-                        {!tradeBalanceHidden && <p className="text-xs text-blue-500/70">≈ {formatAmount(tradeBalance)}</p>}
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 px-4 py-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Trade Wallet Balance</p>
+                          <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                            {tradeBalanceHidden ? "••••••" : `$${tradeBalance.toFixed(2)}`}
+                          </p>
+                          {!tradeBalanceHidden && <p className="text-xs text-blue-500/70">≈ {formatAmount(tradeBalance)}</p>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setWithdrawOpen(true)} data-testid="button-trade-withdraw" className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300">
+                            <ArrowUpRight className="w-3.5 h-3.5 mr-1.5" /> Withdraw
+                          </Button>
+                          <Button size="sm" onClick={() => setFundTradeOpen(true)} data-testid="button-fund-trade-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
+                            <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" /> Fund
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setWithdrawOpen(true)} data-testid="button-trade-withdraw" className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300">
-                          <ArrowUpRight className="w-3.5 h-3.5 mr-1.5" /> Withdraw
-                        </Button>
-                        <Button size="sm" onClick={() => setFundTradeOpen(true)} data-testid="button-fund-trade-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
-                          <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" /> Fund
-                        </Button>
-                      </div>
+                      {!roiComplete && lockedPrincipal > 0 && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                            <div>
+                              <p className="text-[10px] text-muted-foreground">Locked Principal</p>
+                              <p className="text-xs font-bold text-amber-600 dark:text-amber-400">{tradeBalanceHidden ? "••••" : `$${lockedPrincipal.toFixed(2)}`}</p>
+                            </div>
+                          </div>
+                          <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            <div>
+                              <p className="text-[10px] text-muted-foreground">Available to Withdraw</p>
+                              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{tradeBalanceHidden ? "••••" : `$${withdrawableAmt.toFixed(2)}`}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {roiComplete && (
+                        <div className="bg-emerald-100 dark:bg-emerald-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">100% ROI complete — full balance available to withdraw</p>
+                        </div>
+                      )}
                     </div>
                     {/* Earnings row — always visible */}
                     <div className="bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3 flex items-center justify-between">
@@ -1534,6 +1562,70 @@ export default function AffiliateDashboard() {
                     </motion.div>
                   );
                 })()}
+
+                {/* ── Trade Transaction History ── */}
+                {(tradeTxs as any[]).length > 0 && (
+                  <motion.div variants={itemVariants}>
+                    <Card className="shadow-md border-0 overflow-hidden" data-testid="panel-trade-tx-history">
+                      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-5 pt-4 pb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4" />
+                          <h3 className="font-bold text-sm">Transaction History</h3>
+                        </div>
+                        <Badge className="bg-white/10 text-white border-0 text-xs">{(tradeTxs as any[]).length} records</Badge>
+                      </div>
+                      <CardContent className="p-0">
+                        <div className="divide-y divide-border">
+                          {(tradeTxs as any[]).slice().reverse().map((tx: any) => {
+                            const net = parseFloat(tx.netAmount ?? tx.amountUsd ?? "0");
+                            const isPositive = net >= 0;
+                            const typeLabel: Record<string, string> = {
+                              deposit: "Deposit",
+                              bot_earning: net < 0 ? "Bot Loss" : "Bot Earnings",
+                              withdraw_bank: "Bank Withdrawal",
+                              withdraw_exchange: "Exchange Withdrawal",
+                              trade_transfer: "Trade Transfer",
+                              commission_credit: "Commission Credit",
+                              referral_commission: "Referral Commission",
+                            };
+                            const typeColor: Record<string, string> = {
+                              deposit: "text-blue-600 dark:text-blue-400",
+                              bot_earning: net < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400",
+                              withdraw_bank: "text-orange-600 dark:text-orange-400",
+                              withdraw_exchange: "text-orange-600 dark:text-orange-400",
+                              trade_transfer: "text-purple-600 dark:text-purple-400",
+                              commission_credit: "text-tsia-gold",
+                              referral_commission: "text-tsia-gold",
+                            };
+                            const icon = tx.type === "deposit" ? "↓" : tx.type === "bot_earning" ? (net < 0 ? "↓" : "↑") : "↑";
+                            return (
+                              <div key={tx.id} className="px-4 py-3 flex items-start gap-3" data-testid={`row-trade-tx-${tx.id}`}>
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" : tx.type === "deposit" ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}>
+                                  {icon}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className={`text-xs font-bold ${typeColor[tx.type] ?? "text-foreground"}`}>
+                                      {typeLabel[tx.type] ?? tx.type}
+                                    </p>
+                                    <p className={`text-xs font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "text-emerald-600 dark:text-emerald-400" : tx.type === "deposit" ? "text-blue-600 dark:text-blue-400" : "text-red-500"}`}>
+                                      {tx.type === "deposit" ? `+$${Math.abs(net).toFixed(4)}` : (isPositive ? `+$${net.toFixed(4)}` : `-$${Math.abs(net).toFixed(4)}`)}
+                                    </p>
+                                  </div>
+                                  {tx.note && <p className="text-[10px] text-muted-foreground mt-0.5 truncate" title={tx.note}>{tx.note}</p>}
+                                  <div className="flex items-center gap-3 mt-0.5">
+                                    <p className="text-[10px] text-muted-foreground">{new Date(tx.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })} GMT</p>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${tx.status === "completed" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"}`}>{tx.status}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
 
                 {/* Broker Selection — dropdown */}
                 <motion.div variants={itemVariants}>
@@ -2503,7 +2595,12 @@ export default function AffiliateDashboard() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-blue-600" /> Withdraw from Trade Wallet</DialogTitle>
-            <DialogDescription>Balance: <strong>${tradeBalance.toFixed(2)}</strong> <span className="text-muted-foreground">(≈ {formatAmount(tradeBalance)})</span></DialogDescription>
+            <DialogDescription>
+              Balance: <strong>${tradeBalance.toFixed(2)}</strong>
+              {!roiComplete && lockedPrincipal > 0 && (
+                <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· Available: <strong>${withdrawableAmt.toFixed(2)}</strong> (principal locked until 100% ROI)</span>
+              )}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             {/* Method selector */}
@@ -2533,7 +2630,7 @@ export default function AffiliateDashboard() {
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
-                  <Input type="number" min={1} max={tradeBalance} placeholder="Min $1.00" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
+                  <Input type="number" min={1} max={withdrawableAmt} placeholder="Min $1.00" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
                   {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
                 </div>
               </>
@@ -2577,10 +2674,10 @@ export default function AffiliateDashboard() {
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
-                  <Input type="number" min={TRADE_MARKET.MIN_WITHDRAW} max={tradeBalance} placeholder={`Min $${TRADE_MARKET.MIN_WITHDRAW}`} value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-withdraw-amount" />
+                  <Input type="number" min={TRADE_MARKET.MIN_WITHDRAW} max={withdrawableAmt} placeholder={`Min $${TRADE_MARKET.MIN_WITHDRAW}`} value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-withdraw-amount" />
                   {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
                 </div>
-                {withdrawAmt && parseFloat(withdrawAmt) >= TRADE_MARKET.MIN_WITHDRAW && parseFloat(withdrawAmt) <= tradeBalance && (
+                {withdrawAmt && parseFloat(withdrawAmt) >= TRADE_MARKET.MIN_WITHDRAW && parseFloat(withdrawAmt) <= withdrawableAmt && (
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs space-y-1">
                     {(() => {
                       const amt = parseFloat(withdrawAmt); const fee = amt * 0.08; const pool = amt * 0.05;
@@ -2613,10 +2710,10 @@ export default function AffiliateDashboard() {
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
-                  <Input type="number" min={TRADE_MARKET.MIN_WITHDRAW} max={tradeBalance} placeholder={`Min $${TRADE_MARKET.MIN_WITHDRAW}`} value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-withdraw-amount" />
+                  <Input type="number" min={TRADE_MARKET.MIN_WITHDRAW} max={withdrawableAmt} placeholder={`Min $${TRADE_MARKET.MIN_WITHDRAW}`} value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-withdraw-amount" />
                   {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
                 </div>
-                {withdrawAmt && parseFloat(withdrawAmt) >= TRADE_MARKET.MIN_WITHDRAW && parseFloat(withdrawAmt) <= tradeBalance && (
+                {withdrawAmt && parseFloat(withdrawAmt) >= TRADE_MARKET.MIN_WITHDRAW && parseFloat(withdrawAmt) <= withdrawableAmt && (
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs space-y-1">
                     {(() => {
                       const amt = parseFloat(withdrawAmt); const fee = amt * 0.05; const pool = amt * 0.05; const net = amt - fee - pool;
@@ -2647,7 +2744,7 @@ export default function AffiliateDashboard() {
             {/* Transfer to wallet */}
             {withdrawType === "transfer_wallet" && (
               <Button onClick={() => transferToWalletMutation.mutate()}
-                disabled={transferToWalletMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 1 || parseFloat(withdrawAmt) > tradeBalance || !withdrawTradeTermsAccepted}
+                disabled={transferToWalletMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 1 || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted}
                 className="bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-transfer-to-wallet">
                 {transferToWalletMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Wallet className="w-4 h-4 mr-2" />} Transfer Now
               </Button>
@@ -2655,7 +2752,7 @@ export default function AffiliateDashboard() {
             {/* Bank or exchange withdrawal */}
             {(withdrawType === "withdraw_bank" && tradeBankStep === "amount") || withdrawType === "withdraw_exchange" ? (
               <Button onClick={() => withdrawMutation.mutate()}
-                disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < TRADE_MARKET.MIN_WITHDRAW || parseFloat(withdrawAmt) > tradeBalance || !withdrawTradeTermsAccepted}
+                disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < TRADE_MARKET.MIN_WITHDRAW || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted}
                 data-testid="button-confirm-withdraw">
                 {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />} Confirm Withdrawal
               </Button>

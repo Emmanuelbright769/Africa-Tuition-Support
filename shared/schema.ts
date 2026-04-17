@@ -132,6 +132,7 @@ export const tradeWallets = pgTable("trade_wallets", {
   totalBotEarnings: decimal("total_bot_earnings", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   totalInvested: decimal("total_invested", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   roiComplete: boolean("roi_complete").notNull().default(false),
+  lockedPrincipal: decimal("locked_principal", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   referralCommissionBalance: decimal("referral_commission_balance", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   botActivatedAt: timestamp("bot_activated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

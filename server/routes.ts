@@ -13,7 +13,7 @@ import {
   sendSupportContactToAdmin, sendSupportConfirmation,
   sendAdminNewUserEmail, sendAdminDepositEmail, sendAdminWithdrawalEmail,
   sendAdminVerificationEmail, sendAdminPortalFeeEmail, sendAdminLoanEmail,
-  sendAdminSponsorshipEmail, sendAdminKycEmail, sendAdminOrderEmail,
+  sendAdminSponsorshipEmail, sendStudentPlanReceiptEmail, sendAdminKycEmail, sendAdminOrderEmail,
   sendAdminCommissionWithdrawalEmail,
   sendWithdrawalOtpEmail,
 } from "./email";
@@ -1460,6 +1460,15 @@ export async function registerRoutes(
             totalCost: totalCost.toFixed(2),
             totalPayout,
             userId,
+          }).catch(() => {});
+
+          // ── 13. Send receipt email to student ───────────────────────────────
+          sendStudentPlanReceiptEmail({
+            to: planStudent.email,
+            firstName: planStudent.firstName || "Student",
+            planYears,
+            totalCost: totalCost.toFixed(2),
+            totalPayout,
           }).catch(() => {});
         }
       } catch { /* non-critical */ }

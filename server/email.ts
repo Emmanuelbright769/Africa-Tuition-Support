@@ -846,6 +846,60 @@ export async function sendAdminSponsorshipEmail(data: {
   await sendEmail(ADMIN_EMAIL, subject, html);
 }
 
+// ─── Student: Sponsorship Plan Receipt ───────────────────────────────────────
+
+export async function sendStudentPlanReceiptEmail(data: {
+  to: string;
+  firstName: string;
+  planYears: number;
+  totalCost: string;
+  totalPayout: string;
+}): Promise<void> {
+  const subject = `Your TSIA Sponsorship Receipt — ${data.planYears}-Year Plan`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🎓 Sponsorship Plan Activated</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;line-height:1.6;">
+      Hi <strong>${data.firstName}</strong>, your <strong>${data.planYears}-year TSIA Sponsorship Plan</strong> is now active.
+      Here is your payment receipt for your records.
+    </p>
+
+    <!-- Receipt card -->
+    <div style="background:#f0f8f4;border:1px solid #c3e0ce;border-radius:16px;padding:24px;margin:0 0 20px;">
+      <p style="color:#1a6b3c;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 16px;">Payment Summary</p>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#6b7c72;font-size:14px;padding-bottom:10px;">Plan</td>
+          <td style="color:#1a1a1a;font-size:14px;font-weight:700;text-align:right;padding-bottom:10px;">${data.planYears}-Year Sponsorship</td>
+        </tr>
+        <tr>
+          <td style="color:#6b7c72;font-size:14px;padding-bottom:10px;">Amount Paid</td>
+          <td style="color:#1a6b3c;font-size:22px;font-weight:900;text-align:right;padding-bottom:10px;">$${data.totalCost}</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="border-top:1px dashed #c3e0ce;padding-bottom:10px;"></td>
+        </tr>
+        <tr>
+          <td style="color:#6b7c72;font-size:14px;padding-top:4px;">Expected Payout</td>
+          <td style="color:#c9a227;font-size:18px;font-weight:900;text-align:right;padding-top:4px;">$${data.totalPayout}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="background:#fff8e1;border-left:4px solid #c9a227;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
+      <p style="color:#92400e;font-size:13px;margin:0;line-height:1.6;">
+        <strong>What happens next?</strong> The TSIA team will review your disbursement and process it shortly. You will receive a notification once it is approved.
+      </p>
+    </div>
+
+    <p style="color:#6b7c72;font-size:13px;margin:0 0 4px;text-align:center;">
+      Questions? Contact us at
+      <a href="mailto:support@tsiforafrica.com" style="color:#1a6b3c;text-decoration:none;font-weight:600;">support@tsiforafrica.com</a>
+    </p>
+    ${btn("https://tsiforafrica.com/dashboard", "Go to My Dashboard")}
+  `);
+  await sendEmail(data.to, subject, html);
+}
+
 // ─── Admin: KYC / Biometric Submitted ────────────────────────────────────────
 
 export async function sendAdminKycEmail(data: {

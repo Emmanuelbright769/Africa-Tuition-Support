@@ -6,15 +6,17 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  RefreshCw, Receipt, Wifi, Eye, EyeOff,
+  ArrowUpRight, ArrowDownLeft, RefreshCw, Receipt, Wifi, Eye, EyeOff,
   ChevronRight, ArrowLeft, Send, Bell, TrendingUp, TrendingDown,
   Loader2, CheckCircle2, X, Zap, Phone, Wallet, Gamepad2, Delete,
-  Copy, Search, ChevronDown, AlertCircle, Building2
+  Copy, Search, ChevronDown, AlertCircle, Users, Building2
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount";
+type SendMode = "bank" | "tsia";
+type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount";
 type WalletData = { id: number; userId: number; balance: string };
+type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
 type Bank = { code: string; name: string };
 
@@ -91,6 +93,7 @@ const BETTING_PLATFORMS = [
   { id: "parimatch", label: "Parimatch", color: "bg-yellow-500", text: "text-black" },
 ];
 
+const AVATAR_COLORS = ["bg-rose-500","bg-purple-500","bg-teal-500","bg-amber-500","bg-blue-500","bg-pink-500"];
 const fmt = (v: string | number) => { const n = parseFloat(String(v) || "0"); return isNaN(n) ? "0.00" : n.toFixed(2); };
 
 // ─── Numpad ────────────────────────────────────────────────────────────────────
@@ -151,8 +154,10 @@ export default function FinancialHub() {
   const [view, setView]       = useState<View>("home");
   const [amount, setAmount]   = useState("0");
   const [note, setNote]       = useState("");
+  const [activeTab, setActiveTab] = useState<"transfers" | "bills">("transfers");
 
   // ── Send-to-bank state ────────────────────────────────────────────────────
+  const [sendMode, setSendMode]         = useState<SendMode>("bank");
   const [bankSearch, setBankSearch]     = useState("");
   const [bankDropOpen, setBankDropOpen] = useState(false);
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
@@ -162,9 +167,29 @@ export default function FinancialHub() {
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [resolveWarning, setResolveWarning] = useState(false);
 
+  // ── Send-to-TSIA state ────────────────────────────────────────────────────
+  const [tsiaEmail, setTsiaEmail]         = useState("");
+  const [tsiaLooking, setTsiaLooking]     = useState(false);
+  const [tsiaUser, setTsiaUser]           = useState<{ id: number; firstName: string; lastName: string; email: string; role?: string; isDual?: boolean; variants?: { id: number; role: string }[] } | null>(null);
+  const [recipientRoleChoice, setRecipientRoleChoice] = useState<"student" | "affiliate">("student");
+  const [memberSuggestions, setMemberSuggestions] = useState<{ id: number; firstName: string; lastName: string; email: string }[]>([]);
+  const [showSuggestions, setShowSuggestions]     = useState(false);
+
   // ── Request Money state ──────────────────────────────────────────────────
   const [requestEmail, setRequestEmail] = useState("");
   const [requestNote, setRequestNote]   = useState("");
+
+  // Debounced email autocomplete
+  useEffect(() => {
+    if (!tsiaEmail.trim() || tsiaUser) { setMemberSuggestions([]); setShowSuggestions(false); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiRequest("GET", `/api/wallet/members-search?q=${encodeURIComponent(tsiaEmail.trim())}`);
+        if (res.ok) { const data = await res.json(); setMemberSuggestions(data); setShowSuggestions(data.length > 0); }
+      } catch {}
+    }, 280);
+    return () => clearTimeout(t);
+  }, [tsiaEmail, tsiaUser]);
 
   // ── Bill state ────────────────────────────────────────────────────────────
   const [selectedService, setSelectedService] = useState<typeof SERVICES[0] | null>(null);
@@ -187,12 +212,17 @@ export default function FinancialHub() {
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: wallet }         = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
   const { data: txHistory = [] } = useQuery<any[]>({ queryKey: ["/api/transactions"] });
+  const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"] });
   const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
   const { data: banks = [] }     = useQuery<Bank[]>({ queryKey: ["/api/wallet/banks"] });
 
   const balance  = parseFloat(wallet?.balance ?? "0");
   const totalIn  = (txHistory as any[]).filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
   const totalOut = Math.abs((txHistory as any[]).filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + parseFloat(t.amount), 0));
+
+  const recentRecipients = Array.from(
+    new Map((transfers as TransferRecord[]).map(t => [t.recipientId, t])).values()
+  ).slice(0, 5);
 
   const filteredBanks = (banks as Bank[]).filter(b => b.name.toLowerCase().includes(bankSearch.toLowerCase()));
   const filteredDiscos = DISCOS.filter(d => d.label.toLowerCase().includes(discoSearch.toLowerCase()) || d.area.toLowerCase().includes(discoSearch.toLowerCase()));
@@ -249,6 +279,29 @@ export default function FinancialHub() {
     onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
   });
 
+  const sendTsiaMutation = useMutation({
+    mutationFn: async () => {
+      if (!tsiaUser) throw new Error("No recipient selected");
+      const payload: Record<string, unknown> = { recipientId: tsiaUser.id, amount: parseFloat(amount), note };
+      // If dual-account member, pass email + chosen role so backend can route to correct wallet
+      if (tsiaUser.isDual && tsiaUser.email) {
+        payload.recipientEmail = tsiaUser.email;
+        payload.recipientRole  = recipientRoleChoice;
+      }
+      const res = await apiRequest("POST", "/api/wallet/send", payload);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Money sent! ✓", description: data.message, className: "border-tsia-green" });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      setView("home"); resetSend();
+    },
+    onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
+  });
+
   const requestMutation = useMutation({
     mutationFn: async ({ email, amount: amt, reqNote }: { email: string; amount: string; reqNote: string }) => {
       const res = await apiRequest("POST", "/api/fintech/request-money", { email: email.trim(), amount: parseFloat(amt), note: reqNote || undefined });
@@ -298,14 +351,30 @@ export default function FinancialHub() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const resetSend = () => {
-    setAmount("0"); setNote(""); setBankSearch(""); setSelectedBank(null);
+    setAmount("0"); setNote(""); setSendMode("bank"); setBankSearch(""); setSelectedBank(null);
     setAcctNumber(""); setResolvedName(null); setResolveError(null); setResolveWarning(false);
+    setTsiaEmail(""); setTsiaUser(null); setRecipientRoleChoice("student");
   };
   const resetBill = () => {
     setAmount("0"); setBillRef(""); setSelectedService(null); setBillStep("details");
     setSelectedNetwork(null); setSelectedISP(null); setSelectedPlan(null);
     setSelectedDisco(null); setMeterType(null); setSelectedPlatform(null);
     setElecPhone(""); setTxResult(null);
+  };
+
+  const lookupTsia = async () => {
+    if (!tsiaEmail.trim()) return;
+    setTsiaLooking(true); setTsiaUser(null);
+    try {
+      const res = await apiRequest("POST", "/api/wallet/lookup-email", { email: tsiaEmail.trim() });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      setTsiaUser(d);
+      // Auto-select student role by default if dual-account member
+      if (d.isDual) setRecipientRoleChoice("student");
+      else setRecipientRoleChoice(d.role === "affiliate" ? "affiliate" : "student");
+    } catch (e: any) { toast({ title: "Not found", description: e.message, variant: "destructive" }); }
+    finally { setTsiaLooking(false); }
   };
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -370,6 +439,27 @@ export default function FinancialHub() {
         ))}
       </div>
 
+      {/* Recent Recipients */}
+      {recentRecipients.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-sm">Recent</h3>
+            <button className="text-xs text-tsia-green font-semibold flex items-center gap-0.5">View all <ChevronRight className="w-3 h-3" /></button>
+          </div>
+          <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
+            {recentRecipients.map((t, i) => (
+              <button key={t.recipientId} onClick={() => { resetSend(); setSendMode("tsia"); setTsiaUser({ id: t.recipientId, firstName: t.recipientName?.split(" ")[0] || "User", lastName: t.recipientName?.split(" ")[1] || "", email: "" }); setView("tsia-amount"); }}
+                className="flex flex-col items-center gap-1.5 shrink-0">
+                <div className={`w-14 h-14 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold text-xl ring-2 ring-offset-2 ring-tsia-green/30`}>
+                  {(t.recipientName ?? "?")[0].toUpperCase()}
+                </div>
+                <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[56px]">{t.recipientName?.split(" ")[0]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Services */}
       <div>
         <h3 className="font-bold text-sm mb-3">Quick Services</h3>
@@ -388,30 +478,58 @@ export default function FinancialHub() {
 
       {/* History */}
       <div>
-        <h3 className="font-bold text-sm mb-3">Payment History</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-sm">History</h3>
+          <div className="flex bg-muted/40 rounded-xl p-0.5 text-xs">
+            <button onClick={() => setActiveTab("transfers")} className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Transfers</button>
+            <button onClick={() => setActiveTab("bills")}     className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bills"     ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bills</button>
+          </div>
+        </div>
         <div className="space-y-2">
-          {(bills as BillRecord[]).length === 0
-            ? <EmptyState icon={Receipt} msg="No bill payments yet" />
-            : (bills as BillRecord[]).slice(0, 8).map(b => {
-                const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
-                const isBankTransfer = b.service === "bank_transfer";
-                return (
-                  <div key={b.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
-                    <div className={`w-10 h-10 rounded-xl ${isBankTransfer ? "bg-blue-100 dark:bg-blue-900/30" : `bg-gradient-to-br ${svc.color}`} flex items-center justify-center`}>
-                      {isBankTransfer ? <Building2 className="w-5 h-5 text-blue-600" /> : <svc.icon className="w-5 h-5 text-white" />}
+          {activeTab === "transfers" ? (
+            (transfers as TransferRecord[]).length === 0
+              ? <EmptyState icon={Send} msg="No transfers yet" />
+              : (transfers as TransferRecord[]).slice(0, 8).map(t => {
+                  const isOut = t.senderId === user?.id;
+                  return (
+                    <div key={t.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOut ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
+                        {isOut ? <ArrowUpRight className="w-5 h-5 text-red-500" /> : <ArrowDownLeft className="w-5 h-5 text-tsia-green" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm">{isOut ? `To ${t.recipientName || "User"}` : `From ${t.senderName || "User"}`}</p>
+                        <p className="text-xs text-muted-foreground truncate">{t.note || (isOut ? "Money sent" : "Money received")}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-bold text-sm ${isOut ? "text-red-500" : "text-tsia-green"}`}>{isOut ? "−" : "+"}${parseFloat(t.amount).toFixed(2)}</p>
+                        <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm capitalize">{isBankTransfer ? "Bank Transfer" : svc.label}</p>
-                      <p className="text-xs text-muted-foreground truncate">{b.reference}</p>
+                  );
+                })
+          ) : (
+            (bills as BillRecord[]).length === 0
+              ? <EmptyState icon={Receipt} msg="No bill payments yet" />
+              : (bills as BillRecord[]).slice(0, 8).map(b => {
+                  const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
+                  const isBankTransfer = b.service === "bank_transfer";
+                  return (
+                    <div key={b.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
+                      <div className={`w-10 h-10 rounded-xl ${isBankTransfer ? "bg-blue-100 dark:bg-blue-900/30" : `bg-gradient-to-br ${svc.color}`} flex items-center justify-center`}>
+                        {isBankTransfer ? <Building2 className="w-5 h-5 text-blue-600" /> : <svc.icon className="w-5 h-5 text-white" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm capitalize">{isBankTransfer ? "Bank Transfer" : svc.label}</p>
+                        <p className="text-xs text-muted-foreground truncate">{b.reference}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
+                        <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
-                      <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
-                    </div>
-                  </div>
-                );
-              })
-          }
+                  );
+                })
+          )}
         </div>
       </div>
     </div>
@@ -425,7 +543,18 @@ export default function FinancialHub() {
       <motion.div key="send" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }}>
         <BackHeader onBack={() => { setView("home"); resetSend(); }} title="Send Money" />
 
-        <div className="space-y-4">
+        {/* Mode tabs */}
+        <div className="flex bg-muted/40 rounded-2xl p-1 mb-5">
+          <button onClick={() => setSendMode("bank")} className={`flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all ${sendMode === "bank" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
+            <Building2 className="w-4 h-4" /> Bank Account
+          </button>
+          <button onClick={() => setSendMode("tsia")} className={`flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all ${sendMode === "tsia" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
+            <Users className="w-4 h-4" /> TSIA Member
+          </button>
+        </div>
+
+        {sendMode === "bank" ? (
+          <div className="space-y-4">
             {/* Bank picker */}
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Select Bank</label>
@@ -495,7 +624,140 @@ export default function FinancialHub() {
               onClick={() => { setAmount("0"); setView("send-amount"); }}
               data-testid="btn-continue-bank"
             >Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
-        </div>
+          </div>
+        ) : (
+          /* TSIA Member */
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Email Address</label>
+              <div className="relative">
+                <div className="flex gap-2">
+                  <input
+                    placeholder="Start typing a member's email…"
+                    value={tsiaEmail}
+                    onChange={e => { setTsiaEmail(e.target.value); setTsiaUser(null); }}
+                    onKeyDown={e => { if (e.key === "Enter") { setShowSuggestions(false); lookupTsia(); } if (e.key === "Escape") setShowSuggestions(false); }}
+                    onFocus={() => { if (memberSuggestions.length > 0) setShowSuggestions(true); }}
+                    className="flex-1 border-2 border-border rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:border-tsia-green bg-background"
+                    autoComplete="off"
+                    data-testid="input-tsia-email"
+                  />
+                  <button onClick={() => { setShowSuggestions(false); lookupTsia(); }} disabled={tsiaLooking || !tsiaEmail.trim()}
+                    className="w-12 h-12 bg-tsia-green text-white rounded-2xl flex items-center justify-center disabled:opacity-40 mt-0.5">
+                    {tsiaLooking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Autocomplete dropdown */}
+                {showSuggestions && memberSuggestions.length > 0 && (
+                  <div className="absolute z-50 top-full mt-1 left-0 right-12 bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
+                    {memberSuggestions.map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => {
+                          setTsiaEmail(m.email);
+                          setShowSuggestions(false);
+                          setMemberSuggestions([]);
+                          setTsiaUser(m);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/60 transition-colors text-left border-b border-border last:border-0"
+                        data-testid={`suggestion-member-${m.id}`}
+                      >
+                        <div className="w-8 h-8 rounded-full bg-tsia-green/20 text-tsia-green flex items-center justify-center text-sm font-bold shrink-0">
+                          {m.firstName[0].toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate">{m.firstName} {m.lastName}</p>
+                          <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {tsiaUser && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4">
+                  <div className="w-12 h-12 rounded-full bg-tsia-green flex items-center justify-center text-white text-xl font-black">
+                    {tsiaUser.firstName[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold">{tsiaUser.firstName} {tsiaUser.lastName}</p>
+                    <p className="text-xs text-muted-foreground">{tsiaUser.email}</p>
+                    {!tsiaUser.isDual && (
+                      <p className="text-xs font-semibold mt-0.5" style={{ color: tsiaUser.role === "affiliate" ? "#b45309" : "#1a6b42" }}>
+                        {tsiaUser.role === "affiliate" ? "Affiliate Wallet" : "Student Wallet"}
+                      </p>
+                    )}
+                  </div>
+                  <CheckCircle2 className="w-5 h-5 text-tsia-green" />
+                </div>
+
+                {/* Dual-account wallet selector */}
+                {tsiaUser.isDual && (
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 rounded-2xl p-4 space-y-2">
+                    <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />
+                      This member has both Student &amp; Affiliate accounts — choose which wallet to send to:
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setRecipientRoleChoice("student")}
+                        className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${recipientRoleChoice === "student" ? "bg-tsia-green text-white border-tsia-green" : "bg-background text-foreground border-border"}`}
+                        data-testid="btn-wallet-student"
+                      >
+                        <Building2 className="w-4 h-4" /> Student Wallet
+                      </button>
+                      <button
+                        onClick={() => setRecipientRoleChoice("affiliate")}
+                        className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${recipientRoleChoice === "affiliate" ? "bg-amber-600 text-white border-amber-600" : "bg-background text-foreground border-border"}`}
+                        data-testid="btn-wallet-affiliate"
+                      >
+                        <Users className="w-4 h-4" /> Affiliate Wallet
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-amber-600 text-center">
+                      {recipientRoleChoice === "student"
+                        ? "Money will enter their Student Dashboard wallet"
+                        : "Money will enter their Affiliate Dashboard wallet"}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Recent TSIA recipients */}
+            {recentRecipients.length > 0 && !tsiaUser && (
+              <div>
+                <p className="text-xs text-muted-foreground font-semibold mb-2 uppercase tracking-wide">Recent</p>
+                <div className="space-y-2">
+                  {recentRecipients.slice(0, 3).map((t, i) => (
+                    <button key={t.recipientId} onClick={() => { setTsiaUser({ id: t.recipientId, firstName: t.recipientName?.split(" ")[0] || "User", lastName: t.recipientName?.split(" ")[1] || "", email: "" }); }}
+                      className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:border-tsia-green/40 transition-colors">
+                      <div className={`w-10 h-10 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold shrink-0`}>
+                        {(t.recipientName ?? "?")[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="font-semibold text-sm">{t.recipientName}</p>
+                        <p className="text-xs text-muted-foreground">TSIA member</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
+              disabled={!tsiaUser} onClick={() => { setAmount("0"); setView("tsia-amount"); }}
+              data-testid="btn-continue-tsia"
+            >Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
+          </div>
+        )}
       </motion.div>
     </AnimatePresence>
   );
@@ -537,6 +799,50 @@ export default function FinancialHub() {
             disabled={sendBankMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
             onClick={() => sendBankMutation.mutate()} data-testid="btn-send-bank">
             {sendBankMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
+            Send ${fmt(amount)}
+          </Button>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // SEND TO TSIA — Amount screen
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "tsia-amount" && tsiaUser) return (
+    <AnimatePresence mode="wait">
+      <motion.div key="tsia-amount" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+        <BackHeader onBack={() => setView("send")} title="Enter Amount" sub="Transfer to TSIA member" />
+
+        <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4">
+          <div className="w-12 h-12 rounded-full bg-tsia-green flex items-center justify-center text-white text-xl font-black">
+            {tsiaUser.firstName[0].toUpperCase()}
+          </div>
+          <div className="flex-1">
+            <p className="font-bold">{tsiaUser.firstName} {tsiaUser.lastName}</p>
+            {tsiaUser.email && <p className="text-xs text-muted-foreground">{tsiaUser.email}</p>}
+          </div>
+          <div className="flex items-center gap-1 text-tsia-green"><CheckCircle2 className="w-4 h-4" /><span className="text-xs font-bold">TSIA</span></div>
+        </div>
+
+        <div className="text-center py-2">
+          <div className="text-5xl font-black">${fmt(amount)}</div>
+          <p className="text-xs text-muted-foreground mt-1">Available: ${balance.toFixed(2)}</p>
+          {parseFloat(amount) > balance && <p className="text-xs text-red-500 font-semibold mt-1">Exceeds your balance</p>}
+        </div>
+
+        <input placeholder="What's this for? (optional)" value={note} onChange={e => setNote(e.target.value)}
+          className="w-full text-center text-sm border border-border rounded-2xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
+          data-testid="input-tsia-note" />
+
+        <Numpad value={amount} onChange={setAmount} />
+
+        <div className="flex gap-3">
+          <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+          <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
+            disabled={sendTsiaMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+            onClick={() => sendTsiaMutation.mutate()} data-testid="btn-send-tsia">
+            {sendTsiaMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Send ${fmt(amount)}
           </Button>
         </div>

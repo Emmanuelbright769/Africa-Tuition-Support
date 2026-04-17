@@ -13,7 +13,7 @@ import {
   priceAlerts, categorySubscriptions,
   sponsorCohorts, cohortCodes, sponsorshipBatches,
   withdrawalRequests, withdrawalOtps,
-  platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES,
+  platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
   type User, type InsertUser,
   type Verification, type InsertVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
@@ -248,6 +248,7 @@ export interface IStorage {
   getAllPlatformSettings(): Promise<PlatformSetting[]>;
   setPlatformSetting(key: string, value: string): Promise<void>;
   getPlanPrices(): Promise<{ plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }>;
+  getTierPayouts(): Promise<{ silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1612,6 +1613,17 @@ export class DatabaseStorage implements IStorage {
       plan2yr:           map["plan_2yr_base"]            ?? DEFAULT_PLAN_PRICES.plan_2yr_base,
       plan3yr:           map["plan_3yr_base"]            ?? DEFAULT_PLAN_PRICES.plan_3yr_base,
       serviceChargeRate: map["plan_service_charge_rate"] ?? DEFAULT_PLAN_PRICES.plan_service_charge_rate,
+    };
+  }
+
+  async getTierPayouts(): Promise<{ silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } }> {
+    const rows = await db.select().from(platformSettings)
+      .where(sql`key IN ('tier_silver_min','tier_silver_max','tier_gold_min','tier_gold_max','tier_platinum_min','tier_platinum_max')`);
+    const map = Object.fromEntries(rows.map(r => [r.key, parseFloat(r.value)]));
+    return {
+      silver:   { min: map["tier_silver_min"]   ?? DEFAULT_TIER_PAYOUTS.tier_silver_min,   max: map["tier_silver_max"]   ?? DEFAULT_TIER_PAYOUTS.tier_silver_max },
+      gold:     { min: map["tier_gold_min"]     ?? DEFAULT_TIER_PAYOUTS.tier_gold_min,     max: map["tier_gold_max"]     ?? DEFAULT_TIER_PAYOUTS.tier_gold_max },
+      platinum: { min: map["tier_platinum_min"] ?? DEFAULT_TIER_PAYOUTS.tier_platinum_min, max: map["tier_platinum_max"] ?? DEFAULT_TIER_PAYOUTS.tier_platinum_max },
     };
   }
 }

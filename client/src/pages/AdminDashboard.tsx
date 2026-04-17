@@ -128,7 +128,7 @@ export default function AdminDashboard() {
   const [cwdFilter, setCwdFilter] = useState<"all" | "pending" | "approved" | "declined" | "refunded">("all");
   const [wdNoteDialogId, setWdNoteDialogId] = useState<number | null>(null);
   const [wdNote, setWdNote]               = useState("");
-  const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "" });
+  const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "", silverMin: "", silverMax: "", goldMin: "", goldMax: "", platinumMin: "", platinumMax: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [wdAction, setWdAction]           = useState<"approve" | "decline" | null>(null);
   const [wdCopied, setWdCopied]           = useState<string | null>(null);
@@ -153,7 +153,7 @@ export default function AdminDashboard() {
   const { data: allTrustFunders = [] }     = useQuery({ queryKey: ["/api/admin/co-affiliates"], enabled: activeTab === "trustfunders" });
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 30000 });
-  const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
+  const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
   const verifyMutation = useMutation({
@@ -407,13 +407,20 @@ export default function AdminDashboard() {
   }, [authLoading, user]);
 
   useEffect(() => {
-    if (!platformSettingsData?.prices) return;
+    if (!platformSettingsData) return;
     const p = platformSettingsData.prices;
+    const t = platformSettingsData.tiers;
     setSettingsForm(f => f.plan1yr ? f : {
-      plan1yr: p.plan1yr.toString(),
-      plan2yr: p.plan2yr.toString(),
-      plan3yr: p.plan3yr.toString(),
-      serviceChargeRate: (p.serviceChargeRate * 100).toFixed(2),
+      plan1yr:           p ? p.plan1yr.toString() : "35",
+      plan2yr:           p ? p.plan2yr.toString() : "45",
+      plan3yr:           p ? p.plan3yr.toString() : "50",
+      serviceChargeRate: p ? (p.serviceChargeRate * 100).toFixed(2) : "10.00",
+      silverMin:   t ? t.silver.min.toString()   : "110",
+      silverMax:   t ? t.silver.max.toString()   : "130",
+      goldMin:     t ? t.gold.min.toString()     : "160",
+      goldMax:     t ? t.gold.max.toString()     : "180",
+      platinumMin: t ? t.platinum.min.toString() : "225",
+      platinumMax: t ? t.platinum.max.toString() : "230",
     });
   }, [platformSettingsData]);
 
@@ -1862,9 +1869,19 @@ export default function AdminDashboard() {
 
             {activeTab === "settings" && (() => {
               const prices = platformSettingsData?.prices;
-              const base = prices
-                ? { plan1yr: prices.plan1yr.toString(), plan2yr: prices.plan2yr.toString(), plan3yr: prices.plan3yr.toString(), serviceChargeRate: (prices.serviceChargeRate * 100).toFixed(2) }
-                : { plan1yr: "35", plan2yr: "45", plan3yr: "50", serviceChargeRate: "10.00" };
+              const tiers = platformSettingsData?.tiers;
+              const base = {
+                plan1yr:           prices ? prices.plan1yr.toString()                  : "35",
+                plan2yr:           prices ? prices.plan2yr.toString()                  : "45",
+                plan3yr:           prices ? prices.plan3yr.toString()                  : "50",
+                serviceChargeRate: prices ? (prices.serviceChargeRate * 100).toFixed(2): "10.00",
+                silverMin:   tiers ? tiers.silver.min.toString()   : "110",
+                silverMax:   tiers ? tiers.silver.max.toString()   : "130",
+                goldMin:     tiers ? tiers.gold.min.toString()     : "160",
+                goldMax:     tiers ? tiers.gold.max.toString()     : "180",
+                platinumMin: tiers ? tiers.platinum.min.toString() : "225",
+                platinumMax: tiers ? tiers.platinum.max.toString() : "230",
+              };
               const currentForm = settingsForm.plan1yr ? settingsForm : base;
               const updateForm = (k: keyof typeof settingsForm, v: string) => setSettingsForm(f => ({ ...(f.plan1yr ? f : base), [k]: v }));
               const s1 = parseFloat(currentForm.plan1yr) || 35;
@@ -1952,11 +1969,70 @@ export default function AdminDashboard() {
                           ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Saving...</>
                           : settingsSaved
                             ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Saved!</>
-                            : <><Save className="w-4 h-4 mr-2" /> Save Plan Prices</>}
+                            : <><Save className="w-4 h-4 mr-2" /> Save All Settings</>}
                       </Button>
                     </CardContent>
                   </Card>
-                  <p className="text-xs text-slate-500 text-center">Changes apply to all new plan purchases immediately. Existing plans are not affected.</p>
+
+                  {/* ── Tier Payout Offers ─────────────────────────────────── */}
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader className="border-b pb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center"><Award className="w-5 h-5 text-amber-500" /></div>
+                        <div>
+                          <CardTitle className="text-base">Payout Offer Ranges per Tier</CardTitle>
+                          <CardDescription>Set the min–max payout offer shown to students after their WAEC results are verified. Applied to new verifications only.</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-5">
+                      {[
+                        { label: "Silver Tier", desc: "Score 50%–59%", color: "bg-slate-100 text-slate-600 border-slate-200", minKey: "silverMin" as const, maxKey: "silverMax" as const },
+                        { label: "Gold Tier",   desc: "Score 60%–74%", color: "bg-amber-100 text-amber-800 border-amber-200",   minKey: "goldMin"   as const, maxKey: "goldMax"   as const },
+                        { label: "Platinum Tier", desc: "Score 75%+",  color: "bg-slate-800 text-white border-slate-700",       minKey: "platinumMin" as const, maxKey: "platinumMax" as const },
+                      ].map(row => (
+                        <div key={row.label} className="space-y-2">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${row.color}`}>{row.label}</span>
+                            <span className="text-xs text-muted-foreground">{row.desc}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Min payout ($/yr)</Label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">$</span>
+                                <Input
+                                  type="number" min="0" step="1"
+                                  className="pl-7 h-10 bg-muted/30 font-semibold"
+                                  value={currentForm[row.minKey]}
+                                  onChange={e => updateForm(row.minKey, e.target.value)}
+                                  data-testid={`input-${row.minKey}`}
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Max payout ($/yr)</Label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">$</span>
+                                <Input
+                                  type="number" min="0" step="1"
+                                  className="pl-7 h-10 bg-muted/30 font-semibold"
+                                  value={currentForm[row.maxKey]}
+                                  onChange={e => updateForm(row.maxKey, e.target.value)}
+                                  data-testid={`input-${row.maxKey}`}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            Students in this tier see: <strong>${currentForm[row.minKey] || "—"} – ${currentForm[row.maxKey] || "—"}/yr</strong>
+                          </p>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+
+                  <p className="text-xs text-slate-500 text-center">Plan price changes apply immediately. Payout changes apply to new verifications only — existing students keep their current offers.</p>
                 </motion.div>
               );
             })()}

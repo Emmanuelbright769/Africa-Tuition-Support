@@ -935,12 +935,21 @@ export const platformSettings = pgTable("platform_settings", {
 });
 export type PlatformSetting = typeof platformSettings.$inferSelect;
 
-// Default plan prices — used as fallback if DB record absent
+// Default plan prices & tier payouts — used as fallback if DB record absent
 export const DEFAULT_PLAN_PRICES = {
   plan_1yr_base: 35,
   plan_2yr_base: 45,
   plan_3yr_base: 50,
   plan_service_charge_rate: 0.10,
+} as const;
+
+export const DEFAULT_TIER_PAYOUTS = {
+  tier_silver_min:   110,
+  tier_silver_max:   130,
+  tier_gold_min:     160,
+  tier_gold_max:     180,
+  tier_platinum_min: 225,
+  tier_platinum_max: 230,
 } as const;
 
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────

@@ -577,7 +577,13 @@ export async function registerRoutes(
       }
 
       const percentage = calculateWaecPercentage(grades);
-      const payoutInfo = getPayoutTier(percentage);
+      const tierPayouts = await storage.getTierPayouts();
+      const payoutInfo = (() => {
+        if (percentage >= 75) return { min: tierPayouts.platinum.min, max: tierPayouts.platinum.max, label: "platinum" };
+        if (percentage >= 60) return { min: tierPayouts.gold.min, max: tierPayouts.gold.max, label: "gold" };
+        if (percentage >= 50) return { min: tierPayouts.silver.min, max: tierPayouts.silver.max, label: "silver" };
+        return { min: 0, max: 0, label: "none" };
+      })();
 
       const waecApiResponse = {
         valid: true,
@@ -968,7 +974,13 @@ export async function registerRoutes(
       }
 
       const percentage = calculateWaecPercentage(gradesArray);
-      const payoutInfo = getPayoutTier(percentage);
+      const tierPayoutsAlt = await storage.getTierPayouts();
+      const payoutInfo = (() => {
+        if (percentage >= 75) return { min: tierPayoutsAlt.platinum.min, max: tierPayoutsAlt.platinum.max, label: "platinum" };
+        if (percentage >= 60) return { min: tierPayoutsAlt.gold.min, max: tierPayoutsAlt.gold.max, label: "gold" };
+        if (percentage >= 50) return { min: tierPayoutsAlt.silver.min, max: tierPayoutsAlt.silver.max, label: "silver" };
+        return { min: 0, max: 0, label: "none" };
+      })();
 
       let tier: "platinum" | "gold" | "silver" | "none" = payoutInfo.label as any;
 
@@ -2873,7 +2885,8 @@ export async function registerRoutes(
     try {
       const settings = await storage.getAllPlatformSettings();
       const prices = await storage.getPlanPrices();
-      res.json({ settings, prices });
+      const tiers = await storage.getTierPayouts();
+      res.json({ settings, prices, tiers });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -2886,12 +2899,19 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
-      const { plan1yr, plan2yr, plan3yr, serviceChargeRate } = req.body;
+      const { plan1yr, plan2yr, plan3yr, serviceChargeRate,
+              silverMin, silverMax, goldMin, goldMax, platinumMin, platinumMax } = req.body;
       const updates: { key: string; val: number; min: number; max: number; label: string }[] = [
-        { key: "plan_1yr_base", val: parseFloat(plan1yr), min: 1, max: 9999, label: "1-year plan price" },
-        { key: "plan_2yr_base", val: parseFloat(plan2yr), min: 1, max: 9999, label: "2-year plan price" },
-        { key: "plan_3yr_base", val: parseFloat(plan3yr), min: 1, max: 9999, label: "3-year plan price" },
+        { key: "plan_1yr_base",            val: parseFloat(plan1yr),         min: 1,    max: 9999, label: "1-year plan price" },
+        { key: "plan_2yr_base",            val: parseFloat(plan2yr),         min: 1,    max: 9999, label: "2-year plan price" },
+        { key: "plan_3yr_base",            val: parseFloat(plan3yr),         min: 1,    max: 9999, label: "3-year plan price" },
         { key: "plan_service_charge_rate", val: parseFloat(serviceChargeRate) / 100, min: 0, max: 1, label: "service charge rate" },
+        { key: "tier_silver_min",          val: parseFloat(silverMin),       min: 0,    max: 99999, label: "Silver tier min payout" },
+        { key: "tier_silver_max",          val: parseFloat(silverMax),       min: 0,    max: 99999, label: "Silver tier max payout" },
+        { key: "tier_gold_min",            val: parseFloat(goldMin),         min: 0,    max: 99999, label: "Gold tier min payout" },
+        { key: "tier_gold_max",            val: parseFloat(goldMax),         min: 0,    max: 99999, label: "Gold tier max payout" },
+        { key: "tier_platinum_min",        val: parseFloat(platinumMin),     min: 0,    max: 99999, label: "Platinum tier min payout" },
+        { key: "tier_platinum_max",        val: parseFloat(platinumMax),     min: 0,    max: 99999, label: "Platinum tier max payout" },
       ];
       for (const u of updates) {
         if (isNaN(u.val) || u.val < u.min || u.val > u.max) {
@@ -2900,7 +2920,8 @@ export async function registerRoutes(
         await storage.setPlatformSetting(u.key, u.val.toString());
       }
       const prices = await storage.getPlanPrices();
-      res.json({ message: "Settings updated successfully", prices });
+      const tiers = await storage.getTierPayouts();
+      res.json({ message: "Settings updated successfully", prices, tiers });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

@@ -24,7 +24,7 @@ import { useLocation } from "wouter";
 import {
   Wallet, Eye, EyeOff, ArrowDownLeft, ArrowUpRight, Loader2,
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
-  Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy, Coins,
+  Smartphone, Banknote, Receipt, ExternalLink, RefreshCw, Copy, Coins,
   MapPin, AlertTriangle, Lock, ArrowLeft, X, Camera, ScanFace, RotateCcw
 } from "lucide-react";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -37,7 +37,6 @@ const TSIA_WALLETS = {
 
 type WalletData      = { id: number; userId: number; balance: string };
 type DepositRecord   = { id: number; amountUsd: string; txHash: string; walletType: string; status: string; createdAt: string };
-type TransferRecord  = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord      = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
 type TxRecord        = { id: number; type: string; amount: string; fee: string; paymentMethod: string | null; description: string; createdAt: string };
 
@@ -125,7 +124,7 @@ export default function WalletPage() {
   const [cwOtpLoading, setCwOtpLoading]   = useState(false);
 
   // ── History ─────────────────────────────────────────────────────────────
-  const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "sent" | "received" | "bills" | "withdrawals">("ledger");
+  const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "bills" | "withdrawals">("ledger");
 
   // ── KYC state ───────────────────────────────────────────────────────────
   const [kycBvn, setKycBvn]                   = useState("");
@@ -147,7 +146,6 @@ export default function WalletPage() {
   const { data: verification, refetch: refetchVerification } = useQuery<any>({ queryKey: ["/api/verification/status"] });
   const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"], refetchInterval: 5000, staleTime: 3000 });
   const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 10000 });
-  const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"], refetchInterval: 10000 });
   const { data: bills = [] }         = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 15000 });
   const { data: txLedger = [] }      = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 10000 });
   const { data: withdrawals = [] }   = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"], refetchInterval: 15000 });
@@ -832,10 +830,10 @@ export default function WalletPage() {
           <motion.div initial="hidden" animate="visible" variants={fade}>
             <h3 className="font-bold text-sm mb-3">Transaction History</h3>
             <div className="flex bg-muted/40 rounded-2xl p-1 text-xs mb-4 overflow-x-auto gap-0.5">
-              {(["ledger", "deposits", "withdrawals", "sent", "received", "bills"] as const).map(tab => (
+              {(["ledger", "deposits", "withdrawals", "bills"] as const).map(tab => (
                 <button key={tab} onClick={() => setHistoryTab(tab)}
                   className={`flex-1 py-2 rounded-xl font-semibold capitalize transition-all whitespace-nowrap px-2 ${historyTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
-                  {tab === "ledger" ? "All" : tab === "sent" ? "Sent" : tab === "received" ? "Received" : tab === "deposits" ? "Deposits" : tab === "withdrawals" ? "Withdrawals" : "Bills"}
+                  {tab === "ledger" ? "All" : tab === "deposits" ? "Deposits" : tab === "withdrawals" ? "Withdrawals" : "Bills"}
                 </button>
               ))}
             </div>
@@ -945,46 +943,6 @@ export default function WalletPage() {
                   </div>
                 );
               }))}
-
-              {historyTab === "sent" && (transfers.filter(t => t.senderId === user?.id).length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  <Send className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No outgoing transfers</p>
-                </div>
-              ) : transfers.filter(t => t.senderId === user?.id).map(t => (
-                <div key={t.id} className="flex items-center justify-between bg-card rounded-2xl px-4 py-3 border">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
-                      <ArrowUpRight className="w-4 h-4 text-red-500" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-sm">−${parseFloat(t.amount).toFixed(2)}</p>
-                      <p className="text-[10px] text-muted-foreground">To: {t.recipientName ?? `#${t.recipientId}`} · {new Date(t.createdAt).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                  {statusBadge(t.status)}
-                </div>
-              )))}
-
-              {historyTab === "received" && (transfers.filter(t => t.recipientId === user?.id).length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  <ArrowDownLeft className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No incoming transfers</p>
-                </div>
-              ) : transfers.filter(t => t.recipientId === user?.id).map(t => (
-                <div key={t.id} className="flex items-center justify-between bg-card rounded-2xl px-4 py-3 border">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
-                      <ArrowDownLeft className="w-4 h-4 text-tsia-green" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-sm">+${parseFloat(t.amount).toFixed(2)}</p>
-                      <p className="text-[10px] text-muted-foreground">From: {t.senderName ?? `#${t.senderId}`} · {new Date(t.createdAt).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                  {statusBadge(t.status)}
-                </div>
-              )))}
 
               {historyTab === "bills" && (bills.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
@@ -1128,9 +1086,12 @@ export default function WalletPage() {
 
               {/* Amount */}
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Amount (USD) — Balance: <span className="text-tsia-green font-bold">${balance.toFixed(2)}</span></Label>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Amount (USD) — Max: <span className="text-tsia-green font-bold">${Math.max(0, balance - 2).toFixed(2)}</span> <span className="font-normal text-muted-foreground/70">($2 locked)</span>
+                </Label>
                 <Input
-                  type="number" min={1} step={0.01} placeholder="Enter amount (min $1.00)"
+                  type="number" min={1} max={Math.max(0, balance - 2)} step={0.01}
+                  placeholder={`Max $${Math.max(0, balance - 2).toFixed(2)}`}
                   value={cwAmount} onChange={e => setCwAmount(e.target.value)}
                   className="mt-1.5 text-xl font-black h-12 rounded-xl" data-testid="input-cw-amount"
                 />
@@ -1306,10 +1267,11 @@ export default function WalletPage() {
               {/* Amount */}
               <div>
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Amount (USD) — Balance: <span className="text-[#1a5c38] font-bold">${balance.toFixed(2)}</span>
+                  Amount (USD) — Max: <span className="text-[#1a5c38] font-bold">${Math.max(0, balance - 2).toFixed(2)}</span> <span className="font-normal text-muted-foreground/70">($2 locked)</span>
                 </Label>
                 <Input
-                  type="number" min={1} step={0.01} placeholder="Enter amount (min $1.00)"
+                  type="number" min={1} max={Math.max(0, balance - 2)} step={0.01}
+                  placeholder={`Max $${Math.max(0, balance - 2).toFixed(2)}`}
                   value={bwAmount} onChange={e => setBwAmount(e.target.value)}
                   className="mt-1.5 text-xl font-black h-12 rounded-xl" data-testid="input-bank-amount"
                 />

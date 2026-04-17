@@ -12,7 +12,7 @@ import { motion } from "framer-motion";
 import {
   Wallet, Eye, EyeOff, ArrowDownLeft, ArrowUpRight, Loader2,
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
-  Smartphone, Banknote, Receipt, Send, ExternalLink, RefreshCw, Copy, Coins,
+  Smartphone, Banknote, Receipt, ExternalLink, RefreshCw, Copy, Coins,
   MapPin, AlertTriangle, Lock, ChevronLeft, Camera, ScanFace, RotateCcw
 } from "lucide-react";
 
@@ -41,7 +41,6 @@ const TSIA_WALLETS = {
 
 type WalletData = { id: number; userId: number; balance: string };
 type DepositRecord = { id: number; amountUsd: string; txHash: string; walletType: string; status: string; createdAt: string };
-type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord    = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -95,7 +94,7 @@ export default function WalletSection() {
   const [cwOtpLoading, setCwOtpLoading]   = useState(false);
 
   // ── History tab ────────────────────────────────────────────────────────
-  const [historyTab, setHistoryTab] = useState<"deposits" | "sent" | "received" | "bills" | "withdrawals">("deposits");
+  const [historyTab, setHistoryTab] = useState<"deposits" | "bills" | "withdrawals">("deposits");
 
   // ── Wallet KYC state ───────────────────────────────────────────────────
   const [kycBvn, setKycBvn] = useState("");
@@ -117,7 +116,6 @@ export default function WalletSection() {
   const { data: verification, refetch: refetchVerification } = useQuery<any>({ queryKey: ["/api/verification/status"] });
   const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
   const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"] });
-  const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"] });
   const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
   const { data: withdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"] });
 
@@ -224,8 +222,6 @@ export default function WalletSection() {
     } finally { setCwOtpLoading(false); }
   };
 
-  const sentTransfers     = (transfers as TransferRecord[]).filter(t => t.senderId === user?.id);
-  const receivedTransfers = (transfers as TransferRecord[]).filter(t => t.recipientId === user?.id);
 
   // ── Wallet KYC status ─────────────────────────────────────────────
   const walletKycDone = verification?.biometricVerified === true;
@@ -548,10 +544,10 @@ export default function WalletSection() {
       <motion.div variants={itemVariants}>
         <h3 className="font-bold text-sm mb-3">Transaction History</h3>
         <div className="flex bg-muted/40 rounded-2xl p-1 text-xs mb-4 overflow-x-auto gap-0.5">
-          {(["deposits","sent","received","bills","withdrawals"] as const).map(tab => (
+          {(["deposits","bills","withdrawals"] as const).map(tab => (
             <button key={tab} onClick={() => setHistoryTab(tab)}
               className={`flex-1 py-2 rounded-xl font-semibold capitalize transition-all whitespace-nowrap px-2 ${historyTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
-              {tab === "sent" ? "Sent" : tab === "received" ? "Received" : tab === "deposits" ? "Deposits" : tab === "bills" ? "Bills" : "Withdrawals"}
+              {tab === "deposits" ? "Deposits" : tab === "bills" ? "Bills" : "Withdrawals"}
             </button>
           ))}
         </div>
@@ -577,48 +573,6 @@ export default function WalletSection() {
                     <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
                     <p className="text-[10px] text-tsia-green/70">{formatAmount(parseFloat(d.amountUsd))}</p>
                     <p className={`text-[10px] font-semibold capitalize ${d.status === "completed" ? "text-tsia-green" : "text-amber-500"}`}>{d.status}</p>
-                  </div>
-                </div>
-              ))
-          )}
-
-          {historyTab === "sent" && (
-            sentTransfers.length === 0
-              ? <Empty icon={Send} msg="No outgoing transfers yet" />
-              : sentTransfers.slice(0, 15).map(t => (
-                <div key={t.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
-                  <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
-                    <ArrowUpRight className="w-5 h-5 text-red-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm">To {t.recipientName || "User"}</p>
-                    <p className="text-xs text-muted-foreground truncate">{t.note || "Transfer"}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-red-500">−${parseFloat(t.amount).toFixed(2)}</p>
-                    <p className="text-[10px] text-muted-foreground/70">{formatAmount(parseFloat(t.amount))}</p>
-                    <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
-                  </div>
-                </div>
-              ))
-          )}
-
-          {historyTab === "received" && (
-            receivedTransfers.length === 0
-              ? <Empty icon={ArrowDownLeft} msg="No incoming transfers yet" />
-              : receivedTransfers.slice(0, 15).map(t => (
-                <div key={t.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
-                  <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
-                    <ArrowDownLeft className="w-5 h-5 text-tsia-green" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm">From {t.senderName || "User"}</p>
-                    <p className="text-xs text-muted-foreground truncate">{t.note || "Transfer"}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-tsia-green">+${parseFloat(t.amount).toFixed(2)}</p>
-                    <p className="text-[10px] text-tsia-green/70">{formatAmount(parseFloat(t.amount))}</p>
-                    <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                   </div>
                 </div>
               ))
@@ -992,14 +946,15 @@ export default function WalletSection() {
             {/* Amount */}
             <div>
               <Label htmlFor="cw-amount" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Amount (USD) — Balance: <span className="text-tsia-green font-bold">${balance.toFixed(2)}</span>
+                Amount (USD) — Max: <span className="text-tsia-green font-bold">${Math.max(0, balance - 2).toFixed(2)}</span> <span className="font-normal text-muted-foreground/70">($2 locked)</span>
               </Label>
               <Input
                 id="cw-amount"
                 type="number"
                 min={1}
+                max={Math.max(0, balance - 2)}
                 step={0.01}
-                placeholder="Enter amount (min $1.00)"
+                placeholder={`Max $${Math.max(0, balance - 2).toFixed(2)}`}
                 value={cwAmount}
                 onChange={e => setCwAmount(e.target.value)}
                 className="mt-1.5 text-xl font-black h-12 rounded-xl"

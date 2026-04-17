@@ -875,7 +875,7 @@ export default function AdminDashboard() {
                       <Users className="w-4 h-4" /> Back-fill Referral Commissions
                     </CardTitle>
                     <CardDescription className="text-amber-700 dark:text-amber-400">
-                      Credits any owed 5% referral commissions to affiliates whose referred users have activated wallets but never received commissions.
+                      Credits any owed 5% referral commissions to affiliates whose referred users have paid a subscription fee, completed wallet KYC, or funded their wallet — but whose referrer never received a commission.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

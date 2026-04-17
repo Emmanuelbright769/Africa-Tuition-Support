@@ -2977,43 +2977,48 @@ export async function registerRoutes(
     if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
 
     try {
-      // Get all referred users who have activated wallets
-      const referredWithActivatedWallets = await db.execute(sql`
-        SELECT u.id, u.first_name, u.last_name, u.referred_by, w.balance, w.activated_at
+      // Gather ALL referred users who have done at least one of:
+      //   (a) wallet activated ($5+), (b) completed KYC, (c) paid portal fee
+      // and whose referrer has NOT yet received a commission for them.
+      const allEligible = await db.execute(sql`
+        SELECT DISTINCT
+          u.id,
+          u.first_name,
+          u.last_name,
+          u.referred_by,
+          COALESCE(w.balance, '0') AS balance
         FROM users u
-        JOIN wallets w ON w.user_id = u.id
+        LEFT JOIN wallets      w ON w.user_id  = u.id
+        LEFT JOIN verifications v ON v.user_id = u.id
         WHERE u.referred_by IS NOT NULL
-          AND w.activated = true
+          AND (
+            w.activated       = true
+            OR v.biometric_verified = true
+            OR v.portal_fee_paid    = true
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM trade_transactions tt
+            JOIN users ref_u ON ref_u.affiliate_code = u.referred_by
+            WHERE tt.user_id = ref_u.id
+              AND tt.type    = 'bot_earning'
+              AND tt.note LIKE '%Referral commission%'
+              AND tt.note LIKE '%' || u.first_name || ' ' || u.last_name || '%'
+          )
       `);
 
       const credited: { referredUser: string; referrer: string; amount: number }[] = [];
       const skipped: { referredUser: string; reason: string }[] = [];
 
-      for (const row of referredWithActivatedWallets.rows as any[]) {
+      for (const row of allEligible.rows as any[]) {
         const referrer = await storage.getUserByAffiliateCode(row.referred_by);
         if (!referrer) {
           skipped.push({ referredUser: `${row.first_name} ${row.last_name}`, reason: "Referrer not found" });
           continue;
         }
 
-        // Check if a referral commission was already credited for this user
-        const existingCommission = await db.execute(sql`
-          SELECT id FROM trade_transactions
-          WHERE user_id = ${referrer.id}
-            AND note LIKE ${'%' + row.first_name + '%' + row.last_name + '%'}
-            AND note LIKE '%Referral commission%'
-          LIMIT 1
-        `);
-
-        if (existingCommission.rows.length > 0) {
-          skipped.push({ referredUser: `${row.first_name} ${row.last_name}`, reason: "Commission already credited" });
-          continue;
-        }
-
-        // Credit 5% of the activation balance amount
         const walletBalance = parseFloat(row.balance ?? "0");
-        const commissionBase = walletBalance > 0 ? walletBalance : 5; // At minimum assume $5 activation
-        const result = await creditReferrerCommission(row.id, commissionBase, "wallet activation (backfill)");
+        const commissionBase = walletBalance >= 3 ? walletBalance : 3;
+        const result = await creditReferrerCommissionOnce(row.id, commissionBase, "activation (backfill)");
 
         if (result.credited) {
           credited.push({
@@ -3022,7 +3027,7 @@ export async function registerRoutes(
             amount: result.commissionAmount ?? 0,
           });
         } else {
-          skipped.push({ referredUser: `${row.first_name} ${row.last_name}`, reason: "Commission credit failed" });
+          skipped.push({ referredUser: `${row.first_name} ${row.last_name}`, reason: "Commission already credited" });
         }
       }
 
@@ -5881,53 +5886,45 @@ export async function registerRoutes(
   });
 
   // ─── AUTO BACKFILL: credit missed referral commissions on startup ─────────────
-  // Covers TWO activation milestones:
-  //   1. Wallet KYC done (biometricVerified = true) — commission on $3 portal fee
-  //   2. Wallet funded to $5+ (wallets.activated = true) — commission on deposit
+  // Covers THREE activation milestones:
+  //   1. Wallet KYC done (biometricVerified = true)
+  //   2. Portal/subscription fee paid (portalFeePaid = true)
+  //   3. Wallet funded to $5+ (wallets.activated = true)
   setImmediate(async () => {
     try {
-      // Find referred users who completed wallet KYC but whose referrer never got a commission
-      const kycRows = await db.execute(sql`
-        SELECT u.id, u.first_name, u.last_name, u.referred_by
+      // Single combined query: all referred users who completed any activation milestone
+      // but whose referrer never received a commission for them
+      const missedRows = await db.execute(sql`
+        SELECT DISTINCT
+          u.id,
+          u.first_name,
+          u.last_name,
+          u.referred_by,
+          COALESCE(w.balance, '0') AS balance
         FROM users u
-        JOIN verifications v ON v.user_id = u.id
+        LEFT JOIN wallets      w ON w.user_id  = u.id
+        LEFT JOIN verifications v ON v.user_id = u.id
         WHERE u.referred_by IS NOT NULL
-          AND v.biometric_verified = true
+          AND (
+            v.biometric_verified = true
+            OR v.portal_fee_paid = true
+            OR w.activated       = true
+          )
           AND NOT EXISTS (
             SELECT 1 FROM trade_transactions tt
-            JOIN users ru ON ru.id = tt.user_id
             JOIN users ref_u ON ref_u.affiliate_code = u.referred_by
             WHERE tt.user_id = ref_u.id
-              AND tt.type = 'bot_earning'
+              AND tt.type    = 'bot_earning'
               AND tt.note LIKE '%Referral commission%'
               AND tt.note LIKE '%' || u.first_name || ' ' || u.last_name || '%'
           )
       `);
-      const kycMissed = kycRows.rows as { id: number; first_name: string; last_name: string; referred_by: string }[];
-      let credited = 0;
-      for (const row of kycMissed) {
-        const result = await creditReferrerCommissionOnce(row.id, 3.00, "wallet activation (backfill)");
-        if (result.credited) credited++;
-      }
 
-      // Also cover wallet-funded users (original backfill)
-      const walletRows = await db.execute(sql`
-        SELECT u.id, u.first_name, u.last_name, u.referred_by, w.balance
-        FROM users u
-        JOIN wallets w ON w.user_id = u.id
-        WHERE u.referred_by IS NOT NULL
-          AND w.activated_at IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM trade_transactions tt
-            JOIN users ref_u ON ref_u.affiliate_code = u.referred_by
-            WHERE tt.user_id = ref_u.id
-              AND tt.type = 'bot_earning'
-              AND tt.note LIKE '%Referral commission%'
-              AND tt.note LIKE '%' || u.first_name || ' ' || u.last_name || '%'
-          )
-      `);
-      for (const row of walletRows.rows as any[]) {
-        const result = await creditReferrerCommissionOnce(row.id, Math.max(parseFloat(row.balance), 3), "personal wallet activation (backfill)");
+      let credited = 0;
+      for (const row of missedRows.rows as any[]) {
+        const balance = parseFloat(row.balance ?? "0");
+        const base    = balance >= 3 ? balance : 3;
+        const result  = await creditReferrerCommissionOnce(row.id, base, "activation (backfill)");
         if (result.credited) credited++;
       }
 

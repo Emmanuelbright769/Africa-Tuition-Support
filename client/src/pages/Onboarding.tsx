@@ -253,7 +253,7 @@ export default function Onboarding() {
       <div className="flex flex-col items-end">
         <span className="text-xs font-bold uppercase tracking-wide text-red-500">Below Threshold</span>
         <span className="text-lg font-bold text-red-600">{pct.toFixed(1)}%</span>
-        <span className="text-[11px] text-red-400">Min 50% required</span>
+        <span className="text-[11px] text-red-400">Min 51% required</span>
       </div>
     );
   };
@@ -806,7 +806,7 @@ export default function Onboarding() {
                   </p>
                   {failPercentage > 0 && (
                     <div className="inline-flex items-center gap-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 px-5 py-2 rounded-full text-sm font-semibold">
-                      Your Score: {failPercentage}% &nbsp;·&nbsp; Minimum Required: 50%
+                      Your Score: {failPercentage}% &nbsp;·&nbsp; Minimum Required: 51%
                     </div>
                   )}
                 </div>

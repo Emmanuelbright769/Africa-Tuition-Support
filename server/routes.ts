@@ -581,7 +581,7 @@ export async function registerRoutes(
       const payoutInfo = (() => {
         if (percentage >= 75) return { min: tierPayouts.platinum.min, max: tierPayouts.platinum.max, label: "platinum" };
         if (percentage >= 60) return { min: tierPayouts.gold.min, max: tierPayouts.gold.max, label: "gold" };
-        if (percentage >= 50) return { min: tierPayouts.silver.min, max: tierPayouts.silver.max, label: "silver" };
+        if (percentage >= 51) return { min: tierPayouts.silver.min, max: tierPayouts.silver.max, label: "silver" };
         return { min: 0, max: 0, label: "none" };
       })();
 
@@ -599,7 +599,7 @@ export async function registerRoutes(
 
       if (tier === "none") {
         return res.status(400).json({
-          message: "Your WAEC results do not meet the minimum 50% threshold for sponsorship. You need at least a 50% score to qualify.",
+          message: "Your WAEC results do not meet the minimum 51% threshold for sponsorship. You need at least a 51% score to qualify.",
           percentage,
           waecValidation: waecApiResponse,
         });
@@ -978,7 +978,7 @@ export async function registerRoutes(
       const payoutInfo = (() => {
         if (percentage >= 75) return { min: tierPayoutsAlt.platinum.min, max: tierPayoutsAlt.platinum.max, label: "platinum" };
         if (percentage >= 60) return { min: tierPayoutsAlt.gold.min, max: tierPayoutsAlt.gold.max, label: "gold" };
-        if (percentage >= 50) return { min: tierPayoutsAlt.silver.min, max: tierPayoutsAlt.silver.max, label: "silver" };
+        if (percentage >= 51) return { min: tierPayoutsAlt.silver.min, max: tierPayoutsAlt.silver.max, label: "silver" };
         return { min: 0, max: 0, label: "none" };
       })();
 

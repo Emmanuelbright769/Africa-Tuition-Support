@@ -280,7 +280,7 @@ export function calculateWaecPercentage(grades: string[]): number {
 export function getPayoutTier(percentage: number): { min: number; max: number; label: string } {
   if (percentage >= 75) return { min: 225, max: 230, label: "platinum" };
   if (percentage >= 60) return { min: 160, max: 180, label: "gold" };
-  if (percentage >= 50) return { min: 110, max: 130, label: "silver" };
+  if (percentage >= 51) return { min: 110, max: 130, label: "silver" };
   return { min: 0, max: 0, label: "none" };
 }
 

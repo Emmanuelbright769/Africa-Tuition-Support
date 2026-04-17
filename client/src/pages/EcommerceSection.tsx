@@ -15,7 +15,7 @@ import {
   Tag, Truck, CheckCircle2, X, Camera, TrendingUp, Loader2, Heart,
   Filter, ChevronRight, ChevronLeft, BadgePercent, Bell, Zap, ArrowRight, Flame,
   Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, MessageCircle,
-  Mail, HandCoins, AlertCircle, ArrowLeftRight, User, Expand,
+  Mail, HandCoins, AlertCircle, User, Expand,
   Lock, PackageOpen, Clock, ChevronUp, Send
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -602,7 +602,7 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
                 data-testid={`btn-buy-${product.id}`}
                 className="w-8 h-8 bg-tsia-green rounded-full flex items-center justify-center shadow-md hover:bg-tsia-green/90 disabled:opacity-40 transition-all hover:scale-105"
               >
-                <ArrowLeftRight className="w-3.5 h-3.5 text-white" />
+                <ShoppingBag className="w-3.5 h-3.5 text-white" />
               </button>
             </div>
           )}
@@ -667,7 +667,7 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
                 disabled={product.stock === 0}
                 className="w-7 h-7 bg-tsia-gold rounded-full flex items-center justify-center shadow hover:scale-105 transition-transform disabled:opacity-40"
                 data-testid={`btn-featured-buy-${product.id}`}>
-                <ArrowLeftRight className="w-3 h-3 text-slate-900" />
+                <ShoppingBag className="w-3 h-3 text-slate-900" />
               </button>
             </div>
           )}

@@ -101,8 +101,8 @@ function CommissionTooltip({ active, payload, label }: any) {
 export function ReserveFundWidget({ onNavigate }: { onNavigate: () => void }) {
   const { data, isLoading } = useQuery<FundData>({
     queryKey: ["/api/reserve-fund/live"],
-    refetchInterval: 5000,
-    staleTime: 0,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
   });
   const balance = parseFloat(data?.totalBalance ?? "0");
 
@@ -146,14 +146,14 @@ export default function ReserveFund() {
 
   const { data, isLoading } = useQuery<FundData>({
     queryKey: ["/api/reserve-fund/live"],
-    refetchInterval: 5000,
-    staleTime: 0,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
   });
 
   const { data: commData } = useQuery<CommissionData>({
     queryKey: ["/api/reserve-fund/commission-profits"],
-    refetchInterval: 30000,
-    staleTime: 15000,
+    refetchInterval: 120_000,
+    staleTime: 60_000,
   });
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { addSseClient, removeSseClient, pushToUser } from "./realtime";
+import { getCached, setCached, invalidateCacheKey, invalidateCachePrefix } from "./cache";
 import {
   sendEmail, ADMIN_EMAIL,
   sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail,
@@ -1030,6 +1031,9 @@ export async function registerRoutes(
   app.get("/api/wallet", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const cacheKey = `wallet:${userId}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
     let wallet = await storage.getOrCreateWallet(userId);
     // Self-heal: activate wallets that already have >= $5 but were never activated
     // (can happen if balance was set before the activated column existed)
@@ -1038,7 +1042,9 @@ export async function registerRoutes(
     }
     const balanceUsd = parseFloat(wallet.balance);
     const balanceNgn = balanceUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
-    res.json({ ...wallet, balanceNgn: balanceNgn.toFixed(2) });
+    const result = { ...wallet, balanceNgn: balanceNgn.toFixed(2) };
+    setCached(cacheKey, result, 20_000);
+    res.json(result);
   });
 
   // ── Nigerian bank account lookup via Squad ───────────────────────────────
@@ -5223,7 +5229,11 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     try {
+      const cacheKey = `chats:${userId}`;
+      const cached = getCached(cacheKey);
+      if (cached) return res.json(cached);
       const chats = await storage.getUserChats(userId);
+      setCached(cacheKey, chats, 15_000);
       res.json(chats);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -5251,7 +5261,12 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     try {
-      const messages = await storage.getChatMessages(parseInt(req.params.chatId));
+      const chatId = req.params.chatId;
+      const cacheKey = `chat_msgs:${chatId}`;
+      const cached = getCached(cacheKey);
+      if (cached) return res.json(cached);
+      const messages = await storage.getChatMessages(parseInt(chatId));
+      setCached(cacheKey, messages, 8_000);
       res.json(messages);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -5275,12 +5290,15 @@ export async function registerRoutes(
     try {
       const { censorOffPlatform } = await import("@shared/schema");
       const { censored, flagged } = censorOffPlatform(content.trim());
+      const chatId = parseInt(req.params.chatId);
       const msg = await storage.createChatMessage({
-        chatId: parseInt(req.params.chatId),
+        chatId,
         senderId: userId,
         content: censored,
         isFlagged: flagged,
       });
+      invalidateCacheKey(`chat_msgs:${chatId}`);
+      invalidateCachePrefix(`chats:`);
 
       // Notify the other party in the chat
       try {
@@ -5811,7 +5829,7 @@ export async function registerRoutes(
     const hb = setInterval(() => {
       try { res.write(": ping\n\n"); }
       catch { clearInterval(hb); removeSseClient(userId, res); }
-    }, 15000);
+    }, 45000);
     req.on("close", () => { clearInterval(hb); removeSseClient(userId, res); });
   });
 

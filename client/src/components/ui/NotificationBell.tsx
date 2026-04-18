@@ -142,8 +142,8 @@ export function NotificationBell({ className }: { className?: string }) {
 
   const { data } = useQuery<NotifResponse>({
     queryKey: ["/api/notifications"],
-    refetchInterval: 30_000,
-    staleTime: 20_000,
+    refetchInterval: 120_000,
+    staleTime: 60_000,
   });
 
   const notifications = data?.notifications ?? [];

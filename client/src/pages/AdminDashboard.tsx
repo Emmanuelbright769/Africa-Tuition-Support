@@ -152,7 +152,7 @@ export default function AdminDashboard() {
   const { data: reserveProfitData }        = useQuery({ queryKey: ["/api/reserve-fund/commission-profits"], enabled: activeTab === "reserve" });
   const { data: allTrustFunders = [] }     = useQuery({ queryKey: ["/api/admin/co-affiliates"], enabled: activeTab === "trustfunders" });
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
-  const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 30000 });
+  const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 120_000 });
   const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────

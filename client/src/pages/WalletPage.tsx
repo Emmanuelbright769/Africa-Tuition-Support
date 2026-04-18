@@ -142,13 +142,13 @@ export default function WalletPage() {
   const kycCanvasRef = useRef<HTMLCanvasElement>(null);
   const kycStreamRef = useRef<MediaStream | null>(null);
 
-  // ── Queries (real-time: poll every 5s + SSE invalidation) ───────────────
+  // ── Queries (SSE-driven + poll fallback) ───────────────────────────────
   const { data: verification, refetch: refetchVerification } = useQuery<any>({ queryKey: ["/api/verification/status"] });
-  const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"], refetchInterval: 5000, staleTime: 3000 });
-  const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 10000 });
-  const { data: bills = [] }         = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 15000 });
-  const { data: txLedger = [] }      = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 10000 });
-  const { data: withdrawals = [] }   = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"], refetchInterval: 15000 });
+  const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"], refetchInterval: 60_000, staleTime: 20_000 });
+  const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 60_000 });
+  const { data: bills = [] }         = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 120_000 });
+  const { data: txLedger = [] }      = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 60_000 });
+  const { data: withdrawals = [] }   = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"], refetchInterval: 120_000 });
 
   // SSE: immediately refetch when server pushes a wallet_credit / wallet_activation event
   useEffect(() => {

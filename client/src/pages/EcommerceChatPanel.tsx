@@ -318,7 +318,7 @@ function ChatWindow({ chat, onBack }: { chat: Chat; onBack: () => void }) {
   const { data: messages = [], refetch } = useQuery<ChatMessage[]>({
     queryKey: [`/api/chats/${chat.id}/messages`],
     queryFn: async () => { const r = await apiRequest("GET", `/api/chats/${chat.id}/messages`); return r.json(); },
-    refetchInterval: 3000,
+    refetchInterval: 10_000,
   });
 
   // Mark messages as read whenever new messages arrive
@@ -343,7 +343,7 @@ function ChatWindow({ chat, onBack }: { chat: Chat; onBack: () => void }) {
       }
       return data;
     },
-    refetchInterval: 3000,
+    refetchInterval: 5_000,
     enabled: !activeCall,
   });
 
@@ -520,7 +520,7 @@ function ChatsInbox({ onOpen, onClose }: { onOpen: (chat: Chat) => void; onClose
   const { data: chats = [], isLoading } = useQuery<Chat[]>({
     queryKey: ["/api/chats"],
     queryFn: async () => { const r = await apiRequest("GET", "/api/chats"); return r.json(); },
-    refetchInterval: 8000,
+    refetchInterval: 30_000,
   });
 
   return (
@@ -637,7 +637,7 @@ export function ProductChatModal({ productId, productTitle, sellerName, open, on
     queryKey: [`/api/chats/${chatData?.id}/messages`],
     queryFn: async () => { const r = await apiRequest("GET", `/api/chats/${chatData!.id}/messages`); return r.json(); },
     enabled: !!chatData?.id,
-    refetchInterval: 3000,
+    refetchInterval: 10_000,
   });
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -651,7 +651,7 @@ export function ProductChatModal({ productId, productTitle, sellerName, open, on
       if (data?.id && !activeCall) setIncomingCall(data);
       return data;
     },
-    refetchInterval: 3000,
+    refetchInterval: 5_000,
     enabled: !!chatData && !activeCall,
   });
 

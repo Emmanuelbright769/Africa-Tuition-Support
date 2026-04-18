@@ -136,7 +136,7 @@ async function seedAdmin() {
 }
 
 async function startAutoRefundJob() {
-  const INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
+  const INTERVAL_MS = 15 * 60 * 1000; // check every 15 minutes
   setInterval(async () => {
     try {
       const stale = await storage.getPendingWithdrawalsOlderThan24h();
@@ -184,7 +184,7 @@ async function startAutoRefundJob() {
       console.error("[AUTO-REFUND] Error:", e);
     }
   }, INTERVAL_MS);
-  console.log("[AUTO-REFUND] Job started — checking every 5 minutes");
+  console.log("[AUTO-REFUND] Job started — checking every 15 minutes");
 }
 
 (async () => {

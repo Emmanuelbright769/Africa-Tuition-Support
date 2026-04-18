@@ -830,7 +830,7 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
 function TrackingTimeline({ orderId }: { orderId: number }) {
   const { data: tracking = [], isLoading } = useQuery<TrackingEntry[]>({
     queryKey: [`/api/orders/${orderId}/tracking`],
-    refetchInterval: 30000,
+    refetchInterval: 120_000,
   });
   if (isLoading) return <div className="flex items-center gap-2 text-xs text-muted-foreground py-3"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading tracking…</div>;
   if (!tracking.length) return <p className="text-xs text-muted-foreground py-2">No tracking updates yet.</p>;

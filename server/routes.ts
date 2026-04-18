@@ -3763,6 +3763,89 @@ export async function registerRoutes(
     }
   });
 
+  // ─── PUBLIC SPONSOR COHORT PAYMENT ───────────────────────────────────────────
+  // Step 1: Initiate Squad payment (no auth required — public page)
+  app.post("/api/sponsor/payment/initiate", async (req, res) => {
+    try {
+      const { firstName, lastName, email, orgName, phone, numStudents } = req.body;
+      if (!firstName || !email) return res.status(400).json({ message: "Name and email are required" });
+      const slots = parseInt(numStudents, 10);
+      if (!slots || slots < 100) return res.status(400).json({ message: "Minimum 100 students required" });
+      const PRICE_PER_STUDENT_USD = 3.3;
+      const totalUsd = PRICE_PER_STUDENT_USD * slots;
+      const secretKey = process.env.SQUAD_SECRET_KEY;
+      const publicKey = process.env.SQUAD_PUBLIC_KEY;
+      if (!secretKey || !publicKey) return res.status(500).json({ message: "Payment gateway not configured. Please contact support." });
+      const USD_TO_KOBO = 148000;
+      const amountKobo = Math.round(totalUsd * USD_TO_KOBO);
+      const transactionRef = `TSIA-SPO-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+      res.json({ transactionRef, amountKobo, amountNgn: (totalUsd * 1480).toFixed(2), totalUsd: totalUsd.toFixed(2), publicKey, email, firstName, lastName });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Step 2: Verify payment → create cohort → email master code
+  app.post("/api/sponsor/payment/verify", async (req, res) => {
+    try {
+      const { transactionRef, firstName, lastName, email, orgName, phone, numStudents } = req.body;
+      if (!transactionRef || !email) return res.status(400).json({ message: "Transaction reference and email are required" });
+      const slots = parseInt(numStudents, 10);
+      if (!slots || slots < 100) return res.status(400).json({ message: "Invalid student count" });
+      const secretKey = process.env.SQUAD_SECRET_KEY;
+      if (!secretKey) return res.status(500).json({ message: "Payment gateway not configured" });
+      const isLive = secretKey.startsWith("sk_");
+      const baseUrl = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+      const response = await fetch(`${baseUrl}/transaction/verify/${encodeURIComponent(transactionRef)}`, {
+        headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" },
+      });
+      const data = await response.json() as any;
+      if (!data.success || data.data?.transaction_status !== "Success") {
+        return res.status(400).json({ message: "Payment not confirmed yet. Please wait a moment and try again." });
+      }
+      const { cohort, masterCode } = await storage.createPublicSponsorCohort({
+        sponsorName: `${firstName} ${lastName}`,
+        sponsorEmail: email,
+        sponsorPhone: phone,
+        totalSlots: slots,
+        orgName: orgName || undefined,
+      });
+      // Email the master code to the sponsor
+      try {
+        await sendEmail(
+          email,
+          `Your TSIA Sponsor Code — ${slots} Student${slots > 1 ? "s" : ""}`,
+          `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
+            <div style="text-align:center;margin-bottom:24px">
+              <img src="https://tsiforafrica.com/logo.png" alt="TSIA" style="height:48px" />
+            </div>
+            <h2 style="color:#1a5c38;font-size:22px;margin-bottom:8px">Your Sponsor Code is Ready!</h2>
+            <p style="color:#374151;font-size:15px">Hi ${firstName}, thank you for sponsoring <strong>${slots} student${slots > 1 ? "s" : ""}</strong> through TSIA.</p>
+            <p style="color:#6b7280;font-size:14px">Your payment of <strong>₦${(3.3 * slots * 1480).toLocaleString()}</strong> has been confirmed. Share the code below with your sponsored students — each student will enter it during their enrollment to activate their account for free.</p>
+            <div style="background:#fff;border:2px solid #1a5c38;border-radius:12px;padding:24px;text-align:center;margin:28px 0">
+              <p style="color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px">Your Sponsor Code</p>
+              <p style="font-family:monospace;font-size:32px;font-weight:bold;color:#1a5c38;letter-spacing:4px;margin:0">${masterCode}</p>
+            </div>
+            <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:16px;margin-bottom:20px">
+              <p style="color:#92400e;font-size:14px;margin:0"><strong>Important:</strong> This single code covers all <strong>${slots}</strong> of your sponsored students. Each student uses it once during their TSIA enrollment. Once all ${slots} slots are filled, the code will be deactivated.</p>
+            </div>
+            <div style="border-top:1px solid #e5e7eb;padding-top:20px">
+              <p style="color:#374151;font-size:14px"><strong>How your students use the code:</strong></p>
+              <ol style="color:#6b7280;font-size:14px;line-height:1.8;padding-left:20px">
+                <li>Go to <a href="https://tsiforafrica.com/onboarding" style="color:#1a5c38">tsiforafrica.com/onboarding</a> and apply</li>
+                <li>On the WAEC details page, click <strong>"Have a Sponsor Code?"</strong></li>
+                <li>Enter the code above and click <strong>Apply Code &amp; Continue</strong></li>
+                <li>Their account will be activated instantly — no payment required</li>
+              </ol>
+            </div>
+            <p style="color:#9ca3af;font-size:12px;text-align:center;margin-top:24px">TSIA — Tuition Support Initiative for Africa · SMAKEMGGOLD Ltd RC: 1359954</p>
+          </div>`
+        );
+      } catch (emailErr) {
+        console.error("[SPONSOR EMAIL] Failed to send code email:", emailErr);
+      }
+      res.json({ success: true, masterCode, totalStudents: slots, cohortId: cohort.id });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── LOAN ROUTES ─────────────────────────────────────────────────────────────
   app.get("/api/loans/my-loans", async (req, res) => {
     const userId = (req.session as any)?.userId;

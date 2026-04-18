@@ -856,6 +856,7 @@ export const sponsorCohorts = pgTable("sponsor_cohorts", {
   usedSlots:   integer("used_slots").notNull().default(0),
   notes:       text("notes"),
   status:      text("status").notNull().default("active"),
+  masterCode:  text("master_code").unique(),
   createdAt:   timestamp("created_at").defaultNow().notNull(),
 });
 

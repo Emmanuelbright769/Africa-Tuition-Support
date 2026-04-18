@@ -1407,6 +1407,24 @@ export class DatabaseStorage implements IStorage {
     return { cohort, codes: codeRows };
   }
 
+  async createPublicSponsorCohort(data: { sponsorName: string; sponsorEmail: string; sponsorPhone?: string; totalSlots: number; orgName?: string }): Promise<{ cohort: SponsorCohort; masterCode: string }> {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const genCode = () => Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    let masterCode = `TSIA-${genCode()}`;
+
+    const [cohort] = await db.insert(sponsorCohorts).values({
+      sponsorName: data.orgName ? `${data.sponsorName} (${data.orgName})` : data.sponsorName,
+      sponsorEmail: data.sponsorEmail,
+      sponsorPhone: data.sponsorPhone ?? null,
+      totalSlots: data.totalSlots,
+      notes: `Public cohort payment. Students: ${data.totalSlots}`,
+      status: "active",
+      masterCode,
+    }).returning();
+
+    return { cohort, masterCode };
+  }
+
   async getSponsorCohorts(): Promise<(SponsorCohort & { codes: CohortCode[] })[]> {
     const allCohorts = await db.select().from(sponsorCohorts).orderBy(desc(sponsorCohorts.createdAt));
     const allCodes = await db.select().from(cohortCodes);
@@ -1424,25 +1442,51 @@ export class DatabaseStorage implements IStorage {
   }
 
   async validateSponsorCode(code: string): Promise<{ valid: boolean; cohortName?: string; reason?: string }> {
-    const [row] = await db.select().from(cohortCodes).where(eq(cohortCodes.code, code.toUpperCase().trim()));
-    if (!row) return { valid: false, reason: "Code not found" };
-    if (row.used) return { valid: false, reason: "Code has already been used" };
-    const [cohort] = await db.select().from(sponsorCohorts).where(eq(sponsorCohorts.id, row.cohortId));
-    if (!cohort || cohort.status !== "active") return { valid: false, reason: "Cohort is no longer active" };
+    const normalised = code.toUpperCase().trim();
+
+    // 1. Check individual cohort codes (admin-created)
+    const [row] = await db.select().from(cohortCodes).where(eq(cohortCodes.code, normalised));
+    if (row) {
+      if (row.used) return { valid: false, reason: "Code has already been used" };
+      const [cohort] = await db.select().from(sponsorCohorts).where(eq(sponsorCohorts.id, row.cohortId));
+      if (!cohort || cohort.status !== "active") return { valid: false, reason: "Cohort is no longer active" };
+      return { valid: true, cohortName: cohort.sponsorName };
+    }
+
+    // 2. Check master codes (public-payment-created cohorts)
+    const [cohort] = await db.select().from(sponsorCohorts).where(eq(sponsorCohorts.masterCode, normalised));
+    if (!cohort) return { valid: false, reason: "Code not found" };
+    if (cohort.status !== "active") return { valid: false, reason: "Cohort is no longer active" };
+    if (cohort.usedSlots >= cohort.totalSlots) return { valid: false, reason: "All sponsor slots have been filled" };
     return { valid: true, cohortName: cohort.sponsorName };
   }
 
   async useSponsorCode(code: string, userId: number): Promise<void> {
-    const [row] = await db.select().from(cohortCodes).where(eq(cohortCodes.code, code.toUpperCase().trim()));
-    if (!row || row.used) throw new Error("Invalid or already-used sponsor code");
+    const normalised = code.toUpperCase().trim();
+
+    // Determine if this is a masterCode or an individual cohortCode
+    const [individualCode] = await db.select().from(cohortCodes).where(eq(cohortCodes.code, normalised));
+    const [cohortByMaster] = !individualCode
+      ? await db.select().from(sponsorCohorts).where(eq(sponsorCohorts.masterCode, normalised))
+      : [undefined];
+
+    if (!individualCode && !cohortByMaster) throw new Error("Invalid sponsor code");
+    if (individualCode?.used) throw new Error("This code has already been used");
+    if (cohortByMaster && cohortByMaster.usedSlots >= cohortByMaster.totalSlots) throw new Error("All sponsor slots have been filled");
 
     await db.transaction(async (tx) => {
-      await tx.update(cohortCodes)
-        .set({ used: true, usedByUserId: userId, usedAt: new Date() })
-        .where(eq(cohortCodes.id, row.id));
-      await tx.update(sponsorCohorts)
-        .set({ usedSlots: sql`${sponsorCohorts.usedSlots} + 1` })
-        .where(eq(sponsorCohorts.id, row.cohortId));
+      if (individualCode) {
+        await tx.update(cohortCodes)
+          .set({ used: true, usedByUserId: userId, usedAt: new Date() })
+          .where(eq(cohortCodes.id, individualCode.id));
+        await tx.update(sponsorCohorts)
+          .set({ usedSlots: sql`${sponsorCohorts.usedSlots} + 1` })
+          .where(eq(sponsorCohorts.id, individualCode.cohortId));
+      } else {
+        await tx.update(sponsorCohorts)
+          .set({ usedSlots: sql`${sponsorCohorts.usedSlots} + 1` })
+          .where(eq(sponsorCohorts.id, cohortByMaster!.id));
+      }
 
       let verification = await tx.select().from(verifications).where(eq(verifications.userId, userId)).then(r => r[0]);
       if (!verification) {
@@ -1455,6 +1499,14 @@ export class DatabaseStorage implements IStorage {
         await tx.update(verifications)
           .set({ portalFeePaid: true, commitmentStartDate: new Date() })
           .where(eq(verifications.id, verification.id));
+      }
+
+      // Activate the wallet so sponsored students skip the $5 deposit requirement
+      const [existingWallet] = await tx.select().from(wallets).where(eq(wallets.userId, userId));
+      if (!existingWallet) {
+        await tx.insert(wallets).values({ userId, balance: "0.00", activated: true });
+      } else if (!existingWallet.activated) {
+        await tx.update(wallets).set({ activated: true }).where(eq(wallets.userId, userId));
       }
     });
   }

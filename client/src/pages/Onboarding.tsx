@@ -533,15 +533,17 @@ export default function Onboarding() {
 
                   <div className="space-y-2 pt-2">
                     <Label className="text-base font-semibold">Reason for Sponsorship <span className="text-red-500">*</span></Label>
-                    <Textarea
-                      placeholder="Tell us why you need this sponsorship — your goals, your circumstances, and how TSIA will help you move forward."
-                      className="min-h-[100px] bg-muted/30 text-sm resize-none"
-                      value={sponsorshipReason}
-                      onChange={e => setSponsorshipReason(e.target.value)}
-                      maxLength={800}
-                      data-testid="textarea-sponsorship-reason"
-                    />
-                    <p className="text-xs text-muted-foreground text-right">{sponsorshipReason.length}/800 characters</p>
+                    <Select value={sponsorshipReason} onValueChange={setSponsorshipReason}>
+                      <SelectTrigger className="h-12 bg-muted/30 text-sm" data-testid="select-sponsorship-reason">
+                        <SelectValue placeholder="Select reason for sponsorship…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Tuition fees">Tuition fees</SelectItem>
+                        <SelectItem value="Career/Trade sponsorship">Career/Trade sponsorship</SelectItem>
+                        <SelectItem value="Student Accommodation">Student Accommodation</SelectItem>
+                        <SelectItem value="Transport Allowances">Transport Allowances</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="flex gap-4 pt-2">
@@ -550,7 +552,7 @@ export default function Onboarding() {
                       onClick={handleValidateWaec}
                       className="w-2/3 h-12 text-base font-semibold bg-amber-600 hover:bg-amber-700 shadow-md"
                       data-testid="button-validate-waec"
-                      disabled={!allElectivesSelected || !allGradesFilled || !waecReg || !waecYear || !schoolName || !schoolLocation || sponsorshipReason.trim().length < 20}
+                      disabled={!allElectivesSelected || !allGradesFilled || !waecReg || !waecYear || !schoolName || !schoolLocation || !sponsorshipReason}
                     >
                       <CreditCard className="w-5 h-5 mr-2" /> Proceed to Payment
                     </Button>

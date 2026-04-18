@@ -2076,22 +2076,34 @@ export default function AdminDashboard() {
               </div>
               <div className="bg-slate-50 border rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">WAEC Grades</h4>
-                <div className="flex flex-wrap gap-2">
-                  {reviewDialog.waecSubjects?.split(",").map((sub: string, i: number) => {
-                    const gradesList = reviewDialog.waecGrades?.split(" ") || [];
-                    return (
-                      <div key={i} className="bg-white border rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
-                        <span className="text-slate-600">{sub.trim()}</span>
-                        <span className="font-bold text-slate-900">{gradesList[i] || "—"}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="flex items-center gap-4 pt-1">
-                  <div><span className="text-xs text-slate-500">Score:</span> <span className="font-bold text-lg ml-1">{reviewDialog.waecPercentage ? `${reviewDialog.waecPercentage}%` : "—"}</span></div>
-                  <TierBadge tier={reviewDialog.tier} />
-                  {reviewDialog.tier !== "none" && <span className="text-sm font-semibold text-tsia-green">${reviewDialog.payoutMin}–${reviewDialog.payoutMax}</span>}
-                </div>
+                {reviewDialog.waecSubjects ? (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      {reviewDialog.waecSubjects.split(",").map((sub: string, i: number) => {
+                        const gradesList = (reviewDialog.waecGrades || "").split(" ");
+                        const grade = gradesList[i] || "—";
+                        const isPass = ["A1","B2","B3","C4","C5","C6"].includes(grade);
+                        return (
+                          <div key={i} className={`border rounded-lg px-3 py-1.5 text-xs flex items-center gap-2 ${isPass ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+                            <span className="text-slate-600">{sub.trim()}</span>
+                            <span className={`font-bold ${isPass ? "text-green-700" : "text-red-600"}`}>{grade}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex items-center gap-4 pt-1">
+                      <div><span className="text-xs text-slate-500">Score:</span> <span className="font-bold text-lg ml-1">{reviewDialog.waecPercentage ? `${reviewDialog.waecPercentage}%` : "—"}</span></div>
+                      <TierBadge tier={reviewDialog.tier} />
+                      {reviewDialog.tier !== "none" && <span className="text-sm font-semibold text-tsia-green">${reviewDialog.payoutMin}–${reviewDialog.payoutMax}</span>}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">No WAEC grades submitted by this applicant.</p>
+                )}
+              </div>
+              <div className="bg-slate-50 border rounded-xl p-4 space-y-1">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Sponsorship Reason</h4>
+                <p className="text-sm text-slate-800 font-medium">{reviewDialog.sponsorshipReason || <span className="italic text-slate-400">Not provided</span>}</p>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 {[{ label: "Portal Fee", ok: reviewDialog.portalFeePaid }, { label: "Biometric", ok: reviewDialog.biometricVerified }, { label: "KYC Ready", ok: reviewDialog.portalFeePaid && reviewDialog.biometricVerified }].map(item => (

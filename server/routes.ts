@@ -2256,7 +2256,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const { amountUsd } = req.body;
       const amount = parseFloat(amountUsd);
-      if (isNaN(amount) || amount < 1) return res.status(400).json({ message: "Minimum transfer is $1." });
+      if (isNaN(amount) || amount < 5) return res.status(400).json({ message: "Minimum transfer is $5 (earnings only)." });
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
       const twBalance = parseFloat(tradeWallet.tradeBalance);
       const twLocked = tradeWallet.roiComplete ? 0 : parseFloat(tradeWallet.lockedPrincipal ?? "0");

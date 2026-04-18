@@ -556,12 +556,20 @@ export default function AffiliateDashboard() {
   const tradeWalletRaw = useQuery({ queryKey: ["/api/trade/wallet"] }).data as any;
   useEffect(() => {
     if (!tradeWalletRaw?.botActivatedAt) return;
+    // Skip if we're currently in the middle of completing a session (race-condition guard)
+    if (botCompletingRef.current) return;
     const dbTs = new Date(tradeWalletRaw.botActivatedAt).getTime();
     if (!Number.isFinite(dbTs)) return;
     // Only restore if we don't already have a session tracked locally (avoids overwriting active session)
     if (!botActivatedAt) {
-      setBotActivatedAt(dbTs);
-      try { localStorage.setItem("tsia_bot_activated_at", String(dbTs)); } catch {}
+      // Only restore if the session has NOT yet expired — expired sessions are handled by the mount effect
+      const alreadyElapsed = (Date.now() - dbTs) >= 12 * 3600 * 1000;
+      const ukH = parseInt(new Date().toLocaleString("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }));
+      const windowCurrentlyOpen = ukH >= 13 || ukH < 1;
+      if (!alreadyElapsed && windowCurrentlyOpen) {
+        setBotActivatedAt(dbTs);
+        try { localStorage.setItem("tsia_bot_activated_at", String(dbTs)); } catch {}
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeWalletRaw?.botActivatedAt]);
@@ -1324,11 +1332,8 @@ export default function AffiliateDashboard() {
                           {!tradeBalanceHidden && <p className="text-xs text-blue-500/70">≈ {formatAmount(tradeBalance)}</p>}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setWithdrawOpen(true)} data-testid="button-trade-withdraw" className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300">
-                            <ArrowUpRight className="w-3.5 h-3.5 mr-1.5" /> Withdraw
-                          </Button>
                           <Button size="sm" onClick={() => setFundTradeOpen(true)} data-testid="button-fund-trade-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
-                            <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" /> Fund
+                            <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" /> Top Up
                           </Button>
                         </div>
                       </div>
@@ -1364,16 +1369,29 @@ export default function AffiliateDashboard() {
                           <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground leading-none mb-0.5">Total Bot Earnings</p>
+                          <p className="text-xs text-muted-foreground leading-none mb-0.5">Bot Earnings (withdrawable)</p>
                           <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300" data-testid="text-total-bot-earnings">
-                            {tradeBalanceHidden ? "••••••" : `$${parseFloat(tradeWallet?.totalBotEarnings ?? "0").toFixed(2)}`}
+                            {tradeBalanceHidden ? "••••••" : `$${withdrawableAmt.toFixed(2)}`}
                           </p>
-                          {!tradeBalanceHidden && <p className="text-[10px] text-emerald-600/70">≈ {formatAmount(parseFloat(tradeWallet?.totalBotEarnings ?? "0"))}</p>}
+                          {!tradeBalanceHidden && <p className="text-[10px] text-emerald-600/70">≈ {formatAmount(withdrawableAmt)}</p>}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground">Daily target</p>
-                        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">+2% / session</p>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <p className="text-xs text-muted-foreground">+2% / session</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setWithdrawOpen(true)}
+                          disabled={withdrawableAmt < 5}
+                          data-testid="button-trade-withdraw"
+                          title={withdrawableAmt < 5 ? `Minimum $5 earnings required (you have $${withdrawableAmt.toFixed(2)})` : "Withdraw your earnings"}
+                          className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 h-7 text-xs px-2.5 disabled:opacity-40"
+                        >
+                          <ArrowUpRight className="w-3 h-3 mr-1" /> Withdraw
+                        </Button>
+                        {withdrawableAmt > 0 && withdrawableAmt < 5 && (
+                          <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Min $5 to unlock</p>
+                        )}
                       </div>
                     </div>
                     {/* ROI Progress bar — shown once user has invested */}
@@ -1398,6 +1416,70 @@ export default function AffiliateDashboard() {
                     )}
                   </div>
                 </motion.div>
+
+                {/* ── Trade Transaction History — shown first for quick access ── */}
+                {(tradeTxs as any[]).length > 0 && (
+                  <motion.div variants={itemVariants}>
+                    <Card className="shadow-md border-0 overflow-hidden" data-testid="panel-trade-tx-history">
+                      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-5 pt-4 pb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4" />
+                          <h3 className="font-bold text-sm">Transaction History</h3>
+                        </div>
+                        <Badge className="bg-white/10 text-white border-0 text-xs">{(tradeTxs as any[]).length} records</Badge>
+                      </div>
+                      <CardContent className="p-0">
+                        <div className="divide-y divide-border">
+                          {(tradeTxs as any[]).slice().reverse().map((tx: any) => {
+                            const net = parseFloat(tx.netAmount ?? tx.amountUsd ?? "0");
+                            const isPositive = net >= 0;
+                            const typeLabel: Record<string, string> = {
+                              deposit: "Deposit",
+                              bot_earning: net < 0 ? "Bot Loss" : "Bot Earnings",
+                              withdraw_bank: "Bank Withdrawal",
+                              withdraw_exchange: "Exchange Withdrawal",
+                              trade_transfer: "Trade Transfer",
+                              commission_credit: "Commission Credit",
+                              referral_commission: "Referral Commission",
+                            };
+                            const typeColor: Record<string, string> = {
+                              deposit: "text-blue-600 dark:text-blue-400",
+                              bot_earning: net < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400",
+                              withdraw_bank: "text-orange-600 dark:text-orange-400",
+                              withdraw_exchange: "text-orange-600 dark:text-orange-400",
+                              trade_transfer: "text-purple-600 dark:text-purple-400",
+                              commission_credit: "text-tsia-gold",
+                              referral_commission: "text-tsia-gold",
+                            };
+                            const icon = tx.type === "deposit" ? "↓" : tx.type === "bot_earning" ? (net < 0 ? "↓" : "↑") : "↑";
+                            return (
+                              <div key={tx.id} className="px-4 py-3 flex items-start gap-3" data-testid={`row-trade-tx-${tx.id}`}>
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" : tx.type === "deposit" ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}>
+                                  {icon}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className={`text-xs font-bold ${typeColor[tx.type] ?? "text-foreground"}`}>
+                                      {typeLabel[tx.type] ?? tx.type}
+                                    </p>
+                                    <p className={`text-xs font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "text-emerald-600 dark:text-emerald-400" : tx.type === "deposit" ? "text-blue-600 dark:text-blue-400" : "text-red-500"}`}>
+                                      {tx.type === "deposit" ? `+$${Math.abs(net).toFixed(4)}` : (isPositive ? `+$${net.toFixed(4)}` : `-$${Math.abs(net).toFixed(4)}`)}
+                                    </p>
+                                  </div>
+                                  {tx.note && <p className="text-[10px] text-muted-foreground mt-0.5 truncate" title={tx.note}>{tx.note}</p>}
+                                  <div className="flex items-center gap-3 mt-0.5">
+                                    <p className="text-[10px] text-muted-foreground">{new Date(tx.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })} GMT</p>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${tx.status === "completed" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"}`}>{tx.status}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
 
                 {/* ── P&L Chart — weekly profit / loss breakdown ── */}
                 {(() => {
@@ -1562,70 +1644,6 @@ export default function AffiliateDashboard() {
                     </motion.div>
                   );
                 })()}
-
-                {/* ── Trade Transaction History ── */}
-                {(tradeTxs as any[]).length > 0 && (
-                  <motion.div variants={itemVariants}>
-                    <Card className="shadow-md border-0 overflow-hidden" data-testid="panel-trade-tx-history">
-                      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-5 pt-4 pb-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <BarChart3 className="w-4 h-4" />
-                          <h3 className="font-bold text-sm">Transaction History</h3>
-                        </div>
-                        <Badge className="bg-white/10 text-white border-0 text-xs">{(tradeTxs as any[]).length} records</Badge>
-                      </div>
-                      <CardContent className="p-0">
-                        <div className="divide-y divide-border">
-                          {(tradeTxs as any[]).slice().reverse().map((tx: any) => {
-                            const net = parseFloat(tx.netAmount ?? tx.amountUsd ?? "0");
-                            const isPositive = net >= 0;
-                            const typeLabel: Record<string, string> = {
-                              deposit: "Deposit",
-                              bot_earning: net < 0 ? "Bot Loss" : "Bot Earnings",
-                              withdraw_bank: "Bank Withdrawal",
-                              withdraw_exchange: "Exchange Withdrawal",
-                              trade_transfer: "Trade Transfer",
-                              commission_credit: "Commission Credit",
-                              referral_commission: "Referral Commission",
-                            };
-                            const typeColor: Record<string, string> = {
-                              deposit: "text-blue-600 dark:text-blue-400",
-                              bot_earning: net < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400",
-                              withdraw_bank: "text-orange-600 dark:text-orange-400",
-                              withdraw_exchange: "text-orange-600 dark:text-orange-400",
-                              trade_transfer: "text-purple-600 dark:text-purple-400",
-                              commission_credit: "text-tsia-gold",
-                              referral_commission: "text-tsia-gold",
-                            };
-                            const icon = tx.type === "deposit" ? "↓" : tx.type === "bot_earning" ? (net < 0 ? "↓" : "↑") : "↑";
-                            return (
-                              <div key={tx.id} className="px-4 py-3 flex items-start gap-3" data-testid={`row-trade-tx-${tx.id}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" : tx.type === "deposit" ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}>
-                                  {icon}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <p className={`text-xs font-bold ${typeColor[tx.type] ?? "text-foreground"}`}>
-                                      {typeLabel[tx.type] ?? tx.type}
-                                    </p>
-                                    <p className={`text-xs font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "text-emerald-600 dark:text-emerald-400" : tx.type === "deposit" ? "text-blue-600 dark:text-blue-400" : "text-red-500"}`}>
-                                      {tx.type === "deposit" ? `+$${Math.abs(net).toFixed(4)}` : (isPositive ? `+$${net.toFixed(4)}` : `-$${Math.abs(net).toFixed(4)}`)}
-                                    </p>
-                                  </div>
-                                  {tx.note && <p className="text-[10px] text-muted-foreground mt-0.5 truncate" title={tx.note}>{tx.note}</p>}
-                                  <div className="flex items-center gap-3 mt-0.5">
-                                    <p className="text-[10px] text-muted-foreground">{new Date(tx.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })} GMT</p>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${tx.status === "completed" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"}`}>{tx.status}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                )}
 
                 {/* Broker Selection — dropdown */}
                 <motion.div variants={itemVariants}>
@@ -2626,11 +2644,11 @@ export default function AffiliateDashboard() {
             {withdrawType === "transfer_wallet" && (
               <>
                 <div className="bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3 text-xs text-tsia-green font-medium">
-                  Instant transfer — no fees charged. Funds appear in your Personal Wallet immediately.
+                  Instant transfer — no fees charged. Funds appear in your Personal Wallet immediately. Only trade <strong>earnings</strong> can be transferred (minimum $5).
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
-                  <Input type="number" min={1} max={withdrawableAmt} placeholder="Min $1.00" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
+                  <Input type="number" min={5} max={withdrawableAmt} placeholder="Min $5.00 (earnings only)" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
                   {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
                 </div>
               </>
@@ -2744,7 +2762,7 @@ export default function AffiliateDashboard() {
             {/* Transfer to wallet */}
             {withdrawType === "transfer_wallet" && (
               <Button onClick={() => transferToWalletMutation.mutate()}
-                disabled={transferToWalletMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 1 || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted}
+                disabled={transferToWalletMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 5 || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted}
                 className="bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-transfer-to-wallet">
                 {transferToWalletMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Wallet className="w-4 h-4 mr-2" />} Transfer Now
               </Button>

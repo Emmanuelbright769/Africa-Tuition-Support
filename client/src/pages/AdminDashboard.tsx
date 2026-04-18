@@ -130,7 +130,7 @@ export default function AdminDashboard() {
   const [wdNote, setWdNote]               = useState("");
   const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "", silverMin: "", silverMax: "", goldMin: "", goldMax: "", platinumMin: "", platinumMax: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
-  const [wdAction, setWdAction]           = useState<"approve" | "decline" | null>(null);
+  const [wdAction, setWdAction]           = useState<"approve" | "decline" | "refund" | null>(null);
   const [wdCopied, setWdCopied]           = useState<string | null>(null);
 
   const { user, logout, isLoading: authLoading } = useAuth();
@@ -283,7 +283,7 @@ export default function AdminDashboard() {
   });
 
   const wdActionMutation = useMutation({
-    mutationFn: async ({ id, action, adminNote }: { id: number; action: "approve" | "decline"; adminNote: string }) => {
+    mutationFn: async ({ id, action, adminNote }: { id: number; action: "approve" | "decline" | "refund"; adminNote: string }) => {
       const res = await apiRequest("POST", `/api/admin/withdrawals/${id}/${action}`, { adminNote });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
@@ -292,7 +292,10 @@ export default function AdminDashboard() {
     onSuccess: (_, { action }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/withdrawals"] });
       setWdNoteDialogId(null); setWdNote(""); setWdAction(null);
-      toast({ title: action === "approve" ? "Withdrawal Approved ✓" : "Withdrawal Declined & Refunded", description: action === "approve" ? "User notified by email and in-app." : "Funds refunded to user's wallet. Email sent." });
+      toast({
+        title: action === "approve" ? "Withdrawal Approved ✓" : action === "decline" ? "Withdrawal Declined" : "Refund Issued ✓",
+        description: action === "approve" ? "User notified by email and in-app." : action === "decline" ? "User notified. No funds moved." : "Funds returned to user's wallet. Email sent.",
+      });
     },
     onError: (e: any) => toast({ title: "Action failed", description: e.message, variant: "destructive" }),
   });
@@ -1409,7 +1412,7 @@ export default function AdminDashboard() {
                                 {wd.adminNote && <span className="italic">Note: {wd.adminNote}</span>}
                               </div>
 
-                              {/* Action buttons (pending only) */}
+                              {/* Action buttons — pending: Approve + Decline; declined: Refund */}
                               {wd.status === "pending" && (
                                 <div className="flex gap-2 pt-1">
                                   <Button
@@ -1427,7 +1430,19 @@ export default function AdminDashboard() {
                                     onClick={() => { setWdNoteDialogId(wd.id); setWdNote(""); setWdAction("decline"); }}
                                     data-testid={`btn-decline-wd-${wd.id}`}
                                   >
-                                    <ThumbsDown className="w-3.5 h-3.5 mr-1" /> Decline & Refund
+                                    <ThumbsDown className="w-3.5 h-3.5 mr-1" /> Decline
+                                  </Button>
+                                </div>
+                              )}
+                              {wd.status === "declined" && (
+                                <div className="pt-1">
+                                  <Button
+                                    size="sm"
+                                    className="w-full text-xs h-9 rounded-xl font-bold bg-amber-500 hover:bg-amber-600 text-white"
+                                    onClick={() => { setWdNoteDialogId(wd.id); setWdNote(""); setWdAction("refund"); }}
+                                    data-testid={`btn-refund-wd-${wd.id}`}
+                                  >
+                                    <Wallet className="w-3.5 h-3.5 mr-1" /> Refund to Wallet
                                   </Button>
                                 </div>
                               )}
@@ -1436,22 +1451,26 @@ export default function AdminDashboard() {
                         ))}
                       </div>
 
-                      {/* Note/Confirm Dialog */}
+                      {/* Confirm Dialog — shared for approve / decline / refund */}
                       <Dialog open={wdNoteDialogId !== null} onOpenChange={open => { if (!open) { setWdNoteDialogId(null); setWdNote(""); setWdAction(null); } }}>
                         <DialogContent className="max-w-sm">
                           <DialogHeader>
-                            <DialogTitle>{wdAction === "approve" ? "Approve Withdrawal" : "Decline & Refund Withdrawal"}</DialogTitle>
+                            <DialogTitle>
+                              {wdAction === "approve" ? "Approve Withdrawal" : wdAction === "decline" ? "Decline Withdrawal" : "Refund to Wallet"}
+                            </DialogTitle>
                             <DialogDescription>
                               {wdAction === "approve"
                                 ? "Confirm you have manually transferred the funds. The user will be notified."
-                                : "This will refund the full amount back to the user's TSIA wallet and send them an email."}
+                                : wdAction === "decline"
+                                ? "This will mark the request as declined. No money will be moved. You can issue a refund separately."
+                                : "This will credit the full amount back to the user's TSIA wallet and send them an email."}
                             </DialogDescription>
                           </DialogHeader>
                           <div className="space-y-3 py-2">
                             <div>
                               <Label className="text-xs text-muted-foreground">Admin Note (optional)</Label>
                               <Textarea
-                                placeholder={wdAction === "approve" ? "e.g. Transferred via Opay at 2:30PM" : "e.g. Incorrect account details"}
+                                placeholder={wdAction === "approve" ? "e.g. Transferred via Opay at 2:30PM" : wdAction === "decline" ? "e.g. Incorrect account details" : "e.g. Refund issued per support request"}
                                 value={wdNote}
                                 onChange={e => setWdNote(e.target.value)}
                                 className="mt-1.5 h-20 text-sm"
@@ -1462,13 +1481,13 @@ export default function AdminDashboard() {
                             <Button variant="ghost" size="sm" onClick={() => { setWdNoteDialogId(null); setWdNote(""); setWdAction(null); }}>Cancel</Button>
                             <Button
                               size="sm"
-                              className={wdAction === "approve" ? "bg-tsia-green hover:bg-tsia-green/90" : ""}
+                              className={wdAction === "approve" ? "bg-tsia-green hover:bg-tsia-green/90" : wdAction === "refund" ? "bg-amber-500 hover:bg-amber-600" : ""}
                               variant={wdAction === "decline" ? "destructive" : "default"}
                               disabled={wdActionMutation.isPending}
                               onClick={() => wdActionMutation.mutate({ id: wdNoteDialogId!, action: wdAction!, adminNote: wdNote })}
                               data-testid="btn-confirm-wd-action"
                             >
-                              {wdActionMutation.isPending ? "Processing…" : wdAction === "approve" ? "Confirm Approval" : "Confirm Decline & Refund"}
+                              {wdActionMutation.isPending ? "Processing…" : wdAction === "approve" ? "Confirm Approval" : wdAction === "decline" ? "Confirm Decline" : "Confirm Refund"}
                             </Button>
                           </DialogFooter>
                         </DialogContent>
@@ -1579,7 +1598,17 @@ export default function AdminDashboard() {
                                 <Button size="sm" variant="destructive" className="flex-1 text-xs h-9 rounded-xl font-bold"
                                   onClick={() => { setWdNoteDialogId(wd.id); setWdNote(""); setWdAction("decline"); }}
                                   data-testid={`btn-decline-cwd-${wd.id}`}>
-                                  <ThumbsDown className="w-3.5 h-3.5 mr-1" /> Decline & Refund
+                                  <ThumbsDown className="w-3.5 h-3.5 mr-1" /> Decline
+                                </Button>
+                              </div>
+                            )}
+                            {wd.status === "declined" && (
+                              <div className="pt-1">
+                                <Button size="sm"
+                                  className="w-full text-xs h-9 rounded-xl font-bold bg-amber-500 hover:bg-amber-600 text-white"
+                                  onClick={() => { setWdNoteDialogId(wd.id); setWdNote(""); setWdAction("refund"); }}
+                                  data-testid={`btn-refund-cwd-${wd.id}`}>
+                                  <Wallet className="w-3.5 h-3.5 mr-1" /> Refund to Wallet
                                 </Button>
                               </div>
                             )}
@@ -1591,22 +1620,31 @@ export default function AdminDashboard() {
                     <Dialog open={wdNoteDialogId !== null} onOpenChange={open => { if (!open) { setWdNoteDialogId(null); setWdNote(""); setWdAction(null); } }}>
                       <DialogContent className="max-w-sm">
                         <DialogHeader>
-                          <DialogTitle>{wdAction === "approve" ? "Approve Crypto Withdrawal" : "Decline & Refund"}</DialogTitle>
+                          <DialogTitle>
+                            {wdAction === "approve" ? "Approve Crypto Withdrawal" : wdAction === "decline" ? "Decline Crypto Withdrawal" : "Refund to Wallet"}
+                          </DialogTitle>
                           <DialogDescription>
-                            {wdAction === "approve" ? "Confirm you have sent the USDT. The user will be notified." : "This will refund the full amount back to the user's wallet."}
+                            {wdAction === "approve"
+                              ? "Confirm you have sent the USDT. The user will be notified."
+                              : wdAction === "decline"
+                              ? "This will mark the request as declined. No funds will be moved. You can refund separately."
+                              : "This will credit the full amount back to the user's TSIA wallet."}
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-3 py-2">
                           <div>
                             <Label className="text-xs text-muted-foreground">Admin Note (optional)</Label>
-                            <Textarea placeholder={wdAction === "approve" ? "e.g. Sent via TRC-20 at 3PM" : "e.g. Invalid address"} value={wdNote} onChange={e => setWdNote(e.target.value)} className="mt-1.5 h-20 text-sm" />
+                            <Textarea placeholder={wdAction === "approve" ? "e.g. Sent via TRC-20 at 3PM" : wdAction === "decline" ? "e.g. Invalid address" : "e.g. Refund per support request"} value={wdNote} onChange={e => setWdNote(e.target.value)} className="mt-1.5 h-20 text-sm" />
                           </div>
                         </div>
                         <DialogFooter className="gap-2">
                           <Button variant="ghost" size="sm" onClick={() => { setWdNoteDialogId(null); setWdNote(""); setWdAction(null); }}>Cancel</Button>
-                          <Button size="sm" className={wdAction === "approve" ? "bg-tsia-green hover:bg-tsia-green/90" : ""} variant={wdAction === "decline" ? "destructive" : "default"} disabled={wdActionMutation.isPending}
+                          <Button size="sm"
+                            className={wdAction === "approve" ? "bg-tsia-green hover:bg-tsia-green/90" : wdAction === "refund" ? "bg-amber-500 hover:bg-amber-600" : ""}
+                            variant={wdAction === "decline" ? "destructive" : "default"}
+                            disabled={wdActionMutation.isPending}
                             onClick={() => wdActionMutation.mutate({ id: wdNoteDialogId!, action: wdAction!, adminNote: wdNote })}>
-                            {wdActionMutation.isPending ? "Processing…" : wdAction === "approve" ? "Confirm Approval" : "Confirm Decline"}
+                            {wdActionMutation.isPending ? "Processing…" : wdAction === "approve" ? "Confirm Approval" : wdAction === "decline" ? "Confirm Decline" : "Confirm Refund"}
                           </Button>
                         </DialogFooter>
                       </DialogContent>

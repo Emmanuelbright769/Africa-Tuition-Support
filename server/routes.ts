@@ -3274,6 +3274,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Decline only — marks request as declined, does NOT credit wallet ─────────
   app.post("/api/admin/withdrawals/:id/decline", async (req, res) => {
     try {
       const sessionUserId = (req.session as any)?.userId;
@@ -3285,7 +3286,49 @@ export async function registerRoutes(
       const wd = await storage.getWithdrawalRequestById(wdId);
       if (!wd) return res.status(404).json({ message: "Withdrawal request not found" });
       if (wd.status !== "pending") return res.status(400).json({ message: `Cannot decline a ${wd.status} request` });
-      // Refund the wallet
+      await storage.updateWithdrawalRequest(wdId, {
+        status: "declined",
+        adminNote: adminNote ?? "",
+        processedAt: new Date(),
+      });
+      const user = await storage.getUser(wd.userId);
+      const notif = await storage.createNotification({
+        userId: wd.userId, type: "system",
+        title: "Withdrawal Declined",
+        message: `Your withdrawal request of $${parseFloat(wd.amount).toFixed(2)} has been declined.${adminNote ? ` Reason: ${adminNote}` : " Contact support for more information."}`,
+        data: { withdrawalId: wdId }, isRead: false,
+      });
+      pushToUser(wd.userId, "notification", notif);
+      try {
+        await sendEmail(
+          user!.email,
+          "Withdrawal Request Declined — TSIA",
+          `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
+            <h2 style="color:#dc2626">Withdrawal Request Declined</h2>
+            <p style="color:#6b7280">Hi ${user!.firstName}, your withdrawal request of $${parseFloat(wd.amount as string).toFixed(2)} has been declined.</p>
+            ${adminNote ? `<p style="font-size:13px;color:#6b7280"><strong>Reason:</strong> ${adminNote}</p>` : ""}
+            <p style="font-size:13px;color:#6b7280">Please contact support if you have any questions about your funds.</p>
+          </div>`
+        );
+      } catch {}
+      res.json({ message: "Withdrawal declined" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Refund only — credits wallet, marks as refunded (use after declining) ────
+  app.post("/api/admin/withdrawals/:id/refund", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const wdId = parseInt(req.params.id);
+      const { adminNote } = req.body;
+      const wd = await storage.getWithdrawalRequestById(wdId);
+      if (!wd) return res.status(404).json({ message: "Withdrawal request not found" });
+      if (wd.status === "refunded") return res.status(400).json({ message: "This request has already been refunded" });
+      if (wd.status === "approved") return res.status(400).json({ message: "Cannot refund an approved withdrawal" });
+      // Credit wallet
       const wallet = await storage.getOrCreateWallet(wd.userId);
       const refundAmt = parseFloat(wd.amount);
       const refundedBalance = (parseFloat(wallet.balance) + refundAmt).toFixed(2);
@@ -3295,37 +3338,36 @@ export async function registerRoutes(
         amount: refundAmt.toFixed(2),
         fee: "0",
         paymentMethod: wd.type === "bank" ? "bank_transfer" : "crypto",
-        description: `Withdrawal refund — ${adminNote ?? "declined by admin"}`,
+        description: `Withdrawal refund — ${adminNote ?? "refunded by admin"}`,
       });
       await storage.updateWithdrawalRequest(wdId, {
-        status: "declined",
-        adminNote: adminNote ?? "",
+        status: "refunded",
+        adminNote: adminNote ?? wd.adminNote ?? "",
         processedAt: new Date(),
       });
       const user = await storage.getUser(wd.userId);
       const notif = await storage.createNotification({
         userId: wd.userId, type: "wallet_credit",
-        title: "Withdrawal Declined — Refunded",
-        message: `Your withdrawal of $${parseFloat(wd.amount).toFixed(2)} was declined and has been refunded to your TSIA wallet. ${adminNote ?? ""}`,
+        title: "Withdrawal Refunded ✓",
+        message: `$${refundAmt.toFixed(2)} has been refunded to your TSIA wallet.`,
         data: { withdrawalId: wdId }, isRead: false,
       });
       pushToUser(wd.userId, "notification", notif);
       try {
         await sendEmail(
           user!.email,
-          "Withdrawal Declined & Refunded — TSIA",
+          "Withdrawal Refunded — TSIA",
           `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
-            <h2 style="color:#dc2626">Withdrawal Declined</h2>
-            <p style="color:#6b7280">Hi ${user!.firstName}, unfortunately your withdrawal request has been declined.</p>
-            <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#991b1b">
-              <strong>Refunded:</strong> $${parseFloat(wd.amount as string).toFixed(2)} has been returned to your TSIA wallet.
+            <h2 style="color:#1a5c38">Withdrawal Refunded</h2>
+            <p style="color:#6b7280">Hi ${user!.firstName}, your withdrawal request has been refunded.</p>
+            <div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#166534">
+              <strong>Refunded:</strong> $${refundAmt.toFixed(2)} has been returned to your TSIA wallet.
             </div>
-            ${adminNote ? `<p style="font-size:13px;color:#6b7280"><strong>Reason:</strong> ${adminNote}</p>` : ""}
-            <p style="font-size:13px;color:#6b7280">Please contact support if you have any questions.</p>
+            ${adminNote ? `<p style="font-size:13px;color:#6b7280"><strong>Note:</strong> ${adminNote}</p>` : ""}
           </div>`
         );
       } catch {}
-      res.json({ message: "Withdrawal declined and refunded", newBalance: refundedBalance });
+      res.json({ message: "Withdrawal refunded", newBalance: refundedBalance });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

@@ -453,9 +453,11 @@ export default function WalletPage() {
   };
 
   const statusBadge = (s: string) => {
-    if (s === "completed" || s === "success") return <span className="text-[10px] font-bold text-tsia-green bg-tsia-green/10 px-2 py-0.5 rounded-full">Confirmed</span>;
+    if (s === "completed" || s === "success" || s === "approved") return <span className="text-[10px] font-bold text-tsia-green bg-tsia-green/10 px-2 py-0.5 rounded-full">Approved</span>;
     if (s === "pending") return <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">Pending</span>;
-    return <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">Failed</span>;
+    if (s === "refunded") return <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full">Refunded</span>;
+    if (s === "declined") return <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">Declined</span>;
+    return <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{s ?? "Unknown"}</span>;
   };
 
   return (
@@ -916,12 +918,11 @@ export default function WalletPage() {
                   <p className="text-sm">No withdrawals yet</p>
                 </div>
               ) : withdrawals.map((w: any) => {
-                const isCrypto = w.type === "crypto_withdrawal";
-                const networkMatch = isCrypto ? w.description?.match(/\(([^)]+?)\)/) : null;
-                const networkLabel = networkMatch ? networkMatch[1] : "";
-                const addrMatch = isCrypto ? w.description?.match(/to ([^\s|]+)/) : null;
-                const addrShort = addrMatch ? addrMatch[1] : "";
-                const bankDest = !isCrypto ? w.description?.split(" to ")?.[1]?.split(" —")?.[0] : null;
+                const isCrypto = w.type === "crypto";
+                const addrShort = w.address ? `${w.address.slice(0, 6)}...${w.address.slice(-4)}` : "";
+                const destination = isCrypto
+                  ? `${w.network ?? ""}${addrShort ? " · " + addrShort : ""}`
+                  : w.accountName ? `${w.accountName} (${w.accountNumber}) at ${w.bankName}` : w.bankName ?? "";
                 return (
                   <div key={w.id} className="flex items-center justify-between bg-card rounded-2xl px-4 py-3 border" data-testid={`row-withdrawal-${w.id}`}>
                     <div className="flex items-center gap-3">
@@ -930,14 +931,12 @@ export default function WalletPage() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold text-sm">{isCrypto ? "Crypto Withdrawal" : "Bank Withdrawal"}</p>
-                        <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">
-                          {isCrypto ? `${networkLabel}${addrShort ? " · " + addrShort : ""}` : bankDest || w.description}
-                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">{destination}</p>
                         <p className="text-[10px] text-muted-foreground">{new Date(w.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
                       </div>
                     </div>
                     <div className="text-right shrink-0 ml-2">
-                      <p className="font-bold text-sm text-red-500">−${Math.abs(parseFloat(w.amount)).toFixed(2)}</p>
+                      <p className="font-bold text-sm text-red-500">−${parseFloat(w.amount).toFixed(2)}</p>
                       {statusBadge(w.status)}
                     </div>
                   </div>

@@ -1354,8 +1354,7 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const txns = await storage.getTransactionsByUser(userId);
-      const withdrawals = txns.filter((t: any) => t.type === "withdrawal" || t.type === "crypto_withdrawal");
+      const withdrawals = await storage.getWithdrawalRequestsByUser(userId);
       res.json(withdrawals);
     } catch (e: any) {
       res.status(500).json({ message: e.message });

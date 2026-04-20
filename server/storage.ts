@@ -1628,6 +1628,12 @@ export class DatabaseStorage implements IStorage {
     return req;
   }
 
+  async getWithdrawalRequestsByUser(userId: number) {
+    return await db.select().from(withdrawalRequests)
+      .where(eq(withdrawalRequests.userId, userId))
+      .orderBy(desc(withdrawalRequests.createdAt));
+  }
+
   async getWithdrawalRequestById(id: number) {
     const [req] = await db.select().from(withdrawalRequests).where(eq(withdrawalRequests.id, id));
     return req ?? null;

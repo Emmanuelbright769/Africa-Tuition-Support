@@ -2133,12 +2133,16 @@ export async function registerRoutes(
 
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
       await storage.addToTotalInvested(userId, userCredit.toFixed(6));
-      // If ROI was previously complete, reset for new trading cycle
+      // If cycle was previously complete, reset for a new 120-day cycle
       const postDepositWallet = await storage.getOrCreateTradeWallet(userId);
       if (postDepositWallet.roiComplete) {
         await storage.resetRoiForNewCycle(userId);
+        await storage.assignLossDays(userId, generateLossDays());
+      } else if ((postDepositWallet.lossDayNumbers?.length ?? 0) === 0) {
+        // First deposit ever — assign the 120-day loss schedule
+        await storage.assignLossDays(userId, generateLossDays());
       }
-      // Track locked principal (net amount in trade balance from this deposit)
+      // Track locked principal (net amount in trade balance from this deposit — capital is locked)
       await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
       await storage.addToReserveFund(reserveCut.toFixed(6));
 
@@ -2208,12 +2212,16 @@ export async function registerRoutes(
       });
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
       await storage.addToTotalInvested(userId, userCredit.toFixed(6));
-      // If ROI was previously complete, reset for new trading cycle
+      // If cycle was previously complete, reset for a new 120-day cycle
       const fwPostWallet = await storage.getOrCreateTradeWallet(userId);
       if (fwPostWallet.roiComplete) {
         await storage.resetRoiForNewCycle(userId);
+        await storage.assignLossDays(userId, generateLossDays());
+      } else if ((fwPostWallet.lossDayNumbers?.length ?? 0) === 0) {
+        // First top-up — assign the 120-day loss schedule
+        await storage.assignLossDays(userId, generateLossDays());
       }
-      // Track locked principal (net amount in trade balance from this funding)
+      // Track locked principal (net amount in trade balance — capital is locked)
       await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
       await storage.addToReserveFund(reserveCut.toFixed(6));
       // Credit 5% directly to specific referrer (if any), otherwise shared pool
@@ -2372,26 +2380,26 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ── Loss-day helpers ────────────────────────────────────────────────────────
-  function getISOWeekNumber(date: Date): number {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  // ── 120-day cycle helpers ────────────────────────────────────────────────────
+  const TRADE_CYCLE_DAYS = 120;
+  const TRADE_CYCLE_LOSS_DAYS = 16;
+
+  /** Generate 16 unique random loss day numbers (1–120) for a new trading cycle */
+  function generateLossDays(): number[] {
+    const pool = Array.from({ length: TRADE_CYCLE_DAYS }, (_, i) => i + 1); // [1..120]
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool.slice(0, TRADE_CYCLE_LOSS_DAYS).sort((a, b) => a - b);
   }
-  function getLossDaysForWeek(weekNum: number): Set<number> {
-    // Returns exactly 1 ISO weekday number (1=Mon…5=Fri) deterministically per week
-    // Only picks from Mon-Fri (1-5) since weekend trading is disabled
-    const d1 = ((weekNum * 7 + 3) % 5) + 1;
-    return new Set([d1]);
-  }
-  function getLossRateForDay(weekNum: number, isoDay: number): number {
-    // Deterministic loss rate between 0.5% and 2.0% (capped same as profit)
-    const seed = (weekNum * 37 + isoDay * 17) % 100;
+
+  /** Loss rate for a given day: deterministic 0.5%–2.0% based on day number */
+  function getLossRateForCycleDay(dayNumber: number): number {
+    const seed = (dayNumber * 37 + 17) % 100;
     return 0.005 + (seed / 100) * 0.015; // 0.5% → 2.0%
   }
-  // ────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // Called by the frontend when the user activates the bot — persists start time in the DB
   app.post("/api/trade/bot/activate", async (req, res) => {
@@ -2407,7 +2415,8 @@ export async function registerRoutes(
       if (isWeekend) return res.status(400).json({ message: "The market is closed on weekends. Trading resumes Monday at 1:00 PM GMT." });
       if (isBeforeOpen) return res.status(400).json({ message: "The activation window opens at 1:00 PM GMT (Mon–Fri)." });
       const wallet = await storage.getOrCreateTradeWallet(userId);
-      if (wallet.roiComplete) return res.status(400).json({ message: "ROI Complete. Your 100% return has been achieved. Make a new deposit to restart trading." });
+      if (wallet.roiComplete) return res.status(400).json({ message: "Trading cycle complete. Your 120-day trading cycle has ended. Make a new top-up to start a fresh cycle." });
+      if ((wallet.tradingDayNumber ?? 0) >= TRADE_CYCLE_DAYS) return res.status(400).json({ message: "Trading cycle complete. Your 120-day trading cycle has ended. Make a new top-up to start a fresh cycle." });
       if (parseFloat(wallet.tradeBalance) <= 0) return res.status(400).json({ message: "No trade balance." });
       const now = new Date();
       const updated = await storage.setBotActivatedAt(userId, now);
@@ -2435,16 +2444,14 @@ export async function registerRoutes(
       const balance = parseFloat(wallet.tradeBalance);
       if (balance <= 0) return res.status(400).json({ message: "No balance to earn from." });
 
-      // ── Determine if today (UK time) is a loss day ───────────────────────
-      const nowUK   = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" }));
-      const isoWeek = getISOWeekNumber(nowUK);
-      const isoDay  = nowUK.getDay() === 0 ? 7 : nowUK.getDay(); // Sun=0 → 7; Mon=1…Sat=6 stays
-      const lossDays = getLossDaysForWeek(isoWeek);
-      const isLossDay = lossDays.has(isoDay);
+      // ── Determine current cycle day (1-indexed: next day after the N completed so far) ──
+      const currentCycleDay = (wallet.tradingDayNumber ?? 0) + 1;
+      const userLossDays: number[] = Array.isArray(wallet.lossDayNumbers) ? wallet.lossDayNumbers : [];
+      const isLossDay = userLossDays.includes(currentCycleDay);
 
-      // ── Compute session duration ─────────────────────────────────────────
+      // ── Compute session duration (proportional to hours the bot was active) ──
       const BOT_MAX_MS    = 12 * 3600 * 1000;
-      const BOT_FULL_RATE = 0.02;
+      const BOT_FULL_RATE = 0.02; // 2% max daily
       let elapsedMs = BOT_MAX_MS;
       if (activatedAt && Number.isFinite(activatedAt)) {
         elapsedMs = Math.min(Date.now() - activatedAt, BOT_MAX_MS);
@@ -2454,12 +2461,15 @@ export async function registerRoutes(
       const elapsedHours = (elapsedMs / 3600000).toFixed(1);
 
       if (isLossDay) {
-        // ── LOSS DAY: deduct from balance, do not touch totalBotEarnings ──
-        const lossRate   = getLossRateForDay(isoWeek, isoDay) * fraction;
+        // ── LOSS DAY: proportional loss (fraction of 0.5%–2.0%) ─────────
+        const lossRate   = getLossRateForCycleDay(currentCycleDay) * fraction;
         const lossAmount = parseFloat((balance * lossRate).toFixed(6));
         const ratePercent = (lossRate * 100).toFixed(4);
 
-        if (lossAmount <= 0) return res.json({ earning: "0", elapsedHours, ratePercent: "0", newBalance: wallet.tradeBalance, totalBotEarnings: wallet.totalBotEarnings, isLossDay: true });
+        if (lossAmount <= 0) {
+          await storage.incrementTradingDay(userId);
+          return res.json({ earning: "0", elapsedHours, ratePercent: "0", newBalance: wallet.tradeBalance, totalBotEarnings: wallet.totalBotEarnings, isLossDay: true, cycleDay: currentCycleDay, cycleDays: TRADE_CYCLE_DAYS });
+        }
 
         await storage.createTradeTransaction({
           userId,
@@ -2472,30 +2482,43 @@ export async function registerRoutes(
           netAmount: (-lossAmount).toFixed(6),
           txHash: null,
           status: "completed",
-          note: `Bot session (loss day): ${elapsedHours}h traded → -${ratePercent}% on $${balance.toFixed(2)}`,
+          note: `Bot session day ${currentCycleDay}/120 (loss): ${elapsedHours}h → -${ratePercent}% on $${balance.toFixed(2)}`,
         });
-        const updatedWallet = await storage.applyBotLoss(userId, lossAmount.toFixed(6));
+        let updatedWallet = await storage.applyBotLoss(userId, lossAmount.toFixed(6));
+        updatedWallet = await storage.incrementTradingDay(userId);
+
+        // ── Check 120-day cycle completion ─────────────────────────────
+        let cycleJustComplete = false;
+        if ((updatedWallet.tradingDayNumber ?? 0) >= TRADE_CYCLE_DAYS) {
+          cycleJustComplete = true;
+          await storage.markRoiComplete(userId);
+          await storage.createNotification({ userId, type: "trade", title: "120-Day Trading Cycle Complete", message: `Your 120-day trading cycle has ended. Your capital and all earnings are now fully available. Top up to start a fresh cycle.`, data: {}, isRead: false });
+        }
+
         await storage.createNotification({
           userId,
           type: "trade",
           title: "Bot Session — Market Loss",
-          message: `Your trading bot session (${elapsedHours}h) resulted in a market loss of $${lossAmount.toFixed(4)} (-${ratePercent}%). This reflects real market conditions.`,
-          data: { loss: lossAmount, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance },
+          message: `Day ${currentCycleDay}/120: Your trading bot (${elapsedHours}h) posted a market loss of $${lossAmount.toFixed(4)} (-${ratePercent}%).`,
+          data: { loss: lossAmount, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance, cycleDay: currentCycleDay },
           isRead: false,
         });
-        // Clear DB botActivatedAt so the session doesn't replay on next load
         await storage.setBotActivatedAt(userId, null);
+        const finalLossWallet = cycleJustComplete ? await storage.getOrCreateTradeWallet(userId) : updatedWallet;
         return res.json({
           earning: (-lossAmount).toFixed(6),
           elapsedHours,
           ratePercent: `-${ratePercent}`,
-          newBalance: updatedWallet.tradeBalance,
-          totalBotEarnings: updatedWallet.totalBotEarnings,
+          newBalance: finalLossWallet.tradeBalance,
+          totalBotEarnings: finalLossWallet.totalBotEarnings,
           isLossDay: true,
+          cycleDay: currentCycleDay,
+          cycleDays: TRADE_CYCLE_DAYS,
+          cycleComplete: cycleJustComplete || finalLossWallet.roiComplete,
         });
       }
 
-      // ── PROFIT DAY ───────────────────────────────────────────────────────
+      // ── PROFIT DAY: proportional earnings (fraction of up to 2%) ─────
       const rate    = BOT_FULL_RATE * fraction;
       const grossEarning = parseFloat((balance * rate).toFixed(6));
       const ratePercent = (rate * 100).toFixed(4);
@@ -2519,28 +2542,27 @@ export async function registerRoutes(
         netAmount: earning.toFixed(6),
         txHash: null,
         status: "completed",
-        note: `Bot session: ${elapsedHours}h traded → ${ratePercent}% return on $${balance.toFixed(2)}${hasBotReferrer ? ` | 5% referral commission: $${botAffiliateCommission.toFixed(4)}` : ""}`,
+        note: `Bot session day ${currentCycleDay}/120: ${elapsedHours}h → ${ratePercent}% on $${balance.toFixed(2)}${hasBotReferrer ? ` | 5% referral: $${botAffiliateCommission.toFixed(4)}` : ""}`,
       });
-      const updatedWallet = await storage.creditBotEarnings(userId, earning.toFixed(6));
+      let updatedWallet = await storage.creditBotEarnings(userId, earning.toFixed(6));
+      updatedWallet = await storage.incrementTradingDay(userId);
 
       // Credit 5% commission to referrer if applicable
       if (hasBotReferrer && botAffiliateCommission > 0) {
         await creditReferrerCommission(userId, grossEarning, "bot earnings").catch(() => {});
       }
 
-      // ── 100% ROI CHECK: if cumulative bot earnings ≥ total invested capital, close the trade ──
-      const totalEarned  = parseFloat(updatedWallet.totalBotEarnings);
-      const totalInvested = parseFloat(updatedWallet.totalInvested);
-      let roiJustCompleted = false;
-      if (!updatedWallet.roiComplete && totalInvested > 0 && totalEarned >= totalInvested) {
-        roiJustCompleted = true;
+      // ── 120-day cycle completion check ────────────────────────────────
+      let cycleJustComplete = false;
+      if (!updatedWallet.roiComplete && (updatedWallet.tradingDayNumber ?? 0) >= TRADE_CYCLE_DAYS) {
+        cycleJustComplete = true;
         await storage.markRoiComplete(userId);
         await storage.createNotification({
           userId,
           type: "trade",
-          title: "🎉 100% ROI Achieved — Trading Complete!",
-          message: `Congratulations! Your bot has returned 100% of your invested capital ($${totalInvested.toFixed(2)}) as profit. Your trade balance has been settled. Make a new deposit to continue trading.`,
-          data: { totalEarned, totalInvested },
+          title: "🎉 120-Day Trading Cycle Complete!",
+          message: `Congratulations! Your 120-day trading cycle is complete. Your capital and all earnings are now fully available. Top up to start a fresh cycle.`,
+          data: { tradingDayNumber: updatedWallet.tradingDayNumber },
           isRead: false,
         });
       }
@@ -2549,16 +2571,15 @@ export async function registerRoutes(
         userId,
         type: "trade",
         title: "Bot Session Complete — Earnings Credited",
-        message: `Your trading bot session (${elapsedHours}h) has ended. $${earning.toFixed(4)} (${ratePercent}% return${hasBotReferrer ? ", 5% referral commission deducted" : ""}) has been added to your Trade Wallet.`,
-        data: { earning, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance },
+        message: `Day ${currentCycleDay}/120: Your bot (${elapsedHours}h) earned $${earning.toFixed(4)} (${ratePercent}%${hasBotReferrer ? ", 5% referral deducted" : ""}).`,
+        data: { earning, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance, cycleDay: currentCycleDay },
         isRead: false,
       });
       storage.getUser(userId).then(u => {
         if (u) sendBotEarningsEmail(u.email, u.firstName, earning.toFixed(2), parseFloat(updatedWallet.tradeBalance).toFixed(2)).catch((err: any) => console.error("[EMAIL] Bot earnings email failed:", err?.message ?? err));
       });
-      // Clear DB botActivatedAt so the session doesn't replay on next load
       await storage.setBotActivatedAt(userId, null);
-      const finalWallet = roiJustCompleted ? await storage.getOrCreateTradeWallet(userId) : updatedWallet;
+      const finalWallet = cycleJustComplete ? await storage.getOrCreateTradeWallet(userId) : updatedWallet;
       res.json({
         earning: earning.toFixed(6),
         elapsedHours,
@@ -2567,6 +2588,9 @@ export async function registerRoutes(
         totalBotEarnings: finalWallet.totalBotEarnings,
         roiComplete: finalWallet.roiComplete,
         isLossDay: false,
+        cycleDay: currentCycleDay,
+        cycleDays: TRADE_CYCLE_DAYS,
+        cycleComplete: cycleJustComplete || finalWallet.roiComplete,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

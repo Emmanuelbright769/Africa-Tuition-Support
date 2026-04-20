@@ -135,6 +135,8 @@ export const tradeWallets = pgTable("trade_wallets", {
   lockedPrincipal: decimal("locked_principal", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   referralCommissionBalance: decimal("referral_commission_balance", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   botActivatedAt: timestamp("bot_activated_at"),
+  tradingDayNumber: integer("trading_day_number").notNull().default(0),
+  lossDayNumbers: integer("loss_day_numbers").array().notNull().default(sql`ARRAY[]::integer[]`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

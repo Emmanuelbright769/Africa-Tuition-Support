@@ -115,6 +115,8 @@ export interface IStorage {
   setBotActivatedAt(userId: number, ts: Date | null): Promise<TradeWallet>;
   creditBotEarnings(userId: number, earningAmount: string): Promise<TradeWallet>;
   applyBotLoss(userId: number, lossAmount: string): Promise<TradeWallet>;
+  assignLossDays(userId: number, days: number[]): Promise<TradeWallet>;
+  incrementTradingDay(userId: number): Promise<TradeWallet>;
   createTradeTransaction(tx: InsertTradeTransaction): Promise<TradeTransaction>;
   getTradeTransactionsByUser(userId: number): Promise<TradeTransaction[]>;
   getTradeReserveFund(): Promise<{ total_balance: string; total_deposited: string }>;
@@ -651,7 +653,7 @@ export class DatabaseStorage implements IStorage {
 
   async resetRoiForNewCycle(userId: number): Promise<void> {
     await db.update(tradeWallets)
-      .set({ roiComplete: false, totalBotEarnings: "0.000000", totalInvested: "0.000000", lockedPrincipal: "0.000000", updatedAt: new Date() })
+      .set({ roiComplete: false, totalBotEarnings: "0.000000", totalInvested: "0.000000", lockedPrincipal: "0.000000", tradingDayNumber: 0, lossDayNumbers: [], updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId));
   }
 
@@ -700,6 +702,22 @@ export class DatabaseStorage implements IStorage {
         botActivatedAt: null,
         updatedAt: new Date(),
       })
+      .where(eq(tradeWallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async assignLossDays(userId: number, days: number[]): Promise<TradeWallet> {
+    const [updated] = await db.update(tradeWallets)
+      .set({ lossDayNumbers: days, updatedAt: new Date() })
+      .where(eq(tradeWallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async incrementTradingDay(userId: number): Promise<TradeWallet> {
+    const [updated] = await db.update(tradeWallets)
+      .set({ tradingDayNumber: sql`trading_day_number + 1`, updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId))
       .returning();
     return updated;

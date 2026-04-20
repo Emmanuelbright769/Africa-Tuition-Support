@@ -831,7 +831,8 @@ export default function AffiliateDashboard() {
   const totalInvested    = parseFloat(tradeWallet?.totalInvested ?? "0");
   const totalBotEarned   = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
   const roiComplete      = !!(tradeWallet?.roiComplete);
-  const roiProgress      = totalInvested > 0 ? Math.min(100, (totalBotEarned / totalInvested) * 100) : 0;
+  const tradingDayNumber = (tradeWallet as any)?.tradingDayNumber ?? 0;
+  const cycleProgress    = Math.min(100, (tradingDayNumber / 120) * 100);
   const lockedPrincipal  = roiComplete ? 0 : parseFloat(tradeWallet?.lockedPrincipal ?? "0");
   const withdrawableAmt  = Math.max(0, tradeBalance - lockedPrincipal);
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
@@ -1259,14 +1260,14 @@ export default function AffiliateDashboard() {
                         {/* Action footer */}
                         <div className="bg-card p-4 flex items-center gap-3">
                           {roiComplete ? (
-                            // ROI Complete — bot trading closed
+                            // Cycle complete — 120 days done
                             <div className="flex-1 flex items-center gap-3">
                               <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
                                 <span className="text-lg">🎉</span>
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">100% ROI Achieved — Trading Complete</p>
-                                <p className="text-xs text-muted-foreground">Your invested capital has been fully returned as profit. Make a new deposit to continue trading.</p>
+                                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">120-Day Cycle Complete</p>
+                                <p className="text-xs text-muted-foreground">Your 120-day trading cycle has ended. All funds are now available. Top up to start a new cycle.</p>
                               </div>
                             </div>
                           ) : tradeBalance < TRADE_MARKET.MIN_DEPOSIT ? (
@@ -1358,7 +1359,7 @@ export default function AffiliateDashboard() {
                       {roiComplete && (
                         <div className="bg-emerald-100 dark:bg-emerald-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">100% ROI complete — full balance available to withdraw</p>
+                          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">120-day cycle complete — full balance available to withdraw</p>
                         </div>
                       )}
                     </div>
@@ -1394,24 +1395,26 @@ export default function AffiliateDashboard() {
                         )}
                       </div>
                     </div>
-                    {/* ROI Progress bar — shown once user has invested */}
+                    {/* 120-Day Cycle Progress bar */}
                     {totalInvested > 0 && (
                       <div className="px-4 py-3 border-t border-emerald-100 dark:border-emerald-800 bg-white dark:bg-card">
                         <div className="flex items-center justify-between mb-1.5">
-                          <p className="text-xs text-muted-foreground font-medium">ROI Progress</p>
+                          <p className="text-xs text-muted-foreground font-medium">Trading Cycle Progress</p>
                           <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            {roiComplete ? "100% — Complete" : `${roiProgress.toFixed(1)}% of ${totalInvested.toFixed(2)}`}
+                            {roiComplete ? "Day 120 / 120 — Complete" : `Day ${tradingDayNumber} / 120`}
                           </p>
                         </div>
                         <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-500 ${roiComplete ? "bg-emerald-500" : "bg-amber-500"}`}
-                            style={{ width: `${Math.min(100, roiProgress)}%` }}
+                            style={{ width: `${cycleProgress}%` }}
                           />
                         </div>
-                        {roiComplete && (
-                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1">Trading cycle complete. Deposit to start a new cycle.</p>
-                        )}
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {roiComplete
+                            ? "Cycle complete. Top up to start a new 120-day cycle."
+                            : `${120 - tradingDayNumber} trading session${120 - tradingDayNumber !== 1 ? "s" : ""} remaining in this cycle.`}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -2616,7 +2619,7 @@ export default function AffiliateDashboard() {
             <DialogDescription>
               Balance: <strong>${tradeBalance.toFixed(2)}</strong>
               {!roiComplete && lockedPrincipal > 0 && (
-                <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· Available: <strong>${withdrawableAmt.toFixed(2)}</strong> (principal locked until 100% ROI)</span>
+                <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· Available: <strong>${withdrawableAmt.toFixed(2)}</strong> (capital locked for the 120-day cycle)</span>
               )}
             </DialogDescription>
           </DialogHeader>
@@ -2923,7 +2926,7 @@ export default function AffiliateDashboard() {
                 iconBg: "bg-purple-100 dark:bg-purple-900/40",
                 iconColor: "text-purple-600",
                 title: "Activate the Trading BOT Daily at 1PM",
-                body: "The AI Trading BOT must be manually activated every working day at 1:00 PM for it to execute trades that day. The target is 100% ROI @ 2% daily through arithmetic algorithm trading on capital markets.",
+                body: "The AI Trading BOT must be manually activated every working day at 1:00 PM for it to execute trades that day. The bot runs for up to 12 hours — the longer it trades, the more it earns (up to 2% per session). Your 120-day cycle tracks your total trading days.",
               },
             ];
             const s = steps[walkthroughStep];

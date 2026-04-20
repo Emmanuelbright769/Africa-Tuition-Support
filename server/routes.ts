@@ -1139,8 +1139,6 @@ export async function registerRoutes(
         paymentMethod: "bank_transfer",
         description: `Bank withdrawal ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} — 7.5% VAT $${vatAmount.toFixed(2)} | Ref: ${txRef}`,
       });
-      // Credit 5% referral commission on bank withdrawal activity
-      creditReferrerCommission(userId, withdrawAmount, "bank withdrawal").catch(() => {});
 
       // Create withdrawal request for admin dashboard
       const wdReq = await storage.createWithdrawalRequest({
@@ -1279,8 +1277,6 @@ export async function registerRoutes(
         paymentMethod: "crypto",
         description: `USDT Withdrawal (${networkLabel}) to ${truncated} — ${(CURRENCY_RATES.CRYPTO_WITHDRAW_FEE * 100).toFixed(0)}% fee: $${feeAmt.toFixed(2)} | Net: $${netAmt.toFixed(2)} | Full address: ${address.trim()} | Processing within 24h`,
       });
-      // Credit 5% referral commission on crypto withdrawal activity
-      creditReferrerCommission(userId, withdrawAmt, "crypto withdrawal").catch(() => {});
 
       // Create withdrawal request for admin dashboard
       await storage.createWithdrawalRequest({

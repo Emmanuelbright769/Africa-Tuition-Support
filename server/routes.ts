@@ -2812,6 +2812,15 @@ export async function registerRoutes(
     res.json(pending);
   });
 
+  app.get("/api/admin/all-verifications", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    const all = await storage.getAllVerifications();
+    res.json(all);
+  });
+
   app.post("/api/admin/verify/:verificationId", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

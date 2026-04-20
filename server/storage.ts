@@ -72,6 +72,7 @@ export interface IStorage {
   getVerificationByUser(userId: number): Promise<Verification | undefined>;
   updateVerification(id: number, data: Partial<Verification>): Promise<Verification>;
   getPendingVerifications(): Promise<(Verification & { user: User })[]>;
+  getAllVerifications(): Promise<(Verification & { user: User })[]>;
 
   createFileUpload(file: InsertFileUpload): Promise<FileUpload>;
   getFilesByUser(userId: number): Promise<FileUpload[]>;
@@ -472,7 +473,17 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(verifications)
       .innerJoin(users, eq(verifications.userId, users.id))
-      .where(eq(verifications.status, "pending"));
+      .where(eq(verifications.status, "pending"))
+      .orderBy(desc(verifications.id));
+    return results.map(r => ({ ...r.verifications, user: r.users }));
+  }
+
+  async getAllVerifications(): Promise<(Verification & { user: User })[]> {
+    const results = await db
+      .select()
+      .from(verifications)
+      .innerJoin(users, eq(verifications.userId, users.id))
+      .orderBy(desc(verifications.id));
     return results.map(r => ({ ...r.verifications, user: r.users }));
   }
 

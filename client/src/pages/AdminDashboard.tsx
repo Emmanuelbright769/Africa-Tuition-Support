@@ -124,6 +124,7 @@ export default function AdminDashboard() {
   const [setReferrerDialog, setSetReferrerDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [referrerCode, setReferrerCode] = useState("");
   // Withdrawal review state
+  const [vFilter, setVFilter] = useState<"all" | "pending" | "verified" | "rejected">("all");
   const [wdFilter, setWdFilter] = useState<"all" | "pending" | "approved" | "declined" | "refunded">("all");
   const [cwdFilter, setCwdFilter] = useState<"all" | "pending" | "approved" | "declined" | "refunded">("all");
   const [wdNoteDialogId, setWdNoteDialogId] = useState<number | null>(null);
@@ -139,6 +140,7 @@ export default function AdminDashboard() {
   // ─── Queries ───────────────────────────────────────────────────────────────
   const { data: stats }                   = useQuery({ queryKey: ["/api/admin/enhanced-stats"] });
   const { data: pendingVerifications = [] } = useQuery({ queryKey: ["/api/admin/pending-verifications"] });
+  const { data: allVerifications = [] }    = useQuery({ queryKey: ["/api/admin/all-verifications"], enabled: activeTab === "applications" });
   const { data: pendingDisbursements = [] } = useQuery({ queryKey: ["/api/admin/pending-disbursements"] });
   const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: activeTab === "users" });
   const { data: allAffiliates = [] }       = useQuery({ queryKey: ["/api/admin/affiliates-all"], enabled: activeTab === "affiliates" });
@@ -163,6 +165,7 @@ export default function AdminDashboard() {
     },
     onSuccess: (_, { approve }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-verifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-verifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
       setReviewDialog(null);
@@ -448,8 +451,9 @@ export default function AdminDashboard() {
     (txFilter === "all" || t.type === txFilter) &&
     (!q || `${t.user?.firstName} ${t.user?.lastName} ${t.description}`.toLowerCase().includes(q))
   );
-  const filteredVerifications = (pendingVerifications as any[]).filter(v =>
-    !q || `${v.user?.firstName} ${v.user?.lastName} ${v.user?.email} ${v.nin}`.toLowerCase().includes(q)
+  const filteredVerifications = (allVerifications as any[]).filter(v =>
+    (vFilter === "all" || v.status === vFilter) &&
+    (!q || `${v.user?.firstName} ${v.user?.lastName} ${v.user?.email} ${v.nin}`.toLowerCase().includes(q))
   );
   const filteredDisbursements = (pendingDisbursements as any[]).filter(d =>
     !q || `${d.user?.firstName} ${d.user?.lastName} ${d.user?.email}`.toLowerCase().includes(q)
@@ -639,11 +643,45 @@ export default function AdminDashboard() {
 
             {/* ═══════════════════════════════ APPLICATIONS ═══════════════════════════════ */}
             {activeTab === "applications" && (
-              <motion.div key="applications" variants={slide} initial="hidden" animate="visible" exit="exit">
+              <motion.div key="applications" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+                {/* Summary counts */}
+                <div className="grid grid-cols-4 gap-3">
+                  {([
+                    { label: "All",      key: "all",      color: "text-slate-700",  count: (allVerifications as any[]).length },
+                    { label: "Pending",  key: "pending",  color: "text-amber-600",  count: (allVerifications as any[]).filter((v: any) => v.status === "pending").length },
+                    { label: "Approved", key: "verified", color: "text-tsia-green", count: (allVerifications as any[]).filter((v: any) => v.status === "verified").length },
+                    { label: "Rejected", key: "rejected", color: "text-red-600",    count: (allVerifications as any[]).filter((v: any) => v.status === "rejected").length },
+                  ] as const).map(s => (
+                    <Card
+                      key={s.key}
+                      className={`p-3 text-center cursor-pointer transition-all border-2 ${vFilter === s.key ? "border-tsia-green bg-tsia-green/5 shadow-sm" : "border-transparent hover:border-slate-200"}`}
+                      onClick={() => setVFilter(s.key)}
+                    >
+                      <p className={`text-2xl font-black ${s.color}`}>{s.count}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+                    </Card>
+                  ))}
+                </div>
+
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
-                    <CardTitle className="text-base">Verification Queue</CardTitle>
-                    <CardDescription>{(pendingVerifications as any[]).length} applications pending review</CardDescription>
+                  <CardHeader className="border-b bg-white py-4 px-6 flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-base">Student Applications</CardTitle>
+                      <CardDescription>
+                        {filteredVerifications.length} {vFilter === "all" ? "total" : vFilter} application{filteredVerifications.length !== 1 ? "s" : ""}
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-1 flex-wrap">
+                      {(["all", "pending", "verified", "rejected"] as const).map(f => (
+                        <button
+                          key={f}
+                          onClick={() => setVFilter(f)}
+                          className={`text-xs px-3 py-1 rounded-full font-medium capitalize transition-colors ${vFilter === f ? "bg-tsia-green text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                        >
+                          {f === "verified" ? "Approved" : f}
+                        </button>
+                      ))}
+                    </div>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
@@ -656,12 +694,13 @@ export default function AdminDashboard() {
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Tier</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Fee</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Biometric</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
                           <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredVerifications.length === 0 ? (
-                          <TableRow><TableCell colSpan={8} className="text-center py-10 text-slate-500">No pending applications.</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={9} className="text-center py-10 text-slate-500">No applications found.</TableCell></TableRow>
                         ) : filteredVerifications.map((v: any) => (
                           <TableRow key={v.id} className="hover:bg-slate-50/50">
                             <TableCell className="px-6">
@@ -679,9 +718,18 @@ export default function AdminDashboard() {
                             <TableCell><TierBadge tier={v.tier} /></TableCell>
                             <TableCell>{v.portalFeePaid ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-red-400" />}</TableCell>
                             <TableCell>{v.biometricVerified ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-slate-300" />}</TableCell>
+                            <TableCell>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
+                                v.status === "verified" ? "bg-green-100 text-green-700" :
+                                v.status === "rejected" ? "bg-red-100 text-red-700" :
+                                "bg-amber-100 text-amber-700"
+                              }`}>
+                                {v.status === "verified" ? "Approved" : v.status}
+                              </span>
+                            </TableCell>
                             <TableCell className="text-right px-6">
                               <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setReviewDialog(v)} data-testid={`button-review-${v.id}`}>
-                                <Eye className="w-3.5 h-3.5 mr-1.5" /> Review
+                                <Eye className="w-3.5 h-3.5 mr-1.5" /> {v.status === "pending" ? "Review" : "View"}
                               </Button>
                             </TableCell>
                           </TableRow>
@@ -2154,12 +2202,24 @@ export default function AdminDashboard() {
             </div>
           )}
           <DialogFooter className="flex justify-between sm:justify-between border-t pt-4 gap-3 flex-col sm:flex-row">
-            <Button variant="destructive" onClick={() => { setRejectDialog({ open: true, verification: reviewDialog }); setReviewDialog(null); }} disabled={verifyMutation.isPending}>
-              <XCircle className="w-4 h-4 mr-2" /> Reject Application
-            </Button>
-            <Button className="bg-tsia-green hover:bg-tsia-green/90" onClick={() => verifyMutation.mutate({ id: reviewDialog.id, approve: true })} disabled={verifyMutation.isPending} data-testid="button-approve">
-              {verifyMutation.isPending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Approving...</> : <><CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Verify</>}
-            </Button>
+            {reviewDialog?.status === "pending" ? (
+              <>
+                <Button variant="destructive" onClick={() => { setRejectDialog({ open: true, verification: reviewDialog }); setReviewDialog(null); }} disabled={verifyMutation.isPending}>
+                  <XCircle className="w-4 h-4 mr-2" /> Reject Application
+                </Button>
+                <Button className="bg-tsia-green hover:bg-tsia-green/90" onClick={() => verifyMutation.mutate({ id: reviewDialog.id, approve: true })} disabled={verifyMutation.isPending} data-testid="button-approve">
+                  {verifyMutation.isPending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Approving...</> : <><CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Verify</>}
+                </Button>
+              </>
+            ) : (
+              <div className="flex items-center justify-between w-full">
+                <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-full ${reviewDialog?.status === "verified" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                  {reviewDialog?.status === "verified" ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                  {reviewDialog?.status === "verified" ? "Application Approved" : "Application Rejected"}
+                </span>
+                <Button variant="outline" onClick={() => setReviewDialog(null)}>Close</Button>
+              </div>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -426,11 +426,11 @@ export class DatabaseStorage implements IStorage {
 
   async getReferralsByCode(affiliateCode: string): Promise<User[]> {
     if (!affiliateCode) return [];
-    return db.select().from(users).where(eq(users.referredBy, affiliateCode)).orderBy(desc(users.createdAt));
+    return db.select().from(users).where(sql`UPPER(TRIM(${users.referredBy})) = ${affiliateCode.trim().toUpperCase()}`).orderBy(desc(users.createdAt));
   }
 
   async getUserByAffiliateCode(affiliateCode: string): Promise<User | undefined> {
-    const [u] = await db.select().from(users).where(eq(users.affiliateCode, affiliateCode)).limit(1);
+    const [u] = await db.select().from(users).where(sql`UPPER(TRIM(${users.affiliateCode})) = ${affiliateCode.trim().toUpperCase()}`).limit(1);
     return u;
   }
 
@@ -660,7 +660,7 @@ export class DatabaseStorage implements IStorage {
   async addReferralCommission(userId: number, amount: string): Promise<TradeWallet> {
     await this.getOrCreateTradeWallet(userId);
     const [updated] = await db.update(tradeWallets)
-      .set({ referralCommissionBalance: sql`referral_commission_balance + ${amount}::decimal`, updatedAt: new Date() })
+      .set({ referralCommissionBalance: sql`COALESCE(referral_commission_balance, 0) + ${amount}::decimal`, updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId))
       .returning();
     return updated;
@@ -1609,17 +1609,17 @@ export class DatabaseStorage implements IStorage {
     const kycActivated = await db.select({ u: users })
       .from(users)
       .innerJoin(verifications, eq(verifications.userId, users.id))
-      .where(and(eq(users.referredBy, affiliateCode), eq(verifications.biometricVerified, true)));
+      .where(and(sql`UPPER(TRIM(${users.referredBy})) = ${affiliateCode.trim().toUpperCase()}`, eq(verifications.biometricVerified, true)));
 
     const feeActivated = await db.select({ u: users })
       .from(users)
       .innerJoin(verifications, eq(verifications.userId, users.id))
-      .where(and(eq(users.referredBy, affiliateCode), eq(verifications.portalFeePaid, true)));
+      .where(and(sql`UPPER(TRIM(${users.referredBy})) = ${affiliateCode.trim().toUpperCase()}`, eq(verifications.portalFeePaid, true)));
 
     const walletActivated = await db.select({ u: users })
       .from(users)
       .innerJoin(wallets, eq(wallets.userId, users.id))
-      .where(and(eq(users.referredBy, affiliateCode), eq(wallets.activated, true)));
+      .where(and(sql`UPPER(TRIM(${users.referredBy})) = ${affiliateCode.trim().toUpperCase()}`, eq(wallets.activated, true)));
 
     const seen = new Set<number>();
     const all: User[] = [];

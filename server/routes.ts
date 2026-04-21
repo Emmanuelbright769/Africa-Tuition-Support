@@ -67,6 +67,7 @@ export async function registerRoutes(
     try {
       const { email, firstName, lastName, phone, country, referralCode, role, loginRole } = req.body;
       if (!email) return res.status(400).json({ message: "Email is required" });
+      const normalizedReferralCode = typeof referralCode === "string" ? referralCode.trim().toUpperCase() : "";
 
       const isSignup = !!firstName;
 
@@ -113,7 +114,7 @@ export async function registerRoutes(
           u = await storage.createUser({
             firstName, lastName, email, phone: phone || "",
             password: "otp-only", country: country || "ng", role: targetRole,
-            referredBy: referralCode || null,
+            referredBy: normalizedReferralCode || null,
           });
           const affCode = generateAffiliateCode(firstName, u.id);
           await storage.updateUserAffiliateCode(u.id, affCode);
@@ -130,9 +131,9 @@ export async function registerRoutes(
             });
           } catch { /* non-critical */ }
           // Notify referrer
-          if (referralCode) {
+          if (normalizedReferralCode) {
             try {
-              const referrer = await storage.getUserByAffiliateCode(referralCode);
+              const referrer = await storage.getUserByAffiliateCode(normalizedReferralCode);
               if (referrer) {
                 await storage.createNotification({
                   userId: referrer.id, type: "referral", title: "New Referral",
@@ -146,7 +147,7 @@ export async function registerRoutes(
           // Send real welcome email
           sendWelcomeEmail(email, firstName, targetRole as "student" | "affiliate").catch((err: any) => console.error("[EMAIL] Welcome send failed:", err?.message ?? err));
           // Notify admin of new registration
-          sendAdminNewUserEmail({ name: `${firstName} ${lastName}`, email, role: targetRole, country: country || undefined, phone: phone || undefined, referredBy: referralCode || undefined }).catch(() => {});
+          sendAdminNewUserEmail({ name: `${firstName} ${lastName}`, email, role: targetRole, country: country || undefined, phone: phone || undefined, referredBy: normalizedReferralCode || undefined }).catch(() => {});
         }
         return u;
       };
@@ -763,7 +764,8 @@ export async function registerRoutes(
       // Uses $3 portal fee equivalent as base amount; deduplication prevents double-credit
       // with the portal fee route (whichever fires first wins).
       if (!alreadyDone) {
-        creditReferrerCommissionOnce(userId, 3.00, "wallet activation").catch(() => {});
+        const referralResult = await creditReferrerCommissionOnce(userId, 3.00, "wallet activation");
+        if (!referralResult.credited) console.log(`[REFERRAL] No wallet KYC commission credited for user ${userId}`);
       }
 
       // Notify referrer that this user has activated their wallet
@@ -944,7 +946,8 @@ export async function registerRoutes(
 
       // ── Credit 5% referral commission to referrer on student portal fee payment ──
       // Uses Once variant to deduplicate if commission was already given at wallet-KYC time.
-      creditReferrerCommissionOnce(userId, portalFee, "student subscription plan").catch(() => {});
+      const portalReferralResult = await creditReferrerCommissionOnce(userId, portalFee, "student subscription plan");
+      if (!portalReferralResult.credited) console.log(`[REFERRAL] No portal fee commission credited for user ${userId}`);
 
       // Notify admin — student paid portal fee and is ready for review
       try {
@@ -1467,7 +1470,8 @@ export async function registerRoutes(
       await storage.createDisbursement({ userId, amount: totalPayout, status: "pending" });
 
       // ── 10. Credit 5% referral commission to referrer ─────────────────────
-      creditReferrerCommission(userId, baseCost, "sponsorship plan payment").catch(() => {});
+      const planReferralResult = await creditReferrerCommission(userId, baseCost, "sponsorship plan payment");
+      if (!planReferralResult.credited) console.log(`[REFERRAL] No sponsorship plan commission credited for user ${userId}`);
 
       // ── 11. Notify student ─────────────────────────────────────────────────
       try {
@@ -2034,6 +2038,8 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  const normalizeReferralCode = (code: string | null | undefined) => (code || "").trim().toUpperCase();
+
   app.post("/api/trade/wallet/connect", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -2055,8 +2061,13 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(referredUserId);
       if (!user?.referredBy) return { credited: false };
-      const referrer = await storage.getUserByAffiliateCode(user.referredBy);
-      if (!referrer) return { credited: false };
+      const referralCode = normalizeReferralCode(user.referredBy);
+      const referrer = await storage.getUserByAffiliateCode(referralCode);
+      if (!referrer) {
+        console.warn(`[REFERRAL] Referrer code not found for user ${referredUserId}: ${referralCode}`);
+        return { credited: false };
+      }
+      if (referrer.id === referredUserId) return { credited: false };
 
       const commission = parseFloat((grossAmount * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(6)); // 5%
       if (commission <= 0) return { credited: false };
@@ -2086,7 +2097,10 @@ export async function registerRoutes(
       });
       pushToUser(referrer.id, "notification", notif);
       return { credited: true, referrerId: referrer.id, commissionAmount: commission };
-    } catch { return { credited: false }; }
+    } catch (e: any) {
+      console.error("[REFERRAL] Failed to credit commission:", e?.message ?? e);
+      return { credited: false };
+    }
   }
 
   // ── Deduplicating version: only credits once per referred user (regardless of trigger source) ──
@@ -2098,8 +2112,12 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(referredUserId);
       if (!user?.referredBy) return { credited: false };
-      const referrer = await storage.getUserByAffiliateCode(user.referredBy);
-      if (!referrer) return { credited: false };
+      const referralCode = normalizeReferralCode(user.referredBy);
+      const referrer = await storage.getUserByAffiliateCode(referralCode);
+      if (!referrer) {
+        console.warn(`[REFERRAL] Referrer code not found for user ${referredUserId}: ${referralCode}`);
+        return { credited: false };
+      }
 
       // Check if any commission was already given for this referred user (by name match)
       const namePattern = `%${user.firstName} ${user.lastName}%`;
@@ -2114,7 +2132,10 @@ export async function registerRoutes(
       if (existing.rows.length > 0) return { credited: false };
 
       return creditReferrerCommission(referredUserId, grossAmount, sourceLabel);
-    } catch { return { credited: false }; }
+    } catch (e: any) {
+      console.error("[REFERRAL] Failed to check one-time commission:", e?.message ?? e);
+      return { credited: false };
+    }
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -3069,7 +3090,7 @@ export async function registerRoutes(
           )
           AND NOT EXISTS (
             SELECT 1 FROM trade_transactions tt
-            JOIN users ref_u ON ref_u.affiliate_code = u.referred_by
+            JOIN users ref_u ON UPPER(ref_u.affiliate_code) = UPPER(TRIM(u.referred_by))
             WHERE tt.user_id = ref_u.id
               AND tt.type    = 'bot_earning'
               AND tt.note LIKE '%Referral commission%'
@@ -3081,7 +3102,7 @@ export async function registerRoutes(
       const skipped: { referredUser: string; reason: string }[] = [];
 
       for (const row of allEligible.rows as any[]) {
-        const referrer = await storage.getUserByAffiliateCode(row.referred_by);
+        const referrer = await storage.getUserByAffiliateCode(normalizeReferralCode(row.referred_by));
         if (!referrer) {
           skipped.push({ referredUser: `${row.first_name} ${row.last_name}`, reason: "Referrer not found" });
           continue;
@@ -4188,7 +4209,8 @@ export async function registerRoutes(
       if (!squadWallet.activated && parseFloat(newBalance) >= 5) {
         try {
           await storage.activateWallet(userId);
-          creditReferrerCommission(userId, gross, "personal wallet activation").catch(() => {});
+          const activationReferralResult = await creditReferrerCommissionOnce(userId, gross, "personal wallet activation");
+          if (!activationReferralResult.credited) console.log(`[REFERRAL] No Squad wallet activation commission credited for user ${userId}`);
           const sqUser = await storage.getUser(userId);
           if (sqUser?.referredBy) {
             const sqReferrer = await storage.getUserByAffiliateCode(sqUser.referredBy);
@@ -4248,7 +4270,8 @@ export async function registerRoutes(
             await storage.recordAffiliateTradeShare(null, wkAffiliateCut.toFixed(6), wkAffCount, wkPerAff.toFixed(6), "personal_wallet_squad_webhook");
             if (!wl.activated && parseFloat(newBal) >= 5) {
               await storage.activateWallet(userId);
-              creditReferrerCommission(userId, wkGross, "personal wallet activation").catch(() => {});
+              const webhookReferralResult = await creditReferrerCommissionOnce(userId, wkGross, "personal wallet activation");
+              if (!webhookReferralResult.credited) console.log(`[REFERRAL] No Squad webhook wallet activation commission credited for user ${userId}`);
             }
             await storage.createTransaction({ userId, type: "deposit", amount: wkUserCredit.toFixed(2), fee: (wkReserveCut + wkAffiliateCut).toFixed(2), paymentMethod: "squad", description: `Wallet funded via Squad webhook (${ref}) — $${wkUserCredit.toFixed(2)} (75%) credited, $${wkReserveCut.toFixed(2)} reserve, $${wkAffiliateCut.toFixed(2)} pool` });
             await storage.updateWalletDeposit(allDeposits.id, { status: "completed" });
@@ -4979,11 +5002,12 @@ export async function registerRoutes(
       } catch { /* non-critical */ }
       // ── Wallet activation: activate if balance reaches $5 for the first time ──
       const WALLET_ACTIVATION_MIN = 5;
+      let referralResult: Awaited<ReturnType<typeof creditReferrerCommissionOnce>> | null = null;
       if (!wallet.activated && parseFloat(newBalance) >= WALLET_ACTIVATION_MIN) {
         try {
           await storage.activateWallet(deposit.userId);
-          // Credit 5% referral commission to referrer on first activation deposit
-          creditReferrerCommission(deposit.userId, gross, "personal wallet activation").catch(() => {});
+          referralResult = await creditReferrerCommissionOnce(deposit.userId, gross, "personal wallet activation");
+          if (!referralResult.credited) console.log(`[REFERRAL] No admin-confirmed wallet activation commission credited for user ${deposit.userId}`);
           // Notify referrer that commission is now active
           const depUserForRef = await storage.getUser(deposit.userId);
           if (depUserForRef?.referredBy) {
@@ -5000,7 +5024,10 @@ export async function registerRoutes(
               pushToUser(referrer.id, "notification", refNotif);
             }
           }
-        } catch { /* non-critical */ }
+        } catch (e: any) { console.error("[REFERRAL] Wallet activation commission block failed:", e?.message ?? e); }
+      } else if (wallet.activated && parseFloat(newBalance) >= WALLET_ACTIVATION_MIN) {
+        referralResult = await creditReferrerCommissionOnce(deposit.userId, gross, "personal wallet activation");
+        if (!referralResult.credited) console.log(`[REFERRAL] No admin-confirmed deposit commission credited for already-active user ${deposit.userId}`);
       }
       // Record transaction (platform fee = 25%: 20% reserve + 5% affiliate)
       await storage.createTransaction({
@@ -5028,7 +5055,7 @@ export async function registerRoutes(
         });
         pushToUser(deposit.userId, "notification", walletNotif);
       } catch { /* non-critical */ }
-      res.json({ success: true, breakdown: { gross, userCredit, reserveCut, affiliateCut, newBalance } });
+      res.json({ success: true, breakdown: { gross, userCredit, reserveCut, affiliateCut, newBalance }, referralCommission: referralResult });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -6144,7 +6171,7 @@ export async function registerRoutes(
           )
           AND NOT EXISTS (
             SELECT 1 FROM trade_transactions tt
-            JOIN users ref_u ON ref_u.affiliate_code = u.referred_by
+            JOIN users ref_u ON UPPER(ref_u.affiliate_code) = UPPER(TRIM(u.referred_by))
             WHERE tt.user_id = ref_u.id
               AND tt.type    = 'bot_earning'
               AND tt.note LIKE '%Referral commission%'

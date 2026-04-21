@@ -309,6 +309,28 @@ export async function sendWalletCreditEmail(to: string, firstName: string, amoun
   await sendEmail(to, subject, html);
 }
 
+export async function sendAdminDepositConfirmedEmail(data: {
+  name: string; email: string; gross: string; credited: string; reserveCut: string; affiliateCut: string; newBalance: string; walletType: string; txHash?: string; userId: number;
+}): Promise<void> {
+  const subject = `✅ Deposit Confirmed: $${data.gross} from ${data.name}`;
+  const html = adminActionTemplate(
+    "✅", "Wallet Deposit Confirmed",
+    "Completed", "#27ae60",
+    [
+      ["User", `${data.name} (ID: ${data.userId})`],
+      ["Email", data.email],
+      ["Gross Deposit", `$${data.gross} USD`],
+      ["Credited to Wallet", `$${data.credited} USD`],
+      ["Reserve Fund", `$${data.reserveCut} USD`],
+      ["Affiliate Pool", `$${data.affiliateCut} USD`],
+      ["New Wallet Balance", `$${data.newBalance} USD`],
+      ["Payment Method", data.walletType.toUpperCase()],
+      ...(data.txHash ? [["Reference / Tx Hash", data.txHash] as [string, string]] : []),
+    ],
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
 // ─── Order Update ─────────────────────────────────────────────────────────────
 
 export async function sendOrderUpdateEmail(to: string, firstName: string, orderStatus: string, productTitle: string, orderId: number): Promise<void> {

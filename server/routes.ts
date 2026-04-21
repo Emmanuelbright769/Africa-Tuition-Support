@@ -15,7 +15,7 @@ import {
   sendAdminNewUserEmail, sendAdminDepositEmail, sendAdminWithdrawalEmail,
   sendAdminVerificationEmail, sendAdminPortalFeeEmail, sendAdminLoanEmail,
   sendAdminSponsorshipEmail, sendStudentPlanReceiptEmail, sendAdminKycEmail, sendAdminOrderEmail,
-  sendAdminCommissionWithdrawalEmail,
+  sendAdminCommissionWithdrawalEmail, sendAdminDepositConfirmedEmail,
   sendWithdrawalOtpEmail,
 } from "./email";
 import session from "express-session";
@@ -4158,6 +4158,14 @@ export async function registerRoutes(
       const transactionRef = `TSIA-${userId}-${Date.now()}`;
       // Save pending deposit record
       await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: transactionRef, walletType: "squad", status: "pending" });
+      sendAdminDepositEmail({
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        amount: amount.toFixed(2),
+        txHash: transactionRef,
+        walletType: "squad",
+        userId,
+      }).catch((err: any) => console.error("[EMAIL] Admin Squad deposit email failed:", err?.message ?? err));
       res.json({ transactionRef, amountKobo, amountNgn: (amount * 1480).toFixed(2), publicKey, email: user.email, firstName: user.firstName, lastName: user.lastName });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4231,6 +4239,21 @@ export async function registerRoutes(
       // Push live notification
       const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${gross.toFixed(2)} received — $${sqUserCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet`, data: { transactionRef }, isRead: false });
       pushToUser(userId, "notification", notif);
+      const sqDepositUser = await storage.getUser(userId);
+      if (sqDepositUser) {
+        sendAdminDepositConfirmedEmail({
+          name: `${sqDepositUser.firstName} ${sqDepositUser.lastName}`,
+          email: sqDepositUser.email,
+          gross: gross.toFixed(2),
+          credited: sqUserCredit.toFixed(2),
+          reserveCut: sqReserveCut.toFixed(2),
+          affiliateCut: sqAffiliateCut.toFixed(2),
+          newBalance,
+          walletType: "squad",
+          txHash: transactionRef,
+          userId,
+        }).catch((err: any) => console.error("[EMAIL] Admin Squad confirmed deposit email failed:", err?.message ?? err));
+      }
       res.json({ message: `$${sqUserCredit.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd: sqUserCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4275,6 +4298,21 @@ export async function registerRoutes(
             await storage.updateWalletDeposit(allDeposits.id, { status: "completed" });
             const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${wkGross.toFixed(2)} received — $${wkUserCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet`, data: { ref }, isRead: false });
             pushToUser(userId, "notification", notif);
+            const wkUser = await storage.getUser(userId);
+            if (wkUser) {
+              sendAdminDepositConfirmedEmail({
+                name: `${wkUser.firstName} ${wkUser.lastName}`,
+                email: wkUser.email,
+                gross: wkGross.toFixed(2),
+                credited: wkUserCredit.toFixed(2),
+                reserveCut: wkReserveCut.toFixed(2),
+                affiliateCut: wkAffiliateCut.toFixed(2),
+                newBalance: newBal,
+                walletType: "squad",
+                txHash: ref,
+                userId,
+              }).catch((err: any) => console.error("[EMAIL] Admin Squad webhook deposit email failed:", err?.message ?? err));
+            }
           }
         }
       }
@@ -4313,6 +4351,14 @@ export async function registerRoutes(
       if (!data.status) return res.status(400).json({ message: data.message || "Could not initialize payment" });
       // Store pending deposit record
       await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "paystack", status: "pending" });
+      sendAdminDepositEmail({
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        amount: amount.toFixed(2),
+        txHash: reference,
+        walletType: "paystack",
+        userId,
+      }).catch((err: any) => console.error("[EMAIL] Admin Paystack deposit email failed:", err?.message ?? err));
       res.json({ authorization_url: data.data.authorization_url, reference: data.data.reference, access_code: data.data.access_code });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4377,6 +4423,21 @@ export async function registerRoutes(
       await storage.createTransaction({ userId, type: "deposit", amount: psUserCredit.toFixed(2), fee: (psReserveCut + psAffiliateCut).toFixed(2), paymentMethod: "paystack", description: `Wallet funded via Paystack (${reference}) — $${psUserCredit.toFixed(2)} (75%) credited, $${psReserveCut.toFixed(2)} reserve, $${psAffiliateCut.toFixed(2)} pool` });
       const psNotif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${psGross.toFixed(2)} received — $${psUserCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet`, data: { reference }, isRead: false });
       pushToUser(userId, "notification", psNotif);
+      const psDepositUser = await storage.getUser(userId);
+      if (psDepositUser) {
+        sendAdminDepositConfirmedEmail({
+          name: `${psDepositUser.firstName} ${psDepositUser.lastName}`,
+          email: psDepositUser.email,
+          gross: psGross.toFixed(2),
+          credited: psUserCredit.toFixed(2),
+          reserveCut: psReserveCut.toFixed(2),
+          affiliateCut: psAffiliateCut.toFixed(2),
+          newBalance: psNewBalance,
+          walletType: "paystack",
+          txHash: reference,
+          userId,
+        }).catch((err: any) => console.error("[EMAIL] Admin Paystack confirmed deposit email failed:", err?.message ?? err));
+      }
       res.json({ message: `$${psUserCredit.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd: psUserCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -5037,6 +5098,18 @@ export async function registerRoutes(
         const depUser = await storage.getUser(deposit.userId);
         if (depUser) {
           sendWalletCreditEmail(depUser.email, depUser.firstName, userCredit.toFixed(2), newBalance).catch((err: any) => console.error("[EMAIL] Wallet credit email failed:", err?.message ?? err));
+          sendAdminDepositConfirmedEmail({
+            name: `${depUser.firstName} ${depUser.lastName}`,
+            email: depUser.email,
+            gross: gross.toFixed(2),
+            credited: userCredit.toFixed(2),
+            reserveCut: reserveCut.toFixed(2),
+            affiliateCut: affiliateCut.toFixed(2),
+            newBalance,
+            walletType: deposit.walletType ?? "crypto",
+            txHash: deposit.txHash ?? undefined,
+            userId: deposit.userId,
+          }).catch((err: any) => console.error("[EMAIL] Admin confirmed deposit email failed:", err?.message ?? err));
         }
         const walletNotif = await storage.createNotification({
           userId: deposit.userId,

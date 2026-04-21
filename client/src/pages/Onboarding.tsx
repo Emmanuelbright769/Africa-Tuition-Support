@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { useQuery } from "@tanstack/react-query";
 import { Logo } from "@/components/ui/Logo";
 import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
 import { WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, calculateWaecPercentage, getPayoutTier } from "@shared/schema";
@@ -69,8 +70,20 @@ export default function Onboarding() {
 
   const { toast } = useToast();
   const { user } = useAuth();
+  const { data: walletData } = useQuery<any>({ queryKey: ["/api/wallet"] });
 
   if (!user) { setLocation("/login"); return null; }
+  const walletActivated = walletData?.activated === true;
+  const requireWalletActivation = () => {
+    if (walletActivated) return true;
+    toast({
+      title: "Activate Wallet First",
+      description: "Fund your TSIA Personal Wallet with at least $5 before starting sponsorship verification.",
+      variant: "destructive",
+    });
+    setLocation("/wallet");
+    return false;
+  };
 
   // ── Live score computation ──────────────────────────────────────────
   const allSubjectsSelected = [...WAEC_COMPULSORY_SUBJECTS, ...electives.filter(Boolean)];
@@ -97,6 +110,7 @@ export default function Onboarding() {
 
   // ── Verify identity document ────────────────────────────────────────────
   const handleVerifyId = async () => {
+    if (!requireWalletActivation()) return;
     if (!isIdReady) { setIdError(`Please enter a valid ${currentIdOpt.label}.`); return; }
     setIdError("");
     setIdVerifying(true);
@@ -117,6 +131,7 @@ export default function Onboarding() {
   };
 
   const handleProceedToWaec = async () => {
+    if (!requireWalletActivation()) return;
     if (!idVerified) { toast({ title: "Error", description: "Please verify your identity document first.", variant: "destructive" }); return; }
     try {
       await apiRequest("POST", "/api/verification/identity", { idType, idNumber: idNumber.trim() });
@@ -135,6 +150,7 @@ export default function Onboarding() {
   };
 
   const handleValidateWaec = () => {
+    if (!requireWalletActivation()) return;
     if (!waecReg) { toast({ title: "Error", description: "WAEC Registration number is required", variant: "destructive" }); return; }
     if (!waecYear) { toast({ title: "Error", description: "WAEC Year is required", variant: "destructive" }); return; }
     if (!schoolName || !schoolLocation) { toast({ title: "Error", description: "School name and location are required", variant: "destructive" }); return; }
@@ -146,6 +162,7 @@ export default function Onboarding() {
 
   // ── Payment (Step 3) ──────────────────────────────────────────────
   const handlePayment = async () => {
+    if (!requireWalletActivation()) return;
     setIsProcessing(true);
     try {
       await apiRequest("POST", "/api/verification/pay-fee");
@@ -161,6 +178,7 @@ export default function Onboarding() {
 
   // ── Sponsor Code (Step 3 alternative) ────────────────────────────
   const handleValidateSponsorCode = async () => {
+    if (!requireWalletActivation()) return;
     if (!sponsorCodeInput.trim()) { toast({ title: "Error", description: "Please enter a sponsor code", variant: "destructive" }); return; }
     setSponsorCodeValidating(true);
     setSponsorCodeResult(null);
@@ -178,6 +196,7 @@ export default function Onboarding() {
   };
 
   const handleApplySponsorCode = async () => {
+    if (!requireWalletActivation()) return;
     if (!sponsorCodeResult?.valid) return;
     setIsProcessing(true);
     try {

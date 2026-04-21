@@ -466,6 +466,10 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const wallet = await storage.getOrCreateWallet(userId);
+      if (!wallet.activated) {
+        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before starting verification." });
+      }
 
       const { idType = "nin", idNumber, lastName } = req.body;
       if (!idNumber || !idType) return res.status(400).json({ message: "ID type and number are required." });
@@ -509,6 +513,10 @@ export async function registerRoutes(
   app.post("/api/verification/validate-nin", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const wallet = await storage.getOrCreateWallet(userId);
+    if (!wallet.activated) {
+      return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before starting verification." });
+    }
     const nin = req.body.nin || req.body.idNumber;
     if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) return res.status(400).json({ message: "NIN must be exactly 11 digits." });
     const result = await ninverifyLookup("nin", { nin });
@@ -521,6 +529,10 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const wallet = await storage.getOrCreateWallet(userId);
+      if (!wallet.activated) {
+        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before continuing verification." });
+      }
 
       // Support both old { nin } and new { idType, idNumber } shapes
       const idType   = req.body.idType || "nin";
@@ -544,6 +556,10 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const wallet = await storage.getOrCreateWallet(userId);
+      if (!wallet.activated) {
+        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before submitting your application." });
+      }
 
       let verification = await storage.getVerificationByUser(userId);
       if (!verification) return res.status(400).json({ message: "Start verification first" });
@@ -851,6 +867,10 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const feeWallet = await storage.getOrCreateWallet(userId);
+      if (!feeWallet.activated) {
+        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before paying the portal fee." });
+      }
 
       let verification = await storage.getVerificationByUser(userId);
       if (!verification) {
@@ -893,7 +913,6 @@ export async function registerRoutes(
       const ngnEquivalent = Math.round(totalCharged * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
 
       // ── Debit wallet — must have sufficient balance ──────────────────────────
-      const feeWallet = await storage.getOrCreateWallet(userId);
       const feeWalletBalance = parseFloat(feeWallet.balance);
       if (feeWalletBalance < totalCharged) {
         const shortfall = (totalCharged - feeWalletBalance).toFixed(2);
@@ -3794,6 +3813,12 @@ export async function registerRoutes(
   // ─── STUDENT: Validate / Use Sponsor Code ─────────────────────────────────────
   app.post("/api/verification/validate-sponsor-code", async (req, res) => {
     try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const wallet = await storage.getOrCreateWallet(userId);
+      if (!wallet.activated) {
+        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before using a sponsor code." });
+      }
       const { code } = req.body;
       if (!code) return res.status(400).json({ message: "Code is required" });
       const result = await storage.validateSponsorCode(code);
@@ -3808,6 +3833,10 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const wallet = await storage.getOrCreateWallet(userId);
+      if (!wallet.activated) {
+        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before using a sponsor code." });
+      }
 
       const { code } = req.body;
       if (!code) return res.status(400).json({ message: "Code is required" });
@@ -5202,6 +5231,7 @@ export async function registerRoutes(
 
       // Deduct from buyer wallet — funds held in escrow until delivery confirmed
       const buyerWallet = await storage.getOrCreateWallet(userId);
+      if (!buyerWallet.activated) return res.status(403).json({ message: "Activate your wallet before placing marketplace orders." });
       if (parseFloat(buyerWallet.balance) < totalAmount) return res.status(400).json({ message: `Insufficient wallet balance. Need $${totalAmount.toFixed(2)}` });
       await storage.updateWalletBalance(userId, (parseFloat(buyerWallet.balance) - totalAmount).toFixed(2));
 
@@ -5283,6 +5313,13 @@ export async function registerRoutes(
       const existing = await storage.getOrderById(parseInt(req.params.id));
       if (!existing) return res.status(404).json({ message: "Order not found" });
       if (existing.sellerId !== userId) return res.status(403).json({ message: "Only the seller can update this order" });
+      const allowedTransitions: Record<string, string[]> = {
+        pending: ["confirmed", "cancelled"],
+        confirmed: ["shipped", "cancelled"],
+      };
+      if (!allowedTransitions[existing.status]?.includes(status)) {
+        return res.status(400).json({ message: `Order cannot move from ${existing.status} to ${status}.` });
+      }
       const order = await storage.updateOrderStatus(parseInt(req.params.id), status, trackingNumber ? { trackingNumber } : undefined);
       // Add tracking entry
       const labelMap: Record<string, string> = { confirmed: "Confirmed by Seller", shipped: "Shipped", cancelled: "Cancelled" };
@@ -5314,6 +5351,9 @@ export async function registerRoutes(
       if (!order) return res.status(404).json({ message: "Order not found" });
       if (order.buyerId !== userId) return res.status(403).json({ message: "Only the buyer can confirm receipt" });
       if (order.escrowReleased) return res.status(400).json({ message: "Escrow already released for this order" });
+      if (!["confirmed", "shipped"].includes(order.status)) {
+        return res.status(400).json({ message: "The seller must confirm or ship the order before you can release payment." });
+      }
 
       const sellerReceives = parseFloat(order.sellerReceives);
       const commissionAmount = parseFloat(order.commissionAmount);
@@ -5353,6 +5393,9 @@ export async function registerRoutes(
       const order = await storage.getOrderById(parseInt(req.params.id));
       if (!order) return res.status(404).json({ message: "Order not found" });
       if (order.sellerId !== userId) return res.status(403).json({ message: "Only the seller can add tracking updates" });
+      if (order.escrowReleased || ["delivered", "cancelled"].includes(order.status)) {
+        return res.status(400).json({ message: "Tracking updates are closed for this order." });
+      }
       const tracking = await storage.createOrderTracking({ orderId: order.id, statusLabel, description, location: location || undefined });
       // Push tracking update to buyer
       try {

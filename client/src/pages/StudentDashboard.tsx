@@ -430,8 +430,13 @@ export default function StudentDashboard() {
                           : "Start by activating your wallet, then complete your verification (NIN + WAEC) to unlock sponsorship funding."}
                       </p>
                       {showGoToOnboarding && (
-                        <Button onClick={() => setLocation("/onboarding")} className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold h-11 px-6" data-testid="button-go-onboarding">
-                          <ArrowUpRight className="w-4 h-4 mr-2" /> Complete Verification
+                        <Button
+                          onClick={() => walletActivated ? setLocation("/onboarding") : setLocation("/wallet")}
+                          className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold h-11 px-6"
+                          data-testid="button-go-onboarding"
+                        >
+                          {walletActivated ? <ArrowUpRight className="w-4 h-4 mr-2" /> : <Wallet className="w-4 h-4 mr-2" />}
+                          {walletActivated ? "Complete Verification" : "Activate Wallet First"}
                         </Button>
                       )}
                     </div>

@@ -74,6 +74,17 @@ function StatCard({ title, value, sub, icon: Icon, color }: { title: string; val
   );
 }
 
+function WithdrawalWalletBalance({ balance }: { balance: any }) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-tsia-green/20 bg-tsia-green/5 px-3 py-2" data-testid="text-withdrawal-wallet-balance">
+      <span className="text-xs font-semibold text-tsia-green flex items-center gap-1.5">
+        <Wallet className="w-3.5 h-3.5" /> Current Wallet Balance
+      </span>
+      <span className="text-sm font-black text-tsia-green">{fmtUSD(balance ?? 0)}</span>
+    </div>
+  );
+}
+
 // ─── Nav items ────────────────────────────────────────────────────────────────
 const NAV = [
   { id: "overview",      icon: TrendingUp,     label: "Overview" },
@@ -1388,6 +1399,8 @@ export default function AdminDashboard() {
                                 </div>
                               </div>
 
+                              <WithdrawalWalletBalance balance={wd.user?.walletBalance} />
+
                               {/* Bank details */}
                               {wd.type === "bank" && (
                                 <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-sm space-y-1">
@@ -1610,6 +1623,8 @@ export default function AdminDashboard() {
                                 <p className="text-xs text-muted-foreground">Net: ${parseFloat(wd.netAmount).toFixed(2)} USDT</p>
                               </div>
                             </div>
+
+                            <WithdrawalWalletBalance balance={wd.user?.walletBalance} />
 
                             <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-sm space-y-1">
                               <div className="flex items-center justify-between">

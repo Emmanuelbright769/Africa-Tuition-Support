@@ -1666,11 +1666,13 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select({
       wr: withdrawalRequests,
       u: { id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email, phone: users.phone },
+      walletBalance: wallets.balance,
     })
     .from(withdrawalRequests)
     .innerJoin(users, eq(users.id, withdrawalRequests.userId))
+    .leftJoin(wallets, eq(wallets.userId, withdrawalRequests.userId))
     .orderBy(desc(withdrawalRequests.createdAt));
-    return rows.map(r => ({ ...r.wr, user: r.u }));
+    return rows.map(r => ({ ...r.wr, user: { ...r.u, walletBalance: r.walletBalance ?? "0.00" } }));
   }
 
   async getPendingWithdrawalsOlderThan24h() {

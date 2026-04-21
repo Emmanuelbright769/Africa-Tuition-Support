@@ -359,6 +359,7 @@ export default function AffiliateDashboard() {
   const [trc20Input, setTrc20Input]     = useState("");
   const [bep20Input, setBep20Input]     = useState("");
   const [showTxHistory, setShowTxHistory] = useState(false);
+  const [showTradeTxHistory, setShowTradeTxHistory] = useState(false);
   const [fundTradeOpen, setFundTradeOpen] = useState(false);
   const [fundTradeAmt, setFundTradeAmt]   = useState("");
 
@@ -1420,70 +1421,6 @@ export default function AffiliateDashboard() {
                   </div>
                 </motion.div>
 
-                {/* ── Trade Transaction History — shown first for quick access ── */}
-                {(tradeTxs as any[]).length > 0 && (
-                  <motion.div variants={itemVariants}>
-                    <Card className="shadow-md border-0 overflow-hidden" data-testid="panel-trade-tx-history">
-                      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-5 pt-4 pb-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <BarChart3 className="w-4 h-4" />
-                          <h3 className="font-bold text-sm">Transaction History</h3>
-                        </div>
-                        <Badge className="bg-white/10 text-white border-0 text-xs">{(tradeTxs as any[]).length} records</Badge>
-                      </div>
-                      <CardContent className="p-0">
-                        <div className="divide-y divide-border">
-                          {(tradeTxs as any[]).slice().reverse().map((tx: any) => {
-                            const net = parseFloat(tx.netAmount ?? tx.amountUsd ?? "0");
-                            const isPositive = net >= 0;
-                            const typeLabel: Record<string, string> = {
-                              deposit: "Deposit",
-                              bot_earning: net < 0 ? "Bot Loss" : "Bot Earnings",
-                              withdraw_bank: "Bank Withdrawal",
-                              withdraw_exchange: "Exchange Withdrawal",
-                              trade_transfer: "Trade Transfer",
-                              commission_credit: "Commission Credit",
-                              referral_commission: "Referral Commission",
-                            };
-                            const typeColor: Record<string, string> = {
-                              deposit: "text-blue-600 dark:text-blue-400",
-                              bot_earning: net < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400",
-                              withdraw_bank: "text-orange-600 dark:text-orange-400",
-                              withdraw_exchange: "text-orange-600 dark:text-orange-400",
-                              trade_transfer: "text-purple-600 dark:text-purple-400",
-                              commission_credit: "text-tsia-gold",
-                              referral_commission: "text-tsia-gold",
-                            };
-                            const icon = tx.type === "deposit" ? "↓" : tx.type === "bot_earning" ? (net < 0 ? "↓" : "↑") : "↑";
-                            return (
-                              <div key={tx.id} className="px-4 py-3 flex items-start gap-3" data-testid={`row-trade-tx-${tx.id}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" : tx.type === "deposit" ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}>
-                                  {icon}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <p className={`text-xs font-bold ${typeColor[tx.type] ?? "text-foreground"}`}>
-                                      {typeLabel[tx.type] ?? tx.type}
-                                    </p>
-                                    <p className={`text-xs font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "text-emerald-600 dark:text-emerald-400" : tx.type === "deposit" ? "text-blue-600 dark:text-blue-400" : "text-red-500"}`}>
-                                      {tx.type === "deposit" ? `+$${Math.abs(net).toFixed(4)}` : (isPositive ? `+$${net.toFixed(4)}` : `-$${Math.abs(net).toFixed(4)}`)}
-                                    </p>
-                                  </div>
-                                  {tx.note && <p className="text-[10px] text-muted-foreground mt-0.5 truncate" title={tx.note}>{tx.note}</p>}
-                                  <div className="flex items-center gap-3 mt-0.5">
-                                    <p className="text-[10px] text-muted-foreground">{new Date(tx.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })} GMT</p>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${tx.status === "completed" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"}`}>{tx.status}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                )}
-
                 {/* ── P&L Chart — weekly profit / loss breakdown ── */}
                 {(() => {
                   // Filter to bot_earning sessions only
@@ -1670,6 +1607,93 @@ export default function AffiliateDashboard() {
                     ))}
                   </select>
                 </motion.div>
+
+                {/* ── Trade Transaction History — after broker selection, collapsible ── */}
+                {(tradeTxs as any[]).length > 0 && (
+                  <motion.div variants={itemVariants}>
+                    <Card className="shadow-md border-0 overflow-hidden" data-testid="panel-trade-tx-history">
+                      <button
+                        type="button"
+                        onClick={() => setShowTradeTxHistory(prev => !prev)}
+                        className="w-full bg-gradient-to-r from-slate-800 to-slate-700 text-white px-5 py-4 flex items-center justify-between text-left"
+                        data-testid="button-toggle-trade-history"
+                      >
+                        <div className="flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4" />
+                          <div>
+                            <h3 className="font-bold text-sm">Transaction History</h3>
+                            <p className="text-[10px] text-slate-300">{showTradeTxHistory ? "Tap to hide records" : "Tap to view more records"}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-white/10 text-white border-0 text-xs">{(tradeTxs as any[]).length} records</Badge>
+                          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showTradeTxHistory ? "rotate-180" : ""}`} />
+                        </div>
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {showTradeTxHistory && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.22 }}
+                            className="overflow-hidden"
+                          >
+                            <CardContent className="p-0">
+                              <div className="divide-y divide-border max-h-[360px] overflow-y-auto">
+                                {(tradeTxs as any[]).slice().reverse().map((tx: any) => {
+                                  const net = parseFloat(tx.netAmount ?? tx.amountUsd ?? "0");
+                                  const isPositive = net >= 0;
+                                  const typeLabel: Record<string, string> = {
+                                    deposit: "Deposit",
+                                    bot_earning: net < 0 ? "Bot Loss" : "Bot Earnings",
+                                    withdraw_bank: "Bank Withdrawal",
+                                    withdraw_exchange: "Exchange Withdrawal",
+                                    trade_transfer: "Trade Transfer",
+                                    commission_credit: "Commission Credit",
+                                    referral_commission: "Referral Commission",
+                                  };
+                                  const typeColor: Record<string, string> = {
+                                    deposit: "text-blue-600 dark:text-blue-400",
+                                    bot_earning: net < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400",
+                                    withdraw_bank: "text-orange-600 dark:text-orange-400",
+                                    withdraw_exchange: "text-orange-600 dark:text-orange-400",
+                                    trade_transfer: "text-purple-600 dark:text-purple-400",
+                                    commission_credit: "text-tsia-gold",
+                                    referral_commission: "text-tsia-gold",
+                                  };
+                                  const icon = tx.type === "deposit" ? "↓" : tx.type === "bot_earning" ? (net < 0 ? "↓" : "↑") : "↑";
+                                  return (
+                                    <div key={tx.id} className="px-4 py-3 flex items-start gap-3" data-testid={`row-trade-tx-${tx.id}`}>
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600" : tx.type === "deposit" ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}>
+                                        {icon}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <p className={`text-xs font-bold ${typeColor[tx.type] ?? "text-foreground"}`}>
+                                            {typeLabel[tx.type] ?? tx.type}
+                                          </p>
+                                          <p className={`text-xs font-bold shrink-0 ${isPositive && tx.type !== "deposit" ? "text-emerald-600 dark:text-emerald-400" : tx.type === "deposit" ? "text-blue-600 dark:text-blue-400" : "text-red-500"}`}>
+                                            {tx.type === "deposit" ? `+$${Math.abs(net).toFixed(4)}` : (isPositive ? `+$${net.toFixed(4)}` : `-$${Math.abs(net).toFixed(4)}`)}
+                                          </p>
+                                        </div>
+                                        {tx.note && <p className="text-[10px] text-muted-foreground mt-0.5 truncate" title={tx.note}>{tx.note}</p>}
+                                        <div className="flex items-center gap-3 mt-0.5">
+                                          <p className="text-[10px] text-muted-foreground">{new Date(tx.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })} GMT</p>
+                                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${tx.status === "completed" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"}`}>{tx.status}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </CardContent>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </Card>
+                  </motion.div>
+                )}
 
 
               </>

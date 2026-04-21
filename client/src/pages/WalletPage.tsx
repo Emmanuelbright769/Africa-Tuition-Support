@@ -144,25 +144,32 @@ export default function WalletPage() {
 
   // ── Queries (SSE-driven + poll fallback) ───────────────────────────────
   const { data: verification, refetch: refetchVerification } = useQuery<any>({ queryKey: ["/api/verification/status"] });
-  const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"], refetchInterval: 60_000, staleTime: 20_000 });
-  const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 60_000 });
-  const { data: bills = [] }         = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 120_000 });
-  const { data: txLedger = [] }      = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 60_000 });
-  const { data: withdrawals = [] }   = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"], refetchInterval: 120_000 });
+  const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"], refetchInterval: 300_000, staleTime: 60_000 });
+  const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 300_000 });
+  const { data: bills = [] }         = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 600_000 });
+  const { data: txLedger = [] }      = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 300_000 });
+  const { data: withdrawals = [] }   = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"], refetchInterval: 600_000 });
 
-  // SSE: immediately refetch when server pushes a wallet_credit / wallet_activation event
+  // SSE: immediately refetch on push events; close when tab hidden to allow server scale-to-zero
   useEffect(() => {
-    const es = new EventSource("/api/events", { withCredentials: true });
-    es.addEventListener("notification", (e: MessageEvent) => {
-      try {
-        const n = JSON.parse(e.data);
-        if (n?.type === "wallet_credit" || n?.type === "wallet_activation") {
-          refetchWallet();
-          refetchDeposits();
-        }
-      } catch {}
-    });
-    return () => es.close();
+    let es: EventSource | null = null;
+    function openSSE() {
+      if (es) return;
+      es = new EventSource("/api/events", { withCredentials: true });
+      es.addEventListener("notification", (e: MessageEvent) => {
+        try {
+          const n = JSON.parse(e.data);
+          if (n?.type === "wallet_credit" || n?.type === "wallet_activation") {
+            refetchWallet(); refetchDeposits();
+          }
+        } catch {}
+      });
+    }
+    function closeSSE() { es?.close(); es = null; }
+    function onVisibility() { if (document.hidden) closeSSE(); else openSSE(); }
+    if (!document.hidden) openSSE();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { document.removeEventListener("visibilitychange", onVisibility); closeSSE(); };
   }, []);
 
   const balance = parseFloat(wallet?.balance ?? "0");

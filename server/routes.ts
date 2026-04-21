@@ -5982,7 +5982,7 @@ export async function registerRoutes(
     const hb = setInterval(() => {
       try { res.write(": ping\n\n"); }
       catch { clearInterval(hb); removeSseClient(userId, res); }
-    }, 45000);
+    }, 5 * 60 * 1000); // ping every 5 minutes (was 45s) to reduce compute costs
     req.on("close", () => { clearInterval(hb); removeSseClient(userId, res); });
   });
 

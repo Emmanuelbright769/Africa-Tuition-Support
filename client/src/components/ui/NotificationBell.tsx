@@ -142,8 +142,8 @@ export function NotificationBell({ className }: { className?: string }) {
 
   const { data } = useQuery<NotifResponse>({
     queryKey: ["/api/notifications"],
-    refetchInterval: 120_000,
-    staleTime: 60_000,
+    refetchInterval: 600_000,
+    staleTime: 120_000,
   });
 
   const notifications = data?.notifications ?? [];
@@ -158,15 +158,33 @@ export function NotificationBell({ className }: { className?: string }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/notifications"] }); },
   });
 
-  // SSE: auto-refresh notifications when server pushes an event
+  // SSE: auto-refresh notifications when server pushes an event.
+  // The connection is closed when the tab is hidden and reopened when visible
+  // to allow the autoscale server to scale to zero when not in use.
   const esRef = useRef<EventSource | null>(null);
   useEffect(() => {
-    const es = new EventSource("/api/events", { withCredentials: true });
-    esRef.current = es;
-    es.addEventListener("notification", () => {
-      qc.invalidateQueries({ queryKey: ["/api/notifications"] });
-    });
-    return () => { es.close(); esRef.current = null; };
+    function openSSE() {
+      if (esRef.current) return;
+      const es = new EventSource("/api/events", { withCredentials: true });
+      esRef.current = es;
+      es.addEventListener("notification", () => {
+        qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+      });
+    }
+    function closeSSE() {
+      esRef.current?.close();
+      esRef.current = null;
+    }
+    function onVisibility() {
+      if (document.hidden) closeSSE();
+      else openSSE();
+    }
+    if (!document.hidden) openSSE();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      closeSSE();
+    };
   }, [qc]);
 
   // Lock scroll when full-screen is open

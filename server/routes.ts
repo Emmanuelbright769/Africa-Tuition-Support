@@ -2008,9 +2008,6 @@ export async function registerRoutes(
         paymentMethod: "trust_fund",
         description: `Trust Fund earnings withdrawal — ${(sharePercentage * 100).toFixed(6)}% share of $${totalAffiliatePool.toFixed(2)} pool`,
       });
-      // Credit 5% referral commission on trust fund earnings withdrawal
-      creditReferrerCommission(userId, available, "trust fund earnings withdrawal").catch(() => {});
-
       // Notification
       await storage.createNotification({
         userId,
@@ -3229,10 +3226,11 @@ export async function registerRoutes(
       if (isNaN(newBal) || newBal < 0) return res.status(400).json({ message: "Invalid balance amount" });
       const curWal = await storage.getOrCreateWallet(targetId);
       await storage.updateWalletBalance(targetId, newBal.toFixed(2));
-      // Auto-activate wallet if balance reaches $5 minimum and fire referral commission
+      // Auto-activate wallet if balance reaches $5 minimum and fire referral commission once
       if (!curWal.activated && newBal >= 5) {
         await storage.activateWallet(targetId);
-        creditReferrerCommission(targetId, newBal, "personal wallet activation").catch(() => {});
+        const adminAdjustmentReferralResult = await creditReferrerCommissionOnce(targetId, newBal, "personal wallet activation");
+        if (!adminAdjustmentReferralResult.credited) console.log(`[REFERRAL] No admin-adjusted wallet activation commission credited for user ${targetId}`);
       }
       // Record as admin adjustment transaction
       await storage.createTransaction({ userId: targetId, type: "admin_adjustment", amount: newBal.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin adjustment: ${note}` : "Admin wallet balance adjustment" });
@@ -4356,7 +4354,8 @@ export async function registerRoutes(
       if (!pstackWallet.activated && parseFloat(psNewBalance) >= 5) {
         try {
           await storage.activateWallet(userId);
-          creditReferrerCommission(userId, psGross, "personal wallet activation").catch(() => {});
+          const paystackReferralResult = await creditReferrerCommissionOnce(userId, psGross, "personal wallet activation");
+          if (!paystackReferralResult.credited) console.log(`[REFERRAL] No Paystack wallet activation commission credited for user ${userId}`);
           const psUser = await storage.getUser(userId);
           if (psUser?.referredBy) {
             const psReferrer = await storage.getUserByAffiliateCode(psUser.referredBy);
@@ -4641,8 +4640,6 @@ export async function registerRoutes(
       // Record transaction entries for both parties
       await storage.createTransaction({ userId, type: "transfer", amount: (-amount).toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `TSIA transfer to ${recipient.firstName} ${recipient.lastName} (${walletLabel})${note ? ` — ${note}` : ""}` });
       await storage.createTransaction({ userId: resolvedId, type: "transfer", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `TSIA transfer from ${sender?.firstName ?? "Member"}${note ? ` — ${note}` : ""}` });
-      // Credit 5% referral commission on sender's wallet activity
-      creditReferrerCommission(userId, amount, "tsia member transfer").catch(() => {});
       res.json({ message: `$${amount.toFixed(2)} sent to ${recipient.firstName} ${recipient.lastName}'s ${walletLabel} successfully` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4678,8 +4675,6 @@ export async function registerRoutes(
     await storage.createTransaction({ userId, type: "bill", amount: (-amountUsd).toFixed(2), fee: "0.00", paymentMethod: "wallet", description });
     const notif = await storage.createNotification({ userId, type: "wallet_credit", title: notifTitle, message: notifMessage, data: notifData, isRead: false });
     pushToUser(userId, "notification", notif);
-    // Spread referral commission to referrer (5% of transaction amount)
-    creditReferrerCommission(userId, amountUsd, `fintech ${service}`).catch(() => {});
     return await storage.getOrCreateWallet(userId);
   }
 
@@ -4740,8 +4735,6 @@ export async function registerRoutes(
       const msg = `₦${netAmountNgn.toLocaleString()} sent to ${accountName} (${accountNumber}). Processing within 24h. Ref: ${txRef}`;
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Initiated ✓", message: msg, data: { ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
-      // Spread referral commission (5% of transfer amount)
-      creditReferrerCommission(userId, transferAmount, "fintech bank_transfer").catch(() => {});
       const updated = await storage.getOrCreateWallet(userId);
       res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg });
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
@@ -5394,9 +5387,6 @@ export async function registerRoutes(
       // Update order to delivered + escrowReleased
       await storage.updateOrderStatus(order.id, "delivered", { escrowReleased: true });
       await storage.createOrderTracking({ orderId: order.id, statusLabel: "Delivered", description: "Buyer confirmed receipt. Escrow released — seller has been paid." });
-
-      // Credit referral commissions on the transaction
-      creditReferrerCommission(userId, totalAmount, "e-commerce purchase confirmed").catch(() => {});
 
       // Notify seller
       try {

@@ -360,6 +360,7 @@ export default function AffiliateDashboard() {
   const [bep20Input, setBep20Input]     = useState("");
   const [showTxHistory, setShowTxHistory] = useState(false);
   const [showTradeTxHistory, setShowTradeTxHistory] = useState(false);
+  const [showTrustCategories, setShowTrustCategories] = useState(false);
   const [fundTradeOpen, setFundTradeOpen] = useState(false);
   const [fundTradeAmt, setFundTradeAmt]   = useState("");
 
@@ -1855,74 +1856,95 @@ export default function AffiliateDashboard() {
                   </Card>
                 </motion.div>
 
-                {/* Categories */}
+                {/* Categories — collapsible dropdown */}
                 <motion.div variants={itemVariants}>
-                  <p className="text-sm font-semibold text-muted-foreground mb-3">Affiliate Trust Fund categories</p>
-                  <div className="grid sm:grid-cols-3 gap-5">
-                    {pricing.map((tier: any) => {
-                      const col = getTierStyle(tier.category);
-                      const isMyTier = myCategory !== null && (tier.isElite ? myCategory >= 500 : myCategory === tier.category);
-                      const isEliteTier = tier.isElite;
-                      return (
-                        <motion.div key={tier.category} whileHover={{ scale: isEnrolled ? 1 : 1.02 }}
-                          className={`relative rounded-2xl p-5 border-2 transition-all ${isMyTier ? 'border-tsia-gold bg-amber-50 dark:bg-amber-900/20 shadow-lg' : `${col.bg} ${col.border}`}`}>
-                          {isMyTier && (
-                            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-tsia-gold text-slate-900 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm whitespace-nowrap">Your Plan ✓</div>
-                          )}
-                          <div className="text-3xl mb-2">{col.icon}</div>
-                          <h5 className={`font-bold text-lg ${col.text}`}>{tier.label}</h5>
-                          <p className="text-xs text-muted-foreground mb-3">Base: ${tier.category}{isEliteTier ? " – $10,000" : ""}</p>
-                          {isEliteTier ? (
-                            <div className="mb-3">
-                              <p className="text-xs text-muted-foreground mb-1">Choose your amount ($500 – $10,000)</p>
-                              <Input type="number" min={500} max={10000} step={50} value={eliteCustomAmount} onChange={e => setEliteCustomAmount(e.target.value)} className="h-9 font-bold border-amber-300" disabled={isEnrolled} data-testid="input-elite-amount" />
-                              {parseFloat(eliteCustomAmount) > 0 && !isEnrolled && (
-                                <p className="text-[11px] text-muted-foreground mt-1">≈ {formatAmount(parseFloat(eliteCustomAmount))}</p>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="text-3xl font-bold mb-1">${tier.currentPrice}</div>
-                          )}
-                          <p className="text-xs text-muted-foreground mb-3">One-time investment</p>
-                          <div className={`text-xs font-semibold px-2 py-1 rounded-lg inline-block mb-4 ${col.badge}`}>
-                            {isEliteTier ? `Share: ${(eliteShare * 100).toFixed(6)}% lifetime` : `Share: ${tier.shareLabel} lifetime`}
-                          </div>
-                          <div className="space-y-1.5 text-xs text-muted-foreground mb-4">
-                            <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> Lifetime profit participation</div>
-                            <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> 5% TSIA profits shared</div>
-                            <div className="flex items-center gap-1.5"><Infinity className="w-3 h-3 text-primary" /> No expiry — forever</div>
-                          </div>
-                          {!isEnrolled ? (
-                            <Button className="w-full h-10 text-sm font-semibold"
-                              onClick={() => { setSelectedCategory(tier.isElite ? 500 : tier.category); setSubscribeOpen(true); }}
-                              data-testid={`button-subscribe-${tier.category}`}>
-                              {isEliteTier ? `Join for $${Math.round(eliteAmt * Math.pow(1.2, progress.milestones))}` : `Join for $${tier.currentPrice}`}
-                            </Button>
-                          ) : isMyTier ? (
-                            <Button variant="outline" className="w-full h-10 text-sm border-tsia-gold text-tsia-gold" disabled>Enrolled ✓</Button>
-                          ) : (() => {
-                            const canUpgrade = myCategory !== null && (
-                              isEliteTier
-                                ? myCategory < 10000
-                                : myCategory < tier.category
-                            );
-                            if (!canUpgrade) return <Button variant="outline" className="w-full h-10 text-sm" disabled>Already at higher tier</Button>;
+                  <button
+                    onClick={() => setShowTrustCategories(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl border bg-card hover:bg-muted/50 transition-colors text-left"
+                    data-testid="button-toggle-trust-categories"
+                  >
+                    <span className="text-sm font-semibold">Affiliate Trust Fund categories</span>
+                    <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${showTrustCategories ? "rotate-180" : ""}`} />
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {showTrustCategories && (
+                      <motion.div
+                        key="trust-categories"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: "easeInOut" }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid sm:grid-cols-3 gap-5 pt-4">
+                          {pricing.map((tier: any) => {
+                            const col = getTierStyle(tier.category);
+                            const isMyTier = myCategory !== null && (tier.isElite ? myCategory >= 500 : myCategory === tier.category);
+                            const isEliteTier = tier.isElite;
                             return (
-                              <Button className="w-full h-10 text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white"
-                                onClick={() => {
-                                  setUpgradeCategory(isEliteTier ? 500 : tier.category);
-                                  setUpgradeEliteAmt(isEliteTier ? eliteCustomAmount : "");
-                                  setUpgradeOpen(true);
-                                }}
-                                data-testid={`button-upgrade-${tier.category}`}>
-                                ↑ Upgrade to {tier.label}
-                              </Button>
+                              <motion.div key={tier.category} whileHover={{ scale: isEnrolled ? 1 : 1.02 }}
+                                className={`relative rounded-2xl p-5 border-2 transition-all ${isMyTier ? 'border-tsia-gold bg-amber-50 dark:bg-amber-900/20 shadow-lg' : `${col.bg} ${col.border}`}`}>
+                                {isMyTier && (
+                                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-tsia-gold text-slate-900 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm whitespace-nowrap">Your Plan ✓</div>
+                                )}
+                                <div className="text-3xl mb-2">{col.icon}</div>
+                                <h5 className={`font-bold text-lg ${col.text}`}>{tier.label}</h5>
+                                <p className="text-xs text-muted-foreground mb-3">Base: ${tier.category}{isEliteTier ? " – $10,000" : ""}</p>
+                                {isEliteTier ? (
+                                  <div className="mb-3">
+                                    <p className="text-xs text-muted-foreground mb-1">Choose your amount ($500 – $10,000)</p>
+                                    <Input type="number" min={500} max={10000} step={50} value={eliteCustomAmount} onChange={e => setEliteCustomAmount(e.target.value)} className="h-9 font-bold border-amber-300" disabled={isEnrolled} data-testid="input-elite-amount" />
+                                    {parseFloat(eliteCustomAmount) > 0 && !isEnrolled && (
+                                      <p className="text-[11px] text-muted-foreground mt-1">≈ {formatAmount(parseFloat(eliteCustomAmount))}</p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="text-3xl font-bold mb-1">${tier.currentPrice}</div>
+                                )}
+                                <p className="text-xs text-muted-foreground mb-3">One-time investment</p>
+                                <div className={`text-xs font-semibold px-2 py-1 rounded-lg inline-block mb-4 ${col.badge}`}>
+                                  {isEliteTier ? `Share: ${(eliteShare * 100).toFixed(6)}% lifetime` : `Share: ${tier.shareLabel} lifetime`}
+                                </div>
+                                <div className="space-y-1.5 text-xs text-muted-foreground mb-4">
+                                  <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> Lifetime profit participation</div>
+                                  <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> 5% TSIA profits shared</div>
+                                  <div className="flex items-center gap-1.5"><Infinity className="w-3 h-3 text-primary" /> No expiry — forever</div>
+                                </div>
+                                {!isEnrolled ? (
+                                  <Button className="w-full h-10 text-sm font-semibold"
+                                    onClick={() => { setSelectedCategory(tier.isElite ? 500 : tier.category); setSubscribeOpen(true); }}
+                                    data-testid={`button-subscribe-${tier.category}`}>
+                                    {isEliteTier ? `Join for $${Math.round(eliteAmt * Math.pow(1.2, progress.milestones))}` : `Join for $${tier.currentPrice}`}
+                                  </Button>
+                                ) : isMyTier ? (
+                                  <Button variant="outline" className="w-full h-10 text-sm border-tsia-gold text-tsia-gold" disabled>Enrolled ✓</Button>
+                                ) : (() => {
+                                  const canUpgrade = myCategory !== null && (
+                                    isEliteTier
+                                      ? myCategory < 10000
+                                      : myCategory < tier.category
+                                  );
+                                  if (!canUpgrade) return <Button variant="outline" className="w-full h-10 text-sm" disabled>Already at higher tier</Button>;
+                                  return (
+                                    <Button className="w-full h-10 text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white"
+                                      onClick={() => {
+                                        setUpgradeCategory(isEliteTier ? 500 : tier.category);
+                                        setUpgradeEliteAmt(isEliteTier ? eliteCustomAmount : "");
+                                        setUpgradeOpen(true);
+                                      }}
+                                      data-testid={`button-upgrade-${tier.category}`}>
+                                      ↑ Upgrade to {tier.label}
+                                    </Button>
+                                  );
+                                })()}
+                              </motion.div>
                             );
-                          })()}
-                        </motion.div>
-                      );
-                    })}
-                  </div>
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
 
                 {/* How it works */}

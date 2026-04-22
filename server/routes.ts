@@ -22,7 +22,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -2148,10 +2148,12 @@ export async function registerRoutes(
       if (!["trc20", "bep20"].includes(walletType)) {
         return res.status(400).json({ message: "walletType must be trc20 or bep20." });
       }
-      // Allocations on deposit
-      const reserveCut = amount * TRADE_MARKET.RESERVE_FUND_RATE;      // 20%
-      const affiliateCut = amount * TRADE_MARKET.AFFILIATE_SHARE_RATE; // 5%
-      const userCredit = amount - reserveCut - affiliateCut;           // 75%
+      // Allocations on deposit — affiliate pool rate is tiered by total enrolled co-affiliates
+      const coAffiliateCount = await storage.getCoAffiliateCount();
+      const affiliateRate = getCoAffiliateTransactionRate(coAffiliateCount);
+      const reserveCut = amount * TRADE_MARKET.RESERVE_FUND_RATE;
+      const affiliateCut = amount * affiliateRate;
+      const userCredit = amount - reserveCut - affiliateCut;
 
       await storage.getOrCreateTradeWallet(userId);
       const tx = await storage.createTradeTransaction({
@@ -2165,7 +2167,7 @@ export async function registerRoutes(
         netAmount: userCredit.toFixed(6),
         txHash: txHash || null,
         status: "completed",
-        note: `Deposit via ${walletType.toUpperCase()} — 20% reserve, 5% affiliate commission`,
+        note: `Deposit via ${walletType.toUpperCase()} — 20% reserve, ${(affiliateRate * 100).toFixed(0)}% co-affiliate pool`,
       });
 
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
@@ -2228,10 +2230,12 @@ export async function registerRoutes(
       }
       // Deduct from personal wallet
       await storage.updateWalletBalance(userId, (balance - amount).toFixed(2));
-      // Allocations
-      const reserveCut = amount * TRADE_MARKET.RESERVE_FUND_RATE;      // 20%
-      const affiliateCut = amount * TRADE_MARKET.AFFILIATE_SHARE_RATE; // 5%
-      const userCredit = amount - reserveCut - affiliateCut;           // 75%
+      // Allocations — affiliate pool rate is tiered by total enrolled co-affiliates
+      const coAffCountFw = await storage.getCoAffiliateCount();
+      const affiliateRateFw = getCoAffiliateTransactionRate(coAffCountFw);
+      const reserveCut = amount * TRADE_MARKET.RESERVE_FUND_RATE;
+      const affiliateCut = amount * affiliateRateFw;
+      const userCredit = amount - reserveCut - affiliateCut;
       // Credit trade wallet
       await storage.getOrCreateTradeWallet(userId);
       const tx = await storage.createTradeTransaction({
@@ -2245,7 +2249,7 @@ export async function registerRoutes(
         netAmount: userCredit.toFixed(6),
         txHash: `INTERNAL-${userId}-${Date.now()}`,
         status: "completed",
-        note: `Funded from Personal Wallet — 75% credited, 20% reserve, 5% affiliate pool`,
+        note: `Funded from Personal Wallet — 20% reserve, ${(affiliateRateFw * 100).toFixed(0)}% co-affiliate pool`,
       });
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
       await storage.addToTotalInvested(userId, userCredit.toFixed(6));
@@ -2346,7 +2350,9 @@ export async function registerRoutes(
       }
       const feeRate = withdrawalType === "withdraw_bank" ? TRADE_MARKET.FEE_BANK_WITHDRAW : TRADE_MARKET.FEE_EXCHANGE_WITHDRAW;
       const fee = amount * feeRate;
-      const affiliateCut = amount * TRADE_MARKET.AFFILIATE_SHARE_RATE;
+      const coAffCountWd = await storage.getCoAffiliateCount();
+      const affiliateCutRate = getCoAffiliateTransactionRate(coAffCountWd);
+      const affiliateCut = amount * affiliateCutRate;
       const netPayout = amount - fee - affiliateCut;
 
       const wallet = await storage.getOrCreateTradeWallet(userId);
@@ -2397,8 +2403,8 @@ export async function registerRoutes(
         reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
         netAmount: netPayout.toFixed(6), txHash: null, status: "completed",
         note: withdrawalType === "withdraw_bank"
-          ? `Bank withdrawal ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} → ${accountName} (${accountNumber}) — 8% fee + 5% pool`
-          : `Exchange withdrawal — 5% fee + 5% affiliate pool`,
+          ? `Bank withdrawal ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} → ${accountName} (${accountNumber}) — 8% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool`
+          : `Exchange withdrawal — 5% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool`,
       });
 
       await storage.updateTradeBalance(userId, (-amount).toFixed(6));
@@ -3849,10 +3855,6 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const wallet = await storage.getOrCreateWallet(userId);
-      if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before using a sponsor code." });
-      }
       const { code } = req.body;
       if (!code) return res.status(400).json({ message: "Code is required" });
       const result = await storage.validateSponsorCode(code);
@@ -3867,10 +3869,6 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const wallet = await storage.getOrCreateWallet(userId);
-      if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before using a sponsor code." });
-      }
 
       const { code } = req.body;
       if (!code) return res.status(400).json({ message: "Code is required" });
@@ -3878,10 +3876,36 @@ export async function registerRoutes(
       const validation = await storage.validateSponsorCode(code);
       if (!validation.valid) return res.status(400).json({ message: validation.reason });
 
+      // Mark the code as used
       await storage.useSponsorCode(code, userId);
 
+      // Credit $5.50 activation bonus and activate the wallet if not yet active
+      const SPONSOR_CODE_BONUS = 5.50;
+      const wallet = await storage.getOrCreateWallet(userId);
+      const newBalance = (parseFloat(wallet.balance) + SPONSOR_CODE_BONUS).toFixed(2);
+      await storage.updateWalletBalance(userId, newBalance);
+      if (!wallet.activated) {
+        await storage.activateWallet(userId);
+      }
+      await storage.createTransaction({
+        userId,
+        type: "admin_credit",
+        amount: SPONSOR_CODE_BONUS.toFixed(2),
+        fee: "0.00",
+        paymentMethod: "sponsor_code",
+        description: `Sponsor code activation bonus — $${SPONSOR_CODE_BONUS.toFixed(2)} credited to TSIA Personal Wallet (${validation.cohortName ?? "sponsored cohort"})`,
+      });
+      await storage.createNotification({
+        userId,
+        type: "wallet_credit",
+        title: "Sponsor Code Activated!",
+        message: `$${SPONSOR_CODE_BONUS.toFixed(2)} has been credited to your TSIA Personal Wallet and your account is now active.`,
+        data: { bonus: SPONSOR_CODE_BONUS, cohortName: validation.cohortName },
+        isRead: false,
+      });
+
       const verification = await storage.getVerificationByUser(userId);
-      res.json({ success: true, verification });
+      res.json({ success: true, verification, bonus: SPONSOR_CODE_BONUS });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

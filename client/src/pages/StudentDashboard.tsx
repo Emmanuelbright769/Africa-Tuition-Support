@@ -17,7 +17,7 @@ import {
   LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X,
   LayoutDashboard, Star, History, ChevronRight, ChevronDown, Car, Globe, Loader2,
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
-  ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Info
+  ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Info, KeyRound
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -64,6 +64,9 @@ export default function StudentDashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
   const [servicesExpanded, setServicesExpanded] = useState(false);
+  const [sponsorCodeDialogOpen, setSponsorCodeDialogOpen] = useState(false);
+  const [sponsorCodeInput, setSponsorCodeInput] = useState("");
+  const [sponsorCodeLoading, setSponsorCodeLoading] = useState(false);
   const [openChatId, setOpenChatId] = useState<number | null>(null);
   const [loanAmount, setLoanAmount] = useState("");
   const [loanTerm, setLoanTerm] = useState(12);
@@ -129,6 +132,25 @@ export default function StudentDashboard() {
 
 
   const handleLogout = async () => { await logout(); setLocation("/"); };
+
+  const handleSponsorCodeSubmit = async () => {
+    if (!sponsorCodeInput.trim()) return;
+    setSponsorCodeLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/verification/use-sponsor-code", { code: sponsorCodeInput.trim().toUpperCase() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Invalid code");
+      toast({ title: "Sponsor Code Activated!", description: `$${Number(data.bonus ?? 5.5).toFixed(2)} has been credited to your wallet and your account is now active.` });
+      setSponsorCodeDialogOpen(false);
+      setSponsorCodeInput("");
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    } catch (err: any) {
+      toast({ title: "Invalid Code", description: err.message, variant: "destructive" });
+    } finally {
+      setSponsorCodeLoading(false);
+    }
+  };
 
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -429,16 +451,64 @@ export default function StudentDashboard() {
                           : showPendingApproval ? "Your application is under review by the TSIA team. You'll be notified within 24–48 hours."
                           : "Start by activating your wallet, then complete your verification (NIN + WAEC) to unlock sponsorship funding."}
                       </p>
-                      {showGoToOnboarding && (
+                      <div className="flex flex-wrap gap-3 items-center">
+                        {showGoToOnboarding && (
+                          <Button
+                            onClick={() => walletActivated ? setLocation("/onboarding") : setLocation("/wallet")}
+                            className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold h-11 px-6"
+                            data-testid="button-go-onboarding"
+                          >
+                            {walletActivated ? <ArrowUpRight className="w-4 h-4 mr-2" /> : <Wallet className="w-4 h-4 mr-2" />}
+                            {walletActivated ? "Complete Verification" : "Activate Wallet First"}
+                          </Button>
+                        )}
                         <Button
-                          onClick={() => walletActivated ? setLocation("/onboarding") : setLocation("/wallet")}
-                          className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold h-11 px-6"
-                          data-testid="button-go-onboarding"
+                          onClick={() => setSponsorCodeDialogOpen(true)}
+                          variant="outline"
+                          className="border-tsia-gold text-tsia-gold hover:bg-tsia-gold/10 font-bold h-11 px-6"
+                          data-testid="button-enter-sponsor-code"
                         >
-                          {walletActivated ? <ArrowUpRight className="w-4 h-4 mr-2" /> : <Wallet className="w-4 h-4 mr-2" />}
-                          {walletActivated ? "Complete Verification" : "Activate Wallet First"}
+                          <KeyRound className="w-4 h-4 mr-2" />
+                          Enter Sponsor Code
                         </Button>
-                      )}
+                      </div>
+                      <Dialog open={sponsorCodeDialogOpen} onOpenChange={setSponsorCodeDialogOpen}>
+                        <DialogContent className="max-w-sm">
+                          <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                              <KeyRound className="w-5 h-5 text-tsia-gold" />
+                              Enter Your Sponsor Code
+                            </DialogTitle>
+                            <DialogDescription>
+                              Have a code from a sponsor? Enter it below to activate your wallet and receive $5.50 instantly.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-3 py-2">
+                            <Label htmlFor="sponsor-code-input">Sponsor Code</Label>
+                            <Input
+                              id="sponsor-code-input"
+                              placeholder="e.g. TSIA-ABC1234"
+                              value={sponsorCodeInput}
+                              onChange={e => setSponsorCodeInput(e.target.value.toUpperCase())}
+                              onKeyDown={e => e.key === "Enter" && handleSponsorCodeSubmit()}
+                              className="font-mono tracking-widest uppercase"
+                              data-testid="input-sponsor-code"
+                            />
+                          </div>
+                          <DialogFooter>
+                            <Button variant="outline" onClick={() => setSponsorCodeDialogOpen(false)} disabled={sponsorCodeLoading}>Cancel</Button>
+                            <Button
+                              onClick={handleSponsorCodeSubmit}
+                              disabled={sponsorCodeLoading || !sponsorCodeInput.trim()}
+                              className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold"
+                              data-testid="button-submit-sponsor-code"
+                            >
+                              {sponsorCodeLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <KeyRound className="w-4 h-4 mr-2" />}
+                              {sponsorCodeLoading ? "Verifying…" : "Apply Code"}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                     {feePaid && (
                       <div className="bg-white/10 border border-white/20 px-6 py-4 rounded-xl text-center backdrop-blur-md shrink-0 min-w-[140px]">

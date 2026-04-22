@@ -315,6 +315,17 @@ export const TRADE_MARKET = {
   TSIA_RECEIVING_BEP20: "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977",
 } as const;
 
+/**
+ * Dynamic co-affiliate transactional pool rate, tiered by total enrolled count.
+ * 20% for the first 10,000 · 15% up to 50,000 · 10% up to 100,000 · 5% thereafter.
+ */
+export function getCoAffiliateTransactionRate(totalCoAffiliates: number): number {
+  if (totalCoAffiliates <= 10_000) return 0.20;
+  if (totalCoAffiliates <= 50_000) return 0.15;
+  if (totalCoAffiliates <= 100_000) return 0.10;
+  return 0.05;
+}
+
 export interface CoAffiliateTier {
   category: number;
   label: string;

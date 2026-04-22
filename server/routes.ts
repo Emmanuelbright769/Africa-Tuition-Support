@@ -3664,10 +3664,25 @@ export async function registerRoutes(
         completedOrders: allOrders.filter(o => o.status === "delivered").length,
         totalCommission: totalCommission.toFixed(2),
         recentOrders: enrichedOrders,
+        allProducts: allProducts,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  // ─── ADMIN: Remove a listing ────────────────────────────────────────────────
+  app.delete("/api/admin/products/:id", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const prod = await storage.getProductById(parseInt(req.params.id));
+      if (!prod) return res.status(404).json({ message: "Product not found" });
+      await storage.deleteProduct(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ─── ADMIN: Trade market stats ───────────────────────────────────────────────
@@ -5263,6 +5278,18 @@ export async function registerRoutes(
         }
       }
       res.json(updated);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/products/:id", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const prod = await storage.getProductById(parseInt(req.params.id));
+      if (!prod) return res.status(404).json({ message: "Product not found" });
+      if (prod.sellerId !== userId) return res.status(403).json({ message: "Not your product" });
+      await storage.deleteProduct(parseInt(req.params.id));
+      res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

@@ -1,4 +1,4 @@
-import { eq, desc, and, gt, gte, lte, count, sql, ne, like, ilike, or, not, isNull } from "drizzle-orm";
+import { eq, desc, and, gt, gte, lte, count, sql, ne, like, ilike, or, not, isNull, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
@@ -143,6 +143,7 @@ export interface IStorage {
   getProducts(opts?: { category?: string; search?: string; sellerId?: number; status?: string }): Promise<(Product & { sellerName: string })[]>;
   getProductById(id: number): Promise<(Product & { sellerName: string }) | undefined>;
   updateProduct(id: number, data: Partial<Product>): Promise<Product>;
+  deleteProduct(id: number): Promise<void>;
   rateProduct(data: InsertProductRating): Promise<ProductRating>;
   getProductRatings(productId: number): Promise<(ProductRating & { userName: string })[]>;
   getProductRatingSummary(productId: number): Promise<{ avgRating: number; count: number }>;
@@ -860,6 +861,29 @@ export class DatabaseStorage implements IStorage {
   async updateProduct(id: number, data: Partial<Product>): Promise<Product> {
     const [p] = await db.update(products).set(data as any).where(eq(products.id, id)).returning();
     return p;
+  }
+
+  async deleteProduct(id: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      // 1. chat messages (depends on chats)
+      const chatIds = await tx.select({ id: ecommerceChats.id }).from(ecommerceChats).where(eq(ecommerceChats.productId, id));
+      if (chatIds.length > 0) {
+        const ids = chatIds.map(c => c.id);
+        await tx.delete(ecommerceChatMessages).where(inArray(ecommerceChatMessages.chatId, ids));
+      }
+      // 2. chats
+      await tx.delete(ecommerceChats).where(eq(ecommerceChats.productId, id));
+      // 3. ratings
+      await tx.delete(productRatings).where(eq(productRatings.productId, id));
+      // 4. price alerts
+      await tx.delete(priceAlerts).where(eq(priceAlerts.productId, id));
+      // 5. null out call session productId (nullable column)
+      await tx.execute(sql`UPDATE call_sessions SET product_id = NULL WHERE product_id = ${id}`);
+      // 6. orders — cancel any pending, then delete all
+      await tx.execute(sql`DELETE FROM orders WHERE product_id = ${id}`);
+      // 7. finally delete the product
+      await tx.delete(products).where(eq(products.id, id));
+    });
   }
 
   async createOrder(data: InsertOrder): Promise<Order> {

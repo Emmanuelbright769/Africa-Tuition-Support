@@ -415,6 +415,20 @@ export default function AdminDashboard() {
     },
   });
 
+  const [adminDeleteListingId, setAdminDeleteListingId] = useState<number | null>(null);
+  const removeListingMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/products/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/ecommerce-stats"] });
+      setAdminDeleteListingId(null);
+      toast({ title: "Listing Removed", description: "The listing has been permanently deleted." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   // ─── Auth guard ────────────────────────────────────────────────────────────
   const timerRef = useRef<any>(null);
   useEffect(() => {
@@ -1207,6 +1221,77 @@ export default function AdminDashboard() {
                     </Table>
                   </div>
                 </Card>
+
+                {/* All Listings table */}
+                {(ecommerceStats as any)?.allProducts?.length > 0 && (
+                  <Card className="border-0 shadow-sm overflow-hidden">
+                    <CardHeader className="border-b bg-white py-4 px-6">
+                      <CardTitle className="text-base">All Listings</CardTitle>
+                      <CardDescription>Remove any listing that violates marketplace rules</CardDescription>
+                    </CardHeader>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader className="bg-slate-50">
+                          <TableRow>
+                            <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">ID</TableHead>
+                            <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Title</TableHead>
+                            <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Seller</TableHead>
+                            <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Price</TableHead>
+                            <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
+                            <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Listed</TableHead>
+                            <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {((ecommerceStats as any).allProducts as any[]).map((p: any) => (
+                            <TableRow key={p.id} className="hover:bg-slate-50/50" data-testid={`row-admin-listing-${p.id}`}>
+                              <TableCell className="px-6 font-mono text-xs text-slate-400">#{p.id}</TableCell>
+                              <TableCell className="text-sm font-medium text-slate-900 max-w-[180px] truncate">{p.title}</TableCell>
+                              <TableCell className="text-xs text-slate-600">{p.sellerName ?? "—"}</TableCell>
+                              <TableCell className="font-bold text-sm">{fmtUSD(p.price)}</TableCell>
+                              <TableCell><StatusBadge status={p.status} /></TableCell>
+                              <TableCell className="text-xs text-slate-500">{fmtDate(p.createdAt)}</TableCell>
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-red-600 border-red-300 hover:bg-red-50 h-7 text-xs rounded-lg"
+                                  onClick={() => setAdminDeleteListingId(p.id)}
+                                  data-testid={`btn-admin-remove-listing-${p.id}`}
+                                >
+                                  <Trash2 className="w-3 h-3 mr-1" /> Remove
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Admin remove listing confirmation */}
+                <Dialog open={adminDeleteListingId !== null} onOpenChange={open => { if (!open) setAdminDeleteListingId(null); }}>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle className="text-red-600">Remove Listing</DialogTitle>
+                      <DialogDescription>
+                        This will permanently delete this listing, all associated chats, ratings, and orders. This cannot be undone.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setAdminDeleteListingId(null)}>Cancel</Button>
+                      <Button
+                        variant="destructive"
+                        onClick={() => { if (adminDeleteListingId !== null) removeListingMutation.mutate(adminDeleteListingId); }}
+                        disabled={removeListingMutation.isPending}
+                        data-testid="button-admin-confirm-remove-listing"
+                      >
+                        {removeListingMutation.isPending ? "Removing…" : "Yes, Remove"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </motion.div>
             )}
 

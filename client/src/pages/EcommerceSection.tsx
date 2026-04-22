@@ -677,22 +677,45 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
 }
 
 // ─── List Product Modal ────────────────────────────────────────────────────
-function ListProductModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function ListProductModal({ open, onClose, editProduct }: { open: boolean; onClose: () => void; editProduct?: Product | null }) {
   const { toast } = useToast();
   const { formatAmount } = useLocalCurrency();
+  const isEdit = !!editProduct;
   const [form, setForm] = useState({ title: "", description: "", price: "", category: "other", condition: "new", stock: "1", location: "London, UK", negotiable: false });
   const [images, setImages] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (editProduct) {
+      setForm({
+        title: editProduct.title,
+        description: editProduct.description,
+        price: parseFloat(editProduct.price).toString(),
+        category: editProduct.category,
+        condition: editProduct.condition,
+        stock: String(editProduct.stock),
+        location: editProduct.location,
+        negotiable: !!editProduct.negotiable,
+      });
+      setImages(editProduct.images ?? []);
+    } else {
+      setForm({ title: "", description: "", price: "", category: "other", condition: "new", stock: "1", location: "London, UK", negotiable: false });
+      setImages([]);
+    }
+  }, [editProduct, open]);
+
   const createMutation = useMutation({
-    mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/products", data); return res.json(); },
+    mutationFn: async (data: any) => {
+      const method = isEdit ? "PATCH" : "POST";
+      const url = isEdit ? `/api/products/${editProduct!.id}` : "/api/products";
+      const res = await apiRequest(method, url, data);
+      return res.json();
+    },
     onSuccess: () => {
-      toast({ title: "Product listed!", description: "Your product is now live in the marketplace." });
+      toast({ title: isEdit ? "Listing updated!" : "Product listed!", description: isEdit ? "Your changes are live." : "Your product is now live in the marketplace." });
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       queryClient.invalidateQueries({ queryKey: ["/api/products/my"] });
       onClose();
-      setForm({ title: "", description: "", price: "", category: "other", condition: "new", stock: "1", location: "London, UK", negotiable: false });
-      setImages([]);
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -736,8 +759,8 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Tag className="w-5 h-5 text-tsia-green" /> List a Product</DialogTitle>
-          <DialogDescription>TSIA takes {ECOMMERCE.COMMISSION_RATE * 100}% commission. You keep {(1 - ECOMMERCE.COMMISSION_RATE) * 100}%.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2"><Tag className="w-5 h-5 text-tsia-green" /> {isEdit ? "Edit Listing" : "List a Product"}</DialogTitle>
+          <DialogDescription>{isEdit ? "Update your listing details below." : `TSIA takes ${ECOMMERCE.COMMISSION_RATE * 100}% commission. You keep ${(1 - ECOMMERCE.COMMISSION_RATE) * 100}%.`}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -817,7 +840,7 @@ function ListProductModal({ open, onClose }: { open: boolean; onClose: () => voi
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={() => createMutation.mutate({...form, images, price: parseFloat(form.price), stock: parseInt(form.stock), negotiable: form.negotiable})} disabled={createMutation.isPending || !form.title || !form.description || !form.price} data-testid="button-submit-product" className="bg-tsia-green text-white">
-            {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />} List Product
+            {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />} {isEdit ? "Save Changes" : "List Product"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1233,6 +1256,8 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   const [activeSearch, setActiveSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("");
   const [listOpen, setListOpen] = useState(false);
+  const [editingListing, setEditingListing] = useState<Product | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [buyProduct, setBuyProduct] = useState<Product | null>(null);
@@ -1360,6 +1385,17 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
       return next;
     });
   };
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/products/${id}`); },
+    onSuccess: () => {
+      toast({ title: "Listing removed", description: "Your listing has been deleted." });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products/my"] });
+      setDeleteConfirmId(null);
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const handleView = (p: Product) => { setSelectedProduct(p); setDetailOpen(true); };
   const handleBuy = (p: Product) => {
@@ -1664,11 +1700,22 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                       <p className="font-semibold text-sm line-clamp-1">{p.title}</p>
                       <p className="text-base font-black text-tsia-green">${parseFloat(p.price).toFixed(2)}</p>
                       <p className="text-xs text-muted-foreground">{p.stock} in stock · {p.viewCount} views</p>
-                      <div className="flex gap-1.5 mt-2">
-                        <Button size="sm" variant="outline" className="flex-1 text-xs h-7 rounded-xl" onClick={() => handleView(p)} data-testid={`btn-view-listing-${p.id}`}>View</Button>
-                        <Button size="sm" variant="outline" className="flex-1 text-xs h-7 rounded-xl text-amber-600 border-amber-300"
-                          onClick={() => { apiRequest("PATCH", `/api/products/${p.id}`, { status: p.status === "paused" ? "active" : "paused" }).then(() => queryClient.invalidateQueries({ queryKey: ["/api/products/my"] })); }}>
+                      <div className="grid grid-cols-2 gap-1.5 mt-2">
+                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl" onClick={() => handleView(p)} data-testid={`btn-view-listing-${p.id}`}>View</Button>
+                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl text-amber-600 border-amber-300"
+                          onClick={() => { apiRequest("PATCH", `/api/products/${p.id}`, { status: p.status === "paused" ? "active" : "paused" }).then(() => queryClient.invalidateQueries({ queryKey: ["/api/products/my"] })); }}
+                          data-testid={`btn-toggle-listing-${p.id}`}>
                           {p.status === "paused" ? "Activate" : "Pause"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl text-blue-600 border-blue-300"
+                          onClick={() => { setEditingListing(p); setListOpen(true); }}
+                          data-testid={`btn-edit-listing-${p.id}`}>
+                          Edit
+                        </Button>
+                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl text-red-600 border-red-300"
+                          onClick={() => setDeleteConfirmId(p.id)}
+                          data-testid={`btn-delete-listing-${p.id}`}>
+                          Remove
                         </Button>
                       </div>
                     </div>
@@ -1888,7 +1935,30 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
       )}
 
       {/* Modals */}
-      <ListProductModal open={listOpen} onClose={() => setListOpen(false)} />
+      <ListProductModal open={listOpen} editProduct={editingListing} onClose={() => { setListOpen(false); setEditingListing(null); }} />
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteConfirmId !== null} onOpenChange={open => { if (!open) setDeleteConfirmId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Remove Listing</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this listing and all associated data including chats and ratings. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => { if (deleteConfirmId !== null) deleteMutation.mutate(deleteConfirmId); }}
+              disabled={deleteMutation.isPending}
+              data-testid="button-confirm-delete-listing"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null} Yes, Remove Listing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ProductDetailModal
         product={selectedProduct}
         open={detailOpen}

@@ -2927,6 +2927,39 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Reset rejected verification → pending (allow student to resubmit) ──
+  app.post("/api/admin/reset-verification/:verificationId", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const vId = parseInt(req.params.verificationId);
+      const updated = await storage.updateVerification(vId, { status: "pending" } as any);
+
+      // Notify student they can resubmit
+      try {
+        const verUser = await storage.getUser(updated.userId);
+        if (verUser) {
+          const notif = await storage.createNotification({
+            userId: updated.userId,
+            type: "verification_update",
+            title: "Application Reopened — Please Resubmit",
+            message: "Your application has been reopened by the admin. Please log in to your Student Dashboard and resubmit your verification details.",
+            data: { verificationId: vId, status: "pending" },
+            isRead: false,
+          });
+          pushToUser(updated.userId, "notification", notif);
+        }
+      } catch { /* non-critical */ }
+
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.get("/api/admin/pending-disbursements", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });

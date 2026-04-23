@@ -204,6 +204,20 @@ export default function AdminDashboard() {
     },
   });
 
+  const resetVerifyMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/admin/reset-verification/${id}`);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-verifications"] });
+      setReviewDialog(null);
+      toast({ title: "Application Reopened ✓", description: "Status reset to pending — student notified and can now resubmit." });
+    },
+    onError: (e: any) => toast({ title: "Reset Failed", description: e.message, variant: "destructive" }),
+  });
+
   const editDisburseMutation = useMutation({
     mutationFn: async ({ id, newAmount, note }: { id: number; newAmount: string; note: string }) => {
       const res = await apiRequest("PATCH", `/api/admin/edit-disbursement/${id}`, { newAmount, note });
@@ -800,14 +814,22 @@ export default function AdminDashboard() {
                                     <XCircle className="w-3 h-3 mr-1" /> Decline & Retry
                                   </Button>
                                 )}
-                                {v.status !== "verified" && (
+                                {v.status === "rejected" && (
+                                  <Button size="sm"
+                                    className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white"
+                                    onClick={() => resetVerifyMutation.mutate(v.id)}
+                                    disabled={resetVerifyMutation.isPending || verifyMutation.isPending}
+                                    data-testid={`button-allow-retry-${v.id}`}>
+                                    <RefreshCw className="w-3 h-3 mr-1" /> Allow Retry
+                                  </Button>
+                                )}
+                                {v.status === "pending" && (
                                   <Button size="sm"
                                     className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90"
                                     onClick={() => verifyMutation.mutate({ id: v.id, approve: true })}
                                     disabled={verifyMutation.isPending}
                                     data-testid={`button-approve-${v.id}`}>
-                                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                                    {v.status === "rejected" ? "Re-Approve" : "Approve"}
+                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Approve
                                   </Button>
                                 )}
                               </div>
@@ -2400,12 +2422,20 @@ export default function AdminDashboard() {
                     </Button>
                   )}
                   {reviewDialog?.status === "rejected" && (
-                    <Button className="bg-tsia-green hover:bg-tsia-green/90"
-                      onClick={() => { verifyMutation.mutate({ id: reviewDialog.id, approve: true }); setReviewDialog(null); }}
-                      disabled={verifyMutation.isPending}
-                      data-testid="button-re-approve">
-                      <CheckCircle2 className="w-4 h-4 mr-2" /> Re-Approve
-                    </Button>
+                    <>
+                      <Button variant="outline" className="border-amber-400 text-amber-600 hover:bg-amber-50"
+                        onClick={() => resetVerifyMutation.mutate(reviewDialog.id)}
+                        disabled={resetVerifyMutation.isPending}
+                        data-testid="button-allow-retry-dialog">
+                        <RefreshCw className="w-4 h-4 mr-2" /> Allow Retry
+                      </Button>
+                      <Button className="bg-tsia-green hover:bg-tsia-green/90"
+                        onClick={() => { verifyMutation.mutate({ id: reviewDialog.id, approve: true }); setReviewDialog(null); }}
+                        disabled={verifyMutation.isPending}
+                        data-testid="button-re-approve">
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve Directly
+                      </Button>
+                    </>
                   )}
                   <Button variant="outline" onClick={() => setReviewDialog(null)}>Close</Button>
                 </div>

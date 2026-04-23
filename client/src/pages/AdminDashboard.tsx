@@ -187,7 +187,7 @@ export default function AdminDashboard() {
       setReviewDialog(null);
       setRejectDialog({ open: false, verification: null });
       setRejectReason("");
-      toast({ title: approve ? "Student Approved ✓" : "Application Rejected", description: approve ? "Verification approved. Wallet funding pending disbursement." : "Application rejected and student notified." });
+      toast({ title: approve ? "Student Approved ✓" : "Application Declined", description: approve ? "Verification approved. Wallet funding pending disbursement." : "Application declined — student notified with retry instructions." });
     },
   });
 
@@ -787,9 +787,30 @@ export default function AdminDashboard() {
                               </span>
                             </TableCell>
                             <TableCell className="text-right px-6">
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setReviewDialog(v)} data-testid={`button-review-${v.id}`}>
-                                <Eye className="w-3.5 h-3.5 mr-1.5" /> {v.status === "pending" ? "Review" : "View"}
-                              </Button>
+                              <div className="flex gap-1.5 justify-end">
+                                <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => setReviewDialog(v)} data-testid={`button-review-${v.id}`} title="View details">
+                                  <Eye className="w-3.5 h-3.5" />
+                                </Button>
+                                {v.status !== "rejected" && (
+                                  <Button size="sm" variant="outline"
+                                    className="h-7 text-xs border-red-400 text-red-600 hover:bg-red-50"
+                                    onClick={() => { setRejectDialog({ open: true, verification: v }); setRejectReason(""); }}
+                                    disabled={verifyMutation.isPending}
+                                    data-testid={`button-decline-retry-${v.id}`}>
+                                    <XCircle className="w-3 h-3 mr-1" /> Decline & Retry
+                                  </Button>
+                                )}
+                                {v.status !== "verified" && (
+                                  <Button size="sm"
+                                    className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90"
+                                    onClick={() => verifyMutation.mutate({ id: v.id, approve: true })}
+                                    disabled={verifyMutation.isPending}
+                                    data-testid={`button-approve-${v.id}`}>
+                                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                                    {v.status === "rejected" ? "Re-Approve" : "Approve"}
+                                  </Button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -2352,53 +2373,76 @@ export default function AdminDashboard() {
           <DialogFooter className="flex justify-between sm:justify-between border-t pt-4 gap-3 flex-col sm:flex-row">
             {reviewDialog?.status === "pending" ? (
               <>
-                <Button variant="destructive" onClick={() => { setRejectDialog({ open: true, verification: reviewDialog }); setReviewDialog(null); }} disabled={verifyMutation.isPending}>
-                  <XCircle className="w-4 h-4 mr-2" /> Reject Application
+                <Button variant="outline" className="border-red-400 text-red-600 hover:bg-red-50"
+                  onClick={() => { setRejectDialog({ open: true, verification: reviewDialog }); setReviewDialog(null); }}
+                  disabled={verifyMutation.isPending}>
+                  <XCircle className="w-4 h-4 mr-2" /> Decline & Retry
                 </Button>
-                <Button className="bg-tsia-green hover:bg-tsia-green/90" onClick={() => verifyMutation.mutate({ id: reviewDialog.id, approve: true })} disabled={verifyMutation.isPending} data-testid="button-approve">
+                <Button className="bg-tsia-green hover:bg-tsia-green/90"
+                  onClick={() => verifyMutation.mutate({ id: reviewDialog.id, approve: true })}
+                  disabled={verifyMutation.isPending}
+                  data-testid="button-approve">
                   {verifyMutation.isPending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Approving...</> : <><CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Verify</>}
                 </Button>
               </>
             ) : (
-              <div className="flex items-center justify-between w-full">
+              <div className="flex items-center justify-between w-full gap-3">
                 <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-full ${reviewDialog?.status === "verified" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                   {reviewDialog?.status === "verified" ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                  {reviewDialog?.status === "verified" ? "Application Approved" : "Application Rejected"}
+                  {reviewDialog?.status === "verified" ? "Application Approved" : "Application Declined"}
                 </span>
-                <Button variant="outline" onClick={() => setReviewDialog(null)}>Close</Button>
+                <div className="flex gap-2">
+                  {reviewDialog?.status === "verified" && (
+                    <Button variant="outline" className="border-red-400 text-red-600 hover:bg-red-50"
+                      onClick={() => { setRejectDialog({ open: true, verification: reviewDialog }); setReviewDialog(null); }}
+                      disabled={verifyMutation.isPending}>
+                      <XCircle className="w-4 h-4 mr-2" /> Decline & Retry
+                    </Button>
+                  )}
+                  {reviewDialog?.status === "rejected" && (
+                    <Button className="bg-tsia-green hover:bg-tsia-green/90"
+                      onClick={() => { verifyMutation.mutate({ id: reviewDialog.id, approve: true }); setReviewDialog(null); }}
+                      disabled={verifyMutation.isPending}
+                      data-testid="button-re-approve">
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Re-Approve
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setReviewDialog(null)}>Close</Button>
+                </div>
               </div>
             )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Reject with reason dialog */}
+      {/* Decline & Retry dialog */}
       <Dialog open={rejectDialog.open} onOpenChange={open => { if (!open) { setRejectDialog({ open: false, verification: null }); setRejectReason(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Application</DialogTitle>
-            <DialogDescription>Provide a reason for rejection. This will be sent to the student.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><XCircle className="w-4 h-4 text-red-500" /> Decline & Allow Retry</DialogTitle>
+            <DialogDescription>The student will be notified with the reason below and invited to correct and resubmit their application.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="bg-slate-50 border rounded-xl p-3 text-sm">
+            <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-sm">
               <strong>{rejectDialog.verification?.user?.firstName} {rejectDialog.verification?.user?.lastName}</strong>
               <p className="text-slate-500 text-xs mt-0.5">{rejectDialog.verification?.user?.email}</p>
             </div>
             <div className="space-y-2">
-              <Label className="font-semibold">Rejection Reason <span className="text-red-400">*</span></Label>
+              <Label className="font-semibold">Reason for declining <span className="text-red-400">*</span></Label>
               <Textarea
-                placeholder="e.g. WAEC registration number could not be verified. Please resubmit with the correct details."
+                placeholder="e.g. WAEC registration number could not be verified. Please resubmit with the correct registration number."
                 className="bg-muted/30 min-h-[100px] resize-none"
                 value={rejectReason}
                 onChange={e => setRejectReason(e.target.value)}
                 data-testid="input-reject-reason"
               />
+              <p className="text-[11px] text-slate-400">This message is emailed to the student along with instructions to resubmit.</p>
             </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => { setRejectDialog({ open: false, verification: null }); setRejectReason(""); }}>Cancel</Button>
             <Button variant="destructive" disabled={!rejectReason.trim() || verifyMutation.isPending} onClick={() => verifyMutation.mutate({ id: rejectDialog.verification?.id, approve: false, reason: rejectReason })} data-testid="button-confirm-reject">
-              {verifyMutation.isPending ? "Rejecting..." : "Confirm Rejection"}
+              {verifyMutation.isPending ? "Processing..." : "Decline & Notify Student"}
             </Button>
           </DialogFooter>
         </DialogContent>

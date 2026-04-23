@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowUpRight, ArrowDownLeft, RefreshCw, Receipt, Wifi, Eye, EyeOff,
-  ChevronRight, ArrowLeft, Send, Bell, TrendingUp, TrendingDown,
+  ChevronRight, ArrowLeft, ArrowRight, Send, Bell, TrendingUp, TrendingDown,
   Loader2, CheckCircle2, X, Zap, Phone, Wallet, Gamepad2, Delete,
   Copy, Search, ChevronDown, AlertCircle, Users, Building2
 } from "lucide-react";
@@ -170,9 +170,9 @@ export default function FinancialHub() {
   // ── Send-to-TSIA state ────────────────────────────────────────────────────
   const [tsiaEmail, setTsiaEmail]         = useState("");
   const [tsiaLooking, setTsiaLooking]     = useState(false);
-  const [tsiaUser, setTsiaUser]           = useState<{ id: number; firstName: string; lastName: string; email: string; role?: string; isDual?: boolean; variants?: { id: number; role: string }[] } | null>(null);
+  const [tsiaUser, setTsiaUser]           = useState<{ id: number; firstName: string; lastName: string; email: string; role?: string; isDual?: boolean; roles?: string[]; variants?: { id: number; role: string }[] } | null>(null);
   const [recipientRoleChoice, setRecipientRoleChoice] = useState<"student" | "affiliate">("student");
-  const [memberSuggestions, setMemberSuggestions] = useState<{ id: number; firstName: string; lastName: string; email: string }[]>([]);
+  const [memberSuggestions, setMemberSuggestions] = useState<{ id: number; firstName: string; lastName: string; email: string; role: string; isDual: boolean; roles: string[] }[]>([]);
   const [showSuggestions, setShowSuggestions]     = useState(false);
 
   // ── Request Money state ──────────────────────────────────────────────────
@@ -651,29 +651,42 @@ export default function FinancialHub() {
                 {/* Autocomplete dropdown */}
                 {showSuggestions && memberSuggestions.length > 0 && (
                   <div className="absolute z-50 top-full mt-1 left-0 right-12 bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
-                    {memberSuggestions.map(m => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={() => {
-                          setTsiaEmail(m.email);
-                          setShowSuggestions(false);
-                          setMemberSuggestions([]);
-                          setTsiaUser(m);
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/60 transition-colors text-left border-b border-border last:border-0"
-                        data-testid={`suggestion-member-${m.id}`}
-                      >
-                        <div className="w-8 h-8 rounded-full bg-tsia-green/20 text-tsia-green flex items-center justify-center text-sm font-bold shrink-0">
-                          {m.firstName[0].toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold truncate">{m.firstName} {m.lastName}</p>
-                          <p className="text-xs text-muted-foreground truncate">{m.email}</p>
-                        </div>
-                      </button>
-                    ))}
+                    {memberSuggestions.map(m => {
+                      const accountLabel = m.isDual ? "Student + Affiliate" : m.role === "affiliate" ? "Affiliate" : "Student";
+                      const accountColor = m.isDual ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" :
+                        m.role === "affiliate" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" :
+                        "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+                      const avatarColor = m.isDual ? "bg-purple-600" : m.role === "affiliate" ? "bg-amber-600" : "bg-tsia-green";
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => {
+                            setTsiaEmail(m.email);
+                            setShowSuggestions(false);
+                            setMemberSuggestions([]);
+                            setTsiaUser(m);
+                            // Auto-select role intelligently
+                            if (m.isDual) setRecipientRoleChoice("student");
+                            else setRecipientRoleChoice(m.role === "affiliate" ? "affiliate" : "student");
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/60 transition-colors text-left border-b border-border last:border-0"
+                          data-testid={`suggestion-member-${m.id}`}
+                        >
+                          <div className={`w-9 h-9 rounded-full ${avatarColor} flex items-center justify-center text-sm font-bold text-white shrink-0`}>
+                            {m.firstName[0].toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">{m.firstName} {m.lastName}</p>
+                            <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${accountColor}`}>
+                            {m.isDual ? "🎓+🤝" : m.role === "affiliate" ? "🤝 Affiliate" : "🎓 Student"}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -681,52 +694,107 @@ export default function FinancialHub() {
 
             {tsiaUser && (
               <div className="space-y-3">
-                <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4">
-                  <div className="w-12 h-12 rounded-full bg-tsia-green flex items-center justify-center text-white text-xl font-black">
+                {/* Recipient profile card */}
+                <div className={`flex items-center gap-3 rounded-2xl p-4 border ${
+                  tsiaUser.isDual ? "bg-purple-50 dark:bg-purple-900/20 border-purple-300" :
+                  tsiaUser.role === "affiliate" ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300" :
+                  "bg-green-50 dark:bg-green-900/20 border-tsia-green/30"
+                }`}>
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-xl font-black ${
+                    tsiaUser.isDual ? "bg-purple-600" :
+                    tsiaUser.role === "affiliate" ? "bg-amber-600" : "bg-tsia-green"
+                  }`}>
                     {tsiaUser.firstName[0].toUpperCase()}
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="font-bold">{tsiaUser.firstName} {tsiaUser.lastName}</p>
-                    <p className="text-xs text-muted-foreground">{tsiaUser.email}</p>
-                    {!tsiaUser.isDual && (
-                      <p className="text-xs font-semibold mt-0.5" style={{ color: tsiaUser.role === "affiliate" ? "#b45309" : "#1a6b42" }}>
-                        {tsiaUser.role === "affiliate" ? "Affiliate Wallet" : "Student Wallet"}
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground truncate">{tsiaUser.email}</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {tsiaUser.isDual ? (
+                        <>
+                          <span className="text-[10px] font-bold bg-tsia-green/10 text-tsia-green px-2 py-0.5 rounded-full">🎓 Student</span>
+                          <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">🤝 Affiliate</span>
+                          <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Dual Account</span>
+                        </>
+                      ) : tsiaUser.role === "affiliate" ? (
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">🤝 Affiliate Account</span>
+                      ) : (
+                        <span className="text-[10px] font-bold bg-tsia-green/10 text-tsia-green px-2 py-0.5 rounded-full">🎓 Student Account</span>
+                      )}
+                    </div>
                   </div>
-                  <CheckCircle2 className="w-5 h-5 text-tsia-green" />
+                  <CheckCircle2 className="w-5 h-5 text-tsia-green shrink-0" />
                 </div>
 
-                {/* Dual-account wallet selector */}
-                {tsiaUser.isDual && (
-                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 rounded-2xl p-4 space-y-2">
-                    <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5" />
-                      This member has both Student &amp; Affiliate accounts — choose which wallet to send to:
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setRecipientRoleChoice("student")}
-                        className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${recipientRoleChoice === "student" ? "bg-tsia-green text-white border-tsia-green" : "bg-background text-foreground border-border"}`}
-                        data-testid="btn-wallet-student"
-                      >
-                        <Building2 className="w-4 h-4" /> Student Wallet
-                      </button>
-                      <button
-                        onClick={() => setRecipientRoleChoice("affiliate")}
-                        className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${recipientRoleChoice === "affiliate" ? "bg-amber-600 text-white border-amber-600" : "bg-background text-foreground border-border"}`}
-                        data-testid="btn-wallet-affiliate"
-                      >
-                        <Users className="w-4 h-4" /> Affiliate Wallet
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-amber-600 text-center">
-                      {recipientRoleChoice === "student"
-                        ? "Money will enter their Student Dashboard wallet"
-                        : "Money will enter their Affiliate Dashboard wallet"}
-                    </p>
+                {/* Wallet destination selector — always visible */}
+                <div className="rounded-2xl border border-border p-4 space-y-2.5 bg-muted/30">
+                  <p className="text-xs font-bold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    Send to wallet
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Student button */}
+                    {(() => {
+                      const hasStudent = tsiaUser.isDual || (tsiaUser.roles ?? [tsiaUser.role]).includes("student");
+                      return (
+                        <button
+                          onClick={() => hasStudent && setRecipientRoleChoice("student")}
+                          disabled={!hasStudent}
+                          data-testid="btn-wallet-student"
+                          className={`relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all ${
+                            recipientRoleChoice === "student" && hasStudent
+                              ? "bg-tsia-green text-white border-tsia-green shadow-md"
+                              : hasStudent
+                                ? "bg-background text-foreground border-border hover:border-tsia-green/50"
+                                : "bg-muted/50 text-muted-foreground border-border opacity-40 cursor-not-allowed"
+                          }`}
+                        >
+                          <Building2 className="w-5 h-5" />
+                          <span className="text-[11px] font-bold leading-tight text-center">Student<br/>Wallet</span>
+                          {recipientRoleChoice === "student" && hasStudent && (
+                            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green" />
+                            </span>
+                          )}
+                          {!hasStudent && <span className="text-[9px] opacity-60">(not available)</span>}
+                        </button>
+                      );
+                    })()}
+
+                    {/* Affiliate button */}
+                    {(() => {
+                      const hasAffiliate = tsiaUser.isDual || (tsiaUser.roles ?? [tsiaUser.role]).includes("affiliate");
+                      return (
+                        <button
+                          onClick={() => hasAffiliate && setRecipientRoleChoice("affiliate")}
+                          disabled={!hasAffiliate}
+                          data-testid="btn-wallet-affiliate"
+                          className={`relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all ${
+                            recipientRoleChoice === "affiliate" && hasAffiliate
+                              ? "bg-amber-600 text-white border-amber-600 shadow-md"
+                              : hasAffiliate
+                                ? "bg-background text-foreground border-border hover:border-amber-400/50"
+                                : "bg-muted/50 text-muted-foreground border-border opacity-40 cursor-not-allowed"
+                          }`}
+                        >
+                          <Users className="w-5 h-5" />
+                          <span className="text-[11px] font-bold leading-tight text-center">Affiliate<br/>Wallet</span>
+                          {recipientRoleChoice === "affiliate" && hasAffiliate && (
+                            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
+                            </span>
+                          )}
+                          {!hasAffiliate && <span className="text-[9px] opacity-60">(not available)</span>}
+                        </button>
+                      );
+                    })()}
                   </div>
-                )}
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    {recipientRoleChoice === "student"
+                      ? "💸 Money will credit their Student Dashboard wallet"
+                      : "💸 Money will credit their Affiliate Dashboard wallet"}
+                  </p>
+                </div>
               </div>
             )}
 

@@ -58,7 +58,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUsersByEmail(email: string): Promise<User[]>;
   getUserByEmailAndRole(email: string, role: string): Promise<User | undefined>;
-  searchMembersByEmail(query: string, excludeUserId: number): Promise<{ id: number; firstName: string; lastName: string; email: string }[]>;
+  searchMembersByEmail(query: string, excludeUserId: number): Promise<{ id: number; firstName: string; lastName: string; email: string; role: string; isDual: boolean; roles: string[] }[]>;
   getAllStudents(): Promise<User[]>;
   updateUserAffiliateCode(userId: number, code: string): Promise<void>;
   getReferralsByCode(affiliateCode: string): Promise<User[]>;
@@ -402,19 +402,41 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async searchMembersByEmail(query: string, excludeUserId: number): Promise<{ id: number; firstName: string; lastName: string; email: string }[]> {
+  async searchMembersByEmail(query: string, excludeUserId: number): Promise<{ id: number; firstName: string; lastName: string; email: string; role: string; isDual: boolean; roles: string[] }[]> {
     const rows = await db
-      .selectDistinctOn([users.email], {
+      .select({
         id: users.id,
         firstName: users.firstName,
         lastName: users.lastName,
         email: users.email,
+        role: users.role,
       })
       .from(users)
       .where(and(ilike(users.email, `%${query}%`), ne(users.id, excludeUserId)))
       .orderBy(users.email)
-      .limit(8);
-    return rows;
+      .limit(30);
+
+    // Group by email to detect dual accounts
+    const grouped = new Map<string, { id: number; firstName: string; lastName: string; email: string; roles: string[] }>();
+    for (const row of rows) {
+      const key = row.email.toLowerCase();
+      const existing = grouped.get(key);
+      if (existing) {
+        if (!existing.roles.includes(row.role)) existing.roles.push(row.role);
+      } else {
+        grouped.set(key, { id: row.id, firstName: row.firstName, lastName: row.lastName, email: row.email, roles: [row.role] });
+      }
+    }
+
+    return [...grouped.values()].slice(0, 8).map(u => ({
+      id: u.id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      email: u.email,
+      role: u.roles[0],
+      isDual: u.roles.includes("student") && u.roles.includes("affiliate"),
+      roles: u.roles,
+    }));
   }
 
   async getAllStudents(): Promise<User[]> {

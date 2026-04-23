@@ -1116,6 +1116,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (!isWeekdayLondon()) {
+        return res.status(403).json({ message: "Personal Wallet withdrawals are only processed Monday–Friday. Please try again on the next business day." });
+      }
 
       const { amount, bankName, bankCode, accountNumber, accountName, otpCode } = req.body;
       if (!otpCode || otpCode.trim().length !== 6) {
@@ -1248,6 +1251,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (!isWeekdayLondon()) {
+        return res.status(403).json({ message: "Personal Wallet withdrawals are only processed Monday–Friday. Please try again on the next business day." });
+      }
       const { amount, network, address, otpCode } = req.body;
       if (!otpCode || otpCode.trim().length !== 6) {
         return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this withdrawal" });
@@ -2217,6 +2223,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Top-ups are disabled during an active trade session. Please wait until the current session ends before funding your trade wallet." });
+      }
       const { amountUsd } = req.body;
       const amount = parseFloat(amountUsd);
       if (isNaN(amount) || amount < TRADE_MARKET.MIN_DEPOSIT) {
@@ -2299,6 +2308,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Withdrawals are disabled during an active trade session. Please wait until your current trading session ends." });
+      }
       const { amountUsd } = req.body;
       const amount = parseFloat(amountUsd);
       if (isNaN(amount) || amount < 5) return res.status(400).json({ message: "Minimum transfer is $5 (earnings only)." });
@@ -2338,6 +2350,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Withdrawals are disabled during an active trade session. Please wait until your current trading session ends." });
+      }
       const { amountUsd, withdrawalType, walletType, bankCode, accountNumber, accountName } = req.body;
       const amount = parseFloat(amountUsd);
       if (isNaN(amount) || amount < TRADE_MARKET.MIN_WITHDRAW) {
@@ -2429,6 +2444,32 @@ export async function registerRoutes(
   const TRADE_CYCLE_LOSS_DAYS = 16;
 
   /** Generate 16 unique random loss day numbers (1–120) for a new trading cycle */
+  /** Returns true if current London time is Monday–Friday (any hour). */
+  function isWeekdayLondon(): boolean {
+    const londonDay = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" })).getDay();
+    return londonDay >= 1 && londonDay <= 5; // 1=Mon … 5=Fri
+  }
+
+  /**
+   * Returns true if the user's trade bot session is currently active.
+   * Active = botActivatedAt set within the last 12 hours AND currently in
+   * the UK trading window (weekday 13:00–midnight+1 London time).
+   */
+  async function isTradeSessionActive(userId: number): Promise<boolean> {
+    try {
+      const tw = await storage.getOrCreateTradeWallet(userId);
+      if (!tw.botActivatedAt) return false;
+      const activatedMs = new Date(tw.botActivatedAt).getTime();
+      const ageMs = Date.now() - activatedMs;
+      if (ageMs >= 12 * 3600 * 1000) return false; // session expired
+      const londonNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" }));
+      const ukDay = londonNow.getDay();   // 0=Sun … 6=Sat
+      const ukHour = londonNow.getHours();
+      const inWindow = (ukDay >= 1 && ukDay <= 5 && ukHour >= 13) || (ukDay >= 2 && ukDay <= 6 && ukHour < 1);
+      return inWindow;
+    } catch { return false; }
+  }
+
   function generateLossDays(): number[] {
     const pool = Array.from({ length: TRADE_CYCLE_DAYS }, (_, i) => i + 1); // [1..120]
     for (let i = pool.length - 1; i > 0; i--) {

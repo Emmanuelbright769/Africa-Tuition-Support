@@ -21,7 +21,7 @@ import {
   Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink,
   Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
   Eye, EyeOff, Bell, Power, Timer, CreditCard, PiggyBank,
-  HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid
+  HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Lock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -1335,10 +1335,21 @@ export default function AffiliateDashboard() {
                           {!tradeBalanceHidden && <p className="text-xs text-blue-500/70">≈ {formatAmount(tradeBalance)}</p>}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button size="sm" onClick={() => setFundTradeOpen(true)} data-testid="button-fund-trade-wallet" className="bg-blue-600 hover:bg-blue-700 text-white">
-                            <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" /> Top Up
+                          <Button size="sm"
+                            onClick={() => setFundTradeOpen(true)}
+                            disabled={botActive}
+                            title={botActive ? "Top-ups are locked during an active trade session" : "Fund your trade wallet"}
+                            data-testid="button-fund-trade-wallet"
+                            className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50">
+                            {botActive ? <Lock className="w-3.5 h-3.5 mr-1.5" /> : <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" />}
+                            Top Up
                           </Button>
                         </div>
+                        {botActive && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-right mt-1">
+                            🔒 Locked during active trade session
+                          </p>
+                        )}
                       </div>
                       {!roiComplete && lockedPrincipal > 0 && (
                         <div className="grid grid-cols-2 gap-2">
@@ -1385,16 +1396,18 @@ export default function AffiliateDashboard() {
                           size="sm"
                           variant="outline"
                           onClick={() => setWithdrawOpen(true)}
-                          disabled={withdrawableAmt < 5}
+                          disabled={withdrawableAmt < 5 || botActive}
                           data-testid="button-trade-withdraw"
-                          title={withdrawableAmt < 5 ? `Minimum $5 earnings required (you have $${withdrawableAmt.toFixed(2)})` : "Withdraw your earnings"}
+                          title={botActive ? "Withdrawals are locked during an active trade session" : withdrawableAmt < 5 ? `Minimum $5 earnings required (you have $${withdrawableAmt.toFixed(2)})` : "Withdraw your earnings"}
                           className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 h-7 text-xs px-2.5 disabled:opacity-40"
                         >
-                          <ArrowUpRight className="w-3 h-3 mr-1" /> Withdraw
+                          {botActive ? <Lock className="w-3 h-3 mr-1" /> : <ArrowUpRight className="w-3 h-3 mr-1" />} Withdraw
                         </Button>
-                        {withdrawableAmt > 0 && withdrawableAmt < 5 && (
+                        {botActive ? (
+                          <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">🔒 Active session</p>
+                        ) : withdrawableAmt > 0 && withdrawableAmt < 5 ? (
                           <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Min $5 to unlock</p>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                     {/* 120-Day Cycle Progress bar */}

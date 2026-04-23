@@ -80,6 +80,12 @@ export default function WalletSection() {
   const [cryptoAmount, setCryptoAmount]   = useState("");
   const [cryptoTxHash, setCryptoTxHash]   = useState("");
 
+  // ── Weekend withdrawal lock (Mon–Fri only, London time) ────────────────
+  const isWeekendLondon = (() => {
+    const londonDay = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" })).getDay();
+    return londonDay === 0 || londonDay === 6; // 0=Sunday, 6=Saturday
+  })();
+
   // ── Withdrawal state ───────────────────────────────────────────────────
   const [withdrawChoiceOpen, setWithdrawChoiceOpen] = useState(false);
   const [cwOpen, setCwOpen]               = useState(false);
@@ -493,17 +499,26 @@ export default function WalletSection() {
                 </Button>
                 <Button
                   onClick={() => {
+                    if (isWeekendLondon) {
+                      toast({ title: "Withdrawals Locked on Weekends", description: "Personal Wallet withdrawals are available Monday–Friday only. Please try again on Monday.", variant: "destructive" }); return;
+                    }
                     if (!walletKycDone && needsKyc) {
                       toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification above to unlock withdrawals.", variant: "destructive" }); return;
                     }
                     setWithdrawChoiceOpen(true);
                   }}
                   variant="outline"
-                  className="w-full h-12 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold"
+                  disabled={isWeekendLondon}
+                  className="w-full h-12 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                   data-testid="btn-withdraw"
+                  title={isWeekendLondon ? "Withdrawals are only available Monday–Friday" : "Withdraw funds"}
                 >
-                  <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw
+                  {isWeekendLondon ? <Lock className="w-4 h-4 mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />}
+                  {isWeekendLondon ? "Locked (Mon–Fri only)" : "Withdraw"}
                 </Button>
+                {isWeekendLondon && (
+                  <p className="text-white/50 text-[10px] text-center -mt-1">🔒 Withdrawals resume Monday</p>
+                )}
               </div>
             </div>
           </div>

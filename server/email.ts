@@ -922,6 +922,100 @@ export async function sendStudentPlanReceiptEmail(data: {
   await sendEmail(data.to, subject, html);
 }
 
+// ─── Disbursement outcome emails (to student) ─────────────────────────────────
+
+export async function sendDisbursementProcessedEmail(data: {
+  to: string; firstName: string; amount: string; newBalance: string;
+}): Promise<void> {
+  const subject = `Your TSIA Sponsorship Payout Has Been Processed — $${data.amount}`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">💸 Payout Processed!</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;line-height:1.6;">
+      Hi <strong>${data.firstName}</strong>, great news — your sponsorship disbursement has been approved and credited to your TSIA Personal Wallet.
+    </p>
+    <div style="background:#f0f8f4;border:1px solid #c3e0ce;border-radius:16px;padding:24px;margin:0 0 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#6b7c72;font-size:14px;padding-bottom:10px;">Amount Credited</td>
+          <td style="color:#1a6b3c;font-size:22px;font-weight:900;text-align:right;padding-bottom:10px;">$${data.amount}</td>
+        </tr>
+        <tr><td colspan="2" style="border-top:1px dashed #c3e0ce;padding-bottom:10px;"></td></tr>
+        <tr>
+          <td style="color:#6b7c72;font-size:14px;padding-top:4px;">New Wallet Balance</td>
+          <td style="color:#1a1a1a;font-size:16px;font-weight:700;text-align:right;padding-top:4px;">$${data.newBalance}</td>
+        </tr>
+      </table>
+    </div>
+    <div style="background:#fff8e1;border-left:4px solid #c9a227;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
+      <p style="color:#92400e;font-size:13px;margin:0;line-height:1.6;">
+        Funds are now available in your wallet. You can use them for platform services or request a withdrawal.
+      </p>
+    </div>
+    ${btn("https://tsiforafrica.com/dashboard", "View My Wallet")}
+  `);
+  await sendEmail(data.to, subject, html);
+}
+
+export async function sendDisbursementDeclinedEmail(data: {
+  to: string; firstName: string; amount: string; reason?: string;
+}): Promise<void> {
+  const subject = `TSIA Disbursement Update — Action Required`;
+  const html = baseTemplate(`
+    <h2 style="color:#b91c1c;margin:0 0 8px;font-size:22px;">⚠️ Disbursement Declined</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;line-height:1.6;">
+      Hi <strong>${data.firstName}</strong>, your pending sponsorship disbursement of <strong>$${data.amount}</strong> has been reviewed and could not be approved at this time.
+    </p>
+    ${data.reason ? `
+    <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:16px;margin:0 0 20px;">
+      <p style="color:#7f1d1d;font-size:13px;font-weight:700;margin:0 0 4px;text-transform:uppercase;letter-spacing:0.5px;">Reason</p>
+      <p style="color:#991b1b;font-size:14px;margin:0;line-height:1.6;">${data.reason}</p>
+    </div>` : ""}
+    <div style="background:#fff8e1;border-left:4px solid #c9a227;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
+      <p style="color:#92400e;font-size:13px;margin:0;line-height:1.6;">
+        If you believe this is an error or need clarification, please contact our support team at
+        <a href="mailto:support@tsiforafrica.com" style="color:#1a6b3c;text-decoration:none;font-weight:600;">support@tsiforafrica.com</a>.
+      </p>
+    </div>
+    ${btn("https://tsiforafrica.com/dashboard", "Go to Dashboard")}
+  `);
+  await sendEmail(data.to, subject, html);
+}
+
+export async function sendDisbursementEditedEmail(data: {
+  to: string; firstName: string; originalAmount: string; newAmount: string; note?: string;
+}): Promise<void> {
+  const subject = `TSIA Disbursement Amount Adjusted — $${data.newAmount}`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">✏️ Payout Amount Adjusted</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;line-height:1.6;">
+      Hi <strong>${data.firstName}</strong>, the TSIA team has reviewed and adjusted your pending disbursement amount.
+    </p>
+    <div style="background:#f0f8f4;border:1px solid #c3e0ce;border-radius:16px;padding:24px;margin:0 0 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#6b7c72;font-size:14px;padding-bottom:10px;">Original Amount</td>
+          <td style="color:#6b7280;font-size:16px;font-weight:700;text-align:right;padding-bottom:10px;text-decoration:line-through;">$${data.originalAmount}</td>
+        </tr>
+        <tr><td colspan="2" style="border-top:1px dashed #c3e0ce;padding-bottom:10px;"></td></tr>
+        <tr>
+          <td style="color:#6b7c72;font-size:14px;padding-top:4px;">Adjusted Amount</td>
+          <td style="color:#1a6b3c;font-size:22px;font-weight:900;text-align:right;padding-top:4px;">$${data.newAmount}</td>
+        </tr>
+      </table>
+    </div>
+    ${data.note ? `
+    <div style="background:#f0f8f4;border-left:4px solid #1a6b3c;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
+      <p style="color:#1a5c38;font-size:13px;font-weight:700;margin:0 0 4px;">Admin Note</p>
+      <p style="color:#374151;font-size:14px;margin:0;line-height:1.6;">${data.note}</p>
+    </div>` : ""}
+    <p style="color:#6b7c72;font-size:13px;margin:0 0 20px;line-height:1.6;">
+      Your disbursement is still pending final processing. You will receive another email once the funds are transferred to your wallet.
+    </p>
+    ${btn("https://tsiforafrica.com/dashboard", "View My Dashboard")}
+  `);
+  await sendEmail(data.to, subject, html);
+}
+
 // ─── Admin: KYC / Biometric Submitted ────────────────────────────────────────
 
 export async function sendAdminKycEmail(data: {

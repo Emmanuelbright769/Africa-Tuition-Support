@@ -16,13 +16,14 @@ import {
   sendAdminVerificationEmail, sendAdminPortalFeeEmail, sendAdminLoanEmail,
   sendAdminSponsorshipEmail, sendStudentPlanReceiptEmail, sendAdminKycEmail, sendAdminOrderEmail,
   sendAdminCommissionWithdrawalEmail, sendAdminDepositConfirmedEmail,
+  sendDisbursementProcessedEmail, sendDisbursementDeclinedEmail, sendDisbursementEditedEmail,
   sendWithdrawalOtpEmail,
 } from "./email";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -2946,7 +2947,8 @@ export async function registerRoutes(
       const disbursement = await storage.updateDisbursement(dId, { status: "completed", processedAt: new Date() });
 
       const disbWallet = await storage.getOrCreateWallet(disbursement.userId);
-      await storage.updateWalletBalance(disbursement.userId, (parseFloat(disbWallet.balance) + parseFloat(disbursement.amount)).toFixed(2));
+      const newBalance = (parseFloat(disbWallet.balance) + parseFloat(disbursement.amount)).toFixed(2);
+      await storage.updateWalletBalance(disbursement.userId, newBalance);
       await storage.createTransaction({
         userId: disbursement.userId, type: "sponsorship_credit",
         amount: disbursement.amount,
@@ -2955,7 +2957,80 @@ export async function registerRoutes(
         description: `Sponsorship payout $${disbursement.amount} (₦${(parseFloat(disbursement.amount) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()})`,
       });
 
+      // Notify student
+      try {
+        const student = await storage.getUser(disbursement.userId);
+        if (student) {
+          await sendDisbursementProcessedEmail({ to: student.email, firstName: student.firstName, amount: parseFloat(disbursement.amount).toFixed(2), newBalance });
+          await storage.createNotification({ userId: disbursement.userId, type: "wallet_credit", title: "Payout Processed ✓", message: `$${parseFloat(disbursement.amount).toFixed(2)} has been credited to your TSIA Personal Wallet.`, data: { amount: disbursement.amount, newBalance }, isRead: false });
+        }
+      } catch { /* non-critical */ }
+
       res.json(disbursement);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Edit disbursement amount ──────────────────────────────────────
+  app.patch("/api/admin/edit-disbursement/:disbursementId", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const dId = parseInt(req.params.disbursementId);
+      const { newAmount, note } = req.body;
+      if (!newAmount || isNaN(parseFloat(newAmount)) || parseFloat(newAmount) <= 0) {
+        return res.status(400).json({ message: "A valid positive amount is required." });
+      }
+
+      // Fetch the current disbursement to capture original amount
+      const [current] = await db.select().from(disbursements).where(eq(disbursements.id, dId));
+      if (!current) return res.status(404).json({ message: "Disbursement not found." });
+      const originalAmount = parseFloat(current.amount).toFixed(2);
+
+      const updated = await storage.updateDisbursement(dId, { amount: parseFloat(newAmount).toFixed(2) as any });
+
+      // Notify student of the adjustment
+      try {
+        const student = await storage.getUser(current.userId);
+        if (student) {
+          await sendDisbursementEditedEmail({ to: student.email, firstName: student.firstName, originalAmount, newAmount: parseFloat(newAmount).toFixed(2), note });
+          await storage.createNotification({ userId: current.userId, type: "verification_update", title: "Disbursement Amount Adjusted", message: `Your pending payout has been updated from $${originalAmount} to $${parseFloat(newAmount).toFixed(2)}.${note ? ` Admin note: ${note}` : ""}`, data: { originalAmount, newAmount: parseFloat(newAmount).toFixed(2), note }, isRead: false });
+        }
+      } catch { /* non-critical */ }
+
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Decline disbursement ──────────────────────────────────────────
+  app.post("/api/admin/decline-disbursement/:disbursementId", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const dId = parseInt(req.params.disbursementId);
+      const { reason } = req.body;
+
+      const declined = await storage.updateDisbursement(dId, { status: "rejected", processedAt: new Date() });
+
+      // Notify student of the decline
+      try {
+        const student = await storage.getUser(declined.userId);
+        if (student) {
+          await sendDisbursementDeclinedEmail({ to: student.email, firstName: student.firstName, amount: parseFloat(declined.amount).toFixed(2), reason });
+          await storage.createNotification({ userId: declined.userId, type: "verification_update", title: "Disbursement Declined", message: `Your pending disbursement of $${parseFloat(declined.amount).toFixed(2)} could not be approved.${reason ? ` Reason: ${reason}` : ""}`, data: { amount: declined.amount, reason }, isRead: false });
+        }
+      } catch { /* non-critical */ }
+
+      res.json(declined);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

@@ -119,6 +119,11 @@ export default function AdminDashboard() {
   const [reviewDialog, setReviewDialog] = useState<any>(null);
   const [loanDialog, setLoanDialog] = useState<{ open: boolean; loan: any; action: string }>({ open: false, loan: null, action: "" });
   const [disburseDialog, setDisburseDialog] = useState<any>(null);
+  const [editDisburseDialog, setEditDisburseDialog] = useState<any>(null);
+  const [editDisburseAmount, setEditDisburseAmount] = useState("");
+  const [editDisburseNote, setEditDisburseNote] = useState("");
+  const [declineDisburseDialog, setDeclineDisburseDialog] = useState<any>(null);
+  const [declineReason, setDeclineReason] = useState("");
   const [notifyDialog, setNotifyDialog] = useState(false);
   const [notifyTarget, setNotifyTarget] = useState<any>(null);
   const [notifyTitle, setNotifyTitle] = useState("");
@@ -195,8 +200,37 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-disbursements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
       setDisburseDialog(null);
-      toast({ title: "Payout Processed ✓", description: "Funds credited to student wallet successfully." });
+      toast({ title: "Payout Processed ✓", description: "Funds credited to student wallet. Confirmation email sent." });
     },
+  });
+
+  const editDisburseMutation = useMutation({
+    mutationFn: async ({ id, newAmount, note }: { id: number; newAmount: string; note: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/edit-disbursement/${id}`, { newAmount, note });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-disbursements"] });
+      setEditDisburseDialog(null); setEditDisburseAmount(""); setEditDisburseNote("");
+      toast({ title: "Amount Updated ✓", description: "Disbursement amount adjusted. Student notified by email." });
+    },
+    onError: (e: any) => toast({ title: "Update Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const declineDisburseMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      const res = await apiRequest("POST", `/api/admin/decline-disbursement/${id}`, { reason });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-disbursements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
+      setDeclineDisburseDialog(null); setDeclineReason("");
+      toast({ title: "Disbursement Declined", description: "Student notified by email.", variant: "destructive" });
+    },
+    onError: (e: any) => toast({ title: "Action Failed", description: e.message, variant: "destructive" }),
   });
 
   const loanStatusMutation = useMutation({
@@ -805,9 +839,23 @@ export default function AdminDashboard() {
                             <TableCell className="font-bold text-slate-900">{fmtUSD(d.amount)}</TableCell>
                             <TableCell className="text-sm text-slate-600">{fmtDate(d.createdAt)}</TableCell>
                             <TableCell className="text-right px-6">
-                              <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" onClick={() => setDisburseDialog(d)} data-testid={`button-process-${d.id}`}>
-                                Process
-                              </Button>
+                              <div className="flex gap-1.5 justify-end">
+                                <Button size="sm" variant="outline" className="h-7 text-xs border-amber-400 text-amber-600 hover:bg-amber-50"
+                                  onClick={() => { setEditDisburseDialog(d); setEditDisburseAmount(parseFloat(d.amount).toFixed(2)); setEditDisburseNote(""); }}
+                                  data-testid={`button-edit-${d.id}`}>
+                                  <Edit className="w-3 h-3 mr-1" /> Edit
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs border-red-400 text-red-600 hover:bg-red-50"
+                                  onClick={() => { setDeclineDisburseDialog(d); setDeclineReason(""); }}
+                                  data-testid={`button-decline-${d.id}`}>
+                                  <XCircle className="w-3 h-3 mr-1" /> Decline
+                                </Button>
+                                <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90"
+                                  onClick={() => setDisburseDialog(d)}
+                                  data-testid={`button-process-${d.id}`}>
+                                  <CheckCircle2 className="w-3 h-3 mr-1" /> Process
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -2361,7 +2409,7 @@ export default function AdminDashboard() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm Payout Disbursement</DialogTitle>
-            <DialogDescription>This will immediately credit funds to the student's wallet. This action cannot be undone.</DialogDescription>
+            <DialogDescription>This will immediately credit funds to the student's wallet and send them a confirmation email. This action cannot be undone.</DialogDescription>
           </DialogHeader>
           {disburseDialog && (
             <div className="bg-slate-50 border rounded-2xl p-6 my-2 space-y-4">
@@ -2383,6 +2431,73 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => setDisburseDialog(null)}>Cancel</Button>
             <Button className="bg-tsia-green hover:bg-tsia-green/90" onClick={() => disburseMutation.mutate(disburseDialog.id)} disabled={disburseMutation.isPending} data-testid="button-execute-transfer">
               {disburseMutation.isPending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Processing...</> : <><Wallet className="w-4 h-4 mr-2" />Execute Transfer</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit disbursement amount dialog */}
+      <Dialog open={!!editDisburseDialog} onOpenChange={open => { if (!open) { setEditDisburseDialog(null); setEditDisburseAmount(""); setEditDisburseNote(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Edit className="w-4 h-4 text-amber-500" /> Edit Disbursement Amount</DialogTitle>
+            <DialogDescription>Adjust the payout amount for this student. They will be notified by email of the change.</DialogDescription>
+          </DialogHeader>
+          {editDisburseDialog && (
+            <div className="space-y-4 py-2">
+              <div className="bg-slate-50 border rounded-xl p-4 space-y-2">
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Student</span><span className="font-medium">{editDisburseDialog.user?.firstName} {editDisburseDialog.user?.lastName}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Current Amount</span><span className="font-bold text-slate-900">{fmtUSD(editDisburseDialog.amount)}</span></div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-disburse-amount">New Amount ($)</Label>
+                <Input id="edit-disburse-amount" type="number" min="0.01" step="0.01" value={editDisburseAmount} onChange={e => setEditDisburseAmount(e.target.value)} placeholder="Enter new amount" data-testid="input-edit-disburse-amount" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-disburse-note">Admin Note (optional)</Label>
+                <Textarea id="edit-disburse-note" value={editDisburseNote} onChange={e => setEditDisburseNote(e.target.value)} placeholder="Reason for adjustment..." rows={2} data-testid="input-edit-disburse-note" />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setEditDisburseDialog(null); setEditDisburseAmount(""); setEditDisburseNote(""); }}>Cancel</Button>
+            <Button className="bg-amber-500 hover:bg-amber-600 text-white"
+              onClick={() => editDisburseMutation.mutate({ id: editDisburseDialog.id, newAmount: editDisburseAmount, note: editDisburseNote })}
+              disabled={editDisburseMutation.isPending || !editDisburseAmount.trim()}
+              data-testid="button-save-edit-disburse">
+              {editDisburseMutation.isPending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Saving...</> : <><Save className="w-4 h-4 mr-2" />Save Changes</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Decline disbursement dialog */}
+      <Dialog open={!!declineDisburseDialog} onOpenChange={open => { if (!open) { setDeclineDisburseDialog(null); setDeclineReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><XCircle className="w-4 h-4 text-red-500" /> Decline Disbursement</DialogTitle>
+            <DialogDescription>This will mark the disbursement as declined. The student will be notified by email.</DialogDescription>
+          </DialogHeader>
+          {declineDisburseDialog && (
+            <div className="space-y-4 py-2">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-2">
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Student</span><span className="font-medium">{declineDisburseDialog.user?.firstName} {declineDisburseDialog.user?.lastName}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Email</span><span>{declineDisburseDialog.user?.email}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Amount</span><span className="font-bold text-red-700">{fmtUSD(declineDisburseDialog.amount)}</span></div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="decline-reason">Reason for Declining (sent to student)</Label>
+                <Textarea id="decline-reason" value={declineReason} onChange={e => setDeclineReason(e.target.value)} placeholder="e.g. Qualification criteria not met, please reapply after completing verification..." rows={3} data-testid="input-decline-reason" />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setDeclineDisburseDialog(null); setDeclineReason(""); }}>Cancel</Button>
+            <Button variant="destructive"
+              onClick={() => declineDisburseMutation.mutate({ id: declineDisburseDialog.id, reason: declineReason })}
+              disabled={declineDisburseMutation.isPending}
+              data-testid="button-confirm-decline">
+              {declineDisburseMutation.isPending ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Declining...</> : <><XCircle className="w-4 h-4 mr-2" />Confirm Decline</>}
             </Button>
           </DialogFooter>
         </DialogContent>

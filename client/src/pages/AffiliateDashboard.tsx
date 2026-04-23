@@ -1921,7 +1921,7 @@ export default function AffiliateDashboard() {
                                 </div>
                                 <div className="space-y-1.5 text-xs text-muted-foreground mb-4">
                                   <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> Lifetime profit participation</div>
-                                  <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> 5% TSIA profits shared</div>
+                                  <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-green-500" /> 20% TSIA profits shared</div>
                                   <div className="flex items-center gap-1.5"><Infinity className="w-3 h-3 text-primary" /> No expiry — forever</div>
                                 </div>
                                 {!isEnrolled ? (
@@ -1969,10 +1969,10 @@ export default function AffiliateDashboard() {
                       </div>
                       <LearnMore label="See how your share is calculated">
                         <div className="space-y-3 pt-1">
-                          <p className="text-sm text-muted-foreground">TSIA allocates <strong className="text-foreground">5%</strong> of all profits across up to 1,000,000 Co-Affiliates for life.</p>
+                          <p className="text-sm text-muted-foreground">TSIA allocates <strong className="text-foreground">20%</strong> of all profits across up to 1,000,000 Co-Affiliates for life.</p>
                           <div className="bg-card rounded-xl p-4 border font-mono text-xs space-y-1">
-                            <div className="text-primary font-bold">Your Share = 0.000005 × (your amount ÷ 100)</div>
-                            <div>$100 → <strong>0.0005%</strong> · $300 → <strong>0.0015%</strong> · $500 → <strong>0.0025%</strong> · $10,000 → <strong>0.05%</strong></div>
+                            <div className="text-primary font-bold">Your Share = 0.00002 × (your amount ÷ 100)</div>
+                            <div>$100 → <strong>0.002%</strong> · $300 → <strong>0.006%</strong> · $500 → <strong>0.01%</strong> · $10,000 → <strong>0.2%</strong></div>
                           </div>
                         </div>
                       </LearnMore>

@@ -99,6 +99,28 @@ async function runMigrations() {
       ALTER TABLE verifications
         ADD COLUMN IF NOT EXISTS sponsorship_reason TEXT
     `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS platform_settings (
+        key        VARCHAR(100) PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    // Seed default plan prices and tier payouts (skip if already set)
+    await db.execute(sql`
+      INSERT INTO platform_settings (key, value) VALUES
+        ('plan_1yr_base',            '35'),
+        ('plan_2yr_base',            '45'),
+        ('plan_3yr_base',            '50'),
+        ('plan_service_charge_rate', '0.10'),
+        ('tier_silver_min',   '110'),
+        ('tier_silver_max',   '130'),
+        ('tier_gold_min',     '160'),
+        ('tier_gold_max',     '180'),
+        ('tier_platinum_min', '225'),
+        ('tier_platinum_max', '230')
+      ON CONFLICT (key) DO NOTHING
+    `);
     console.log("[MIGRATE] Schema migrations applied successfully");
   } catch (e) {
     console.error("[MIGRATE] Migration error:", e);

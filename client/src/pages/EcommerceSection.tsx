@@ -16,7 +16,7 @@ import {
   Filter, ChevronRight, ChevronLeft, BadgePercent, Bell, Zap, ArrowRight, Flame,
   Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, MessageCircle,
   Mail, HandCoins, AlertCircle, ArrowLeftRight, User, Expand,
-  Lock, PackageOpen, Clock, ChevronUp, Send
+  Lock, PackageOpen, Clock, ChevronUp, Send, ShieldCheck, RotateCcw
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ECOMMERCE } from "@shared/schema";
@@ -112,6 +112,24 @@ const STATUS_COLORS: Record<string, string> = {
 // Fake "original" price for discount display
 const originalPrice = (price: string) => (parseFloat(price) * 1.28).toFixed(2);
 
+// ─── Amazon-style color palette ──────────────────────────────────────────────
+const AMZ = {
+  navy:    "#232F3E",
+  navyMid: "#37475A",
+  gold:    "#FFD814",
+  goldHov: "#F7CA00",
+  orange:  "#FF9900",
+  text:    "#0F1111",
+  muted:   "#565959",
+  border:  "#D5D9D9",
+  bg:      "#EAEDED",
+  link:    "#007185",
+  linkAlt: "#C45500",
+  green:   "#067D62",
+  red:     "#CC0C39",
+  prime:   "#00A8E1",
+};
+
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
 function StarRating({ rating = 0, count = 0, interactive = false, onRate }: { rating?: number; count?: number; interactive?: boolean; onRate?: (r: number) => void }) {
@@ -122,108 +140,117 @@ function StarRating({ rating = 0, count = 0, interactive = false, onRate }: { ra
       {[1,2,3,4,5].map(s => (
         <Star
           key={s}
-          className={`transition-colors ${interactive ? "w-5 h-5 cursor-pointer" : "w-2.5 h-2.5"} ${s <= Math.floor(display) ? "text-amber-400 fill-amber-400" : "text-gray-300 fill-gray-300 dark:text-gray-600 dark:fill-gray-600"}`}
+          className={`transition-colors ${interactive ? "w-5 h-5 cursor-pointer" : "w-3 h-3"} ${s <= Math.floor(display) ? "fill-[#FFA41C] text-[#FFA41C]" : "fill-[#DDD] text-[#DDD]"}`}
           onMouseEnter={() => interactive && setHover(s)}
           onMouseLeave={() => interactive && setHover(0)}
           onClick={() => interactive && onRate?.(s)}
         />
       ))}
-      {!interactive && count > 0 && <span className="text-[10px] text-muted-foreground ml-0.5">({count})</span>}
-      {!interactive && count === 0 && <span className="text-[10px] text-muted-foreground ml-0.5">No ratings</span>}
+      {!interactive && count > 0 && <span className="text-[11px] text-[#007185] ml-0.5">{count.toLocaleString()}</span>}
+      {!interactive && count === 0 && <span className="text-[11px] text-muted-foreground ml-0.5">No ratings</span>}
     </div>
   );
 }
 
-// ─── Promo Banner Carousel ─────────────────────────────────────────────────
+// ─── Promo Banner Carousel (Amazon style) ──────────────────────────────────
 function PromoBanner() {
   const [idx, setIdx] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setIdx(i => (i + 1) % PROMO_SLIDES.length), 3500);
+    const t = setInterval(() => setIdx(i => (i + 1) % PROMO_SLIDES.length), 4000);
     return () => clearInterval(t);
   }, []);
   const s = PROMO_SLIDES[idx];
   return (
-    <div className="relative mx-0 mb-6">
+    <div className="relative mb-3 rounded overflow-hidden">
       <AnimatePresence mode="wait">
         <motion.div
           key={s.id}
-          initial={{ opacity: 0, x: 40 }}
+          initial={{ opacity: 0, x: 30 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -40 }}
-          transition={{ duration: 0.35 }}
-          className={`bg-gradient-to-r ${s.accent} rounded-2xl px-6 py-5 flex items-center justify-between overflow-hidden relative min-h-[120px]`}
+          exit={{ opacity: 0, x: -30 }}
+          transition={{ duration: 0.3 }}
+          style={{ background: `linear-gradient(135deg,${s.accent.replace("from-[","").replace("] to-[",",").replace("]","")})` }}
+          className="relative flex items-center justify-between px-8 py-8 min-h-[200px] overflow-hidden"
         >
-          {/* Decorative circles */}
-          <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-white/10" />
-          <div className="absolute -right-2 top-8 w-16 h-16 rounded-full bg-white/10" />
-          <div className="absolute right-20 -bottom-6 w-20 h-20 rounded-full bg-white/5" />
+          <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-white/5" />
+          <div className="absolute right-10 -bottom-8 w-28 h-28 rounded-full bg-white/5" />
           <div className="z-10">
-            <span className="text-[11px] font-bold bg-white/20 text-white px-2.5 py-0.5 rounded-full">{s.badge}</span>
-            <h2 className="text-white text-2xl font-black mt-2 leading-tight">{s.headline}</h2>
-            <p className="text-white/80 text-xs mt-0.5 mb-3">{s.sub}</p>
-            <button className="bg-white text-[10px] font-bold text-slate-800 px-3 py-1.5 rounded-full flex items-center gap-1">
-              {s.tag} <ArrowRight className="w-3 h-3" />
+            <span className="text-[11px] font-bold bg-black/20 text-white px-3 py-1 rounded-full">{s.badge}</span>
+            <h2 className="text-white text-3xl font-black mt-3 mb-1 leading-tight">{s.headline}</h2>
+            <p className="text-white/80 text-sm mb-4">{s.sub}</p>
+            <button style={{ background: AMZ.gold, color: AMZ.text, border: `1px solid ${AMZ.goldHov}` }}
+              className="text-sm font-bold px-6 py-2 rounded flex items-center gap-2 hover:opacity-90 transition-opacity">
+              {s.tag} <ArrowRight className="w-4 h-4" />
             </button>
           </div>
-          <div className="text-7xl z-10 select-none">{s.emoji}</div>
+          <div className="text-8xl z-10 select-none">{s.emoji}</div>
         </motion.div>
       </AnimatePresence>
+      {/* Prev / Next */}
+      <button onClick={() => setIdx(i => (i - 1 + PROMO_SLIDES.length) % PROMO_SLIDES.length)}
+        className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-colors z-20">
+        <ChevronLeft className="w-5 h-5 text-gray-700" />
+      </button>
+      <button onClick={() => setIdx(i => (i + 1) % PROMO_SLIDES.length)}
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-colors z-20">
+        <ChevronRight className="w-5 h-5 text-gray-700" />
+      </button>
       {/* Dots */}
-      <div className="flex items-center justify-center gap-1.5 mt-3">
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
         {PROMO_SLIDES.map((_, i) => (
           <button key={i} onClick={() => setIdx(i)}
-            className={`rounded-full transition-all duration-300 ${i === idx ? "w-6 h-2 bg-tsia-green" : "w-2 h-2 bg-muted-foreground/30"}`} />
+            style={{ background: i === idx ? AMZ.gold : "rgba(255,255,255,0.5)" }}
+            className={`rounded-full transition-all duration-300 ${i === idx ? "w-5 h-2" : "w-2 h-2"}`} />
         ))}
       </div>
     </div>
   );
 }
 
-// ─── Category Circle Row ───────────────────────────────────────────────────
+// ─── Category Row (Amazon style) ─────────────────────────────────────────────
 function CategoryRow({ activeCategory, setActiveCategory }: { activeCategory: string; setActiveCategory: (c: string) => void }) {
   return (
-    <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
-      {/* All */}
-      <button onClick={() => setActiveCategory("")} data-testid="cat-all" className="flex flex-col items-center gap-1.5 shrink-0">
-        <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl border-2 transition-all ${!activeCategory ? "border-tsia-green shadow-lg shadow-tsia-green/20" : "border-transparent bg-muted"}`}>
-          🛍️
-        </div>
-        <span className={`text-[11px] font-semibold ${!activeCategory ? "text-tsia-green" : "text-muted-foreground"}`}>All</span>
+    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+      <button onClick={() => setActiveCategory("")} data-testid="cat-all"
+        style={{ border: !activeCategory ? `2px solid ${AMZ.orange}` : `1px solid ${AMZ.border}`, background: !activeCategory ? "#FFF3E0" : "white" }}
+        className="flex flex-col items-center gap-1.5 shrink-0 px-4 py-3 rounded text-center min-w-[70px] transition-all">
+        <span className="text-2xl">🛍️</span>
+        <span style={{ color: !activeCategory ? AMZ.linkAlt : AMZ.text }} className="text-[11px] font-semibold whitespace-nowrap">All</span>
       </button>
       {CATEGORIES.map(c => (
-        <button key={c} onClick={() => setActiveCategory(activeCategory === c ? "" : c)} data-testid={`cat-${c}`} className="flex flex-col items-center gap-1.5 shrink-0">
-          <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${CATEGORY_GRADIENTS[c]} flex items-center justify-center text-2xl border-2 transition-all ${activeCategory === c ? "border-white ring-2 ring-tsia-green shadow-lg" : "border-transparent"}`}>
-            {CATEGORY_ICONS[c]}
-          </div>
-          <span className={`text-[11px] font-semibold truncate max-w-[56px] text-center ${activeCategory === c ? "text-tsia-green" : "text-muted-foreground"}`}>{CATEGORY_LABELS[c]}</span>
+        <button key={c} onClick={() => setActiveCategory(activeCategory === c ? "" : c)} data-testid={`cat-${c}`}
+          style={{ border: activeCategory === c ? `2px solid ${AMZ.orange}` : `1px solid ${AMZ.border}`, background: activeCategory === c ? "#FFF3E0" : "white" }}
+          className="flex flex-col items-center gap-1.5 shrink-0 px-4 py-3 rounded text-center min-w-[70px] transition-all">
+          <span className="text-2xl">{CATEGORY_ICONS[c]}</span>
+          <span style={{ color: activeCategory === c ? AMZ.linkAlt : AMZ.text }} className="text-[11px] font-semibold whitespace-nowrap truncate max-w-[68px]">{CATEGORY_LABELS[c]}</span>
         </button>
       ))}
     </div>
   );
 }
 
-// ─── Seller Stories ────────────────────────────────────────────────────────
+// ─── Top Sellers (Amazon "Sponsored Brands" style) ───────────────────────────
 function SellerStories({ products }: { products: Product[] }) {
   const seen = new Set<number>();
   const unique = products.filter(p => { if (seen.has(p.sellerId)) return false; seen.add(p.sellerId); return true; }).slice(0, 8);
-  const STORY_GRADIENTS = [
-    "from-pink-500 to-orange-400","from-purple-500 to-indigo-500","from-teal-400 to-green-500",
-    "from-yellow-400 to-orange-500","from-blue-500 to-cyan-400","from-red-500 to-pink-400",
-  ];
+  const BADGE_COLORS = ["#E57728","#1BA39C","#8059D4","#C0392B","#2980B9","#27AE60","#7F8C8D","#D35400"];
   if (unique.length === 0) return null;
   return (
-    <div>
+    <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-bold text-base">Top Sellers</h3>
-        <button className="text-xs text-tsia-green font-semibold flex items-center gap-0.5">View all <ChevronRight className="w-3.5 h-3.5" /></button>
+        <h3 style={{ color: AMZ.text }} className="font-bold text-sm">Top Sellers on TSIA Market</h3>
+        <span style={{ color: AMZ.link }} className="text-xs font-semibold cursor-pointer hover:underline">See all sellers →</span>
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+      <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
         {unique.map((p, i) => (
-          <div key={p.sellerId} className="flex flex-col items-center gap-1.5 shrink-0">
-            <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${STORY_GRADIENTS[i % STORY_GRADIENTS.length]} flex items-center justify-center text-xl font-bold text-white ring-2 ring-tsia-green ring-offset-2`}>
+          <div key={p.sellerId} className="flex flex-col items-center gap-2 shrink-0 min-w-[64px]">
+            <div style={{ background: BADGE_COLORS[i % BADGE_COLORS.length] }}
+              className="w-14 h-14 rounded flex items-center justify-center text-white text-xl font-black shadow-sm">
               {p.sellerName?.[0]?.toUpperCase() ?? "S"}
             </div>
-            <span className="text-[10px] text-muted-foreground truncate max-w-[56px] text-center font-medium">{p.sellerName?.split(" ")[0]}</span>
+            <span style={{ color: AMZ.link }} className="text-[10px] font-semibold truncate max-w-[64px] text-center hover:underline cursor-pointer">
+              {p.sellerName?.split(" ")[0]}
+            </span>
           </div>
         ))}
       </div>
@@ -509,110 +536,106 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
   const orig = originalPrice(product.price);
+  const discPct = Math.round((1 - parseFloat(product.price) / parseFloat(orig)) * 100);
   return (
-    <>
-    <motion.div
-      transition={{ type: "spring", stiffness: 260, damping: 28 }}
-      className="bg-card rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer group border border-border/50"
+    <div
+      style={{ background: "white", border: `1px solid ${AMZ.border}` }}
+      className="rounded overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group flex flex-col"
       onClick={onView}
       data-testid={`card-product-${product.id}`}
     >
-      {/* Image */}
-      <div className="relative aspect-[4/3] bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 overflow-hidden">
+      {/* Image area */}
+      <div className="relative bg-[#F7F8F8] flex items-center justify-center overflow-hidden" style={{ aspectRatio: "1/1" }}>
         {img ? (
-          <img
-            src={img} alt={product.title}
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-          />
+          <img src={img} alt={product.title}
+            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-400 p-2" />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-1">
-            <span className="text-3xl">{CATEGORY_ICONS[product.category] || "📦"}</span>
-          </div>
+          <span className="text-5xl select-none">{CATEGORY_ICONS[product.category] || "📦"}</span>
         )}
-        {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none flex items-center justify-center">
-          <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 pointer-events-none">
-            <Eye className="w-3 h-3" /> View details
-          </span>
-        </div>
-        {/* Wishlist + Watch */}
-        <div className="absolute top-2 right-2 flex flex-col gap-1">
-          <button
-            onClick={e => { e.stopPropagation(); onWishlist(); }}
-            data-testid={`btn-wishlist-${product.id}`}
-            className="w-10 h-10 bg-white/90 dark:bg-slate-800/90 rounded-full flex items-center justify-center shadow-sm transition-colors hover:bg-white"
-          >
-            <Heart className={`w-4 h-4 transition-colors ${wishlisted ? "fill-red-500 text-red-500" : "text-slate-400"}`} />
+        {/* Wishlist */}
+        <button onClick={e => { e.stopPropagation(); onWishlist(); }}
+          data-testid={`btn-wishlist-${product.id}`}
+          className="absolute top-2 right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors">
+          <Heart className={`w-4 h-4 ${wishlisted ? "fill-red-500 text-red-500" : "text-gray-400"}`} />
+        </button>
+        {onWatch && (
+          <button onClick={e => { e.stopPropagation(); onWatch(); }}
+            data-testid={`btn-watch-${product.id}`}
+            className="absolute top-12 right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors">
+            <Bell className={`w-4 h-4 ${watched ? "fill-amber-400 text-amber-400" : "text-gray-400"}`} />
           </button>
-          {onWatch && (
-            <button
-              onClick={e => { e.stopPropagation(); onWatch(); }}
-              data-testid={`btn-watch-${product.id}`}
-              title={watched ? "Unwatch price" : "Watch price drop"}
-              className="w-10 h-10 bg-white/90 dark:bg-slate-800/90 rounded-full flex items-center justify-center shadow-sm transition-colors hover:bg-white"
-            >
-              <Bell className={`w-4 h-4 transition-colors ${watched ? "fill-tsia-green text-tsia-green" : "text-slate-400"}`} />
-            </button>
-          )}
-        </div>
+        )}
         {/* Badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-1">
           {product.condition === "new" && (
-            <span className="text-[9px] font-bold bg-tsia-green text-white px-2 py-0.5 rounded-full">NEW</span>
+            <span style={{ background: AMZ.green }} className="text-[9px] font-bold text-white px-1.5 py-0.5 rounded-sm">NEW</span>
+          )}
+          {discPct > 0 && (
+            <span style={{ background: AMZ.red }} className="text-[9px] font-bold text-white px-1.5 py-0.5 rounded-sm">-{discPct}%</span>
           )}
           {product.negotiable && (
-            <span className="text-[9px] font-bold bg-amber-400 text-slate-900 px-2 py-0.5 rounded-full">NEGO</span>
+            <span className="text-[9px] font-bold bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded-sm">NEGO</span>
           )}
         </div>
         {product.stock === 0 && (
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <span className="text-white text-xs font-bold bg-black/60 px-3 py-1 rounded-full">Out of Stock</span>
+            <span className="text-white text-xs font-bold bg-black/70 px-3 py-1 rounded-sm">Out of Stock</span>
           </div>
         )}
       </div>
+
       {/* Info */}
-      <div className="p-3">
-        <p className="text-xs text-muted-foreground mb-0.5 truncate">{CATEGORY_LABELS[product.category]}</p>
-        <h3 className="font-semibold text-[13px] leading-snug line-clamp-2 mb-1.5 min-h-[2.5rem]">{product.title}</h3>
+      <div className="p-3 flex-1 flex flex-col gap-1">
+        <p style={{ color: AMZ.muted }} className="text-[11px] uppercase tracking-wide">{CATEGORY_LABELS[product.category]}</p>
+        <h3 style={{ color: AMZ.link }} className="text-[13px] leading-snug line-clamp-2 min-h-[2.5rem] hover:underline cursor-pointer">{product.title}</h3>
         <StarRating rating={product.avgRating ?? 0} count={product.ratingCount ?? 0} />
-        <div className="flex items-center justify-between mt-2">
-          <div>
-            <div>
-              <span className="text-base font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
-              <span className="text-[11px] text-muted-foreground line-through ml-1">${orig}</span>
-            </div>
-            <p className="text-[10px] text-muted-foreground">{formatAmount(parseFloat(product.price))}</p>
-          </div>
-          {isSeller ? (
-            <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-full">Your listing</span>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={e => { e.stopPropagation(); onCart(); }}
-                data-testid={`btn-cart-add-${product.id}`}
-                title={inCart ? "Remove from cart" : "Add to cart"}
-                className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm transition-colors border ${inCart ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground hover:border-tsia-green hover:text-tsia-green"}`}
-              >
-                <ShoppingCart className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); onBuy(); }}
-                disabled={product.stock === 0}
-                data-testid={`btn-buy-${product.id}`}
-                className="w-10 h-10 bg-tsia-green rounded-full flex items-center justify-center shadow-md hover:bg-tsia-green/90 disabled:opacity-40 transition-colors"
-              >
-                <ArrowLeftRight className="w-3.5 h-3.5 text-white" />
-              </button>
-            </div>
-          )}
+        <div className="mt-1">
+          <span style={{ color: AMZ.red }} className="text-[11px] font-bold">{discPct}% off </span>
+          <span style={{ color: AMZ.text }} className="text-base font-black">${parseFloat(product.price).toFixed(2)}</span>
+          <span style={{ color: AMZ.muted }} className="text-[11px] line-through ml-1">${orig}</span>
         </div>
+        <p style={{ color: AMZ.muted }} className="text-[10px]">{formatAmount(parseFloat(product.price))}</p>
+        {/* Stock indicator */}
+        {product.stock > 0 && product.stock <= 5 && (
+          <p style={{ color: AMZ.red }} className="text-[11px] font-semibold">Only {product.stock} left in stock!</p>
+        )}
+        {product.stock > 5 && (
+          <p style={{ color: AMZ.green }} className="text-[11px] font-semibold">In Stock</p>
+        )}
       </div>
-    </motion.div>
-    </>
+
+      {/* CTA buttons — Amazon style */}
+      {!isSeller && (
+        <div className="px-3 pb-3 flex flex-col gap-1.5 mt-auto">
+          <button
+            onClick={e => { e.stopPropagation(); onCart(); }}
+            data-testid={`btn-cart-add-${product.id}`}
+            style={{ background: inCart ? AMZ.goldHov : AMZ.gold, border: `1px solid ${AMZ.goldHov}`, color: AMZ.text }}
+            className="w-full py-2 text-[12px] font-bold rounded-full transition-opacity hover:opacity-90 flex items-center justify-center gap-1.5 disabled:opacity-40">
+            <ShoppingCart className="w-3.5 h-3.5" />
+            {inCart ? "In Cart ✓" : "Add to Cart"}
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onBuy(); }}
+            disabled={product.stock === 0}
+            data-testid={`btn-buy-${product.id}`}
+            style={{ background: AMZ.orange, border: `1px solid #E07B00`, color: "white" }}
+            className="w-full py-2 text-[12px] font-bold rounded-full transition-opacity hover:opacity-90 flex items-center justify-center gap-1.5 disabled:opacity-40">
+            <Lock className="w-3.5 h-3.5" />
+            Buy Now (Escrow)
+          </button>
+        </div>
+      )}
+      {isSeller && (
+        <div className="px-3 pb-3">
+          <span style={{ color: AMZ.muted }} className="text-[10px] font-semibold block text-center py-1">Your listing</span>
+        </div>
+      )}
+    </div>
   );
 }
 
-// ─── Featured Card (Horizontal scroll) ────────────────────────────────────
+// ─── Featured Card (Amazon horizontal scroll) ─────────────────────────────
 function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart, watched, onWatch, isSeller }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
   inCart: boolean; onCart: () => void; watched?: boolean; onWatch?: () => void; isSeller?: boolean;
@@ -620,58 +643,66 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
   const { formatAmount } = useLocalCurrency();
   const img = product.images?.[0];
   const orig = originalPrice(product.price);
+  const discPct = Math.round((1 - parseFloat(product.price) / parseFloat(orig)) * 100);
   return (
     <div
       onClick={onView}
       data-testid={`card-featured-${product.id}`}
-      className="shrink-0 w-40 bg-card rounded-2xl overflow-hidden shadow-md border border-border/50 cursor-pointer hover:shadow-lg transition-shadow group"
+      style={{ background: "white", border: `1px solid ${AMZ.border}` }}
+      className="shrink-0 w-44 rounded overflow-hidden cursor-pointer hover:shadow-md transition-shadow group flex flex-col"
     >
-      <div className="relative w-40 h-44 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700">
+      {/* Image */}
+      <div className="relative bg-[#F7F8F8] flex items-center justify-center" style={{ height: 160 }}>
         {img ? (
-          <img src={img} alt={product.title}
-            className="w-full h-full object-cover"
-          />
+          <img src={img} alt={product.title} className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-4xl">{CATEGORY_ICONS[product.category] || "📦"}</div>
+          <span className="text-5xl">{CATEGORY_ICONS[product.category] || "📦"}</span>
         )}
         <button onClick={e => { e.stopPropagation(); onWishlist(); }}
-          className="absolute top-2 right-2 w-7 h-7 bg-white/90 dark:bg-slate-800/90 rounded-full flex items-center justify-center">
-          <Heart className={`w-3.5 h-3.5 ${wishlisted ? "fill-red-500 text-red-500" : "text-slate-400"}`} />
+          className="absolute top-1.5 right-1.5 w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-200 hover:bg-gray-50">
+          <Heart className={`w-3.5 h-3.5 ${wishlisted ? "fill-red-500 text-red-500" : "text-gray-400"}`} />
         </button>
+        {discPct > 0 && (
+          <span style={{ background: AMZ.red }} className="absolute top-1.5 left-1.5 text-[9px] font-bold text-white px-1.5 py-0.5 rounded-sm">-{discPct}%</span>
+        )}
         {product.stock === 0 && (
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <span className="text-white text-[9px] font-bold bg-black/60 px-2 py-0.5 rounded-full">Out of Stock</span>
+            <span className="text-white text-[9px] font-bold bg-black/70 px-2 py-0.5 rounded-sm">Out of Stock</span>
           </div>
         )}
       </div>
-      <div className="p-2.5">
-        <p className="text-[12px] font-semibold line-clamp-2 leading-snug mb-1">{product.title}</p>
-        <div className="flex items-end justify-between gap-1">
-          <div>
-            <p className="text-[13px] font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</p>
-            <p className="text-[10px] text-muted-foreground line-through">${orig}</p>
-            <p className="text-[9px] text-muted-foreground">{formatAmount(parseFloat(product.price))}</p>
-          </div>
-          {isSeller ? (
-            <span className="text-[9px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Yours</span>
-          ) : (
-            <div className="flex items-center gap-1">
-              <button onClick={e => { e.stopPropagation(); onCart(); }}
-                data-testid={`btn-featured-cart-${product.id}`}
-                title={inCart ? "Remove from cart" : "Add to cart"}
-                className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all hover:scale-105 ${inCart ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground"}`}>
-                <ShoppingCart className="w-3 h-3" />
-              </button>
-              <button onClick={e => { e.stopPropagation(); onBuy(); }}
-                disabled={product.stock === 0}
-                className="w-7 h-7 bg-tsia-gold rounded-full flex items-center justify-center shadow hover:scale-105 transition-transform disabled:opacity-40"
-                data-testid={`btn-featured-buy-${product.id}`}>
-                <ArrowLeftRight className="w-3 h-3 text-slate-900" />
-              </button>
-            </div>
-          )}
+      {/* Info */}
+      <div className="p-2.5 flex-1 flex flex-col gap-1">
+        <p style={{ color: AMZ.link }} className="text-[12px] line-clamp-2 leading-snug hover:underline">{product.title}</p>
+        <StarRating rating={product.avgRating ?? 0} count={product.ratingCount ?? 0} />
+        <div>
+          <span style={{ color: AMZ.text }} className="text-[13px] font-black">${parseFloat(product.price).toFixed(2)}</span>
+          <span style={{ color: AMZ.muted }} className="text-[10px] line-through ml-1">${orig}</span>
         </div>
+        <p style={{ color: AMZ.muted }} className="text-[9px]">{formatAmount(parseFloat(product.price))}</p>
       </div>
+      {/* CTA */}
+      {!isSeller ? (
+        <div className="px-2.5 pb-2.5 flex gap-1.5">
+          <button onClick={e => { e.stopPropagation(); onCart(); }}
+            data-testid={`btn-featured-cart-${product.id}`}
+            style={{ background: inCart ? AMZ.goldHov : AMZ.gold, border: `1px solid ${AMZ.goldHov}`, color: AMZ.text }}
+            className="flex-1 py-1.5 text-[10px] font-bold rounded-full flex items-center justify-center gap-0.5">
+            <ShoppingCart className="w-3 h-3" /> {inCart ? "✓" : "Cart"}
+          </button>
+          <button onClick={e => { e.stopPropagation(); onBuy(); }}
+            disabled={product.stock === 0}
+            data-testid={`btn-featured-buy-${product.id}`}
+            style={{ background: AMZ.orange, border: "1px solid #E07B00", color: "white" }}
+            className="flex-1 py-1.5 text-[10px] font-bold rounded-full flex items-center justify-center gap-0.5 disabled:opacity-40">
+            <Lock className="w-3 h-3" /> Buy
+          </button>
+        </div>
+      ) : (
+        <div className="px-2.5 pb-2.5">
+          <span style={{ color: AMZ.muted }} className="text-[9px] font-semibold block text-center">Your listing</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1472,77 +1503,117 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   ];
 
   return (
-    <div className="relative pb-24">
-      {/* ── Top header (always visible) ─────────────────────────────────── */}
-      <div className="flex items-start justify-between mb-5">
-        <div>
-          <p className="text-sm text-muted-foreground">Hello, {user?.firstName || "Shopper"}</p>
-          <h1 className="text-2xl font-black tracking-tight">Welcome 👋</h1>
+    <div className="relative pb-24" style={{ background: AMZ.bg, margin: "-16px", padding: "0" }}>
+
+      {/* ── Amazon-style header ──────────────────────────────────────────── */}
+      <div style={{ background: AMZ.navy }} className="px-4 pt-4 pb-2">
+        {/* Top row: branding + icons */}
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-white font-black text-xl tracking-tight">TSIA</span>
+              <span style={{ color: AMZ.gold }} className="font-black text-xl tracking-tight">Market</span>
+            </div>
+            <p style={{ color: "#ccc" }} className="text-[11px]">Hello, {user?.firstName || "Shopper"} · Fast Escrow</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setChatDrawerOpen(true)} data-testid="btn-messages" className="relative flex items-center gap-1 text-white hover:opacity-80 transition-opacity">
+              <MessageCircle className="w-6 h-6" />
+            </button>
+            <button onClick={() => setCartOpen(true)} data-testid="btn-cart" className="relative flex items-center gap-1 text-white hover:opacity-80 transition-opacity">
+              <ShoppingCart className="w-6 h-6" />
+              {cart.size > 0 && (
+                <span style={{ background: AMZ.gold, color: AMZ.text }} className="absolute -top-2 -right-2 w-5 h-5 text-[9px] font-black rounded-full flex items-center justify-center">
+                  {Math.min(cart.size, 99)}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setChatDrawerOpen(true)} data-testid="btn-messages"
-            className="relative w-10 h-10 bg-card rounded-full border flex items-center justify-center shadow-sm hover:shadow transition-shadow">
-            <MessageCircle className="w-5 h-5" />
+
+        {/* Search bar */}
+        <div className="flex items-center gap-0 mb-2">
+          <div className="flex-1 flex items-center gap-2 bg-white rounded-l-md px-3 h-10 border border-white">
+            <Search className="w-4 h-4 text-gray-400 shrink-0" />
+            <input
+              type="text"
+              placeholder="Search TSIA Market..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && setActiveSearch(search)}
+              data-testid="input-search"
+              style={{ color: AMZ.text }}
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+            />
+            {search && <button onClick={() => { setSearch(""); setActiveSearch(""); }}><X className="w-3.5 h-3.5 text-gray-400" /></button>}
+          </div>
+          <button
+            style={{ background: AMZ.orange }}
+            className="w-12 h-10 rounded-r-md flex items-center justify-center shrink-0 hover:opacity-90 transition-opacity"
+            onClick={() => setActiveSearch(search)}
+            data-testid="btn-search"
+          >
+            <Search className="w-5 h-5 text-white" />
           </button>
-          <button onClick={() => setCartOpen(true)} data-testid="btn-cart" className="relative w-10 h-10 bg-card rounded-full border flex items-center justify-center shadow-sm hover:shadow transition-shadow">
-            <ShoppingCart className="w-5 h-5" />
-            {cart.size > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-tsia-green text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                {Math.min(cart.size, 99)}
-              </span>
+          <button
+            style={{ background: AMZ.navyMid, border: `1px solid ${AMZ.gold}` }}
+            className="relative w-10 h-10 ml-2 rounded-md flex items-center justify-center shrink-0 hover:opacity-90 transition-opacity"
+            onClick={() => setFilterOpen(true)}
+            data-testid="btn-filter"
+          >
+            <SlidersHorizontal className="w-4 h-4 text-white" />
+            {activeFilterCount > 0 && (
+              <span style={{ background: AMZ.gold, color: AMZ.text }} className="absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full flex items-center justify-center">{activeFilterCount}</span>
             )}
           </button>
-          <button onClick={() => setListOpen(true)} data-testid="btn-sell" className="w-10 h-10 bg-tsia-green rounded-full flex items-center justify-center shadow-md hover:bg-tsia-green/90">
-            <Plus className="w-5 h-5 text-white" />
-          </button>
         </div>
       </div>
 
-      {/* ── Search bar ─────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 mb-6">
-        <div className="flex-1 flex items-center gap-2 bg-muted/60 rounded-2xl px-4 h-12 border border-border/50">
-          <Search className="w-4 h-4 text-muted-foreground shrink-0" />
-          <input
-            type="text"
-            placeholder="Search products..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && setActiveSearch(search)}
-            data-testid="input-search"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          />
-          {search && <button onClick={() => { setSearch(""); setActiveSearch(""); }}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>}
-        </div>
-        <button
-          className="relative w-12 h-12 bg-slate-900 dark:bg-white rounded-2xl flex items-center justify-center shadow-md shrink-0 hover:opacity-90 transition-opacity"
-          onClick={() => setFilterOpen(true)}
-          data-testid="btn-filter"
-        >
-          <SlidersHorizontal className="w-5 h-5 text-white dark:text-slate-900" />
-          {activeFilterCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-tsia-green text-white text-[9px] font-bold rounded-full flex items-center justify-center">{activeFilterCount}</span>
-          )}
-        </button>
-      </div>
-
-      {/* ── Tab navigation ─────────────────────────────────────────────── */}
-      <div className="flex gap-1 mb-6 bg-muted/40 rounded-2xl p-1">
+      {/* ── Amazon sub-nav (tabs) ─────────────────────────────────────────── */}
+      <div style={{ background: AMZ.navyMid }} className="flex overflow-x-auto scrollbar-none border-b border-[#3a5068]">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} data-testid={`tab-${t.id}`}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-1 justify-center transition-all ${tab === t.id ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            style={{
+              color: tab === t.id ? AMZ.gold : "rgba(255,255,255,0.85)",
+              borderBottom: tab === t.id ? `2px solid ${AMZ.gold}` : "2px solid transparent",
+            }}
+            className="flex items-center gap-1.5 px-5 py-3 text-xs font-semibold shrink-0 whitespace-nowrap transition-colors hover:text-white">
             <t.icon className="w-3.5 h-3.5" />{t.label}
           </button>
         ))}
+        <button onClick={() => setListOpen(true)} data-testid="btn-sell"
+          style={{ background: AMZ.gold, color: AMZ.text, marginLeft: "auto", marginRight: 8, marginTop: 6, marginBottom: 6 }}
+          className="flex items-center gap-1 px-4 text-[11px] font-black rounded shrink-0 hover:opacity-90 transition-opacity">
+          <Plus className="w-3.5 h-3.5" /> Sell
+        </button>
       </div>
+
+      {/* ── Trust badge strip ─────────────────────────────────────────────── */}
+      <div style={{ background: "white", borderBottom: `1px solid ${AMZ.border}` }} className="flex items-center justify-around px-4 py-2.5">
+        {[
+          { icon: Lock, label: "Escrow Protected", color: "#067D62" },
+          { icon: ShieldCheck, label: "Verified Sellers", color: "#007185" },
+          { icon: RotateCcw, label: "Easy Returns", color: "#C45500" },
+          { icon: MessageCircle, label: "Live Chat", color: "#232F3E" },
+        ].map(b => (
+          <div key={b.label} className="flex flex-col items-center gap-0.5">
+            <b.icon style={{ color: b.color }} className="w-5 h-5" />
+            <span style={{ color: AMZ.text }} className="text-[9px] font-semibold text-center leading-tight">{b.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Main content wrapper ──────────────────────────────────────────── */}
+      <div className="px-4 pt-4">
 
       {/* ═══════════ BROWSE TAB ════════════════════════════════════════ */}
       {tab === "browse" && (
-        <div className="space-y-7">
+        <div className="space-y-3">
           {/* Categories */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-base">Categories</h3>
-              <button onClick={() => setShowCategoriesModal(true)} className="text-xs text-tsia-green font-semibold flex items-center gap-0.5" data-testid="btn-view-all-cats">View All <ChevronRight className="w-3.5 h-3.5" /></button>
+          <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 style={{ color: AMZ.text }} className="font-bold text-sm">Shop by Category</h3>
+              <button onClick={() => setShowCategoriesModal(true)} style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" data-testid="btn-view-all-cats">See all <ChevronRight className="w-3.5 h-3.5" /></button>
             </div>
             <CategoryRow activeCategory={activeCategory} setActiveCategory={setActiveCategory} />
           </div>
@@ -1552,17 +1623,19 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
 
           {/* Featured */}
           {!activeSearch && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-base flex items-center gap-1.5"><Flame className="w-4 h-4 text-orange-500" /> Featured</h3>
-                <button className="text-xs text-tsia-green font-semibold flex items-center gap-0.5" onClick={() => setShowAllProducts(true)}>View All <ChevronRight className="w-3.5 h-3.5" /></button>
+            <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 style={{ color: AMZ.text }} className="font-bold text-sm flex items-center gap-1.5">
+                  <Flame className="w-4 h-4" style={{ color: AMZ.orange }} /> Best Sellers
+                </h3>
+                <button style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" onClick={() => setShowAllProducts(true)}>See all <ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
               {isLoading ? (
-                <div className="flex items-center gap-4 overflow-hidden">
-                  {[1,2,3].map(i => <div key={i} className="w-40 h-60 rounded-2xl bg-muted animate-pulse shrink-0" />)}
+                <div className="flex items-center gap-3 overflow-hidden">
+                  {[1,2,3].map(i => <div key={i} className="w-44 h-64 rounded bg-gray-100 animate-pulse shrink-0" />)}
                 </div>
               ) : featured.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground text-sm">No products yet — be the first to list!</div>
+                <div style={{ color: AMZ.muted }} className="text-center py-8 text-sm">No products yet — be the first to list!</div>
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
                   {featured.map(p => (
@@ -1579,9 +1652,9 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
           )}
 
           {/* All Products / Search results */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-base">
+          <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 style={{ color: AMZ.text }} className="font-bold text-sm">
                 {activeSearch ? `Results for "${activeSearch}"` : activeCategory ? `${CATEGORY_LABELS[activeCategory] || activeCategory}` : "New Arrivals"}
               </h3>
               <div className="flex items-center gap-2">
@@ -1590,27 +1663,28 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                     onClick={() => toggleCategorySubscription(activeCategory)}
                     data-testid={`btn-subscribe-cat-${activeCategory}`}
                     title={subscribedCats.has(activeCategory) ? "Unsubscribe from new arrivals" : "Get notified of new arrivals"}
-                    className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all ${subscribedCats.has(activeCategory) ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "border-border text-muted-foreground hover:border-tsia-green hover:text-tsia-green"}`}
+                    style={{ color: subscribedCats.has(activeCategory) ? AMZ.green : AMZ.link, borderColor: subscribedCats.has(activeCategory) ? AMZ.green : AMZ.link }}
+                    className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all hover:opacity-80"
                   >
                     <Bell className="w-3 h-3" />
                     {subscribedCats.has(activeCategory) ? "Subscribed" : "Subscribe"}
                   </button>
                 )}
                 {(products as Product[]).length > 12 && !showAllProducts && (
-                  <button className="text-xs text-tsia-green font-semibold" onClick={() => setShowAllProducts(true)}>See all {(products as Product[]).length}</button>
+                  <button style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline" onClick={() => setShowAllProducts(true)}>See all {(products as Product[]).length}</button>
                 )}
               </div>
             </div>
             {isLoading ? (
-              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-                {[1,2,3,4].map(i => <div key={i} className="aspect-[3/4] rounded-2xl bg-muted animate-pulse" />)}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {[1,2,3,4].map(i => <div key={i} className="aspect-square rounded bg-gray-100 animate-pulse" />)}
               </div>
             ) : (products as Product[]).length === 0 ? (
-              <div className="text-center py-16 border-2 border-dashed rounded-2xl">
-                <ShoppingBag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="font-semibold mb-1">No products found</p>
-                <p className="text-muted-foreground text-sm mb-4">Try a different search or category.</p>
-                <Button onClick={() => setListOpen(true)} className="bg-tsia-green text-white"><Plus className="w-4 h-4 mr-1.5" /> Be the first to list</Button>
+              <div className="text-center py-16 border-2 border-dashed rounded">
+                <ShoppingBag style={{ color: AMZ.muted }} className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p style={{ color: AMZ.text }} className="font-semibold mb-1">No products found</p>
+                <p style={{ color: AMZ.muted }} className="text-sm mb-4">Try a different search or category.</p>
+                <Button onClick={() => setListOpen(true)} style={{ background: AMZ.gold, color: AMZ.text, border: `1px solid ${AMZ.goldHov}` }} className="font-bold rounded-full"><Plus className="w-4 h-4 mr-1.5" /> Be the first to list</Button>
               </div>
             ) : (
               <>
@@ -1660,9 +1734,12 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                   </div>
                 )}
                 {!showAllProducts && filteredProducts.length > 12 && (
-                  <Button variant="outline" className="w-full mt-4 rounded-2xl" onClick={() => setShowAllProducts(true)}>
-                    Load more products ({filteredProducts.length - 12} more) <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
+                  <button
+                    style={{ background: AMZ.gold, color: AMZ.text, border: `1px solid ${AMZ.goldHov}` }}
+                    className="w-full mt-4 py-2.5 font-bold text-sm rounded-full hover:opacity-90 flex items-center justify-center gap-2"
+                    onClick={() => setShowAllProducts(true)}>
+                    Load more ({filteredProducts.length - 12} more) <ChevronRight className="w-4 h-4" />
+                  </button>
                 )}
               </>
             )}
@@ -1919,20 +1996,22 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
 
       {/* ── Stats bar (browse tab only) ───────────────────────────────── */}
       {tab === "browse" && (products as Product[]).length > 0 && (
-        <div className="grid grid-cols-3 gap-3 mt-6 pt-6 border-t">
+        <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="grid grid-cols-3 gap-0 mt-3 rounded overflow-hidden">
           {[
-            { label: "Products live", value: (products as Product[]).length, icon: Package, color: "text-blue-500" },
-            { label: "In wishlist", value: wishlist.size, icon: Heart, color: "text-red-500" },
-            { label: "Commission", value: "8%", icon: BadgePercent, color: "text-tsia-green" },
-          ].map(s => (
-            <div key={s.label} className="bg-card border rounded-2xl p-3 text-center">
-              <s.icon className={`w-5 h-5 ${s.color} mx-auto mb-1`} />
-              <p className="font-black text-lg">{s.value}</p>
-              <p className="text-[10px] text-muted-foreground">{s.label}</p>
+            { label: "Products", value: (products as Product[]).length, icon: Package, color: "#007185" },
+            { label: "Saved", value: wishlist.size, icon: Heart, color: "#CC0C39" },
+            { label: "Commission", value: "8%", icon: BadgePercent, color: "#067D62" },
+          ].map((s, i) => (
+            <div key={s.label} style={{ borderRight: i < 2 ? `1px solid ${AMZ.border}` : "none" }} className="p-3 text-center">
+              <s.icon style={{ color: s.color }} className="w-5 h-5 mx-auto mb-1" />
+              <p style={{ color: AMZ.text }} className="font-black text-lg">{s.value}</p>
+              <p style={{ color: AMZ.muted }} className="text-[10px]">{s.label}</p>
             </div>
           ))}
         </div>
       )}
+
+      </div>{/* close content wrapper */}
 
       {/* Modals */}
       <ListProductModal open={listOpen} editProduct={editingListing} onClose={() => { setListOpen(false); setEditingListing(null); }} />

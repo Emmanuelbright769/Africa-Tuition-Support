@@ -2462,28 +2462,33 @@ export async function registerRoutes(
   }
 
   /**
-   * Withdrawal window: Mon–Fri 09:00–18:00 WAT (Africa/Lagos, UTC+1).
-   * After 6 PM Fri, all weekend → locked until Mon 9 AM WAT.
+   * Withdrawal window:
+   *   Mon–Thu: open any time (no hour restriction).
+   *   Fri: open until 18:00 WAT, then locked.
+   *   Sat–Sun: locked.
+   *   Mon before 09:00 WAT: locked (reopens Mon 9 AM).
    */
   function getWithdrawalWindowStatus(): { open: boolean; message: string } {
     const watNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Africa/Lagos" }));
-    const day  = watNow.getDay();   // 0=Sun … 6=Sat
+    const day  = watNow.getDay();   // 0=Sun, 1=Mon … 5=Fri, 6=Sat
     const hour = watNow.getHours(); // 0–23
-    const isWeekday   = day >= 1 && day <= 5;
-    const afterOpen   = hour >= 9;
-    const beforeClose = hour < 18;
-    if (isWeekday && afterOpen && beforeClose) {
-      return { open: true, message: "Withdrawal window is open (Mon–Fri 9 AM–6 PM WAT)" };
+
+    // Mon–Thu: always open (no time restriction)
+    if (day >= 2 && day <= 4) {
+      return { open: true, message: "Open all day — no time restriction on weekdays" };
     }
-    let opensMsg: string;
-    if ((day === 5 && hour >= 18) || day === 6 || day === 0) {
-      opensMsg = "Monday at 9 AM WAT";
-    } else if (!afterOpen) {
-      opensMsg = "today at 9 AM WAT";
-    } else {
-      opensMsg = "tomorrow at 9 AM WAT";
+    // Monday: open from 9 AM WAT onwards
+    if (day === 1) {
+      if (hour >= 9) return { open: true, message: "Open all day — no time restriction on weekdays" };
+      return { open: false, message: "Withdrawals are locked. Opens today at 9 AM WAT." };
     }
-    return { open: false, message: `Withdrawals are locked. Window is Mon–Fri 9 AM–6 PM WAT. Opens ${opensMsg}.` };
+    // Friday: open before 6 PM WAT
+    if (day === 5) {
+      if (hour < 18) return { open: true, message: "Open today until 6 PM WAT — closes for the weekend at 6 PM" };
+      return { open: false, message: "Withdrawals are locked for the weekend. Opens Monday at 9 AM WAT." };
+    }
+    // Saturday or Sunday: locked
+    return { open: false, message: "Withdrawals are locked for the weekend. Opens Monday at 9 AM WAT." };
   }
 
   /**

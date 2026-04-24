@@ -628,11 +628,11 @@ export default function WalletPage() {
                   <p className="text-white/40 text-[10px] mb-1">Minimum $2 must remain in wallet at all times</p>
                   {withdrawalWindow && !withdrawalWindow.open && (
                     <p className="text-amber-300/70 text-[10px] mb-4 flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> Withdrawals locked · {withdrawalWindow.message.split("Opens ")[1] ? `Opens ${withdrawalWindow.message.split("Opens ")[1]}` : "Mon–Fri 9 AM–6 PM WAT only"}
+                      <Lock className="w-3 h-3" /> {withdrawalWindow.message}
                     </p>
                   )}
                   {withdrawalWindow?.open && (
-                    <p className="text-green-300/60 text-[10px] mb-4">✓ Withdrawal window open · Closes 6 PM WAT</p>
+                    <p className="text-green-300/60 text-[10px] mb-4">✓ {withdrawalWindow.message}</p>
                   )}
                   {!withdrawalWindow && <p className="mb-4" />}
                   <div className="grid grid-cols-2 gap-3">

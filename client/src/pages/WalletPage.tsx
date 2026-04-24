@@ -149,6 +149,7 @@ export default function WalletPage() {
   const { data: bills = [] }         = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 600_000 });
   const { data: txLedger = [] }      = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 300_000 });
   const { data: withdrawals = [] }   = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"], refetchInterval: 600_000 });
+  const { data: withdrawalWindow }   = useQuery<{ open: boolean; message: string }>({ queryKey: ["/api/wallet/withdrawal-window"], refetchInterval: 60_000 });
 
   // SSE: immediately refetch on push events; close when tab hidden to allow server scale-to-zero
   useEffect(() => {
@@ -624,16 +625,34 @@ export default function WalletPage() {
                     </p>
                   )}
                   <p className="text-white/50 text-xs mb-1">Available balance · Crypto: 1% fee · Bank: Coming Soon</p>
-                  <p className="text-white/40 text-[10px] mb-5">Minimum $2 must remain in wallet at all times</p>
+                  <p className="text-white/40 text-[10px] mb-1">Minimum $2 must remain in wallet at all times</p>
+                  {withdrawalWindow && !withdrawalWindow.open && (
+                    <p className="text-amber-300/70 text-[10px] mb-4 flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Withdrawals locked · {withdrawalWindow.message.split("Opens ")[1] ? `Opens ${withdrawalWindow.message.split("Opens ")[1]}` : "Mon–Fri 9 AM–6 PM WAT only"}
+                    </p>
+                  )}
+                  {withdrawalWindow?.open && (
+                    <p className="text-green-300/60 text-[10px] mb-4">✓ Withdrawal window open · Closes 6 PM WAT</p>
+                  )}
+                  {!withdrawalWindow && <p className="mb-4" />}
                   <div className="grid grid-cols-2 gap-3">
                     <Button onClick={() => openFund("squad")} className="h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl" data-testid="btn-fund-wallet">
                       <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
                     </Button>
                     <Button onClick={() => {
+                      if (withdrawalWindow && !withdrawalWindow.open) {
+                        toast({ title: "Withdrawals Locked 🔒", description: withdrawalWindow.message, variant: "destructive" });
+                        return;
+                      }
                       if (!walletKycDone && needsKyc) { toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification to unlock withdrawals.", variant: "destructive" }); return; }
                       setWithdrawChoiceOpen(true);
-                    }} variant="outline" className="h-12 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold" data-testid="btn-withdraw">
-                      <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw
+                    }} variant="outline"
+                      className={`h-12 rounded-2xl font-bold transition-all ${withdrawalWindow && !withdrawalWindow.open ? "border-white/20 text-white/40 cursor-not-allowed" : "border-white/40 text-white hover:bg-white/10"}`}
+                      data-testid="btn-withdraw">
+                      {withdrawalWindow && !withdrawalWindow.open
+                        ? <><Lock className="w-4 h-4 mr-2" /> Locked</>
+                        : <><ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw</>
+                      }
                     </Button>
                   </div>
                 </div>

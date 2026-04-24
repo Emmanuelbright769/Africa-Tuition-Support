@@ -5,7 +5,7 @@ import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import { getCached, setCached, invalidateCacheKey, invalidateCachePrefix } from "./cache";
 import {
   sendEmail, ADMIN_EMAIL,
-  sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail,
+  sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail, sendWalletReceivedEmail,
   sendOrderUpdateEmail, sendLoanUpdateEmail, sendVerificationUpdateEmail,
   sendReferralCommissionEmail, sendPriceDropEmail,
   sendNewSaleEmail, sendBotEarningsEmail, sendCoAffiliateEnrollmentEmail,
@@ -1094,10 +1094,19 @@ export async function registerRoutes(
   });
 
   // ─── WITHDRAWAL OTP REQUEST ──────────────────────────────────────────────────
+  // GET /api/wallet/withdrawal-window — returns current WAT withdrawal window status
+  app.get("/api/wallet/withdrawal-window", (_req, res) => {
+    res.json(getWithdrawalWindowStatus());
+  });
+
   app.post("/api/wallet/withdrawal-otp/request", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const windowStatus = getWithdrawalWindowStatus();
+      if (!windowStatus.open) {
+        return res.status(403).json({ message: windowStatus.message });
+      }
       const { amount, type } = req.body;
       if (!amount || isNaN(parseFloat(amount))) return res.status(400).json({ message: "A valid amount is required" });
       const user = await storage.getUser(userId);
@@ -1116,8 +1125,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      if (!isWeekdayLondon()) {
-        return res.status(403).json({ message: "Personal Wallet withdrawals are only processed Monday–Friday. Please try again on the next business day." });
+      const bankWdWindow = getWithdrawalWindowStatus();
+      if (!bankWdWindow.open) {
+        return res.status(403).json({ message: bankWdWindow.message });
       }
 
       const { amount, bankName, bankCode, accountNumber, accountName, otpCode } = req.body;
@@ -1251,8 +1261,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      if (!isWeekdayLondon()) {
-        return res.status(403).json({ message: "Personal Wallet withdrawals are only processed Monday–Friday. Please try again on the next business day." });
+      const cryptoWdWindow = getWithdrawalWindowStatus();
+      if (!cryptoWdWindow.open) {
+        return res.status(403).json({ message: cryptoWdWindow.message });
       }
       const { amount, network, address, otpCode } = req.body;
       if (!otpCode || otpCode.trim().length !== 6) {
@@ -2448,6 +2459,31 @@ export async function registerRoutes(
   function isWeekdayLondon(): boolean {
     const londonDay = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" })).getDay();
     return londonDay >= 1 && londonDay <= 5; // 1=Mon … 5=Fri
+  }
+
+  /**
+   * Withdrawal window: Mon–Fri 09:00–18:00 WAT (Africa/Lagos, UTC+1).
+   * After 6 PM Fri, all weekend → locked until Mon 9 AM WAT.
+   */
+  function getWithdrawalWindowStatus(): { open: boolean; message: string } {
+    const watNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Africa/Lagos" }));
+    const day  = watNow.getDay();   // 0=Sun … 6=Sat
+    const hour = watNow.getHours(); // 0–23
+    const isWeekday   = day >= 1 && day <= 5;
+    const afterOpen   = hour >= 9;
+    const beforeClose = hour < 18;
+    if (isWeekday && afterOpen && beforeClose) {
+      return { open: true, message: "Withdrawal window is open (Mon–Fri 9 AM–6 PM WAT)" };
+    }
+    let opensMsg: string;
+    if ((day === 5 && hour >= 18) || day === 6 || day === 0) {
+      opensMsg = "Monday at 9 AM WAT";
+    } else if (!afterOpen) {
+      opensMsg = "today at 9 AM WAT";
+    } else {
+      opensMsg = "tomorrow at 9 AM WAT";
+    }
+    return { open: false, message: `Withdrawals are locked. Window is Mon–Fri 9 AM–6 PM WAT. Opens ${opensMsg}.` };
   }
 
   /**
@@ -4889,6 +4925,23 @@ export async function registerRoutes(
       // Record transaction entries for both parties
       await storage.createTransaction({ userId, type: "transfer", amount: (-amount).toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `TSIA transfer to ${recipient.firstName} ${recipient.lastName} (${walletLabel})${note ? ` — ${note}` : ""}` });
       await storage.createTransaction({ userId: resolvedId, type: "transfer", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `TSIA transfer from ${sender?.firstName ?? "Member"}${note ? ` — ${note}` : ""}` });
+      // In-app notification for recipient
+      const receiveNotif = await storage.createNotification({
+        userId: resolvedId, type: "wallet_credit",
+        title: "Money Received 💸",
+        message: `You received $${amount.toFixed(2)} from ${sender?.firstName ?? "a member"} ${sender?.lastName ?? ""}. New balance: $${(recipientBalance + amount).toFixed(2)}.`,
+        data: { from: sender?.firstName, amount }, isRead: false,
+      });
+      pushToUser(resolvedId, "notification", receiveNotif);
+      // Email notification for recipient
+      sendWalletReceivedEmail(
+        recipient.email,
+        recipient.firstName,
+        amount.toFixed(2),
+        `${sender?.firstName ?? "A member"} ${sender?.lastName ?? ""}`.trim(),
+        (recipientBalance + amount).toFixed(2),
+        note ?? undefined,
+      ).catch((err: any) => console.error("[EMAIL] Wallet received email failed:", err?.message ?? err));
       res.json({ message: `$${amount.toFixed(2)} sent to ${recipient.firstName} ${recipient.lastName}'s ${walletLabel} successfully` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

@@ -285,6 +285,50 @@ export async function sendWelcomeEmail(to: string, firstName: string, role: "stu
   await sendEmail(to, subject, html);
 }
 
+// ─── Wallet Received (peer-to-peer transfer) ──────────────────────────────────
+
+export async function sendWalletReceivedEmail(
+  to: string,
+  firstName: string,
+  amount: string,
+  senderName: string,
+  newBalance: string,
+  note?: string,
+): Promise<void> {
+  const subject = `You received $${amount} from ${senderName} — TSIA`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">💸 Money Received!</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, a TSIA member has sent money to your wallet.</p>
+
+    <div style="background:#f0f8f4;border:2px solid #1a6b3c;border-radius:16px;padding:24px;margin:0 0 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#6b7c72;font-size:13px;padding-bottom:6px;">Amount received</td>
+          <td style="color:#1a6b3c;font-size:28px;font-weight:900;text-align:right;">+$${amount}</td>
+        </tr>
+        <tr>
+          <td style="color:#6b7c72;font-size:13px;padding-bottom:6px;">From</td>
+          <td style="color:#1a1a1a;font-size:15px;font-weight:700;text-align:right;">${senderName}</td>
+        </tr>
+        ${note ? `<tr>
+          <td style="color:#6b7c72;font-size:13px;padding-top:4px;">Note</td>
+          <td style="color:#4a5e50;font-size:14px;font-style:italic;text-align:right;padding-top:4px;">"${note}"</td>
+        </tr>` : ""}
+        <tr>
+          <td style="color:#6b7c72;font-size:13px;padding-top:10px;border-top:1px solid #e5ede8;">New balance</td>
+          <td style="color:#1a1a1a;font-size:16px;font-weight:700;text-align:right;padding-top:10px;border-top:1px solid #e5ede8;">$${newBalance}</td>
+        </tr>
+      </table>
+    </div>
+
+    <p style="color:#9caa9f;font-size:12px;text-align:center;margin:0;">
+      If you did not expect this transfer, please contact support@tsiforafrica.com.
+    </p>
+    ${btn("https://tsiforafrica.com/wallet", "View My Wallet")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
 // ─── Wallet Credit ────────────────────────────────────────────────────────────
 
 export async function sendWalletCreditEmail(to: string, firstName: string, amount: string, newBalance: string): Promise<void> {

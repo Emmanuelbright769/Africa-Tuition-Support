@@ -666,7 +666,7 @@ export default function AffiliateDashboard() {
     onError: (err: any) => toast({ title: "Application failed", description: err.message, variant: "destructive" }),
   });
 
-  const { data: personalWalletData, refetch: refetchPersonalWallet } = useQuery<any>({ queryKey: ["/api/wallet"], refetchInterval: 300_000, staleTime: 60_000 });
+  const { data: personalWalletData, refetch: refetchPersonalWallet } = useQuery<any>({ queryKey: ["/api/wallet"], refetchInterval: 600_000, staleTime: 120_000 });
   const personalBalance = parseFloat(personalWalletData?.balance ?? "0");
   const walletActivated = personalWalletData?.activated === true;
   const { data: referralStats } = useQuery<any>({ queryKey: ["/api/affiliate/referral-stats"] });

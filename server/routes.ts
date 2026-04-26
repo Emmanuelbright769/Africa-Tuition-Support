@@ -1066,7 +1066,7 @@ export async function registerRoutes(
     const balanceUsd = parseFloat(wallet.balance);
     const balanceNgn = balanceUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
     const result = { ...wallet, balanceNgn: balanceNgn.toFixed(2) };
-    setCached(cacheKey, result, 20_000);
+    setCached(cacheKey, result, 60_000);
     res.json(result);
   });
 
@@ -1235,6 +1235,8 @@ export async function registerRoutes(
         }).catch(() => {});
       }
 
+      invalidateCacheKey(`wallet:${userId}`);
+      invalidateCacheKey(`transactions:${userId}`);
       const updatedWallet = await storage.getOrCreateWallet(userId);
       res.json({
         wallet: updatedWallet,
@@ -1252,7 +1254,11 @@ export async function registerRoutes(
   app.get("/api/transactions", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const cacheKey = `transactions:${userId}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
     const txns = await storage.getTransactionsByUser(userId);
+    setCached(cacheKey, txns, 60_000);
     res.json(txns);
   });
 
@@ -1374,6 +1380,8 @@ export async function registerRoutes(
         }).catch(() => {});
       }
 
+      invalidateCacheKey(`wallet:${userId}`);
+      invalidateCacheKey(`transactions:${userId}`);
       const updated = await storage.getOrCreateWallet(userId);
       res.json({
         message: `Your USDT withdrawal has been received. You will receive $${netAmt.toFixed(2)} after the 1% handling fee ($${feeAmt.toFixed(2)}). Processing within 24 hours.`,
@@ -2747,6 +2755,8 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const cachedFund = getCached("reserve_fund_live");
+      if (cachedFund) return res.json(cachedFund);
       const fund = await storage.getTradeReserveFund();
 
       // Aggregate the $2 minimum balance locked across activated wallets only
@@ -2764,7 +2774,7 @@ export async function registerRoutes(
 
       const tradeReserve = parseFloat(fund.total_balance ?? "0");
 
-      res.json({
+      const fundResult = {
         totalBalance: fund.total_balance ?? "0",
         totalDeposited: fund.total_deposited ?? "0",
         contributionRate: 20,
@@ -2775,7 +2785,9 @@ export async function registerRoutes(
         minBalancePerWallet: 2,
         combinedReserve: (tradeReserve + walletFloorReserve).toFixed(2),
         updatedAt: new Date().toISOString(),
-      });
+      };
+      setCached("reserve_fund_live", fundResult, 120_000);
+      res.json(fundResult);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2784,6 +2796,8 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const cachedComm = getCached("reserve_commission_profits");
+      if (cachedComm) return res.json(cachedComm);
 
       // E-commerce commissions (8% per order)
       const ecomResult = await db.execute(sql`
@@ -2887,7 +2901,9 @@ export async function registerRoutes(
 
       const totalWithdrawals = parseInt((withdrawalCountResult.rows[0] as any)?.total_count ?? "0", 10);
 
-      res.json({ chartData, totals: { ...totals, totalWithdrawals } });
+      const commResult = { chartData, totals: { ...totals, totalWithdrawals } };
+      setCached("reserve_commission_profits", commResult, 600_000);
+      res.json(commResult);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -4701,7 +4717,11 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     try {
+      const cacheKey = `wallet_deposits:${userId}`;
+      const cached = getCached(cacheKey);
+      if (cached) return res.json(cached);
       const deposits = await storage.getWalletDepositsByUser(userId);
+      setCached(cacheKey, deposits, 120_000);
       res.json(deposits);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4938,6 +4958,11 @@ export async function registerRoutes(
         data: { from: sender?.firstName, amount }, isRead: false,
       });
       pushToUser(resolvedId, "notification", receiveNotif);
+      // Invalidate wallet & transaction caches for both parties
+      invalidateCacheKey(`wallet:${userId}`);
+      invalidateCacheKey(`wallet:${resolvedId}`);
+      invalidateCacheKey(`transactions:${userId}`);
+      invalidateCacheKey(`transactions:${resolvedId}`);
       // Email notification for recipient
       sendWalletReceivedEmail(
         recipient.email,
@@ -5264,7 +5289,11 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     try {
+      const cacheKey = `wallet_bills:${userId}`;
+      const cached = getCached(cacheKey);
+      if (cached) return res.json(cached);
       const bills = await storage.getBillPaymentsByUser(userId);
+      setCached(cacheKey, bills, 300_000);
       res.json(bills);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -5367,6 +5396,11 @@ export async function registerRoutes(
         });
         pushToUser(deposit.userId, "notification", walletNotif);
       } catch { /* non-critical */ }
+      // Invalidate caches for the credited user
+      invalidateCacheKey(`wallet:${deposit.userId}`);
+      invalidateCacheKey(`transactions:${deposit.userId}`);
+      invalidateCacheKey(`wallet_deposits:${deposit.userId}`);
+      invalidateCacheKey("reserve_fund_live");
       res.json({ success: true, breakdown: { gross, userCredit, reserveCut, affiliateCut, newBalance }, referralCommission: referralResult });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

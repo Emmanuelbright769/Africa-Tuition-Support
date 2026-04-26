@@ -99,7 +99,7 @@ function TopicDetail({ topic: initial, onBack, userSection }: { topic: ForumTopi
   const { data: posts = [] } = useQuery<ForumPost[]>({
     queryKey: [`/api/forum/topics/${topic.id}/posts`],
     queryFn: () => apiRequest("GET", `/api/forum/topics/${topic.id}/posts`).then(r => r.json()),
-    refetchInterval: 300_000,
+    refetchInterval: 600_000,
   });
 
   const replyMutation = useMutation({
@@ -328,7 +328,7 @@ export default function ForumSection({ userSection }: { userSection: "student" |
     queryKey: ["/api/forum/topics", userSection],
     queryFn: () =>
       apiRequest("GET", `/api/forum/topics?section=${userSection}`).then(r => r.json()),
-    refetchInterval: 300_000,
+    refetchInterval: 600_000,
   });
 
   const filtered = topics.filter(t => {

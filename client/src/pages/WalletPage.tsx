@@ -142,14 +142,32 @@ export default function WalletPage() {
   const kycCanvasRef = useRef<HTMLCanvasElement>(null);
   const kycStreamRef = useRef<MediaStream | null>(null);
 
+  // ── Local withdrawal window check (pure time logic — no server round-trip) ──
+  function getLocalWithdrawalWindow(): { open: boolean; message: string } {
+    const watNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Africa/Lagos" }));
+    const day = watNow.getDay(); const hour = watNow.getHours();
+    if (day >= 2 && day <= 4) return { open: true,  message: "Open all day — no time restriction on weekdays" };
+    if (day === 1) return hour >= 9
+      ? { open: true,  message: "Open all day — no time restriction on weekdays" }
+      : { open: false, message: "Withdrawals are locked. Opens today at 9 AM WAT." };
+    if (day === 5) return hour < 18
+      ? { open: true,  message: "Open today until 6 PM WAT — closes for the weekend at 6 PM" }
+      : { open: false, message: "Withdrawals are locked for the weekend. Opens Monday at 9 AM WAT." };
+    return { open: false, message: "Withdrawals are locked for the weekend. Opens Monday at 9 AM WAT." };
+  }
+  const [withdrawalWindow, setWithdrawalWindow] = useState<{ open: boolean; message: string }>(getLocalWithdrawalWindow);
+  useEffect(() => {
+    const t = setInterval(() => setWithdrawalWindow(getLocalWithdrawalWindow()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   // ── Queries (SSE-driven + poll fallback) ───────────────────────────────
   const { data: verification, refetch: refetchVerification } = useQuery<any>({ queryKey: ["/api/verification/status"] });
-  const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"], refetchInterval: 300_000, staleTime: 60_000 });
-  const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 300_000 });
-  const { data: bills = [] }         = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 600_000 });
-  const { data: txLedger = [] }      = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 300_000 });
-  const { data: withdrawals = [] }   = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"], refetchInterval: 600_000 });
-  const { data: withdrawalWindow }   = useQuery<{ open: boolean; message: string }>({ queryKey: ["/api/wallet/withdrawal-window"], refetchInterval: 60_000 });
+  const { data: wallet, refetch: refetchWallet } = useQuery<WalletData>({ queryKey: ["/api/wallet"], refetchInterval: 600_000, staleTime: 120_000 });
+  const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"], refetchInterval: 600_000 });
+  const { data: bills = [] }         = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], refetchInterval: 900_000 });
+  const { data: txLedger = [] }      = useQuery<TxRecord[]>({ queryKey: ["/api/transactions"], refetchInterval: 600_000 });
+  const { data: withdrawals = [] }   = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"], refetchInterval: 900_000 });
 
   // SSE: immediately refetch on push events; close when tab hidden to allow server scale-to-zero
   useEffect(() => {

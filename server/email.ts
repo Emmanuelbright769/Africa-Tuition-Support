@@ -245,6 +245,45 @@ export async function sendWithdrawalOtpEmail(
   await sendEmail(to, subject, html);
 }
 
+// ─── Transfer OTP ─────────────────────────────────────────────────────────────
+
+export async function sendTransferOtpEmail(
+  to: string,
+  firstName: string,
+  code: string,
+  amount: string,
+  recipientName: string,
+): Promise<void> {
+  const subject = "Your TSIA Transfer Security Code";
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">Wallet Transfer Security Code</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 6px;line-height:1.6;">
+      Hi <strong>${firstName}</strong>, you requested a wallet transfer of <strong>$${amount}</strong> to <strong>${recipientName}</strong>.
+    </p>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;line-height:1.6;">
+      Use the one-time code below to authorise this transfer. It expires in <strong>10 minutes</strong>.
+    </p>
+
+    <!-- OTP Box -->
+    <div style="background:#f0fdf4;border:2px dashed #1a5c38;border-radius:16px;padding:28px;text-align:center;margin:0 0 24px;">
+      <p style="color:#166534;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin:0 0 10px;">Transfer OTP</p>
+      <p style="color:#14532d;font-size:48px;font-weight:900;letter-spacing:12px;margin:0;font-family:monospace;">${code}</p>
+      <p style="color:#9caa9f;font-size:11px;margin:12px 0 0;">Valid for 10 minutes · Do not share this code</p>
+    </div>
+
+    <div style="background:#dcfce7;border-left:4px solid #16a34a;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
+      <p style="color:#166534;font-size:13px;margin:0;line-height:1.5;">
+        <strong>⚠ Security Notice:</strong> If you did not request this transfer, please contact support immediately at support@tsiforafrica.com.
+      </p>
+    </div>
+
+    <p style="color:#9caa9f;font-size:13px;margin:0;text-align:center;">
+      Never share this code with anyone — TSIA staff will never ask for it.
+    </p>
+  `);
+  await sendEmail(to, subject, html);
+}
+
 // ─── Welcome ──────────────────────────────────────────────────────────────────
 
 export async function sendWelcomeEmail(to: string, firstName: string, role: "student" | "affiliate"): Promise<void> {

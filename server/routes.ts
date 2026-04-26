@@ -18,6 +18,7 @@ import {
   sendAdminCommissionWithdrawalEmail, sendAdminDepositConfirmedEmail,
   sendDisbursementProcessedEmail, sendDisbursementDeclinedEmail, sendDisbursementEditedEmail,
   sendWithdrawalOtpEmail,
+  sendTransferOtpEmail,
 } from "./email";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -1115,6 +1116,24 @@ export async function registerRoutes(
       const code = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit OTP
       await storage.createWithdrawalOtp(userId, code, purpose);
       await sendWithdrawalOtpEmail(user.email, user.firstName, code, parseFloat(amount).toFixed(2), type === "crypto" ? "crypto" : "bank");
+      res.json({ success: true, message: `OTP sent to ${user.email.replace(/(.{2}).+(@.+)/, "$1***$2")}` });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── Transfer OTP — request code for wallet-to-wallet transfers ─────────────
+  app.post("/api/wallet/transfer-otp/request", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { amount, recipientName } = req.body;
+      if (!amount || isNaN(parseFloat(amount))) return res.status(400).json({ message: "A valid amount is required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      await storage.createWithdrawalOtp(userId, code, "wallet_transfer");
+      await sendTransferOtpEmail(user.email, user.firstName, code, parseFloat(amount).toFixed(2), recipientName || "recipient");
       res.json({ success: true, message: `OTP sent to ${user.email.replace(/(.{2}).+(@.+)/, "$1***$2")}` });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -4919,8 +4938,16 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     // recipientId is the resolved userId; recipientRole + recipientEmail allow role-based lookup for dual-account users
-    const { recipientId, recipientEmail, recipientRole, amount, note } = req.body;
+    const { recipientId, recipientEmail, recipientRole, amount, note, otpCode } = req.body;
     if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid transfer details" });
+    // ── OTP verification ──────────────────────────────────────────────────────
+    if (!otpCode || String(otpCode).trim().length !== 6) {
+      return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this transfer" });
+    }
+    const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "wallet_transfer");
+    if (!otpValid) {
+      return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
+    }
     try {
       // Resolve actual recipient — prefer role-based lookup when a dual-account user picked a specific dashboard
       let resolvedId: number = recipientId;

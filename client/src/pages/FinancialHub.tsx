@@ -14,7 +14,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
-type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount";
+type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp";
 type WalletData = { id: number; userId: number; balance: string };
 type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
@@ -175,6 +175,11 @@ export default function FinancialHub() {
   const [memberSuggestions, setMemberSuggestions] = useState<{ id: number; firstName: string; lastName: string; email: string; role: string; isDual: boolean; roles: string[] }[]>([]);
   const [showSuggestions, setShowSuggestions]     = useState(false);
 
+  // ── Transfer OTP state ───────────────────────────────────────────────────
+  const [otpCode, setOtpCode]           = useState("");
+  const [otpMaskedEmail, setOtpMaskedEmail] = useState("");
+  const [otpResendCooldown, setOtpResendCooldown] = useState(0);
+
   // ── Request Money state ──────────────────────────────────────────────────
   const [requestEmail, setRequestEmail] = useState("");
   const [requestNote, setRequestNote]   = useState("");
@@ -279,10 +284,29 @@ export default function FinancialHub() {
     onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
   });
 
+  const requestTransferOtpMutation = useMutation({
+    mutationFn: async () => {
+      if (!tsiaUser) throw new Error("No recipient selected");
+      const res = await apiRequest("POST", "/api/wallet/transfer-otp/request", {
+        amount: parseFloat(amount),
+        recipientName: `${tsiaUser.firstName} ${tsiaUser.lastName}`.trim(),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setOtpMaskedEmail(data.message?.replace("OTP sent to ", "") ?? "");
+      setOtpCode("");
+      setOtpResendCooldown(60);
+      setView("tsia-otp");
+    },
+    onError: (e: any) => toast({ title: "Could not send OTP", description: e.message, variant: "destructive" }),
+  });
+
   const sendTsiaMutation = useMutation({
     mutationFn: async () => {
       if (!tsiaUser) throw new Error("No recipient selected");
-      const payload: Record<string, unknown> = { recipientId: tsiaUser.id, amount: parseFloat(amount), note };
+      const payload: Record<string, unknown> = { recipientId: tsiaUser.id, amount: parseFloat(amount), note, otpCode };
       // If dual-account member, pass email + chosen role so backend can route to correct wallet
       if (tsiaUser.isDual && tsiaUser.email) {
         payload.recipientEmail = tsiaUser.email;
@@ -349,11 +373,19 @@ export default function FinancialHub() {
     onError: (e: any) => toast({ title: "Payment failed", description: e.message, variant: "destructive" }),
   });
 
+  // OTP resend countdown
+  useEffect(() => {
+    if (otpResendCooldown <= 0) return;
+    const t = setTimeout(() => setOtpResendCooldown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpResendCooldown]);
+
   // ── Helpers ───────────────────────────────────────────────────────────────
   const resetSend = () => {
     setAmount("0"); setNote(""); setSendMode("bank"); setBankSearch(""); setSelectedBank(null);
     setAcctNumber(""); setResolvedName(null); setResolveError(null); setResolveWarning(false);
     setTsiaEmail(""); setTsiaUser(null); setRecipientRoleChoice("student");
+    setOtpCode(""); setOtpMaskedEmail(""); setOtpResendCooldown(0);
   };
   const resetBill = () => {
     setAmount("0"); setBillRef(""); setSelectedService(null); setBillStep("details");
@@ -908,10 +940,94 @@ export default function FinancialHub() {
         <div className="flex gap-3">
           <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-            disabled={sendTsiaMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-            onClick={() => sendTsiaMutation.mutate()} data-testid="btn-send-tsia">
-            {sendTsiaMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
-            Send ${fmt(amount)}
+            disabled={requestTransferOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+            onClick={() => requestTransferOtpMutation.mutate()} data-testid="btn-send-tsia">
+            {requestTransferOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
+            Continue — ${fmt(amount)}
+          </Button>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TSIA TRANSFER — OTP confirmation screen
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "tsia-otp" && tsiaUser) return (
+    <AnimatePresence mode="wait">
+      <motion.div key="tsia-otp" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+        <BackHeader onBack={() => setView("tsia-amount")} title="Confirm Transfer" sub="Enter the code sent to your email" />
+
+        {/* Transfer summary */}
+        <div className="rounded-2xl bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 p-4 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Amount</span>
+            <span className="font-black text-tsia-green text-lg">${fmt(amount)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">To</span>
+            <span className="font-semibold">{tsiaUser.firstName} {tsiaUser.lastName}</span>
+          </div>
+          {note && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Note</span>
+              <span className="text-foreground">{note}</span>
+            </div>
+          )}
+        </div>
+
+        {/* OTP notice */}
+        <div className="rounded-2xl bg-muted/50 border border-border p-4 text-center space-y-1">
+          <p className="text-sm font-semibold">Security code sent</p>
+          <p className="text-xs text-muted-foreground">
+            A 6-digit code was sent to <strong>{otpMaskedEmail}</strong>.{" "}
+            It expires in 10 minutes.
+          </p>
+        </div>
+
+        {/* OTP digit input */}
+        <div>
+          <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Enter 6-digit OTP</label>
+          <input
+            type="tel"
+            inputMode="numeric"
+            maxLength={6}
+            placeholder="— — — — — —"
+            value={otpCode}
+            onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            className="w-full text-center text-3xl font-black tracking-[0.4em] border-2 border-border rounded-2xl px-4 py-4 bg-background focus:outline-none focus:border-tsia-green"
+            data-testid="input-transfer-otp"
+          />
+        </div>
+
+        {/* Resend */}
+        <p className="text-center text-xs text-muted-foreground">
+          Didn't receive it?{" "}
+          {otpResendCooldown > 0 ? (
+            <span className="font-semibold text-muted-foreground">Resend in {otpResendCooldown}s</span>
+          ) : (
+            <button
+              className="font-semibold text-tsia-green underline underline-offset-2"
+              onClick={() => requestTransferOtpMutation.mutate()}
+              disabled={requestTransferOtpMutation.isPending}
+              data-testid="btn-resend-transfer-otp"
+            >
+              {requestTransferOtpMutation.isPending ? "Sending…" : "Resend code"}
+            </button>
+          )}
+        </p>
+
+        {/* Confirm */}
+        <div className="flex gap-3">
+          <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+          <Button
+            className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
+            disabled={sendTsiaMutation.isPending || otpCode.length !== 6}
+            onClick={() => sendTsiaMutation.mutate()}
+            data-testid="btn-confirm-transfer-otp"
+          >
+            {sendTsiaMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
+            Confirm Transfer
           </Button>
         </div>
       </motion.div>

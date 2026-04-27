@@ -843,7 +843,7 @@ export default function AffiliateDashboard() {
   const myAvailable        = myCoAff ? parseFloat(myCoAff.myAvailable ?? "0") : 0;
   const myWithdrawn        = myCoAff ? parseFloat(myCoAff.withdrawnAmount ?? "0") : 0;
   const myAmountPaid       = myCoAff ? parseFloat(myCoAff.amountPaid) : 0;
-  const mySharePct         = myCoAff ? (parseFloat(myCoAff.sharePercentage) * 100).toFixed(6) : "0";
+  const mySharePct         = myCoAff ? parseFloat(myCoAff.sharePercentage).toFixed(8) : "0";
   const tradeBalance     = parseFloat(tradeWallet?.tradeBalance ?? "0");
   const totalInvested    = parseFloat(tradeWallet?.totalInvested ?? "0");
   const totalBotEarned   = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
@@ -1801,7 +1801,7 @@ export default function AffiliateDashboard() {
                         {/* My investment details */}
                         <div className="grid grid-cols-3 gap-3 text-center">
                           <div className="rounded-lg bg-muted/50 p-3">
-                            <p className="text-lg font-bold text-foreground" data-testid="text-my-investment">${myAmountPaid.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            <p className="text-lg font-bold text-foreground" data-testid="text-my-investment">${myAmountPaid.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                             <p className="text-[10px] text-muted-foreground mt-0.5">My Investment</p>
                           </div>
                           <div className="rounded-lg bg-muted/50 p-3">
@@ -2873,7 +2873,7 @@ export default function AffiliateDashboard() {
               <div className="bg-muted/50 rounded-xl p-4 border text-sm">
                 <p className="text-muted-foreground text-xs mb-1">Current tier</p>
                 <p className="font-bold">{myCategory && myCategory >= 500 ? `Elite ($${myCategory})` : myCategory === 300 ? "Growth ($300)" : "Starter ($100)"}</p>
-                <p className="text-xs text-muted-foreground mt-1">Share: {(parseFloat(myCoAff.sharePercentage) * 100).toFixed(6)}% lifetime</p>
+                <p className="text-xs text-muted-foreground mt-1">Share: {parseFloat(myCoAff.sharePercentage).toFixed(8)}% lifetime</p>
               </div>
             )}
             <div className="space-y-2">

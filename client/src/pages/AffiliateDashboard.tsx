@@ -1743,7 +1743,7 @@ export default function AffiliateDashboard() {
             {activeSection === "trust_fund" && (
               <>
                 <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Co-Affiliate / Initiator Programme</h2>
+                  <h2 className="text-2xl font-bold mb-1">Co-Affiliate Programme</h2>
                   <p className="text-muted-foreground text-sm mb-2">Invest once, earn lifetime profit share — exclusively for affiliate accounts.</p>
                 </motion.div>
 
@@ -2483,7 +2483,7 @@ export default function AffiliateDashboard() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Star className="w-6 h-6 text-tsia-gold" /> Confirm Enrolment</DialogTitle>
-            <DialogDescription>One-time lifetime investment in the Co-Affiliate/Initiator Programme.</DialogDescription>
+            <DialogDescription>One-time lifetime investment in the Co-Affiliate Programme.</DialogDescription>
           </DialogHeader>
           {selectedCategory !== null && (() => {
             const isElite = selectedCategory === 500;

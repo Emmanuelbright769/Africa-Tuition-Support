@@ -2330,7 +2330,7 @@ export default function AffiliateDashboard() {
             {activeSection === "tenancy" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Tenancy business</h2>
+                  <h2 className="text-2xl font-bold mb-1">Landlord Tenancy Gateway</h2>
                   <LearnMore label="How tenancy works" className="mt-1 mb-5">
                     <p className="text-muted-foreground text-sm">List your properties or browse available rentals — TSIA pays landlords upfront while tenants pay in instalments.</p>
                   </LearnMore>

@@ -468,7 +468,7 @@ export default function QCESection() {
                           </div>
                           <div className="flex items-center gap-2 mt-3 flex-wrap">
                             <p className="text-[10px] text-muted-foreground">
-                              Target savings: <span className="font-semibold text-foreground">{formatNaira(vehicle.priceNgn / 0.3)}</span>
+                              30% deposit: <span className="font-semibold text-foreground">{formatNaira(vehicle.priceNgn * 0.3)}</span>
                             </p>
                             <Button
                               size="sm"
@@ -513,8 +513,8 @@ export default function QCESection() {
                       <span className="font-bold text-tsia-gold">{formatNaira(vcSelectedVehicle.priceNgn)}</span>
                     </div>
                     <div className="flex justify-between mt-1 text-xs">
-                      <span className="text-muted-foreground">Required savings target</span>
-                      <span className="font-semibold">{formatNaira(vcSelectedVehicle.priceNgn / 0.3)}</span>
+                      <span className="text-muted-foreground">30% deposit required</span>
+                      <span className="font-semibold">{formatNaira(vcSelectedVehicle.priceNgn * 0.3)}</span>
                     </div>
                   </div>
                 )}

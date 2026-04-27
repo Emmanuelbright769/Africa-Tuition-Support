@@ -138,8 +138,8 @@ export default function TourAfrica() {
             <button onClick={() => setMenuOpen(o => !o)} className="p-2 rounded-xl hover:bg-muted transition-colors" data-testid="button-tour-menu" aria-label="Open Glide Africa menu">
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
-            <Logo variant="badge" height={32} />
-            <span className="text-xl font-bold tracking-tight hidden sm:block text-primary">TOUR AFRICA</span>
+            <img src="/glide-africa-logo.jpeg" alt="Glide Africa" className="h-9 w-auto object-contain hidden sm:block" />
+            <span className="text-xl font-bold tracking-tight sm:hidden text-primary">Glide Africa</span>
             <span className="text-sm text-muted-foreground hidden sm:flex items-center gap-1">
               <ChevronRight className="w-3.5 h-3.5" />
               <span className="font-medium text-foreground">{currentNav.label}</span>
@@ -175,12 +175,10 @@ export default function TourAfrica() {
               className="fixed top-0 left-0 h-full w-72 bg-card border-r shadow-2xl z-40 flex flex-col">
               <div className="p-5 border-b flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
-                    <Globe className="w-6 h-6 text-white" />
-                  </div>
+                  <img src="/glide-africa-logo.jpeg" alt="Glide Africa" className="h-12 w-auto object-contain" />
                   <div>
-                    <p className="font-bold text-sm text-green-700 dark:text-green-400">TOUR AFRICA</p>
-                    <p className="text-xs text-muted-foreground">Travel & Transport</p>
+                    <p className="font-bold text-sm text-[#1a2d6b]">GLIDE AFRICA</p>
+                    <p className="text-xs text-muted-foreground">Your journey, Their education</p>
                   </div>
                 </div>
                 <button onClick={() => setMenuOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X className="w-4 h-4" /></button>
@@ -223,13 +221,12 @@ export default function TourAfrica() {
                   <div className="bg-gradient-to-br from-green-800 via-green-700 to-emerald-600 text-white p-8">
                     <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -mr-20 -mt-20 blur-3xl pointer-events-none"></div>
                     <div className="relative z-10">
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center border border-white/30">
-                          <Globe className="w-9 h-9 text-white" />
-                        </div>
+                      <div className="flex items-center gap-5 mb-4">
+                        <img src="/glide-africa-logo.jpeg" alt="Glide Africa" className="h-20 w-auto object-contain rounded-xl shadow-lg bg-white/10 p-1" />
                         <div>
-                          <h1 className="text-3xl font-bold tracking-tight">TOUR AFRICA</h1>
-                          <p className="text-green-200 text-sm">Hotels · Car Hire · Flights · Dispatch · E-Taxi</p>
+                          <h1 className="text-3xl font-bold tracking-tight">GLIDE AFRICA</h1>
+                          <p className="text-green-200 text-sm italic">Your journey, Their education</p>
+                          <p className="text-green-100/70 text-xs mt-1">Hotels · Car Hire · Flights · Dispatch · E-Taxi</p>
                         </div>
                       </div>
                     </div>

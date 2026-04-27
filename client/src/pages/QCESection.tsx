@@ -59,7 +59,7 @@ export default function QCESection() {
   // ── Navigation ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<QceTab | null>(null);
 
-  // ── QCE Savings state ───────────────────────────────────────────────
+  // ── QCE SwiftVault state ───────────────────────────────────────────────
   const [contributeOpen, setContributeOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [contributeAmt, setContributeAmt] = useState("");
@@ -152,7 +152,7 @@ export default function QCESection() {
   const HomeView = () => (
     <motion.div key="home" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-4">
 
-      {/* QCE Savings card */}
+      {/* QCE SwiftVault card */}
       <Card className="shadow-sm border-0 overflow-hidden" data-testid="card-qce-savings-home">
         <CardContent className="pt-5 pb-5">
           <div className="flex items-start gap-3">
@@ -161,7 +161,7 @@ export default function QCESection() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="font-bold">QCE Savings</p>
+                <p className="font-bold">QCE SwiftVault</p>
                 {isActivated
                   ? <Badge className="bg-tsia-green/10 text-tsia-green border-0 text-[10px]">Active · {daysActive}/{QCE.PERIOD_DAYS} days</Badge>
                   : <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">Not activated</Badge>}
@@ -275,7 +275,7 @@ export default function QCESection() {
             {/* Header row */}
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h3 className="text-lg font-bold">QCE Savings</h3>
+                <h3 className="text-lg font-bold">QCE SwiftVault</h3>
                 <p className="text-xs text-muted-foreground">Quick Credit Eligibility · 90-day programme</p>
               </div>
               <div className="flex items-center gap-2">
@@ -292,7 +292,7 @@ export default function QCESection() {
 
             {!isActivated && (
               <Button onClick={() => setContributeOpen(true)} className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-activate-qce">
-                <Zap className="w-4 h-4 mr-2" /> Activate QCE Savings — min $5
+                <Zap className="w-4 h-4 mr-2" /> Activate QCE SwiftVault — min $5
               </Button>
             )}
 
@@ -376,7 +376,7 @@ export default function QCESection() {
                 {/* Min balance notice */}
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-200 flex gap-2">
                   <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p>Min <strong>${QCE.MIN_BALANCE}</strong> always retained. Withdrawals return to your Personal Wallet.</p>
+                  <p>Min <strong>${QCE.MIN_BALANCE}</strong> always retained. Withdrawals return to your SwiftWallet.</p>
                 </div>
 
                 {/* Transaction history */}
@@ -432,7 +432,7 @@ export default function QCESection() {
               <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
               <div className="text-xs text-red-800 dark:text-red-300 space-y-1">
                 <p className="font-semibold">Important: Early withdrawal resets eligibility</p>
-                <p>If you change or withdraw your QCE savings plan before the 90-day target is complete, your savings are returned without profit and your QCE credit eligibility resets to zero.</p>
+                <p>If you change or withdraw your QCE SwiftVault plan before the 90-day target is complete, your savings are returned without profit and your QCE credit eligibility resets to zero.</p>
               </div>
             </div>
 
@@ -700,7 +700,7 @@ export default function QCESection() {
       <Dialog open={contributeOpen} onOpenChange={v => { setContributeOpen(v); if (!v) setContributeAmt(""); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><PiggyBank className="w-5 h-5 text-tsia-green" />{isActivated ? "Add to QCE Savings" : "Activate QCE Savings"}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><PiggyBank className="w-5 h-5 text-tsia-green" />{isActivated ? "Add to QCE SwiftVault" : "Activate QCE SwiftVault"}</DialogTitle>
             <DialogDescription>{isActivated ? `Wallet: $${walletBalance.toFixed(2)} · QCE: $${qceBalance.toFixed(2)}` : `Min $${QCE.MIN_ACTIVATION} required. Wallet: $${walletBalance.toFixed(2)}`}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">

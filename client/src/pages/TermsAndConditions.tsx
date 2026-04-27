@@ -55,7 +55,7 @@ const TOC = [
   { id: "ecommerce", label: "E-Commerce Marketplace" },
   { id: "tenancy", label: "Tenancy Program" },
   { id: "loans", label: "Student & Business Loans" },
-  { id: "tour", label: "Tour Africa" },
+  { id: "tour", label: "Glide Africa" },
   { id: "privacy", label: "Privacy & Data Protection" },
   { id: "prohibited", label: "Prohibited Activities" },
   { id: "liability", label: "Limitation of Liability" },
@@ -248,7 +248,7 @@ export default function TermsAndConditions() {
             {/* 7. Wallet & Payments */}
             <Section id="wallet" icon={CreditCard} title="7. Digital Wallet &amp; Payments">
               <Clause num="7.1" title="Wallet Activation">
-                <p>Your TSIA Personal Wallet is activated upon successful completion of the KYC steps and payment of the portal fee. The wallet stores your sponsorship payouts, trade earnings, and other credited amounts.</p>
+                <p>Your TSIA SwiftWallet is activated upon successful completion of the KYC steps and payment of the portal fee. The wallet stores your sponsorship payouts, trade earnings, and other credited amounts.</p>
               </Clause>
               <Clause num="7.2" title="7.5% VAT on Withdrawals">
                 <p>A mandatory <strong>7.5% Value Added Tax (VAT)</strong> is applied to all bank withdrawals in compliance with applicable UK tax regulations. This tax is deducted from the withdrawal amount before disbursement. By requesting a withdrawal, you acknowledge and consent to this deduction. For example: a $100 withdrawal results in $92.50 received after 7.5% VAT.</p>
@@ -378,10 +378,10 @@ export default function TermsAndConditions() {
               </Clause>
             </Section>
 
-            {/* 14. Tour Africa */}
-            <Section id="tour" icon={Plane} title="14. Tour Africa">
+            {/* 14. Glide Africa */}
+            <Section id="tour" icon={Plane} title="14. Glide Africa">
               <Clause num="14.1" title="Service Commission">
-                <p>TSIA retains a <strong>10% commission</strong> on all Tour Africa bookings (hotels, car rentals, and flights). The balance is forwarded to the respective service provider.</p>
+                <p>TSIA retains a <strong>10% commission</strong> on all Glide Africa bookings (hotels, car rentals, and flights). The balance is forwarded to the respective service provider.</p>
               </Clause>
               <Clause num="14.2" title="Third-Party Services">
                 <p>Hotels, car rental companies, and airlines are independent third-party providers. TSIA does not operate, manage, or control these providers. TSIA is not liable for service quality, cancellations, delays, accidents, or other issues arising from their services.</p>
@@ -390,7 +390,7 @@ export default function TermsAndConditions() {
                 <p>Cancellation and refund policies are determined by the individual service providers. TSIA's 10% commission is non-refundable in all circumstances. Any refund entitlement from the provider is to be pursued directly with them.</p>
               </Clause>
               <Clause num="14.4" title="Payment">
-                <p>All Tour Africa bookings are paid from your TSIA digital wallet. You must have sufficient balance before confirming any booking.</p>
+                <p>All Glide Africa bookings are paid from your TSIA digital wallet. You must have sufficient balance before confirming any booking.</p>
               </Clause>
             </Section>
 

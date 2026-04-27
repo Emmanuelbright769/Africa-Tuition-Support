@@ -497,7 +497,7 @@ export default function WalletPage() {
           </button>
           <div className="flex items-center gap-2 flex-1">
             <Wallet className="w-5 h-5 text-tsia-green" />
-            <span className="font-bold text-base">Personal Wallet</span>
+            <span className="font-bold text-base">SwiftWallet</span>
           </div>
           <button onClick={() => refetchWallet()} className="p-2 rounded-xl hover:bg-muted transition-colors">
             <RefreshCw className="w-4 h-4 text-muted-foreground" />
@@ -611,7 +611,7 @@ export default function WalletPage() {
 
                 {kycFaceVerified && (
                   <Button className="h-11 w-full bg-tsia-green hover:bg-tsia-green/90 text-white font-bold" onClick={handleKycSubmit} disabled={kycSubmitting} data-testid="button-wallet-complete-kyc">
-                    {kycSubmitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Activating…</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Complete Verification</>}
+                    {kycSubmitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Activating…</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Swift-Apply</>}
                   </Button>
                 )}
               </div>
@@ -627,7 +627,7 @@ export default function WalletPage() {
                 <div className="absolute -bottom-8 left-28 w-32 h-32 rounded-full bg-white/5" />
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-white/60 text-[11px] font-semibold uppercase tracking-widest">TSIA Personal Wallet</p>
+                    <p className="text-white/60 text-[11px] font-semibold uppercase tracking-widest">TSIA SwiftWallet</p>
                     <button onClick={toggleHidden} className="text-white/60 hover:text-white transition-colors p-1" data-testid="btn-toggle-balance">
                       {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -1019,7 +1019,7 @@ export default function WalletPage() {
           <div className="flex flex-col h-full">
             {/* Top header strip */}
             <div className="bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] px-6 pt-14 pb-8 text-white shrink-0">
-              <p className="text-xs font-semibold text-white/60 uppercase tracking-widest mb-1">Personal Wallet</p>
+              <p className="text-xs font-semibold text-white/60 uppercase tracking-widest mb-1">SwiftWallet</p>
               <h2 className="text-3xl font-black">Withdraw Funds</h2>
               <p className="text-white/70 text-sm mt-1">Select your preferred withdrawal method</p>
             </div>

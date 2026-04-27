@@ -127,7 +127,7 @@ export async function registerRoutes(
               userId: u!.id,
               type: "wallet_activation",
               title: "Activate Your TSIA Wallet",
-              message: `Welcome to TSIA! To unlock all platform features — including QCE savings, loans, e-commerce and more — please fund your Personal Wallet with a minimum of $5. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your Personal Wallet section to make your first deposit.`,
+              message: `Welcome to TSIA! To unlock all platform features — including QCE SwiftVault, loans, e-commerce and more — please fund your SwiftWallet with a minimum of $5. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your SwiftWallet section to make your first deposit.`,
               data: { minActivation: QCE.MIN_ACTIVATION, minBalance: QCE.MIN_BALANCE },
               isRead: false,
             });
@@ -471,7 +471,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateWallet(userId);
       if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before starting verification." });
+        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before starting verification." });
       }
 
       const { idType = "nin", idNumber, lastName } = req.body;
@@ -518,7 +518,7 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const wallet = await storage.getOrCreateWallet(userId);
     if (!wallet.activated) {
-      return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before starting verification." });
+      return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before starting verification." });
     }
     const nin = req.body.nin || req.body.idNumber;
     if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) return res.status(400).json({ message: "NIN must be exactly 11 digits." });
@@ -534,7 +534,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateWallet(userId);
       if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before continuing verification." });
+        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before continuing verification." });
       }
 
       // Support both old { nin } and new { idType, idNumber } shapes
@@ -561,7 +561,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateWallet(userId);
       if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before submitting your application." });
+        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before submitting your application." });
       }
 
       let verification = await storage.getVerificationByUser(userId);
@@ -873,7 +873,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const feeWallet = await storage.getOrCreateWallet(userId);
       if (!feeWallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA Personal Wallet with at least $5 before paying the portal fee." });
+        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before paying the portal fee." });
       }
 
       let verification = await storage.getVerificationByUser(userId);
@@ -1495,7 +1495,7 @@ export async function registerRoutes(
         amount: `-${totalCost.toFixed(2)}`,
         fee: serviceCharge.toFixed(2),
         paymentMethod: "wallet",
-        description: `${planYears}-year TSIA Sponsorship Plan payment — $${baseCost.toFixed(2)} + $${serviceCharge.toFixed(2)} service charge = $${totalCost.toFixed(2)} (₦${ngnEquivalent.toLocaleString()})`,
+        description: `${planYears}-year TSIA Swift-Pay Plan payment — $${baseCost.toFixed(2)} + $${serviceCharge.toFixed(2)} service charge = $${totalCost.toFixed(2)} (₦${ngnEquivalent.toLocaleString()})`,
       });
 
       // ── 7. Payout based on student's actual WAEC tier ─────────────────────
@@ -1523,7 +1523,7 @@ export async function registerRoutes(
         const planNotif = await storage.createNotification({
           userId,
           type: "verification_update",
-          title: "Sponsorship Plan Active ✓",
+          title: "Swift-Pay Plan Active ✓",
           message: `Your ${planYears}-year TSIA sponsorship plan is now active. $${totalCost.toFixed(2)} has been deducted from your wallet. Your $${totalPayout} disbursement is pending admin approval.`,
           data: { planYears, totalCost, totalPayout },
           isRead: false,
@@ -1688,7 +1688,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Withdraw referral commission earnings from Trade Wallet to Personal Wallet
+  // Withdraw referral commission earnings from Trade Wallet to SwiftWallet
   app.post("/api/affiliate/withdraw-commission", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -1727,7 +1727,7 @@ export async function registerRoutes(
         netAmount: (-withdrawAmount).toFixed(6),
         txHash: null,
         status: "completed",
-        note: `Commission withdrawal to Personal Wallet | Ref: ${txRef}`,
+        note: `Commission withdrawal to SwiftWallet | Ref: ${txRef}`,
       });
 
       // Credit to personal wallet
@@ -1748,7 +1748,7 @@ export async function registerRoutes(
         userId,
         type: "wallet_credit",
         title: "Commission Withdrawal ✓",
-        message: `$${withdrawAmount.toFixed(4)} withdrawn from your Trade Wallet to your Personal Wallet. Ref: ${txRef}`,
+        message: `$${withdrawAmount.toFixed(4)} withdrawn from your Trade Wallet to your SwiftWallet. Ref: ${txRef}`,
         data: { ref: txRef, amount: withdrawAmount },
         isRead: false,
       });
@@ -1771,7 +1771,7 @@ export async function registerRoutes(
         withdrawn: withdrawAmount,
         newTradeBalance: parseFloat(updatedTrade.tradeBalance).toFixed(4),
         newPersonalBalance,
-        message: `$${withdrawAmount.toFixed(4)} moved to your Personal Wallet.`,
+        message: `$${withdrawAmount.toFixed(4)} moved to your SwiftWallet.`,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1873,7 +1873,7 @@ export async function registerRoutes(
         });
       }
 
-      // ── Deduct from Personal Wallet ──
+      // ── Deduct from SwiftWallet ──
       await storage.updateWalletBalance(userId, (walletBalance - amountPaid).toFixed(2));
       await storage.createTransaction({
         userId,
@@ -1979,7 +1979,7 @@ export async function registerRoutes(
         });
       }
 
-      // ── Deduct from Personal Wallet ──
+      // ── Deduct from SwiftWallet ──
       await storage.updateWalletBalance(userId, (upgradeWalletBalance - newAmountPaid).toFixed(2));
       await storage.createTransaction({
         userId,
@@ -2018,7 +2018,7 @@ export async function registerRoutes(
     }
   });
 
-  // Co-Affiliate: withdraw available earnings to Personal Wallet
+  // Co-Affiliate: withdraw available earnings to SwiftWallet
   app.post("/api/co-affiliate/withdraw", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -2036,7 +2036,7 @@ export async function registerRoutes(
       if (available <= 0) return res.status(400).json({ message: "No available earnings to withdraw at this time." });
       if (available < 1) return res.status(400).json({ message: `Minimum withdrawal is $1.00. Your available balance is $${available.toFixed(4)} — keep earning until you reach $1.` });
 
-      // Credit Personal Wallet
+      // Credit SwiftWallet
       const wallet = await storage.getOrCreateWallet(userId);
       const newBalance = (parseFloat(wallet.balance) + available).toFixed(2);
       await storage.updateWalletBalance(userId, newBalance);
@@ -2058,7 +2058,7 @@ export async function registerRoutes(
         userId,
         type: "wallet_credit",
         title: "Trust Fund Withdrawal Successful",
-        message: `$${available.toFixed(4)} from your Trust Fund earnings has been credited to your TSIA Personal Wallet.`,
+        message: `$${available.toFixed(4)} from your Trust Fund earnings has been credited to your TSIA SwiftWallet.`,
         data: { amount: available, newBalance },
         isRead: false,
       });
@@ -2256,7 +2256,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ── Fund Trade Wallet from Personal Wallet balance ────────────────────────
+  // ── Fund Trade Wallet from SwiftWallet balance ────────────────────────
   app.post("/api/trade/fund-from-wallet", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -2297,7 +2297,7 @@ export async function registerRoutes(
         netAmount: userCredit.toFixed(6),
         txHash: `INTERNAL-${userId}-${Date.now()}`,
         status: "completed",
-        note: `Funded from Personal Wallet — 20% reserve, ${(affiliateRateFw * 100).toFixed(0)}% co-affiliate pool`,
+        note: `Funded from SwiftWallet — 20% reserve, ${(affiliateRateFw * 100).toFixed(0)}% co-affiliate pool`,
       });
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
       await storage.addToTotalInvested(userId, userCredit.toFixed(6));
@@ -2341,7 +2341,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ── Transfer trade earnings → Personal Wallet (no fee, instant) ──────────
+  // ── Transfer trade earnings → SwiftWallet (no fee, instant) ──────────
   app.post("/api/trade/transfer-to-wallet", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -2369,7 +2369,7 @@ export async function registerRoutes(
         amountUsd: amount.toFixed(6), feeUsd: "0.000000",
         reserveFundDeduction: "0.000000", affiliateShareDeduction: "0.000000",
         netAmount: amount.toFixed(6), txHash: null, status: "completed",
-        note: `Transferred $${amount.toFixed(2)} to Personal Wallet`,
+        note: `Transferred $${amount.toFixed(2)} to SwiftWallet`,
       });
       // Credit personal wallet
       const personalWallet = await storage.getOrCreateWallet(userId);
@@ -2377,7 +2377,7 @@ export async function registerRoutes(
       await storage.updateWalletBalance(userId, newPersonalBal);
       if (!personalWallet.activated && parseFloat(newPersonalBal) >= 5) await storage.activateWallet(userId);
       await storage.createTransaction({ userId, type: "deposit", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "internal", description: `Transfer from Trade Wallet — $${amount.toFixed(2)}` });
-      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Trade Transfer Complete ✓", message: `$${amount.toFixed(2)} from your Trade Wallet has been credited to your Personal Wallet.`, data: {}, isRead: false });
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Trade Transfer Complete ✓", message: `$${amount.toFixed(2)} from your Trade Wallet has been credited to your SwiftWallet.`, data: {}, isRead: false });
       pushToUser(userId, "notification", notif);
       const updatedTrade = await storage.getOrCreateTradeWallet(userId);
       res.json({ newTradeBalance: updatedTrade.tradeBalance, newPersonalBalance: newPersonalBal, transferred: amount.toFixed(2) });
@@ -3112,7 +3112,7 @@ export async function registerRoutes(
         const student = await storage.getUser(disbursement.userId);
         if (student) {
           await sendDisbursementProcessedEmail({ to: student.email, firstName: student.firstName, amount: parseFloat(disbursement.amount).toFixed(2), newBalance });
-          await storage.createNotification({ userId: disbursement.userId, type: "wallet_credit", title: "Payout Processed ✓", message: `$${parseFloat(disbursement.amount).toFixed(2)} has been credited to your TSIA Personal Wallet.`, data: { amount: disbursement.amount, newBalance }, isRead: false });
+          await storage.createNotification({ userId: disbursement.userId, type: "wallet_credit", title: "Payout Processed ✓", message: `$${parseFloat(disbursement.amount).toFixed(2)} has been credited to your TSIA SwiftWallet.`, data: { amount: disbursement.amount, newBalance }, isRead: false });
         }
       } catch { /* non-critical */ }
 
@@ -4118,13 +4118,13 @@ export async function registerRoutes(
         amount: SPONSOR_CODE_BONUS.toFixed(2),
         fee: "0.00",
         paymentMethod: "sponsor_code",
-        description: `Sponsor code activation bonus — $${SPONSOR_CODE_BONUS.toFixed(2)} credited to TSIA Personal Wallet (${validation.cohortName ?? "sponsored cohort"})`,
+        description: `Sponsor code activation bonus — $${SPONSOR_CODE_BONUS.toFixed(2)} credited to TSIA SwiftWallet (${validation.cohortName ?? "sponsored cohort"})`,
       });
       await storage.createNotification({
         userId,
         type: "wallet_credit",
         title: "Sponsor Code Activated!",
-        message: `$${SPONSOR_CODE_BONUS.toFixed(2)} has been credited to your TSIA Personal Wallet and your account is now active.`,
+        message: `$${SPONSOR_CODE_BONUS.toFixed(2)} has been credited to your TSIA SwiftWallet and your account is now active.`,
         data: { bonus: SPONSOR_CODE_BONUS, cohortName: validation.cohortName },
         isRead: false,
       });
@@ -4501,7 +4501,7 @@ export async function registerRoutes(
       // Mark deposit record as completed
       if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
       // Push live notification
-      const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${gross.toFixed(2)} received — $${sqUserCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet`, data: { transactionRef }, isRead: false });
+      const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${gross.toFixed(2)} received — $${sqUserCredit.toFixed(2)} (75%) credited to your TSIA SwiftWallet`, data: { transactionRef }, isRead: false });
       pushToUser(userId, "notification", notif);
       const sqDepositUser = await storage.getUser(userId);
       if (sqDepositUser) {
@@ -4518,7 +4518,7 @@ export async function registerRoutes(
           userId,
         }).catch((err: any) => console.error("[EMAIL] Admin Squad confirmed deposit email failed:", err?.message ?? err));
       }
-      res.json({ message: `$${sqUserCredit.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd: sqUserCredit });
+      res.json({ message: `$${sqUserCredit.toFixed(2)} has been credited to your TSIA SwiftWallet`, amountUsd: sqUserCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -4560,7 +4560,7 @@ export async function registerRoutes(
             }
             await storage.createTransaction({ userId, type: "deposit", amount: wkUserCredit.toFixed(2), fee: (wkReserveCut + wkAffiliateCut).toFixed(2), paymentMethod: "squad", description: `Wallet funded via Squad webhook (${ref}) — $${wkUserCredit.toFixed(2)} (75%) credited, $${wkReserveCut.toFixed(2)} reserve, $${wkAffiliateCut.toFixed(2)} pool` });
             await storage.updateWalletDeposit(allDeposits.id, { status: "completed" });
-            const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${wkGross.toFixed(2)} received — $${wkUserCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet`, data: { ref }, isRead: false });
+            const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${wkGross.toFixed(2)} received — $${wkUserCredit.toFixed(2)} (75%) credited to your TSIA SwiftWallet`, data: { ref }, isRead: false });
             pushToUser(userId, "notification", notif);
             const wkUser = await storage.getUser(userId);
             if (wkUser) {
@@ -4685,7 +4685,7 @@ export async function registerRoutes(
       if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
       // Record transaction (for complete history)
       await storage.createTransaction({ userId, type: "deposit", amount: psUserCredit.toFixed(2), fee: (psReserveCut + psAffiliateCut).toFixed(2), paymentMethod: "paystack", description: `Wallet funded via Paystack (${reference}) — $${psUserCredit.toFixed(2)} (75%) credited, $${psReserveCut.toFixed(2)} reserve, $${psAffiliateCut.toFixed(2)} pool` });
-      const psNotif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${psGross.toFixed(2)} received — $${psUserCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet`, data: { reference }, isRead: false });
+      const psNotif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${psGross.toFixed(2)} received — $${psUserCredit.toFixed(2)} (75%) credited to your TSIA SwiftWallet`, data: { reference }, isRead: false });
       pushToUser(userId, "notification", psNotif);
       const psDepositUser = await storage.getUser(userId);
       if (psDepositUser) {
@@ -4702,7 +4702,7 @@ export async function registerRoutes(
           userId,
         }).catch((err: any) => console.error("[EMAIL] Admin Paystack confirmed deposit email failed:", err?.message ?? err));
       }
-      res.json({ message: `$${psUserCredit.toFixed(2)} has been credited to your TSIA Personal Wallet`, amountUsd: psUserCredit });
+      res.json({ message: `$${psUserCredit.toFixed(2)} has been credited to your TSIA SwiftWallet`, amountUsd: psUserCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -5454,8 +5454,8 @@ export async function registerRoutes(
           }).catch((err: any) => console.error("[EMAIL] Admin confirmed deposit email failed:", err?.message ?? err));
         }
         const notifMessage = (isAffiliate && !isFirstDeposit)
-          ? `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (95%) credited to your TSIA Personal Wallet — no reserve fee on top-up deposits. $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`
-          : `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet. $${reserveCut.toFixed(2)} (20%) to Reserve Fund, $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`;
+          ? `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (95%) credited to your TSIA SwiftWallet — no reserve fee on top-up deposits. $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`
+          : `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (75%) credited to your TSIA SwiftWallet. $${reserveCut.toFixed(2)} (20%) to Reserve Fund, $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`;
         const walletNotif = await storage.createNotification({
           userId: deposit.userId,
           type: "wallet_credit",
@@ -6352,7 +6352,7 @@ export async function registerRoutes(
 
   // ─── QCE (QUICK CREDIT ELIGIBILITY) ──────────────────────────────────────────
 
-  // GET /api/qce/status — get user's QCE savings record
+  // GET /api/qce/status — get user's QCE SwiftVault record
   app.get("/api/qce/status", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -6363,7 +6363,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // POST /api/qce/contribute — add funds to QCE savings from personal wallet
+  // POST /api/qce/contribute — add funds to QCE SwiftVault from personal wallet
   app.post("/api/qce/contribute", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -6387,7 +6387,7 @@ export async function registerRoutes(
       const newWalletBal = (walletBal - amount).toFixed(2);
       await storage.updateWalletBalance(userId, newWalletBal);
 
-      // Credit QCE savings
+      // Credit QCE SwiftVault
       const { savings, transaction } = await storage.contributeToQce(userId, amount);
 
       // Tick QCE days for returning users making daily contributions
@@ -6399,7 +6399,7 @@ export async function registerRoutes(
           const qceNotif = await storage.createNotification({
             userId,
             type: "qce_update",
-            title: "QCE Savings Activated!",
+            title: "QCE SwiftVault Activated!",
             message: `Your Quick Credit Eligibility savings are now active with $${amount.toFixed(2)}. Keep contributing daily over 90 days to build up to 30% credit eligibility. Your Credit Portal is now unlocked.`,
             data: { balance: savings.balance, daysActive: savings.daysActive },
             isRead: false,
@@ -6415,7 +6415,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // POST /api/qce/withdraw — withdraw from QCE savings back to personal wallet
+  // POST /api/qce/withdraw — withdraw from QCE SwiftVault back to personal wallet
   app.post("/api/qce/withdraw", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -6436,8 +6436,8 @@ export async function registerRoutes(
         const qceWdNotif = await storage.createNotification({
           userId,
           type: "qce_update",
-          title: "QCE Savings Withdrawn",
-          message: `$${amount.toFixed(2)} withdrawn from your QCE savings back to your Personal Wallet. Your new wallet balance is $${newWalletBal}.`,
+          title: "QCE SwiftVault Withdrawn",
+          message: `$${amount.toFixed(2)} withdrawn from your QCE SwiftVault back to your SwiftWallet. Your new wallet balance is $${newWalletBal}.`,
           data: { amount, newWalletBal },
           isRead: false,
         });

@@ -320,7 +320,7 @@ export default function WalletSection() {
       {/* Header */}
       <motion.div variants={itemVariants}>
         <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Wallet className="w-6 h-6 text-tsia-green" /> TSIA Personal Wallet
+          <Wallet className="w-6 h-6 text-tsia-green" /> TSIA SwiftWallet
         </h2>
         <p className="text-muted-foreground text-sm mt-0.5">Your single wallet for all transactions on the platform</p>
       </motion.div>
@@ -440,7 +440,7 @@ export default function WalletSection() {
 
             {kycFaceVerified && (
               <Button className="h-11 w-full bg-tsia-green hover:bg-tsia-green/90 text-white font-bold" onClick={handleKycSubmit} disabled={kycSubmitting} data-testid="button-wallet-complete-kyc">
-                {kycSubmitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Activating…</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Complete Verification</>}
+                {kycSubmitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Activating…</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Swift-Apply</>}
               </Button>
             )}
           </div>
@@ -457,7 +457,7 @@ export default function WalletSection() {
 
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-white/60 text-[11px] font-semibold uppercase tracking-widest">TSIA Personal Wallet</p>
+                <p className="text-white/60 text-[11px] font-semibold uppercase tracking-widest">TSIA SwiftWallet</p>
                 <div className="flex items-center gap-2">
                   <button onClick={toggleHidden} className="text-white/60 hover:text-white transition-colors p-1" data-testid="btn-toggle-balance">
                     {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -500,7 +500,7 @@ export default function WalletSection() {
                 <Button
                   onClick={() => {
                     if (isWeekendLondon) {
-                      toast({ title: "Withdrawals Locked on Weekends", description: "Personal Wallet withdrawals are available Monday–Friday only. Please try again on Monday.", variant: "destructive" }); return;
+                      toast({ title: "Withdrawals Locked on Weekends", description: "SwiftWallet withdrawals are available Monday–Friday only. Please try again on Monday.", variant: "destructive" }); return;
                     }
                     if (!walletKycDone && needsKyc) {
                       toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification above to unlock withdrawals.", variant: "destructive" }); return;
@@ -826,7 +826,7 @@ export default function WalletSection() {
           <div className="flex flex-col h-full">
             {/* Header */}
             <div className="bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] px-6 pt-14 pb-8 text-white shrink-0">
-              <p className="text-xs font-semibold text-white/60 uppercase tracking-widest mb-1">Personal Wallet</p>
+              <p className="text-xs font-semibold text-white/60 uppercase tracking-widest mb-1">SwiftWallet</p>
               <h2 className="text-3xl font-black">Withdraw Funds</h2>
               <p className="text-white/70 text-sm mt-1">Select your preferred withdrawal method</p>
             </div>

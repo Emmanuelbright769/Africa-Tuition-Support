@@ -135,7 +135,7 @@ export default function TourAfrica() {
       <nav className="bg-card border-b sticky top-0 z-40 shadow-sm">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => setMenuOpen(o => !o)} className="p-2 rounded-xl hover:bg-muted transition-colors" data-testid="button-tour-menu" aria-label="Open Tour Africa menu">
+            <button onClick={() => setMenuOpen(o => !o)} className="p-2 rounded-xl hover:bg-muted transition-colors" data-testid="button-tour-menu" aria-label="Open Glide Africa menu">
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
             <Logo variant="badge" height={32} />
@@ -280,7 +280,7 @@ export default function TourAfrica() {
                     <Tag className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div>
                       <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm">10% TSIA Service Commission</p>
-                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">All Tour Africa bookings are paid directly from your TSIA Personal Wallet. TSIA retains 10% as a service commission. The net amount is forwarded to the service provider.</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">All Glide Africa bookings are paid directly from your TSIA SwiftWallet. TSIA retains 10% as a service commission. The net amount is forwarded to the service provider.</p>
                     </div>
                   </div>
                 </motion.div>
@@ -595,7 +595,7 @@ export default function TourAfrica() {
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">My Bookings</h2>
-                  <p className="text-muted-foreground text-sm mb-6">All your Tour Africa bookings and their status.</p>
+                  <p className="text-muted-foreground text-sm mb-6">All your Glide Africa bookings and their status.</p>
                 </motion.div>
                 <motion.div variants={itemVariants}>
                   <Card className="shadow-md border-0">

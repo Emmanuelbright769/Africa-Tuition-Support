@@ -293,13 +293,13 @@ export async function sendWelcomeEmail(to: string, firstName: string, role: "stu
     <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">Welcome, ${firstName}! 🌍</h2>
     <p style="color:#4a5e50;font-size:15px;margin:0 0 16px;line-height:1.6;">
       Your <strong>${isAffiliate ? "Affiliate" : "Student"}</strong> account is now active on the TSIA platform.
-      To unlock <em>all</em> features, your first step is to activate your Personal Wallet.
+      To unlock <em>all</em> features, your first step is to activate your SwiftWallet.
     </p>
 
     <div style="background:#f0f8f4;border:2px solid #1a6b3c;border-radius:16px;padding:20px;margin:0 0 20px;">
       <p style="color:#1a6b3c;font-size:16px;font-weight:700;margin:0 0 6px;">⚡ Wallet Activation Required</p>
       <p style="color:#4a5e50;font-size:14px;margin:0 0 12px;line-height:1.6;">
-        Deposit a minimum of <strong style="color:#1a6b3c;">$5.00 USDT</strong> (TRC20 or BEP20) to your TSIA Personal Wallet.
+        Deposit a minimum of <strong style="color:#1a6b3c;">$5.00 USDT</strong> (TRC20 or BEP20) to your TSIA SwiftWallet.
         Admin confirms deposits within 30 minutes. Once confirmed, <strong>75% is credited to your wallet</strong>,
         20% goes to the Strategic Reserve Fund, and 5% to the Affiliate Pool.
       </p>
@@ -314,7 +314,7 @@ export async function sendWelcomeEmail(to: string, firstName: string, role: "stu
     <ul style="color:#4a5e50;font-size:14px;padding-left:18px;line-height:2;">
       ${isAffiliate
         ? "<li>🤝 Share your referral link and earn commissions</li><li>📈 Access the AI-powered Trade Market</li>"
-        : "<li>📚 Complete your WAEC profile for sponsorship</li><li>💳 Start QCE savings to build credit eligibility</li>"}
+        : "<li>📚 Complete your WAEC profile for sponsorship</li><li>💳 Start QCE SwiftVault to build credit eligibility</li>"}
       <li>🛒 Shop and sell on the P2P marketplace</li>
       <li>🏦 Access student/affiliate loans</li>
       <li>🔔 Real-time notifications and live support</li>
@@ -531,7 +531,7 @@ export async function sendNewSaleEmail(to: string, firstName: string, productTit
     <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
       <p style="color:#1a1a1a;font-weight:700;font-size:15px;margin:0 0 4px;">${productTitle}</p>
       <p style="color:#6b7c72;font-size:12px;margin:0 0 12px;">Order #${orderId}</p>
-      <p style="color:#4a5e50;font-size:14px;margin:0;">You received <span style="color:#1a6b3c;font-weight:900;font-size:20px;">$${sellerReceives}</span> in your TSIA Personal Wallet (after platform commission).</p>
+      <p style="color:#4a5e50;font-size:14px;margin:0;">You received <span style="color:#1a6b3c;font-weight:900;font-size:20px;">$${sellerReceives}</span> in your TSIA SwiftWallet (after platform commission).</p>
     </div>
     ${btn("https://tsiforafrica.com/dashboard", "View My Sales")}
   `);
@@ -622,12 +622,12 @@ export async function sendTourBookingEmail(to: string, firstName: string, bookin
   await sendEmail(to, subject, html);
 }
 
-// ─── QCE Savings Activated ────────────────────────────────────────────────────
+// ─── QCE SwiftVault Activated ────────────────────────────────────────────────────
 
 export async function sendQceActivationEmail(to: string, firstName: string, amount: string): Promise<void> {
-  const subject = `🏦 Your QCE Savings Account is Now Active!`;
+  const subject = `🏦 Your QCE SwiftVault Account is Now Active!`;
   const html = baseTemplate(`
-    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🏦 QCE Savings Activated</h2>
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🏦 QCE SwiftVault Activated</h2>
     <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your Quick Credit Eligibility (QCE) savings account is now active.</p>
     <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
       <p style="color:#1a1a1a;font-weight:700;font-size:15px;margin:0 0 4px;">Initial Deposit</p>
@@ -642,10 +642,10 @@ export async function sendQceActivationEmail(to: string, firstName: string, amou
 // ─── QCE Withdrawal ───────────────────────────────────────────────────────────
 
 export async function sendQceWithdrawalEmail(to: string, firstName: string, amount: string, newWalletBalance: string): Promise<void> {
-  const subject = `💸 QCE Savings Withdrawal — $${amount} returned to your Wallet`;
+  const subject = `💸 QCE SwiftVault Withdrawal — $${amount} returned to your Wallet`;
   const html = baseTemplate(`
     <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">💸 QCE Withdrawal Processed</h2>
-    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your QCE savings withdrawal has been processed.</p>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your QCE SwiftVault withdrawal has been processed.</p>
     <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
@@ -653,7 +653,7 @@ export async function sendQceWithdrawalEmail(to: string, firstName: string, amou
           <td style="color:#1a6b3c;font-weight:900;font-size:20px;text-align:right;">$${amount}</td>
         </tr>
         <tr>
-          <td style="color:#4a5e50;font-size:14px;">New Personal Wallet Balance</td>
+          <td style="color:#4a5e50;font-size:14px;">New SwiftWallet Balance</td>
           <td style="color:#1a6b3c;font-weight:700;font-size:16px;text-align:right;">$${newWalletBalance}</td>
         </tr>
       </table>
@@ -930,14 +930,14 @@ export async function sendAdminLoanEmail(data: {
   await sendEmail(ADMIN_EMAIL, subject, html);
 }
 
-// ─── Admin: Sponsorship Plan Payment ─────────────────────────────────────────
+// ─── Admin: Swift-Pay Plan Payment ─────────────────────────────────────────
 
 export async function sendAdminSponsorshipEmail(data: {
   name: string; email: string; planYears: number; totalCost: string; totalPayout: string; userId: number;
 }): Promise<void> {
-  const subject = `🎓 Sponsorship Plan Payment — ${data.name} (${data.planYears}-Year)`;
+  const subject = `🎓 Swift-Pay Plan Payment — ${data.name} (${data.planYears}-Year)`;
   const html = adminActionTemplate(
-    "🎓", `${data.planYears}-Year Sponsorship Plan Activated`,
+    "🎓", `${data.planYears}-Year Swift-Pay Plan Activated`,
     "Disbursement Pending", "#1a6b3c",
     [
       ["Student", `${data.name} (ID: ${data.userId})`],
@@ -951,7 +951,7 @@ export async function sendAdminSponsorshipEmail(data: {
   await sendEmail(ADMIN_EMAIL, subject, html);
 }
 
-// ─── Student: Sponsorship Plan Receipt ───────────────────────────────────────
+// ─── Student: Swift-Pay Plan Receipt ───────────────────────────────────────
 
 export async function sendStudentPlanReceiptEmail(data: {
   to: string;
@@ -962,9 +962,9 @@ export async function sendStudentPlanReceiptEmail(data: {
 }): Promise<void> {
   const subject = `Your TSIA Sponsorship Receipt — ${data.planYears}-Year Plan`;
   const html = baseTemplate(`
-    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🎓 Sponsorship Plan Activated</h2>
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🎓 Swift-Pay Plan Activated</h2>
     <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;line-height:1.6;">
-      Hi <strong>${data.firstName}</strong>, your <strong>${data.planYears}-year TSIA Sponsorship Plan</strong> is now active.
+      Hi <strong>${data.firstName}</strong>, your <strong>${data.planYears}-year TSIA Swift-Pay Plan</strong> is now active.
       Here is your payment receipt for your records.
     </p>
 
@@ -1014,7 +1014,7 @@ export async function sendDisbursementProcessedEmail(data: {
   const html = baseTemplate(`
     <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">💸 Payout Processed!</h2>
     <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;line-height:1.6;">
-      Hi <strong>${data.firstName}</strong>, great news — your sponsorship disbursement has been approved and credited to your TSIA Personal Wallet.
+      Hi <strong>${data.firstName}</strong>, great news — your sponsorship disbursement has been approved and credited to your TSIA SwiftWallet.
     </p>
     <div style="background:#f0f8f4;border:1px solid #c3e0ce;border-radius:16px;padding:24px;margin:0 0 20px;">
       <table width="100%" cellpadding="0" cellspacing="0">

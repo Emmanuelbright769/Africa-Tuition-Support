@@ -2172,7 +2172,7 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-2">
                         <div className="w-9 h-9 rounded-xl bg-tsia-green/10 flex items-center justify-center"><Settings className="w-5 h-5 text-tsia-green" /></div>
                         <div>
-                          <CardTitle className="text-base">Sponsorship Plan Prices</CardTitle>
+                          <CardTitle className="text-base">Swift-Pay Plan Prices</CardTitle>
                           <CardDescription>Update the base price students pay for each plan. Changes take effect immediately.</CardDescription>
                         </div>
                       </div>

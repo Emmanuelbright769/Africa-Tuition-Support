@@ -272,7 +272,7 @@ export default function Landing() {
         <section id="plans" className="py-24 bg-background">
           <div className="container mx-auto px-4">
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
-              <h2 className="text-4xl font-bold mb-4">Sponsorship Plans</h2>
+              <h2 className="text-4xl font-bold mb-4">Swift-Pay Plans</h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Choose the commitment that fits your academic journey. We cover 70%+ of typical tuition costs.</p>
             </motion.div>
 

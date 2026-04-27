@@ -78,7 +78,7 @@ export default function Onboarding() {
     if (walletActivated) return true;
     toast({
       title: "Activate Wallet First",
-      description: "Fund your TSIA Personal Wallet with at least $5 before starting sponsorship verification.",
+      description: "Fund your TSIA SwiftWallet with at least $5 before starting sponsorship verification.",
       variant: "destructive",
     });
     setLocation("/wallet");

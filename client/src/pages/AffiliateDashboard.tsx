@@ -70,14 +70,14 @@ type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "t
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
-  { id: "fintech",      label: "Fintech Hub",             icon: CreditCard },
-  { id: "wallet",       label: "Personal Wallet",         icon: Wallet },
-  { id: "qce",          label: "QCE Savings",             icon: PiggyBank, badge: "New" },
+  { id: "fintech",      label: "Swift Hub",             icon: CreditCard },
+  { id: "wallet",       label: "SwiftWallet",         icon: Wallet },
+  { id: "qce",          label: "QCE SwiftVault",             icon: PiggyBank, badge: "New" },
   { id: "reserve_fund", label: "Strategic Reserve Fund",  icon: Shield },
   { id: "trade",        label: "Trade Market",            icon: Globe },
   { id: "trust_fund",   label: "Affiliate Trust Fund",    icon: Crown },
   { id: "ecommerce",    label: "E-Commerce",              icon: ShoppingCart },
-  { id: "tour_africa",  label: "Tour Africa",             icon: Car },
+  { id: "tour_africa",  label: "Glide Africa",             icon: Car },
   { id: "emergency_response", label: "Emergency Response",     icon: HeartPulse, badge: "Soon" },
   { id: "forum",              label: "Community Forum",        icon: MessageSquareText },
   { id: "referrals",          label: "Referrals",              icon: Users },
@@ -263,7 +263,7 @@ function ReferralSection({ referralStats, referrals, navigate }: {
           <DialogHeader>
             <DialogTitle>Withdraw Commission Earnings</DialogTitle>
             <DialogDescription>
-              Move your referral commission earnings from your Commission Wallet to your Personal Wallet.
+              Move your referral commission earnings from your Commission Wallet to your SwiftWallet.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -643,7 +643,7 @@ export default function AffiliateDashboard() {
       return res.json();
     },
     onSuccess: (data) => {
-      toast({ title: "Withdrawal Successful!", description: `$${parseFloat(data.available).toFixed(4)} has been credited to your Personal Wallet.`, className: "border-tsia-green" });
+      toast({ title: "Withdrawal Successful!", description: `$${parseFloat(data.available).toFixed(4)} has been credited to your SwiftWallet.`, className: "border-tsia-green" });
       setTrustFundWithdrawOpen(false);
       refetchMyCoAff();
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
@@ -719,7 +719,7 @@ export default function AffiliateDashboard() {
       return res.json();
     },
     onSuccess: (data) => {
-      toast({ title: "Transfer Complete ✓", description: `$${parseFloat(data.transferred).toFixed(2)} moved to your Personal Wallet instantly.`, className: "border-tsia-green" });
+      toast({ title: "Transfer Complete ✓", description: `$${parseFloat(data.transferred).toFixed(2)} moved to your SwiftWallet instantly.`, className: "border-tsia-green" });
       setWithdrawOpen(false); setWithdrawAmt(""); setWithdrawTradeTermsAccepted(false);
       refetchTradeWallet(); queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
     },
@@ -919,7 +919,7 @@ export default function AffiliateDashboard() {
                 </button>
               </div>
               <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                {/* Top-level flat items: Overview, Fintech Hub, Personal Wallet */}
+                {/* Top-level flat items: Overview, Swift Hub, SwiftWallet */}
                 {NAV_ITEMS.filter(item => ["overview", "fintech", "wallet"].includes(item.id)).map(item => {
                   const isActive = activeSection === item.id;
                   return (
@@ -1000,7 +1000,7 @@ export default function AffiliateDashboard() {
                 </div>
                 <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
                 <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  Fund your TSIA Personal Wallet with a minimum of <strong>$5</strong> to unlock trade markets, referral commissions, e-commerce, loans, and all platform services.
+                  Fund your TSIA SwiftWallet with a minimum of <strong>$5</strong> to unlock trade markets, referral commissions, e-commerce, loans, and all platform services.
                 </p>
                 <Button size="lg" className="bg-primary text-primary-foreground font-bold px-8" onClick={() => setLocation("/wallet")} data-testid="button-wallet-gate-activate-affiliate">
                   <Wallet className="w-4 h-4 mr-2" />
@@ -1035,7 +1035,7 @@ export default function AffiliateDashboard() {
                     </div>
                     <div className="flex-1">
                       <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA Personal Wallet with a minimum of <strong>$5</strong> to access all platform services.</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with a minimum of <strong>$5</strong> to access all platform services.</p>
                     </div>
                     <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate-affiliate">
                       Fund Wallet
@@ -2419,7 +2419,7 @@ export default function AffiliateDashboard() {
               <ArrowDownToLine className="w-5 h-5 text-emerald-600" /> Withdraw Trust Fund Earnings
             </DialogTitle>
             <DialogDescription>
-              This will transfer your available earnings directly into your TSIA Personal Wallet.
+              This will transfer your available earnings directly into your TSIA SwiftWallet.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -2583,16 +2583,16 @@ export default function AffiliateDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Fund Trade Wallet from Personal Wallet */}
+      {/* Fund Trade Wallet from SwiftWallet */}
       <Dialog open={fundTradeOpen} onOpenChange={o => { setFundTradeOpen(o); if (!o) setFundTradeAmt(""); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><ArrowDownLeft className="w-5 h-5 text-blue-600" /> Fund Trade Wallet</DialogTitle>
-            <DialogDescription>Transfer from your Personal Wallet balance to your Trade Wallet.</DialogDescription>
+            <DialogDescription>Transfer from your SwiftWallet balance to your Trade Wallet.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Personal Wallet Balance</span>
+              <span className="text-muted-foreground">SwiftWallet Balance</span>
               <span className="font-bold text-blue-700 dark:text-blue-300">${personalBalance.toFixed(2)}</span>
             </div>
             <div>
@@ -2702,11 +2702,11 @@ export default function AffiliateDashboard() {
               </div>
             </div>
 
-            {/* Transfer to Personal Wallet */}
+            {/* Transfer to SwiftWallet */}
             {withdrawType === "transfer_wallet" && (
               <>
                 <div className="bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3 text-xs text-tsia-green font-medium">
-                  Instant transfer — no fees charged. Funds appear in your Personal Wallet immediately. Only trade <strong>earnings</strong> can be transferred (minimum $5).
+                  Instant transfer — no fees charged. Funds appear in your SwiftWallet immediately. Only trade <strong>earnings</strong> can be transferred (minimum $5).
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
@@ -3036,7 +3036,7 @@ export default function AffiliateDashboard() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              To access the trade market, QCE savings, e-commerce, loans, and all other platform features, please <strong>fund your Personal Wallet with at least $5</strong>.
+              To access the trade market, QCE SwiftVault, e-commerce, loans, and all other platform features, please <strong>fund your SwiftWallet with at least $5</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -3046,7 +3046,7 @@ export default function AffiliateDashboard() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">Minimum Activation: $5</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Go to Personal Wallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Go to SwiftWallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
               </div>
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-start gap-2">

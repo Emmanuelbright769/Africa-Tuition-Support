@@ -37,13 +37,13 @@ type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_afr
 
 const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",              icon: LayoutDashboard },
-  { id: "fintech",      label: "Fintech Hub",            icon: CreditCard },
-  { id: "wallet",       label: "Personal Wallet",         icon: Wallet },
-  { id: "qce",          label: "QCE Savings",            icon: PiggyBank, badge: "New" },
+  { id: "fintech",      label: "Swift Hub",            icon: CreditCard },
+  { id: "wallet",       label: "SwiftWallet",         icon: Wallet },
+  { id: "qce",          label: "QCE SwiftVault",            icon: PiggyBank, badge: "New" },
   { id: "ecommerce",    label: "E-Commerce",             icon: ShoppingCart },
-  { id: "tour_africa",  label: "Tour Africa",            icon: Car },
+  { id: "tour_africa",  label: "Glide Africa",            icon: Car },
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
-  { id: "plans",        label: "Sponsorship Plans",      icon: Star },
+  { id: "plans",        label: "Swift-Pay Plans",      icon: Star },
   { id: "activity",     label: "Activity",               icon: History },
   { id: "loan",               label: "Student loan",           icon: Banknote },
   { id: "emergency_response", label: "Emergency Response",     icon: HeartPulse, badge: "Soon" },
@@ -121,7 +121,7 @@ export default function StudentDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       toast({
-        title: "Sponsorship Plan Active ✓",
+        title: "Swift-Pay Plan Active ✓",
         description: `Your ${data.planYears}-year plan is active. $${data.totalCost} debited from wallet. Disbursement of $${data.maxPayout} is pending admin approval.`,
       });
     },
@@ -328,7 +328,7 @@ export default function StudentDashboard() {
                 </button>
               </div>
               <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                {/* Top-level flat items: Overview, Fintech Hub, Personal Wallet */}
+                {/* Top-level flat items: Overview, Swift Hub, SwiftWallet */}
                 {NAV_ITEMS.filter(item => ["overview", "fintech", "wallet"].includes(item.id)).map(item => {
                   const isActive = activeSection === item.id;
                   return (
@@ -415,7 +415,7 @@ export default function StudentDashboard() {
                 </div>
                 <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
                 <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  To access this feature, you need to activate your TSIA Personal Wallet by funding it with a minimum of <strong>$5</strong>. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
+                  To access this feature, you need to activate your TSIA SwiftWallet by funding it with a minimum of <strong>$5</strong>. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
                 </p>
                 <Button
                   size="lg"
@@ -459,7 +459,7 @@ export default function StudentDashboard() {
                             data-testid="button-go-onboarding"
                           >
                             {walletActivated ? <ArrowUpRight className="w-4 h-4 mr-2" /> : <Wallet className="w-4 h-4 mr-2" />}
-                            {walletActivated ? "Complete Verification" : "Activate Wallet First"}
+                            {walletActivated ? "Swift-Apply" : "Activate Wallet First"}
                           </Button>
                         )}
                         <Button
@@ -555,7 +555,7 @@ export default function StudentDashboard() {
                     </div>
                     <div className="flex-1">
                       <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA Personal Wallet with a minimum of <strong>$5</strong> to access all platform services.</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with a minimum of <strong>$5</strong> to access all platform services.</p>
                     </div>
                     <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate">
                       Fund Wallet
@@ -656,7 +656,7 @@ export default function StudentDashboard() {
             {activeSection === "plans" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Sponsorship Plans</h2>
+                  <h2 className="text-2xl font-bold mb-1">Swift-Pay Plans</h2>
                   {(() => {
                     const planAge = plan?.createdAt ? Math.floor((Date.now() - new Date(plan.createdAt).getTime()) / 86400000) : 0;
                     const planDaysLeft = plan ? Math.max(0, 365 - planAge) : 0;
@@ -1228,7 +1228,7 @@ export default function StudentDashboard() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              To access QCE savings, loans, e-commerce, the trade market, and all other platform features, please <strong>fund your Personal Wallet with at least $5</strong>.
+              To access QCE SwiftVault, loans, e-commerce, the trade market, and all other platform features, please <strong>fund your SwiftWallet with at least $5</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -1238,7 +1238,7 @@ export default function StudentDashboard() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">Minimum Activation: $5</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Go to Personal Wallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Go to SwiftWallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
               </div>
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-start gap-2">

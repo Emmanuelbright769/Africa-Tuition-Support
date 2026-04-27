@@ -31,13 +31,13 @@ const KB: { patterns: RegExp[]; response: string }[] = [
   // ─── Greetings ──────────────────────────────────────────────────────
   {
     patterns: [/^(hello|hi|hey|good morning|good afternoon|good evening|yo|sup|greet)/i],
-    response: `Hello! welcome to TSIA ai support. i'm here to help you with anything on our platform.\n\nI can help you with:\n• **Student verification & sponsorship** — how to get funded\n• **Digital wallet & transactions** — withdrawals, balance in USD & NGN\n• **Trade market & AI bot** — invest and earn 2% daily\n• **Co-Affiliate trust fund** — lifetime investment tiers\n• **Tenancy program** — landlord and tenant services\n• **Student & business loans** — borrow against your earnings\n• **E-commerce marketplace** — buy and sell products\n• **Tour Africa** — hotel, car, and flight bookings\n• **Account & login issues** — OTP, security, inactivity\n\nWhat would you like to know?`,
+    response: `Hello! welcome to TSIA ai support. i'm here to help you with anything on our platform.\n\nI can help you with:\n• **Student verification & sponsorship** — how to get funded\n• **Digital wallet & transactions** — withdrawals, balance in USD & NGN\n• **Trade market & AI bot** — invest and earn 2% daily\n• **Co-Affiliate trust fund** — lifetime investment tiers\n• **Tenancy program** — landlord and tenant services\n• **Student & business loans** — borrow against your earnings\n• **E-commerce marketplace** — buy and sell products\n• **Glide Africa** — hotel, car, and flight bookings\n• **Account & login issues** — OTP, security, inactivity\n\nWhat would you like to know?`,
   },
 
   // ─── What is TSIA ───────────────────────────────────────────────────
   {
     patterns: [/what is tsia|about tsia|who.*tsia|tsia.*what|explain tsia|tell me about/i],
-    response: `**TSIA** (Tuition Support Initiative for Africa) is a full-service fintech platform built to empower African students, entrepreneurs, and investors. Operated by **SMAKEMGGOLD Ltd** (RC: 1359954).\n\nhere's what we offer:\n\n🎓 **Student sponsorship** — earn $110–$230 based on your WAEC performance\n🤝 **Affiliate program** — refer students and earn lifetime commissions\n📈 **Global trade market** — AI-powered 2% daily ROI via crypto/forex trading\n💎 **Co-Affiliate trust fund** — invest $100–$10,000 and get lifetime profit share\n🏠 **Tenancy program** — TSIA pays landlords upfront; tenants pay monthly\n💳 **Student & business loans** — borrow against your verified earnings\n🛍️ **E-commerce marketplace** — buy and sell products using your TSIA wallet\n✈️ **Tour Africa** — book hotels, car rentals, and flights across Africa\n\nour mission: democratize education, housing, and financial prosperity across Africa.`,
+    response: `**TSIA** (Tuition Support Initiative for Africa) is a full-service fintech platform built to empower African students, entrepreneurs, and investors. Operated by **SMAKEMGGOLD Ltd** (RC: 1359954).\n\nhere's what we offer:\n\n🎓 **Student sponsorship** — earn $110–$230 based on your WAEC performance\n🤝 **Affiliate program** — refer students and earn lifetime commissions\n📈 **Global trade market** — AI-powered 2% daily ROI via crypto/forex trading\n💎 **Co-Affiliate trust fund** — invest $100–$10,000 and get lifetime profit share\n🏠 **Tenancy program** — TSIA pays landlords upfront; tenants pay monthly\n💳 **Student & business loans** — borrow against your verified earnings\n🛍️ **E-commerce marketplace** — buy and sell products using your TSIA wallet\n✈️ **Glide Africa** — book hotels, car rentals, and flights across Africa\n\nour mission: democratize education, housing, and financial prosperity across Africa.`,
   },
 
   // ─── Verification / Onboarding ──────────────────────────────────────
@@ -85,7 +85,7 @@ const KB: { patterns: RegExp[]; response: string }[] = [
   // ─── Affiliate Program ───────────────────────────────────────────────
   {
     patterns: [/affiliate|refer|commission|referral|code|earn|link|share.*code|my code/i],
-    response: `**TSIA affiliate program** — earn by referring students:\n\n🔗 **how it works:**\n1. sign up at /affiliate-signup\n2. get your unique referral code (e.g., TSIA-EMM0001)\n3. share your code or referral link with students\n4. earn commission for every student who verifies using your code\n\n📊 **affiliate dashboard features:**\n• co-affiliate trust fund (invest for lifetime profits)\n• global trade market (AI bot, 2% daily ROI)\n• business loans (borrow against your earnings)\n• e-commerce marketplace (buy & sell products)\n• Tour Africa (hotel, car, flight bookings)\n• tenancy business management\n• forum & community discussions\n• voice calls within the platform\n\ngo to **/affiliate-signup** to join now!`,
+    response: `**TSIA affiliate program** — earn by referring students:\n\n🔗 **how it works:**\n1. sign up at /affiliate-signup\n2. get your unique referral code (e.g., TSIA-EMM0001)\n3. share your code or referral link with students\n4. earn commission for every student who verifies using your code\n\n📊 **affiliate dashboard features:**\n• co-affiliate trust fund (invest for lifetime profits)\n• global trade market (AI bot, 2% daily ROI)\n• business loans (borrow against your earnings)\n• e-commerce marketplace (buy & sell products)\n• Glide Africa (hotel, car, flight bookings)\n• tenancy business management\n• forum & community discussions\n• voice calls within the platform\n\ngo to **/affiliate-signup** to join now!`,
   },
 
   // ─── Co-Affiliate Trust Fund ─────────────────────────────────────────
@@ -106,10 +106,10 @@ const KB: { patterns: RegExp[]; response: string }[] = [
     response: `**TSIA e-commerce marketplace** — buy and sell within the TSIA community:\n\n🛍️ **buyers:**\n• browse products from verified sellers\n• filter by category, price, condition, and location\n• pay directly from your TSIA wallet\n• rate and review products after purchase\n• all prices shown in **USD and NGN**\n\n📦 **sellers (affiliates):**\n• list your products for sale\n• TSIA retains **8% commission** on every sale\n• you keep 92% — credited to your wallet\n• manage your listings and orders from your dashboard\n\n💬 **chat with sellers** before purchasing for negotiation or questions.\n\naccess from **your dashboard → E-Commerce** section.`,
   },
 
-  // ─── Tour Africa ─────────────────────────────────────────────────────
+  // ─── Glide Africa ─────────────────────────────────────────────────────
   {
     patterns: [/tour africa|hotel|car.*rent|car.*hire|flight|dispatch|taxi|e.?taxi|transport|ride|delivery|logistics|booking/i],
-    response: `**Tour Africa** is TSIA's travel and mobility division:\n\n🏨 **hotel booking** — search and book hotels in any African city. pay directly from your wallet. TSIA retains 10% as service commission.\n\n🚗 **car rental** — self-drive or chauffeured rentals across Africa. daily rates, pay from wallet.\n\n✈️ **flight booking** — book flights by route and passenger count. ticket price per person, paid from your wallet.\n\n📦 **dispatch & e-taxi** — coming soon!\n\n**all bookings:**\n• paid from your TSIA personal wallet\n• TSIA retains 10% commission; balance forwarded to provider\n• prices shown in both USD and NGN\n\naccess from **your dashboard → Tour Africa** section.`,
+    response: `**Glide Africa** is TSIA's travel and mobility division:\n\n🏨 **hotel booking** — search and book hotels in any African city. pay directly from your wallet. TSIA retains 10% as service commission.\n\n🚗 **car rental** — self-drive or chauffeured rentals across Africa. daily rates, pay from wallet.\n\n✈️ **flight booking** — book flights by route and passenger count. ticket price per person, paid from your wallet.\n\n📦 **dispatch & e-taxi** — coming soon!\n\n**all bookings:**\n• paid from your TSIA personal wallet\n• TSIA retains 10% commission; balance forwarded to provider\n• prices shown in both USD and NGN\n\naccess from **your dashboard → Glide Africa** section.`,
   },
 
   // ─── Login / OTP / Account ───────────────────────────────────────────
@@ -121,7 +121,7 @@ const KB: { patterns: RegExp[]; response: string }[] = [
   // ─── Fees & costs ────────────────────────────────────────────────────
   {
     patterns: [/fee|cost|price|charge|how much.*portal|portal.*pay|\$3|registration.*cost/i],
-    response: `here is a full breakdown of all TSIA fees:\n\n✅ **student sign-up** — completely free\n💳 **portal verification fee** — $3 one-time (≈₦4,380 at ₦1,460/$)\n📊 **wallet withdrawals** — 7.5% VAT on bank withdrawals\n\n**trade market fees:**\n• deposit: 20% → reserve, 5% → affiliate pool, 75% → your wallet\n• exchange withdrawal: 5% + 5% affiliate pool\n• bank withdrawal: 8% + 5% affiliate pool\n\n**e-commerce:** 8% commission per sale (seller pays)\n**Tour Africa:** 10% commission per booking\n\n**loan interest:**\n• student loans: 10% per year (flat)\n• affiliate business loans: 15% per year (flat)\n\nall fees shown transparently before you confirm any action. no hidden charges.`,
+    response: `here is a full breakdown of all TSIA fees:\n\n✅ **student sign-up** — completely free\n💳 **portal verification fee** — $3 one-time (≈₦4,380 at ₦1,460/$)\n📊 **wallet withdrawals** — 7.5% VAT on bank withdrawals\n\n**trade market fees:**\n• deposit: 20% → reserve, 5% → affiliate pool, 75% → your wallet\n• exchange withdrawal: 5% + 5% affiliate pool\n• bank withdrawal: 8% + 5% affiliate pool\n\n**e-commerce:** 8% commission per sale (seller pays)\n**Glide Africa:** 10% commission per booking\n\n**loan interest:**\n• student loans: 10% per year (flat)\n• affiliate business loans: 15% per year (flat)\n\nall fees shown transparently before you confirm any action. no hidden charges.`,
   },
 
   // ─── Contact / Support ───────────────────────────────────────────────
@@ -191,7 +191,7 @@ export function AiAssistant() {
   const welcomeMsg: Message = {
     id: "welcome",
     role: "ai",
-    text: `hello${user ? ` ${user.firstName}` : ""}! 👋 i'm TSIA's ai assistant — i know everything about this platform. ask me anything!\n\nquick topics: verification • sponsorship tiers • loans • trade market • e-commerce • Tour Africa • tenancy • co-affiliate fund • account help`,
+    text: `hello${user ? ` ${user.firstName}` : ""}! 👋 i'm TSIA's ai assistant — i know everything about this platform. ask me anything!\n\nquick topics: verification • sponsorship tiers • loans • trade market • e-commerce • Glide Africa • tenancy • co-affiliate fund • account help`,
     timestamp: new Date().toISOString(),
   };
 

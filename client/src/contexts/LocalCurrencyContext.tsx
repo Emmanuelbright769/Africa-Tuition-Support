@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
 
 const COUNTRY_CURRENCY: Record<string, { code: string; symbol: string; name: string }> = {
   NG: { code: "NGN", symbol: "₦",    name: "Naira" },
@@ -64,6 +64,9 @@ const COUNTRY_CURRENCY: Record<string, { code: string; symbol: string; name: str
   BE: { code: "EUR", symbol: "€",    name: "Euro" },
   PT: { code: "EUR", symbol: "€",    name: "Euro" },
   IE: { code: "EUR", symbol: "€",    name: "Euro" },
+  AT: { code: "EUR", symbol: "€",    name: "Euro" },
+  FI: { code: "EUR", symbol: "€",    name: "Euro" },
+  GR: { code: "EUR", symbol: "€",    name: "Euro" },
   IN: { code: "INR", symbol: "₹",    name: "Rupee" },
   CN: { code: "CNY", symbol: "¥",    name: "Yuan" },
   JP: { code: "JPY", symbol: "¥",    name: "Yen" },
@@ -109,20 +112,37 @@ const LocalCurrencyContext = createContext<LocalCurrencyContextType>({
   rateLabel: () => "",
 });
 
-async function resolveCountryCode(lat: number, lon: number): Promise<string> {
-  const res = await fetch(
-    `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
-  );
-  const data = await res.json();
-  return (data.countryCode as string) ?? "NG";
+const NGN_RATE = 1480;
+const CACHE_KEY = "tsia_local_currency_v3";
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes — picks up location changes quickly
+
+interface CacheEntry {
+  currency: LocalCurrency;
+  savedAt: number;
 }
 
-const NGN_RATE = 1480; // TSIA fixed rate: ₦1,480 per $1
+function loadCache(): LocalCurrency | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as CacheEntry;
+    if (Date.now() - entry.savedAt > CACHE_TTL_MS) return null; // expired
+    return entry.currency;
+  } catch {
+    return null;
+  }
+}
+
+function saveCache(c: LocalCurrency) {
+  try {
+    const entry: CacheEntry = { currency: c, savedAt: Date.now() };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(entry));
+  } catch {}
+}
 
 async function fetchRate(currencyCode: string): Promise<number> {
   if (currencyCode === "USD") return 1;
   if (currencyCode === "NGN") return NGN_RATE;
-  // For non-NGN, get live rate from USD and scale relative to our NGN peg
   try {
     const res = await fetch("https://open.er-api.com/v6/latest/USD");
     const data = await res.json();
@@ -132,78 +152,98 @@ async function fetchRate(currencyCode: string): Promise<number> {
   }
 }
 
-const CACHE_KEY = "tsia_local_currency_v2";
-
-function loadCache(): LocalCurrency | null {
+/** Detect country via IP — fully automatic, no browser permission required */
+async function detectCountryByIP(): Promise<string> {
+  // Primary: ipapi.co
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as LocalCurrency;
-  } catch {
-    return null;
-  }
-}
+    const res = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(5000) });
+    const data = await res.json();
+    if (data.country_code && typeof data.country_code === "string") {
+      return data.country_code;
+    }
+  } catch {}
 
-function saveCache(c: LocalCurrency) {
-  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch {}
+  // Fallback: ip-api.com
+  try {
+    const res = await fetch("http://ip-api.com/json/?fields=countryCode", { signal: AbortSignal.timeout(5000) });
+    const data = await res.json();
+    if (data.countryCode && typeof data.countryCode === "string") {
+      return data.countryCode;
+    }
+  } catch {}
+
+  return "NG"; // default to Nigeria if all detection fails
 }
 
 export function LocalCurrencyProvider({ children }: { children: ReactNode }) {
   const [currency, setCurrency] = useState<LocalCurrency | null>(loadCache);
-  const [loading, setLoading] = useState(false);
-  const [permissionDenied, setPermissionDenied] = useState(false);
+  const [loading, setLoading] = useState(!loadCache()); // loading only if no valid cache
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const detect = () => {
-    if (!navigator.geolocation) return;
+  const detect = async () => {
     setLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const countryCode = await resolveCountryCode(pos.coords.latitude, pos.coords.longitude);
-          const info = COUNTRY_CURRENCY[countryCode] ?? { code: "USD", symbol: "$", name: "Dollar" };
-          const rate = await fetchRate(info.code);
-          const result: LocalCurrency = { ...info, rate, countryCode };
-          setCurrency(result);
-          saveCache(result);
-        } catch {
-        } finally {
-          setLoading(false);
-        }
-      },
-      (err) => {
-        setLoading(false);
-        if (err.code === GeolocationPositionError.PERMISSION_DENIED) {
-          setPermissionDenied(true);
-        }
-      },
-      { timeout: 10000, maximumAge: 3600000 }
-    );
+    try {
+      const countryCode = await detectCountryByIP();
+      const info = COUNTRY_CURRENCY[countryCode] ?? { code: "USD", symbol: "$", name: "Dollar" };
+      const rate = await fetchRate(info.code);
+      const result: LocalCurrency = { ...info, rate, countryCode };
+      setCurrency(result);
+      saveCache(result);
+    } catch {
+      // keep existing currency on error
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (!currency) detect();
+    // Always detect on mount (cache TTL already handles freshness)
+    detect();
+
+    // Re-detect every 30 minutes while the app is open, catching location changes
+    timerRef.current = setInterval(detect, CACHE_TTL_MS);
+
+    // Also re-detect when the tab regains focus (user switched networks/locations)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        const cached = loadCache();
+        if (!cached) detect(); // cache expired while tab was hidden
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
   const formatAmount = (usd: number | string): string => {
     const amount = typeof usd === "string" ? parseFloat(usd) : usd;
     if (isNaN(amount)) return currency ? `${currency.symbol}0` : "₦0";
     if (!currency) {
-      return `₦${Math.round(amount * 1480).toLocaleString("en-NG")}`;
+      return `₦${Math.round(amount * NGN_RATE).toLocaleString("en-NG")}`;
     }
     const converted = amount * currency.rate;
-    const decimals = currency.code === "JPY" || currency.code === "KRW" || currency.code === "VND" || currency.code === "IDR" ? 0 : 0;
     return `${currency.symbol}${Math.round(converted).toLocaleString()}`;
   };
 
   const rateLabel = (): string => {
-    if (!currency) return "at ₦1,480/$1";
+    if (!currency) return `at ₦${NGN_RATE.toLocaleString()}/$1`;
     if (currency.code === "USD") return "";
     const rounded = Math.round(currency.rate);
     return `at ${currency.symbol}${rounded.toLocaleString()}/$1`;
   };
 
   return (
-    <LocalCurrencyContext.Provider value={{ currency, loading, permissionDenied, requestPermission: detect, formatAmount, rateLabel }}>
+    <LocalCurrencyContext.Provider value={{
+      currency,
+      loading,
+      permissionDenied: false,
+      requestPermission: detect,
+      formatAmount,
+      rateLabel,
+    }}>
       {children}
     </LocalCurrencyContext.Provider>
   );

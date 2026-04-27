@@ -5368,10 +5368,10 @@ export async function registerRoutes(
           affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
           userCredit   = parseFloat((gross - reserveCut - affiliateCut).toFixed(2));
         } else {
-          // Subsequent deposits: 100% credited — no reserve, no pool deduction
+          // Subsequent deposits: no reserve cut, but 5% pool still deducted
           reserveCut   = 0;
-          affiliateCut = 0;
-          userCredit   = gross;
+          affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
+          userCredit   = parseFloat((gross - affiliateCut).toFixed(2));
         }
       } else {
         // Students: always standard 75/20/5 split
@@ -5425,7 +5425,7 @@ export async function registerRoutes(
       }
       // Record transaction
       const txDescription = (isAffiliate && !isFirstDeposit)
-        ? `Deposit confirmed — $${gross.toFixed(2)} credited in full (no fees — returning affiliate member)`
+        ? `Deposit confirmed — $${gross.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} pool (no reserve fee on top-up)`
         : `Deposit confirmed — $${gross.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool`;
       await storage.createTransaction({
         userId: deposit.userId,
@@ -5454,7 +5454,7 @@ export async function registerRoutes(
           }).catch((err: any) => console.error("[EMAIL] Admin confirmed deposit email failed:", err?.message ?? err));
         }
         const notifMessage = (isAffiliate && !isFirstDeposit)
-          ? `$${gross.toFixed(2)} deposit confirmed. Your full amount has been credited — no platform fees on top-up deposits. New balance: $${newBalance}.`
+          ? `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (95%) credited to your TSIA Personal Wallet — no reserve fee on top-up deposits. $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`
           : `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet. $${reserveCut.toFixed(2)} (20%) to Reserve Fund, $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`;
         const walletNotif = await storage.createNotification({
           userId: deposit.userId,

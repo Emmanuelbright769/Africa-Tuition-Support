@@ -156,9 +156,7 @@ export default function QCESection() {
       <Card className="shadow-sm border-0 overflow-hidden" data-testid="card-qce-savings-home">
         <CardContent className="pt-5 pb-5">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
-              <PiggyBank className="w-5 h-5 text-tsia-green" />
-            </div>
+            <img src="/swift-vault-logo.jpeg" alt="Swift Vault" className="h-12 w-auto object-contain shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-bold">QCE SwiftVault</p>
@@ -274,9 +272,12 @@ export default function QCESection() {
 
             {/* Header row */}
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h3 className="text-lg font-bold">QCE SwiftVault</h3>
-                <p className="text-xs text-muted-foreground">Quick Credit Eligibility · 90-day programme</p>
+              <div className="flex items-center gap-3">
+                <img src="/swift-vault-logo.jpeg" alt="Swift Vault" className="h-12 w-auto object-contain" />
+                <div>
+                  <h3 className="text-lg font-bold">QCE SwiftVault</h3>
+                  <p className="text-xs text-muted-foreground">Quick Credit Eligibility · 90-day programme</p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 {isActivated && (

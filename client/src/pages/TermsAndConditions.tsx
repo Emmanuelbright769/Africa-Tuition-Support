@@ -52,7 +52,7 @@ const TOC = [
   { id: "trade", label: "Trade Market & Investment" },
   { id: "affiliate", label: "Affiliate Program" },
   { id: "coaffiliate", label: "Co-Affiliate Trust Fund" },
-  { id: "ecommerce", label: "E-Commerce Marketplace" },
+  { id: "ecommerce", label: "TS-Mart Online Stores" },
   { id: "tenancy", label: "Tenancy Program" },
   { id: "loans", label: "Student & Business Loans" },
   { id: "tour", label: "Glide Africa" },
@@ -327,8 +327,8 @@ export default function TermsAndConditions() {
               </Clause>
             </Section>
 
-            {/* 11. E-Commerce */}
-            <Section id="ecommerce" icon={ShoppingBag} title="11. E-Commerce Marketplace">
+            {/* 11. TS-Mart Online Stores */}
+            <Section id="ecommerce" icon={ShoppingBag} title="11. TS-Mart Online Stores">
               <Clause num="11.1" title="Commission Structure">
                 <p>TSIA retains an <strong>8% commission</strong> on every sale completed through the marketplace. The remaining 92% is credited to the seller's TSIA wallet. By listing a product, sellers agree to this commission structure.</p>
               </Clause>

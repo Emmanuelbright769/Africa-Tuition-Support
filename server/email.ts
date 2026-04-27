@@ -667,15 +667,16 @@ export async function sendQceWithdrawalEmail(to: string, firstName: string, amou
 // ─── New Arrival Alert ────────────────────────────────────────────────────────
 
 export async function sendNewArrivalEmail(to: string, firstName: string, category: string, productTitle: string, productId: number): Promise<void> {
-  const subject = `🆕 New Arrival in ${category}: "${productTitle}"`;
+  const subject = `🛍️ New Listing on TS-Mart Online Stores: "${productTitle}"`;
   const html = baseTemplate(`
-    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🆕 New Arrival Alert</h2>
-    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, a new item just appeared in a category you follow.</p>
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🛍️ New Listing — TS-Mart Online Stores</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, a new item just went live on the TS-Mart Online Stores marketplace.</p>
     <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
       <p style="color:#6b7c72;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px;">${category}</p>
       <p style="color:#1a1a1a;font-weight:700;font-size:16px;margin:0;">${productTitle}</p>
     </div>
-    ${btn(`https://tsiforafrica.com/dashboard#product-${productId}`, "View Product")}
+    <p style="color:#4a5e50;font-size:13px;margin:0 0 24px;">Pay directly from your TSIA SwiftWallet — secure, instant, and hassle-free.</p>
+    ${btn(`https://tsiforafrica.com/dashboard`, "Shop on TS-Mart")}
   `);
   await sendEmail(to, subject, html);
 }
@@ -1117,7 +1118,7 @@ export async function sendAdminKycEmail(data: {
   await sendEmail(ADMIN_EMAIL, subject, html);
 }
 
-// ─── Admin: New E-Commerce Order ─────────────────────────────────────────────
+// ─── Admin: New TS-Mart Online Stores Order ─────────────────────────────────────────────
 
 export async function sendAdminOrderEmail(data: {
   buyerName: string; sellerName: string; productTitle: string;
@@ -1125,7 +1126,7 @@ export async function sendAdminOrderEmail(data: {
 }): Promise<void> {
   const subject = `🛒 New Order #${data.orderId} — $${data.totalAmount} (commission $${data.commissionAmount})`;
   const html = adminActionTemplate(
-    "🛒", "New E-Commerce Order",
+    "🛒", "New TS-Mart Online Stores Order",
     "Order Placed", "#16a085",
     [
       ["Order ID", `#${data.orderId}`],

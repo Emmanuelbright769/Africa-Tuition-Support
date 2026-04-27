@@ -95,7 +95,7 @@ const NAV = [
   { id: "affiliates",    icon: Share2,         label: "Affiliates" },
   { id: "referrals",     icon: GitBranch,      label: "Referrals" },
   { id: "transactions",  icon: ArrowLeftRight, label: "Transactions" },
-  { id: "ecommerce",     icon: ShoppingBag,    label: "E-commerce" },
+  { id: "ecommerce",     icon: ShoppingBag,    label: "TS-Mart Online Stores" },
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
   { id: "deposits",      icon: Coins,          label: "Deposits" },
   { id: "withdrawals",  icon: Banknote,       label: "Bank W/D",      badgeKey: "pendingWithdrawals" },
@@ -653,7 +653,7 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <StatCard title="Total Disbursed"       value={fmtUSD(stats?.totalDisbursed)}            icon={Wallet}       color="tsia" />
                   <StatCard title="Portal Fee Revenue"    value={fmtUSD(stats?.totalFeeRevenue)}           icon={TrendingUp}   color="green" />
-                  <StatCard title="E-commerce Commission" value={fmtUSD(stats?.totalEcommerceCommission)}  icon={ShoppingBag}  color="blue"  />
+                  <StatCard title="TS-Mart Online Stores Commission" value={fmtUSD(stats?.totalEcommerceCommission)}  icon={ShoppingBag}  color="blue"  />
                   <StatCard title="Trade Reserve Fund"    value={fmtUSD(stats?.tradeReserveBalance)}       icon={BarChart2}    color="purple"/>
                 </div>
 
@@ -1933,7 +1933,7 @@ export default function AdminDashboard() {
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
                     <CardTitle className="text-base">Platform Commission Profits</CardTitle>
-                    <CardDescription>E-commerce commissions + withdrawal fees, minus affiliate pool payouts</CardDescription>
+                    <CardDescription>TS-Mart Online Stores commissions + withdrawal fees, minus affiliate pool payouts</CardDescription>
                   </CardHeader>
                   {(reserveProfitData as any)?.totals && (
                     <>

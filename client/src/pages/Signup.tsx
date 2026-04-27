@@ -397,7 +397,7 @@ export default function Signup() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              Your account is ready. To unlock all TSIA features — wallet transactions, QCE SwiftVault, loans, e-commerce and more — please <strong>fund your SwiftWallet with at least $5</strong>.
+              Your account is ready. To unlock all TSIA features — wallet transactions, QCE SwiftVault, loans, TS-Mart Online Stores and more — please <strong>fund your SwiftWallet with at least $5</strong>.
             </DialogDescription>
           </DialogHeader>
 

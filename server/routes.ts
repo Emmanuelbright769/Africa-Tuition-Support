@@ -24,7 +24,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -127,7 +127,7 @@ export async function registerRoutes(
               userId: u!.id,
               type: "wallet_activation",
               title: "Activate Your TSIA Wallet",
-              message: `Welcome to TSIA! To unlock all platform features — including QCE SwiftVault, loans, e-commerce and more — please fund your SwiftWallet with a minimum of $5. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your SwiftWallet section to make your first deposit.`,
+              message: `Welcome to TSIA! To unlock all platform features — including QCE SwiftVault, loans, TS-Mart Online Stores and more — please fund your SwiftWallet with a minimum of $5. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your SwiftWallet section to make your first deposit.`,
               data: { minActivation: QCE.MIN_ACTIVATION, minBalance: QCE.MIN_BALANCE },
               isRead: false,
             });
@@ -2818,7 +2818,7 @@ export async function registerRoutes(
       const cachedComm = getCached("reserve_commission_profits");
       if (cachedComm) return res.json(cachedComm);
 
-      // E-commerce commissions (8% per order)
+      // TS-Mart Online Stores commissions (8% per order)
       const ecomResult = await db.execute(sql`
         SELECT
           TO_CHAR(created_at, 'Mon YY') AS month,
@@ -3868,7 +3868,7 @@ export async function registerRoutes(
     }
   });
 
-  // ─── ADMIN: E-commerce stats ─────────────────────────────────────────────────
+  // ─── ADMIN: TS-Mart Online Stores stats ─────────────────────────────────────────────────
   app.get("/api/admin/ecommerce-stats", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -5568,20 +5568,28 @@ export async function registerRoutes(
     if (priceNum < ECOMMERCE.MIN_PRICE || priceNum > ECOMMERCE.MAX_PRICE) return res.status(400).json({ message: `Price must be $${ECOMMERCE.MIN_PRICE}–$${ECOMMERCE.MAX_PRICE}` });
     try {
       const prod = await storage.createProduct({ sellerId: userId, title, description, price: priceNum.toFixed(2), category: category || "other", condition: condition || "new", images: images || [], stock: parseInt(stock) || 1, location: location || "London, UK", status: "active", negotiable: negotiable === true });
-      // Notify category subscribers
-      try {
-        const cat = prod.category || "other";
-        const subs = await storage.getCategorySubscribers(cat);
-        for (const subId of subs) {
-          if (subId === userId) continue;
-          const notif = await storage.createNotification({ userId: subId, type: "new_arrival", title: "New Arrival", message: `A new item in ${cat}: "${prod.title}"`, relatedId: prod.id });
-          pushToUser(subId, "notification", notif);
-          storage.getUser(subId).then(u => {
-            if (u) sendNewArrivalEmail(u.email, u.firstName, cat, prod.title, prod.id).catch((err: any) => console.error("[EMAIL] New arrival email failed:", err?.message ?? err));
-          });
-        }
-      } catch (_) {}
       res.json(prod);
+      // Notify ALL users (fire-and-forget — runs after response is sent)
+      setImmediate(async () => {
+        try {
+          const cat = prod.category || "other";
+          const allUsers = await db.select({ id: users.id, email: users.email, firstName: users.firstName }).from(users);
+          for (const u of allUsers) {
+            if (u.id === userId) continue;
+            try {
+              const notif = await storage.createNotification({
+                userId: u.id,
+                type: "new_arrival",
+                title: "New on TS-Mart Online Stores 🛍️",
+                message: `"${prod.title}" just listed in ${cat}. Tap to explore and shop!`,
+                relatedId: prod.id,
+              });
+              pushToUser(u.id, "notification", notif);
+              sendNewArrivalEmail(u.email, u.firstName, cat, prod.title, prod.id).catch((err: any) => console.error("[EMAIL] TS-Mart new listing email failed:", err?.message ?? err));
+            } catch (_) {}
+          }
+        } catch (err: any) { console.error("[TS-MART] Broadcast notification error:", err?.message ?? err); }
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -6034,6 +6042,16 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // PATCH /api/notifications/mark-type-read — mark all notifications of a given type as read
+  app.patch("/api/notifications/mark-type-read", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { type } = req.body;
+    if (!type) return res.status(400).json({ message: "type is required" });
+    await db.update(notifications).set({ isRead: true }).where(and(eq(notifications.userId, userId), eq(notifications.type, type)));
+    res.json({ success: true });
   });
 
   // DELETE /api/notifications — clear all notifications

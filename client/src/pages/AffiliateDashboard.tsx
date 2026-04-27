@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import FinancialHub from "./FinancialHub";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import WalletSection from "./WalletSection";
@@ -68,19 +68,19 @@ const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["5
 
 type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum" | "qce" | "emergency_response";
 
-const NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
+const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
-  { id: "fintech",      label: "Swift Hub",             icon: CreditCard },
-  { id: "wallet",       label: "SwiftWallet",         icon: Wallet },
-  { id: "qce",          label: "QCE SwiftVault",             icon: PiggyBank, badge: "New" },
-  { id: "reserve_fund", label: "Strategic Reserve Fund",  icon: Shield },
-  { id: "trade",        label: "Trade Market",            icon: Globe },
-  { id: "trust_fund",   label: "Affiliate Trust Fund",    icon: Crown },
-  { id: "ecommerce",    label: "E-Commerce",              icon: ShoppingCart },
-  { id: "tour_africa",  label: "Glide Africa",             icon: Car },
-  { id: "emergency_response", label: "Emergency Response",     icon: HeartPulse, badge: "Soon" },
-  { id: "forum",              label: "Community Forum",        icon: MessageSquareText },
-  { id: "referrals",          label: "Referrals",              icon: Users },
+  { id: "fintech",      label: "Swift Hub",              icon: CreditCard },
+  { id: "wallet",       label: "SwiftWallet",            icon: Wallet },
+  { id: "qce",          label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
+  { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
+  { id: "trade",        label: "Trade Market",           icon: Globe },
+  { id: "trust_fund",   label: "Affiliate Trust Fund",   icon: Crown },
+  { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
+  { id: "tour_africa",  label: "Glide Africa",           icon: Car },
+  { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
+  { id: "forum",              label: "Community Forum",   icon: MessageSquareText },
+  { id: "referrals",          label: "Referrals",         icon: Users },
 ];
 
 // ─── Referral Section Component ─────────────────────────────────────────────
@@ -614,6 +614,21 @@ export default function AffiliateDashboard() {
   const { data: affiliateInfo }   = useQuery({ queryKey: ["/api/affiliate/info"] });
   const { data: programData }     = useQuery({ queryKey: ["/api/co-affiliate/program"] });
   const { data: myCoAff, refetch: refetchMyCoAff } = useQuery({ queryKey: ["/api/co-affiliate/my-info"] });
+  const { data: notifData }       = useQuery<any>({ queryKey: ["/api/notifications"], refetchInterval: 60000 });
+
+  const tsmartNewCount = useMemo(() =>
+    (notifData?.notifications ?? []).filter((n: any) => n.type === "new_arrival" && !n.isRead).length,
+    [notifData]
+  );
+
+  const NAV_ITEMS = useMemo(() =>
+    BASE_NAV_ITEMS.map(item =>
+      item.id === "ecommerce" && tsmartNewCount > 0
+        ? { ...item, badge: tsmartNewCount > 9 ? "9+" : String(tsmartNewCount), _badgeRed: true }
+        : item
+    ),
+    [tsmartNewCount]
+  );
   const { data: tradeWallet, refetch: refetchTradeWallet } = useQuery({ queryKey: ["/api/trade/wallet"] });
   const { data: tradeTxs = [], refetch: refetchTradeTxs } = useQuery({ queryKey: ["/api/trade/transactions"] });
   const { data: loanLimit, refetch: refetchLoanLimit } = useQuery<any>({ queryKey: ["/api/loans/limit"] });
@@ -848,6 +863,11 @@ export default function AffiliateDashboard() {
     if (s === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
     if (s === "wallet") { setMenuOpen(false); setLocation("/wallet"); return; }
     if (s !== "ecommerce") setOpenChatId(null);
+    if (s === "ecommerce" && tsmartNewCount > 0) {
+      apiRequest("PATCH", "/api/notifications/mark-type-read", { type: "new_arrival" })
+        .then(() => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }))
+        .catch(() => {});
+    }
     setActiveSection(s); setMenuOpen(false);
   };
   const currentNav = NAV_ITEMS.find(n => n.id === activeSection) ?? NAV_ITEMS[0]!;
@@ -968,7 +988,7 @@ export default function AffiliateDashboard() {
                                   <span>{item.label}</span>
                                 </div>
                                 {item.badge && (
-                                  <Badge className="text-[10px] py-0 px-2 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold">{item.badge}</Badge>
+                                  <Badge className={`text-[10px] py-0 px-2 font-semibold ${(item as any)._badgeRed ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>{item.badge}</Badge>
                                 )}
                               </button>
                             );
@@ -1146,7 +1166,7 @@ export default function AffiliateDashboard() {
                             </div>
                             <div>
                               <p className="font-semibold text-sm">{item.label}</p>
-                              {item.badge && <p className="text-xs text-amber-600">{item.badge}</p>}
+                              {item.badge && <p className={`text-xs font-semibold ${(item as any)._badgeRed ? "text-red-600" : "text-amber-600"}`}>{item.badge}</p>}
                             </div>
                             <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto" />
                           </button>

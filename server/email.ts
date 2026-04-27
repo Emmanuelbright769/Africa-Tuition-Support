@@ -324,6 +324,79 @@ export async function sendWelcomeEmail(to: string, firstName: string, role: "stu
   await sendEmail(to, subject, html);
 }
 
+// ─── Wallet Sent — debit receipt for the sender ──────────────────────────────
+
+export async function sendWalletSentEmail(
+  to: string,
+  firstName: string,
+  amount: string,
+  recipientName: string,
+  newBalance: string,
+  txRef: string,
+  txDate: string,
+  note?: string,
+): Promise<void> {
+  const subject = `Transfer receipt — $${amount} sent to ${recipientName} | TSIA`;
+  const html = baseTemplate(`
+    <!-- Receipt header strip -->
+    <div style="background:linear-gradient(135deg,#1a6b3c 0%,#2d9d5c 100%);border-radius:14px;padding:22px 24px;margin:0 0 24px;text-align:center;">
+      <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px;">
+        <span style="font-size:22px;">✅</span>
+      </div>
+      <p style="color:#fff;font-size:13px;font-weight:700;margin:0 0 4px;letter-spacing:1px;text-transform:uppercase;">Transfer Successful</p>
+      <p style="color:rgba(255,255,255,0.85);font-size:36px;font-weight:900;margin:0;letter-spacing:-1px;">-$${amount}</p>
+    </div>
+
+    <p style="color:#4a5e50;font-size:14px;margin:0 0 20px;">Hi ${firstName}, your transfer has been processed. Here is your receipt.</p>
+
+    <!-- Receipt body -->
+    <div style="background:#f7f9f7;border:1px solid #e2ede8;border-radius:16px;overflow:hidden;margin:0 0 20px;">
+      <!-- Dotted divider row helper -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        <tr style="background:#f0f8f4;">
+          <td style="padding:14px 20px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;width:45%;">Reference</td>
+          <td style="padding:14px 20px;font-size:13px;color:#1a1a1a;font-weight:700;font-family:monospace;text-align:right;">${txRef}</td>
+        </tr>
+        <tr style="border-top:1px dashed #d5e8dc;">
+          <td style="padding:14px 20px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Date &amp; Time</td>
+          <td style="padding:14px 20px;font-size:13px;color:#1a1a1a;text-align:right;">${txDate}</td>
+        </tr>
+        <tr style="border-top:1px dashed #d5e8dc;">
+          <td style="padding:14px 20px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Sender</td>
+          <td style="padding:14px 20px;font-size:13px;color:#1a1a1a;font-weight:600;text-align:right;">${firstName} (You)</td>
+        </tr>
+        <tr style="border-top:1px dashed #d5e8dc;">
+          <td style="padding:14px 20px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Recipient</td>
+          <td style="padding:14px 20px;font-size:13px;color:#1a1a1a;font-weight:600;text-align:right;">${recipientName}</td>
+        </tr>
+        <tr style="border-top:1px dashed #d5e8dc;">
+          <td style="padding:14px 20px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Amount</td>
+          <td style="padding:14px 20px;font-size:15px;color:#c0392b;font-weight:900;text-align:right;">-$${amount}</td>
+        </tr>
+        <tr style="border-top:1px dashed #d5e8dc;">
+          <td style="padding:14px 20px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Fee</td>
+          <td style="padding:14px 20px;font-size:13px;color:#1a6b3c;font-weight:700;text-align:right;">$0.00 — Free</td>
+        </tr>
+        ${note ? `<tr style="border-top:1px dashed #d5e8dc;">
+          <td style="padding:14px 20px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Note</td>
+          <td style="padding:14px 20px;font-size:13px;color:#4a5e50;font-style:italic;text-align:right;">"${note}"</td>
+        </tr>` : ""}
+        <tr style="border-top:2px solid #1a6b3c;background:#f0f8f4;">
+          <td style="padding:16px 20px;font-size:13px;color:#1a6b3c;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">New Balance</td>
+          <td style="padding:16px 20px;font-size:17px;color:#1a1a1a;font-weight:900;text-align:right;">$${newBalance}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="background:#fff8e8;border:1px solid #f0d060;border-radius:12px;padding:14px 18px;margin:0 0 20px;font-size:12px;color:#7a6010;text-align:center;">
+      <strong>TSIA Platform</strong> — Peer-to-peer transfers are instant and irreversible. If you did not authorise this, contact <a href="mailto:support@tsiforafrica.com" style="color:#1a6b3c;">support@tsiforafrica.com</a> immediately.
+    </div>
+
+    ${btn("https://tsiforafrica.com/wallet", "View My Wallet")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
 // ─── Wallet Received (peer-to-peer transfer) ──────────────────────────────────
 
 export async function sendWalletReceivedEmail(

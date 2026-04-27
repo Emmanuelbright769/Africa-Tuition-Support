@@ -14,7 +14,8 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
-type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp";
+type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "receipt";
+type ReceiptData = { txRef: string; txDate: string; amount: string; senderName: string; recipientName: string; walletLabel: string; note: string | null; newBalance: string };
 type WalletData = { id: number; userId: number; balance: string };
 type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
@@ -155,6 +156,7 @@ export default function FinancialHub() {
   const [amount, setAmount]   = useState("0");
   const [note, setNote]       = useState("");
   const [activeTab, setActiveTab] = useState<"transfers" | "bills">("transfers");
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
 
   // ── Send-to-bank state ────────────────────────────────────────────────────
   const [sendMode, setSendMode]         = useState<SendMode>("bank");
@@ -317,11 +319,16 @@ export default function FinancialHub() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "Money sent! ✓", description: data.message, className: "border-tsia-green" });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      setView("home"); resetSend();
+      if (data.receipt) {
+        setReceiptData(data.receipt);
+        setView("receipt");
+      } else {
+        toast({ title: "Money sent! ✓", description: data.message, className: "border-tsia-green" });
+        setView("home"); resetSend();
+      }
     },
     onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
   });
@@ -1033,6 +1040,77 @@ export default function FinancialHub() {
           >
             {sendTsiaMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
             Confirm Transfer
+          </Button>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TSIA TRANSFER — Receipt screen
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "receipt" && receiptData) return (
+    <AnimatePresence mode="wait">
+      <motion.div key="receipt" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="space-y-0">
+        {/* Success banner */}
+        <div className="rounded-2xl bg-gradient-to-br from-tsia-green to-emerald-600 text-white p-6 text-center mb-4">
+          <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
+            <CheckCircle2 className="w-8 h-8 text-white" />
+          </div>
+          <p className="text-xs font-bold uppercase tracking-widest text-white/70 mb-1">Transfer Successful</p>
+          <p className="text-4xl font-black tracking-tight">-${receiptData.amount}</p>
+          <p className="text-sm text-white/80 mt-1">Sent to {receiptData.recipientName}</p>
+        </div>
+
+        {/* Receipt card */}
+        <div className="rounded-2xl border border-border overflow-hidden bg-card shadow-sm mb-4">
+          {/* TSIA branding strip */}
+          <div className="flex items-center gap-2.5 bg-muted/60 px-4 py-3 border-b border-border">
+            <div className="w-7 h-7 rounded-full bg-tsia-gold flex items-center justify-center text-white font-black text-xs">T</div>
+            <div>
+              <p className="text-xs font-bold text-foreground leading-none">TSIA SwiftWallet</p>
+              <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Tuition Support Initiative for Africa</p>
+            </div>
+            <span className="ml-auto text-[10px] font-bold text-tsia-green bg-tsia-green/10 px-2 py-0.5 rounded-full">Completed</span>
+          </div>
+
+          {/* Receipt rows */}
+          {[
+            { label: "Reference", value: receiptData.txRef, mono: true },
+            { label: "Date & Time", value: receiptData.txDate },
+            { label: "Sender", value: `${receiptData.senderName} (You)` },
+            { label: "Recipient", value: `${receiptData.recipientName} — ${receiptData.walletLabel}` },
+            { label: "Amount", value: `-$${receiptData.amount}`, red: true },
+            { label: "Fee", value: "$0.00 — Free", green: true },
+            ...(receiptData.note ? [{ label: "Note", value: `"${receiptData.note}"`, italic: true }] : []),
+          ].map((row, i) => (
+            <div key={row.label} className={`flex items-center justify-between px-4 py-3 text-sm ${i > 0 ? "border-t border-dashed border-border" : ""}`}>
+              <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">{row.label}</span>
+              <span className={`text-right font-semibold ml-4 text-xs ${row.mono ? "font-mono text-foreground" : ""} ${row.red ? "text-red-500 font-bold" : ""} ${row.green ? "text-tsia-green font-bold" : ""} ${(row as any).italic ? "italic text-muted-foreground font-normal" : ""}`}>
+                {row.value}
+              </span>
+            </div>
+          ))}
+
+          {/* New balance */}
+          <div className="flex items-center justify-between px-4 py-3.5 border-t-2 border-tsia-green/40 bg-tsia-green/5">
+            <span className="text-xs font-bold uppercase tracking-wide text-tsia-green">New Balance</span>
+            <span className="text-base font-black text-foreground">${receiptData.newBalance}</span>
+          </div>
+        </div>
+
+        {/* Footnote */}
+        <p className="text-[11px] text-muted-foreground text-center px-4 mb-4">
+          A receipt has been sent to your email address. Keep this reference for your records.
+        </p>
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <Button variant="outline" className="flex-1 h-11 rounded-2xl" onClick={() => { setView("send"); resetSend(); setReceiptData(null); }} data-testid="btn-receipt-new-transfer">
+            <Send className="w-4 h-4 mr-1.5" /> New Transfer
+          </Button>
+          <Button className="flex-1 h-11 bg-tsia-green text-white font-bold rounded-2xl" onClick={() => { setView("home"); resetSend(); setReceiptData(null); }} data-testid="btn-receipt-done">
+            Done
           </Button>
         </div>
       </motion.div>

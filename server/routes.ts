@@ -5,7 +5,7 @@ import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import { getCached, setCached, invalidateCacheKey, invalidateCachePrefix } from "./cache";
 import {
   sendEmail, ADMIN_EMAIL,
-  sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail, sendWalletReceivedEmail,
+  sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail, sendWalletReceivedEmail, sendWalletSentEmail,
   sendOrderUpdateEmail, sendLoanUpdateEmail, sendVerificationUpdateEmail,
   sendReferralCommissionEmail, sendPriceDropEmail,
   sendNewSaleEmail, sendBotEarningsEmail, sendCoAffiliateEnrollmentEmail,
@@ -5000,16 +5000,50 @@ export async function registerRoutes(
       invalidateCacheKey(`wallet:${resolvedId}`);
       invalidateCacheKey(`transactions:${userId}`);
       invalidateCacheKey(`transactions:${resolvedId}`);
-      // Email notification for recipient
+      // Generate a human-readable reference and formatted date for receipts
+      const txRef = `TSIA-${Date.now().toString(36).toUpperCase()}-${String(userId).padStart(4, "0")}`;
+      const txDate = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+      const senderNewBalance = (senderBalance - amount).toFixed(2);
+      const senderName = `${sender?.firstName ?? "A member"} ${sender?.lastName ?? ""}`.trim();
+      const recipientFullName = `${recipient.firstName} ${recipient.lastName}`;
+
+      // Email receipt to sender (debit receipt)
+      if (sender) {
+        sendWalletSentEmail(
+          sender.email,
+          sender.firstName,
+          amount.toFixed(2),
+          recipientFullName,
+          senderNewBalance,
+          txRef,
+          txDate,
+          note ?? undefined,
+        ).catch((err: any) => console.error("[EMAIL] Wallet sent email failed:", err?.message ?? err));
+      }
+
+      // Email notification to recipient (credit alert)
       sendWalletReceivedEmail(
         recipient.email,
         recipient.firstName,
         amount.toFixed(2),
-        `${sender?.firstName ?? "A member"} ${sender?.lastName ?? ""}`.trim(),
+        senderName,
         (recipientBalance + amount).toFixed(2),
         note ?? undefined,
       ).catch((err: any) => console.error("[EMAIL] Wallet received email failed:", err?.message ?? err));
-      res.json({ message: `$${amount.toFixed(2)} sent to ${recipient.firstName} ${recipient.lastName}'s ${walletLabel} successfully` });
+
+      res.json({
+        message: `$${amount.toFixed(2)} sent to ${recipientFullName}'s ${walletLabel} successfully`,
+        receipt: {
+          txRef,
+          txDate,
+          amount: amount.toFixed(2),
+          senderName,
+          recipientName: recipientFullName,
+          walletLabel,
+          note: note ?? null,
+          newBalance: senderNewBalance,
+        },
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

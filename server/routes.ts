@@ -5340,22 +5340,60 @@ export async function registerRoutes(
       }
       const deposit = await storage.updateWalletDeposit(parseInt(req.params.id), { status: "completed" });
       const gross = parseFloat(deposit.amountUsd);
-      // 75% → user wallet, 20% → reserve fund, 5% → affiliate pool
-      const reserveCut   = parseFloat((gross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));   // 20%
-      const affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2)); // 5%
-      const userCredit   = parseFloat((gross - reserveCut - affiliateCut).toFixed(2));         // 75%
-      // Credit user wallet (75%)
+
+      // ── Fee policy: first-time deposit always pays full fees (75/20/5 split).
+      // For AFFILIATES only: every subsequent deposit is credited 100% — no reserve
+      // or pool deduction. Students always pay fees on every deposit.
+      const depositUser = await storage.getUser(deposit.userId);
+      const isAffiliate = depositUser?.role === "affiliate";
+
+      let reserveCut: number, affiliateCut: number, userCredit: number, isFirstDeposit = true;
+
+      if (isAffiliate) {
+        // Count completed deposits for this user excluding the current one
+        const [prevRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(walletDeposits)
+          .where(and(
+            eq(walletDeposits.userId, deposit.userId),
+            eq(walletDeposits.status, "completed"),
+            ne(walletDeposits.id, deposit.id),
+          ));
+        const prevCompleted = Number(prevRow?.count ?? 0);
+        isFirstDeposit = prevCompleted === 0;
+
+        if (isFirstDeposit) {
+          // First time: standard 75/20/5 split
+          reserveCut   = parseFloat((gross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
+          affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
+          userCredit   = parseFloat((gross - reserveCut - affiliateCut).toFixed(2));
+        } else {
+          // Subsequent deposits: 100% credited — no reserve, no pool deduction
+          reserveCut   = 0;
+          affiliateCut = 0;
+          userCredit   = gross;
+        }
+      } else {
+        // Students: always standard 75/20/5 split
+        reserveCut   = parseFloat((gross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
+        affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
+        userCredit   = parseFloat((gross - reserveCut - affiliateCut).toFixed(2));
+      }
+
+      // Credit user wallet
       const wallet = await storage.getOrCreateWallet(deposit.userId);
       const newBalance = (parseFloat(wallet.balance) + userCredit).toFixed(2);
       await storage.updateWalletBalance(deposit.userId, newBalance);
-      // Reserve fund (20%)
-      await storage.addToReserveFund(reserveCut.toFixed(6));
-      // Affiliate pool share (always recorded for accounting)
-      try {
-        const affiliateCount = await storage.getAffiliateCount();
-        const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
-        await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
-      } catch { /* non-critical */ }
+      // Reserve fund (only when fees apply)
+      if (reserveCut > 0) await storage.addToReserveFund(reserveCut.toFixed(6));
+      // Affiliate pool share (only when fees apply)
+      if (affiliateCut > 0) {
+        try {
+          const affiliateCount = await storage.getAffiliateCount();
+          const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
+          await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+        } catch { /* non-critical */ }
+      }
       // ── Wallet activation: activate if balance reaches $5 for the first time ──
       const WALLET_ACTIVATION_MIN = 5;
       let referralResult: Awaited<ReturnType<typeof creditReferrerCommissionOnce>> | null = null;
@@ -5385,24 +5423,26 @@ export async function registerRoutes(
         referralResult = await creditReferrerCommissionOnce(deposit.userId, gross, "personal wallet activation");
         if (!referralResult.credited) console.log(`[REFERRAL] No admin-confirmed deposit commission credited for already-active user ${deposit.userId}`);
       }
-      // Record transaction (platform fee = 25%: 20% reserve + 5% affiliate)
+      // Record transaction
+      const txDescription = (isAffiliate && !isFirstDeposit)
+        ? `Deposit confirmed — $${gross.toFixed(2)} credited in full (no fees — returning affiliate member)`
+        : `Deposit confirmed — $${gross.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool`;
       await storage.createTransaction({
         userId: deposit.userId,
         type: "deposit",
         amount: userCredit.toFixed(2),
         fee: (reserveCut + affiliateCut).toFixed(2),
         paymentMethod: deposit.walletType ?? "crypto",
-        description: `Crypto deposit confirmed — $${gross.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool`,
+        description: txDescription,
       });
       // ─────────────────────────────────────────────────────────────────────────
       // Notify user
       try {
-        const depUser = await storage.getUser(deposit.userId);
-        if (depUser) {
-          sendWalletCreditEmail(depUser.email, depUser.firstName, userCredit.toFixed(2), newBalance).catch((err: any) => console.error("[EMAIL] Wallet credit email failed:", err?.message ?? err));
+        if (depositUser) {
+          sendWalletCreditEmail(depositUser.email, depositUser.firstName, userCredit.toFixed(2), newBalance).catch((err: any) => console.error("[EMAIL] Wallet credit email failed:", err?.message ?? err));
           sendAdminDepositConfirmedEmail({
-            name: `${depUser.firstName} ${depUser.lastName}`,
-            email: depUser.email,
+            name: `${depositUser.firstName} ${depositUser.lastName}`,
+            email: depositUser.email,
             gross: gross.toFixed(2),
             credited: userCredit.toFixed(2),
             reserveCut: reserveCut.toFixed(2),
@@ -5413,11 +5453,14 @@ export async function registerRoutes(
             userId: deposit.userId,
           }).catch((err: any) => console.error("[EMAIL] Admin confirmed deposit email failed:", err?.message ?? err));
         }
+        const notifMessage = (isAffiliate && !isFirstDeposit)
+          ? `$${gross.toFixed(2)} deposit confirmed. Your full amount has been credited — no platform fees on top-up deposits. New balance: $${newBalance}.`
+          : `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet. $${reserveCut.toFixed(2)} (20%) to Reserve Fund, $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`;
         const walletNotif = await storage.createNotification({
           userId: deposit.userId,
           type: "wallet_credit",
           title: "Wallet Credited ✓",
-          message: `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (75%) credited to your TSIA Personal Wallet. $${reserveCut.toFixed(2)} (20%) to Reserve Fund, $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`,
+          message: notifMessage,
           data: { depositId: deposit.id, gross, userCredit, reserveCut, affiliateCut, newBalance },
           isRead: false,
         });

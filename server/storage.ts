@@ -108,6 +108,7 @@ export interface IStorage {
   addToTotalInvested(userId: number, amount: string): Promise<TradeWallet>;
   markRoiComplete(userId: number): Promise<TradeWallet>;
   resetRoiForNewCycle(userId: number): Promise<void>;
+  resetTradingDayForTopUp(userId: number, newLossDays: number[]): Promise<void>;
   addToLockedPrincipal(userId: number, amount: string): Promise<TradeWallet>;
   clearLockedPrincipal(userId: number): Promise<TradeWallet>;
   addReferralCommission(userId: number, amount: string): Promise<TradeWallet>;
@@ -677,6 +678,12 @@ export class DatabaseStorage implements IStorage {
   async resetRoiForNewCycle(userId: number): Promise<void> {
     await db.update(tradeWallets)
       .set({ roiComplete: false, totalBotEarnings: "0.000000", totalInvested: "0.000000", lockedPrincipal: "0.000000", tradingDayNumber: 0, lossDayNumbers: [], updatedAt: new Date() })
+      .where(eq(tradeWallets.userId, userId));
+  }
+
+  async resetTradingDayForTopUp(userId: number, newLossDays: number[]): Promise<void> {
+    await db.update(tradeWallets)
+      .set({ tradingDayNumber: 0, lossDayNumbers: newLossDays, updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId));
   }
 

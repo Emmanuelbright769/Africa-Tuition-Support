@@ -2217,14 +2217,19 @@ export async function registerRoutes(
 
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
       await storage.addToTotalInvested(userId, userCredit.toFixed(6));
-      // If cycle was previously complete, reset for a new 120-day cycle
+      // Cycle management on top-up
       const postDepositWallet = await storage.getOrCreateTradeWallet(userId);
       if (postDepositWallet.roiComplete) {
+        // Completed cycle — full reset for a fresh 120-day cycle
         await storage.resetRoiForNewCycle(userId);
         await storage.assignLossDays(userId, generateLossDays());
       } else if ((postDepositWallet.lossDayNumbers?.length ?? 0) === 0) {
         // First deposit ever — assign the 120-day loss schedule
         await storage.assignLossDays(userId, generateLossDays());
+      } else if ((postDepositWallet.tradingDayNumber ?? 0) > 0) {
+        // Mid-cycle top-up: credit back the already-traded days so the new top-up
+        // starts a fresh 120-day window from today (balances are untouched)
+        await storage.resetTradingDayForTopUp(userId, generateLossDays());
       }
       // Track locked principal (net amount in trade balance from this deposit — capital is locked)
       await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
@@ -2301,14 +2306,19 @@ export async function registerRoutes(
       });
       await storage.updateTradeBalance(userId, userCredit.toFixed(6));
       await storage.addToTotalInvested(userId, userCredit.toFixed(6));
-      // If cycle was previously complete, reset for a new 120-day cycle
+      // Cycle management on top-up
       const fwPostWallet = await storage.getOrCreateTradeWallet(userId);
       if (fwPostWallet.roiComplete) {
+        // Completed cycle — full reset for a fresh 120-day cycle
         await storage.resetRoiForNewCycle(userId);
         await storage.assignLossDays(userId, generateLossDays());
       } else if ((fwPostWallet.lossDayNumbers?.length ?? 0) === 0) {
         // First top-up — assign the 120-day loss schedule
         await storage.assignLossDays(userId, generateLossDays());
+      } else if ((fwPostWallet.tradingDayNumber ?? 0) > 0) {
+        // Mid-cycle top-up: credit back the already-traded days so the new top-up
+        // starts a fresh 120-day window from today (balances are untouched)
+        await storage.resetTradingDayForTopUp(userId, generateLossDays());
       }
       // Track locked principal (net amount in trade balance — capital is locked)
       await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));

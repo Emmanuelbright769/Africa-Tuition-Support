@@ -4085,6 +4085,37 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Enrollment Batch Management ──────────────────────────────────────
+  const BATCH_BASE_MAX = 15; // base max per batch — server-side only
+
+  app.get("/api/admin/batch-status", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const status = await storage.getAdminBatchStatus(BATCH_BASE_MAX);
+      res.json(status);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/admin/batch/open-slots", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const slots = parseInt(req.body.slots);
+      if (!slots || slots < 1 || slots > 500) return res.status(400).json({ message: "slots must be between 1 and 500" });
+      const result = await storage.openBatchSlots(slots);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── STUDENT: Validate / Use Sponsor Code ─────────────────────────────────────
   app.post("/api/verification/validate-sponsor-code", async (req, res) => {
     try {

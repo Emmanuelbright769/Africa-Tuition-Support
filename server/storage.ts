@@ -239,6 +239,8 @@ export interface IStorage {
   getAllBatches(): Promise<SponsorshipBatch[]>;
   createBatch(batchNumber: number): Promise<SponsorshipBatch>;
   incrementBatchEnrollment(id: number, maxSize: number): Promise<{ batch: SponsorshipBatch; wasClosed: boolean }>;
+  openBatchSlots(slots: number): Promise<{ batch: SponsorshipBatch; totalCapacity: number; remaining: number }>;
+  getAdminBatchStatus(baseMax: number): Promise<{ batch: SponsorshipBatch | null; totalCapacity: number; remaining: number; enrolled: number } | null>;
 
   // Wallet activation
   activateWallet(userId: number): Promise<WalletRecord>;
@@ -1672,7 +1674,9 @@ export class DatabaseStorage implements IStorage {
       .where(eq(sponsorshipBatches.id, id))
       .returning();
 
-    if (updated.enrollmentCount >= maxSize) {
+    // Effective capacity = hardcoded base max + any admin-granted extra slots
+    const effectiveMax = maxSize + (updated.extraSlots ?? 0);
+    if (updated.enrollmentCount >= effectiveMax) {
       const closedAt = new Date();
       const nextOpenAt = new Date(closedAt.getTime() + 30 * 24 * 60 * 60 * 1000);
       const [closed] = await db.update(sponsorshipBatches)
@@ -1682,6 +1686,46 @@ export class DatabaseStorage implements IStorage {
       return { batch: closed, wasClosed: true };
     }
     return { batch: updated, wasClosed: false };
+  }
+
+  async openBatchSlots(slots: number): Promise<{ batch: SponsorshipBatch; totalCapacity: number; remaining: number }> {
+    const BATCH_BASE = 15;
+    // Get the most recent batch regardless of status
+    const [latest] = await db.select().from(sponsorshipBatches)
+      .orderBy(desc(sponsorshipBatches.id)).limit(1);
+
+    let batch: SponsorshipBatch;
+    if (latest) {
+      // Add extra slots and reopen
+      const [updated] = await db.update(sponsorshipBatches)
+        .set({
+          extraSlots: sql`${sponsorshipBatches.extraSlots} + ${slots}`,
+          status: "open",
+          nextOpenAt: null,
+        })
+        .where(eq(sponsorshipBatches.id, latest.id))
+        .returning();
+      batch = updated;
+    } else {
+      // No batch exists at all — create fresh one
+      const [created] = await db.insert(sponsorshipBatches)
+        .values({ batchNumber: 1, status: "open", enrollmentCount: 0, extraSlots: slots, openedAt: new Date() })
+        .returning();
+      batch = created;
+    }
+
+    const totalCapacity = BATCH_BASE + (batch.extraSlots ?? 0);
+    const remaining = Math.max(0, totalCapacity - batch.enrollmentCount);
+    return { batch, totalCapacity, remaining };
+  }
+
+  async getAdminBatchStatus(baseMax: number): Promise<{ batch: SponsorshipBatch | null; totalCapacity: number; remaining: number; enrolled: number }> {
+    const [latest] = await db.select().from(sponsorshipBatches)
+      .orderBy(desc(sponsorshipBatches.id)).limit(1);
+    if (!latest) return { batch: null, totalCapacity: baseMax, remaining: baseMax, enrolled: 0 };
+    const totalCapacity = baseMax + (latest.extraSlots ?? 0);
+    const remaining = Math.max(0, totalCapacity - latest.enrollmentCount);
+    return { batch: latest, totalCapacity, remaining, enrolled: latest.enrollmentCount };
   }
 
   // ─── Wallet activation ──────────────────────────────────────────────────────

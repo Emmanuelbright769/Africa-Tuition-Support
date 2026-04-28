@@ -16,7 +16,8 @@ import {
   ArrowLeftRight, Bell, Landmark, XCircle, AlertTriangle, RefreshCw,
   ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
   Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight, GitBranch,
-  Banknote, Copy, Phone, ThumbsUp, ThumbsDown, Settings, Save, Percent
+  Banknote, Copy, Phone, ThumbsUp, ThumbsDown, Settings, Save, Percent,
+  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -104,6 +105,7 @@ const NAV = [
   { id: "trustfunders", icon: Award,          label: "Trust Funders" },
   { id: "messages",     icon: MessageSquare,  label: "Forum Messages" },
   { id: "notifications", icon: Bell,          label: "Notifications" },
+  { id: "enrollment",   icon: UserPlus,       label: "Enrollment" },
   { id: "settings",     icon: Settings,      label: "Plan Settings" },
 ];
 
@@ -147,6 +149,7 @@ export default function AdminDashboard() {
   const [wdNote, setWdNote]               = useState("");
   const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "", silverMin: "", silverMax: "", goldMin: "", goldMax: "", platinumMin: "", platinumMax: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [openSlotsInput, setOpenSlotsInput] = useState("1");
   const [wdAction, setWdAction]           = useState<"approve" | "decline" | "refund" | null>(null);
   const [wdCopied, setWdCopied]           = useState<string | null>(null);
 
@@ -172,6 +175,7 @@ export default function AdminDashboard() {
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 600_000 });
   const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
+  const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
   const verifyMutation = useMutation({
@@ -473,6 +477,19 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/ecommerce-stats"] });
       setAdminDeleteListingId(null);
       toast({ title: "Listing Removed", description: "The listing has been permanently deleted." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const openBatchSlotsMutation = useMutation({
+    mutationFn: async (slots: number) => {
+      const res = await apiRequest("POST", "/api/admin/batch/open-slots", { slots });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/batch-status"] });
+      setOpenSlotsInput("1");
+      toast({ title: "Slots Opened", description: `Batch now has ${data.remaining} open seat${data.remaining === 1 ? "" : "s"} available.` });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -2141,6 +2158,144 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
                 <p className="text-xs text-slate-500 text-center">To notify a specific user, go to the Users or Affiliates tab and use the Notify button on their row.</p>
+              </motion.div>
+            )}
+
+            {activeTab === "enrollment" && (
+              <motion.div key="enrollment" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} className="space-y-6">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><UserPlus className="w-5 h-5 text-tsia-green" /> Enrollment Slot Management</h2>
+
+                {/* Batch status cards */}
+                {batchStatus ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <StatCard title="Batch Number" value={batchStatus.batch ? `#${batchStatus.batch.batchNumber}` : "—"} icon={Users2} color="tsia" />
+                    <StatCard title="Enrolled" value={`${batchStatus.enrolled} / ${batchStatus.totalCapacity}`} icon={UserCheck} color="blue" />
+                    <StatCard title="Remaining Seats" value={batchStatus.remaining} icon={LockOpen} color={batchStatus.remaining > 0 ? "green" : "red"} />
+                    <StatCard
+                      title="Batch Status"
+                      value={batchStatus.batch?.status === "open" ? "Open" : "Closed"}
+                      icon={batchStatus.batch?.status === "open" ? LockOpen : Lock}
+                      color={batchStatus.batch?.status === "open" ? "green" : "red"}
+                      sub={batchStatus.batch?.status === "closed" && batchStatus.batch?.nextOpenAt
+                        ? `Next: ${fmtDate(batchStatus.batch.nextOpenAt)}`
+                        : undefined}
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {[0,1,2,3].map(i => <Card key={i} className="border-0 shadow-sm animate-pulse"><CardContent className="p-5 h-24 bg-slate-100 rounded-xl" /></Card>)}
+                  </div>
+                )}
+
+                {/* Open slots form */}
+                <Card className="border border-tsia-green/20 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2 text-slate-800">
+                      <PlusCircle className="w-4 h-4 text-tsia-green" /> Open Additional Enrollment Slots
+                    </CardTitle>
+                    <CardDescription className="text-sm text-slate-500">
+                      Adding slots reopens the current batch immediately. The batch will close again automatically once the new capacity is reached.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-end gap-3">
+                      <div className="flex-1">
+                        <Label htmlFor="open-slots-input" className="text-xs font-semibold text-slate-600 mb-1.5 block">Number of Additional Seats</Label>
+                        <Input
+                          id="open-slots-input"
+                          type="number"
+                          min="1"
+                          max="500"
+                          value={openSlotsInput}
+                          onChange={e => setOpenSlotsInput(e.target.value)}
+                          className="max-w-xs"
+                          data-testid="input-open-slots"
+                        />
+                      </div>
+                      <Button
+                        onClick={() => {
+                          const n = parseInt(openSlotsInput);
+                          if (!n || n < 1) return toast({ title: "Invalid", description: "Enter at least 1 slot.", variant: "destructive" });
+                          openBatchSlotsMutation.mutate(n);
+                        }}
+                        disabled={openBatchSlotsMutation.isPending}
+                        className="bg-tsia-green hover:bg-tsia-green/90 text-white"
+                        data-testid="button-open-slots"
+                      >
+                        {openBatchSlotsMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LockOpen className="w-4 h-4" />}
+                        <span className="ml-1.5">Open Slots</span>
+                      </Button>
+                    </div>
+
+                    {/* Info note */}
+                    <div className="flex items-start gap-2 rounded-lg bg-tsia-gold/10 border border-tsia-gold/30 px-3 py-2.5">
+                      <Info className="w-4 h-4 text-tsia-gold shrink-0 mt-0.5" />
+                      <p className="text-xs text-slate-600">
+                        Extra slots are <strong>additive</strong> — each time you open more, they stack on top of the previous total.
+                        The standard batch size is <strong>15</strong>; extra slots add on top of that.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Batch history */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base text-slate-800 flex items-center gap-2"><BarChart2 className="w-4 h-4 text-slate-500" /> Current Batch Detail</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {batchStatus?.batch ? (
+                      <div className="text-sm space-y-2">
+                        <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500">Batch #</span>
+                          <span className="font-semibold text-slate-800">{batchStatus.batch.batchNumber}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500">Status</span>
+                          <StatusBadge status={batchStatus.batch.status} />
+                        </div>
+                        <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500">Base Capacity</span>
+                          <span className="font-semibold text-slate-800">15</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500">Extra Slots Granted</span>
+                          <span className={`font-semibold ${batchStatus.batch.extraSlots > 0 ? "text-tsia-green" : "text-slate-400"}`}>{batchStatus.batch.extraSlots}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500">Total Capacity</span>
+                          <span className="font-bold text-tsia-green">{batchStatus.totalCapacity}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500">Enrolled</span>
+                          <span className="font-semibold text-slate-800">{batchStatus.enrolled}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500">Remaining Seats</span>
+                          <span className={`font-bold ${batchStatus.remaining > 0 ? "text-green-600" : "text-red-500"}`}>{batchStatus.remaining}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500">Opened At</span>
+                          <span className="text-slate-700">{fmtDate(batchStatus.batch.openedAt)}</span>
+                        </div>
+                        {batchStatus.batch.closedAt && (
+                          <div className="flex justify-between border-b border-slate-100 pb-2">
+                            <span className="text-slate-500">Closed At</span>
+                            <span className="text-slate-700">{fmtDate(batchStatus.batch.closedAt)}</span>
+                          </div>
+                        )}
+                        {batchStatus.batch.nextOpenAt && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Auto-open At</span>
+                            <span className="text-amber-600 font-semibold">{fmtDate(batchStatus.batch.nextOpenAt)}</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-400 text-center py-6">No batch data yet. Open slots to create the first batch.</p>
+                    )}
+                  </CardContent>
+                </Card>
               </motion.div>
             )}
 

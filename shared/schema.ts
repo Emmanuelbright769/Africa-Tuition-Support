@@ -909,6 +909,7 @@ export const sponsorshipBatches = pgTable("sponsorship_batches", {
   batchNumber:     integer("batch_number").notNull(),
   status:          text("status").notNull().default("open"),   // "open" | "closed"
   enrollmentCount: integer("enrollment_count").notNull().default(0),
+  extraSlots:      integer("extra_slots").notNull().default(0), // admin-granted overflow seats
   openedAt:        timestamp("opened_at").defaultNow().notNull(),
   closedAt:        timestamp("closed_at"),
   nextOpenAt:      timestamp("next_open_at"),                  // closedAt + 30 days

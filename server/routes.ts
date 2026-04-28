@@ -6243,7 +6243,7 @@ export async function registerRoutes(
     try {
       const section = (req.query.section as string) ?? "both";
       const search = req.query.search as string | undefined;
-      const topics = await storage.getForumTopics(section, search);
+      const topics = await storage.getForumTopics(section, userId, search);
       res.json(topics);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -6283,13 +6283,13 @@ export async function registerRoutes(
     }
   });
 
-  // POST /api/forum/topics/:id/like
+  // POST /api/forum/topics/:id/like  — toggle like
   app.post("/api/forum/topics/:id/like", async (req, res) => {
     const userId = (req as any).session?.userId;
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
     try {
-      await storage.likeForumTopic(Number(req.params.id));
-      res.json({ ok: true });
+      const result = await storage.toggleForumTopicLike(Number(req.params.id), userId);
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -6300,7 +6300,7 @@ export async function registerRoutes(
     const userId = (req as any).session?.userId;
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
     try {
-      const posts = await storage.getForumPosts(Number(req.params.id));
+      const posts = await storage.getForumPosts(Number(req.params.id), userId);
       res.json(posts);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -6325,13 +6325,13 @@ export async function registerRoutes(
     }
   });
 
-  // POST /api/forum/posts/:id/like
+  // POST /api/forum/posts/:id/like  — toggle like
   app.post("/api/forum/posts/:id/like", async (req, res) => {
     const userId = (req as any).session?.userId;
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
     try {
-      await storage.likeForumPost(Number(req.params.id));
-      res.json({ ok: true });
+      const result = await storage.toggleForumPostLike(Number(req.params.id), userId);
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

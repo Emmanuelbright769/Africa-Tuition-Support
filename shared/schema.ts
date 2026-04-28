@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, boolean, timestamp, pgEnum, jsonb, serial, numeric, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, boolean, timestamp, pgEnum, jsonb, serial, numeric, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -718,6 +718,17 @@ export type InsertForumTopic = z.infer<typeof insertForumTopicSchema>;
 export type ForumPost = typeof forumPosts.$inferSelect;
 export const insertForumPostSchema = createInsertSchema(forumPosts).omit({ id: true, likeCount: true, createdAt: true });
 export type InsertForumPost = z.infer<typeof insertForumPostSchema>;
+
+// Per-user like tracking (prevents multiple likes from one account)
+export const forumTopicLikes = pgTable("forum_topic_likes", {
+  topicId: integer("topic_id").notNull().references(() => forumTopics.id, { onDelete: "cascade" }),
+  userId:  integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+}, (t) => ({ pk: primaryKey({ columns: [t.topicId, t.userId] }) }));
+
+export const forumPostLikes = pgTable("forum_post_likes", {
+  postId: integer("post_id").notNull().references(() => forumPosts.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+}, (t) => ({ pk: primaryKey({ columns: [t.postId, t.userId] }) }));
 
 // ─── ECOMMERCE CHAT ───────────────────────────────────────────────────────────
 export const ecommerceChats = pgTable("ecommerce_chats", {

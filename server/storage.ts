@@ -8,7 +8,7 @@ import {
   products, orders, orderTracking, walletDeposits, walletTransfers, billPayments,
   productRatings,
   ecommerceChats, ecommerceChatMessages,
-  notifications, callSessions, forumTopics, forumPosts,
+  notifications, callSessions, forumTopics, forumPosts, forumTopicLikes, forumPostLikes,
   qceSavings, qceTransactions,
   priceAlerts, categorySubscriptions,
   sponsorCohorts, cohortCodes, sponsorshipBatches,
@@ -179,13 +179,13 @@ export interface IStorage {
   endStaleCalls(userId: number): Promise<void>;
 
   // Forum
-  getForumTopics(section: string, search?: string): Promise<(ForumTopic & { authorName: string })[]>;
+  getForumTopics(section: string, userId: number, search?: string): Promise<(ForumTopic & { authorName: string; userLiked: boolean })[]>;
   getForumTopic(id: number): Promise<(ForumTopic & { authorName: string }) | undefined>;
   createForumTopic(data: InsertForumTopic): Promise<ForumTopic>;
-  getForumPosts(topicId: number): Promise<(ForumPost & { authorName: string })[]>;
+  getForumPosts(topicId: number, userId: number): Promise<(ForumPost & { authorName: string; userLiked: boolean })[]>;
   createForumPost(data: InsertForumPost): Promise<ForumPost>;
-  likeForumTopic(id: number): Promise<void>;
-  likeForumPost(id: number): Promise<void>;
+  toggleForumTopicLike(topicId: number, userId: number): Promise<{ liked: boolean; likeCount: number }>;
+  toggleForumPostLike(postId: number, userId: number): Promise<{ liked: boolean; likeCount: number }>;
 
   // Wallet Deposits (student/user funding)
   createWalletDeposit(data: InsertWalletDeposit): Promise<WalletDeposit>;
@@ -1161,7 +1161,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ─── Forum ───────────────────────────────────────────────────────────────────
-  async getForumTopics(section: string, search?: string): Promise<(ForumTopic & { authorName: string })[]> {
+  async getForumTopics(section: string, userId: number, search?: string): Promise<(ForumTopic & { authorName: string; userLiked: boolean })[]> {
     const rows = await db.select({
       id: forumTopics.id, title: forumTopics.title, body: forumTopics.body,
       authorId: forumTopics.authorId, section: forumTopics.section, tags: forumTopics.tags,
@@ -1179,9 +1179,18 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(forumTopics.isPinned), desc(forumTopics.createdAt))
       .limit(100);
 
+    const topicIds = rows.map(r => r.id);
+    let likedSet = new Set<number>();
+    if (topicIds.length > 0) {
+      const liked = await db.select({ topicId: forumTopicLikes.topicId })
+        .from(forumTopicLikes)
+        .where(and(eq(forumTopicLikes.userId, userId), inArray(forumTopicLikes.topicId, topicIds)));
+      likedSet = new Set(liked.map(l => l.topicId));
+    }
+
     return rows
-      .filter(r => !search || r.title.toLowerCase().includes(search.toLowerCase()))
-      .map(r => ({ ...r, authorName: `${r.firstName} ${r.lastName}` }));
+      .filter(r => !search || r.title.toLowerCase().includes(search.toLowerCase()) || r.body.toLowerCase().includes(search.toLowerCase()))
+      .map(r => ({ ...r, authorName: `${r.firstName} ${r.lastName}`, userLiked: likedSet.has(r.id) }));
   }
 
   async getForumTopic(id: number): Promise<(ForumTopic & { authorName: string }) | undefined> {
@@ -1205,7 +1214,7 @@ export class DatabaseStorage implements IStorage {
     return t;
   }
 
-  async getForumPosts(topicId: number): Promise<(ForumPost & { authorName: string })[]> {
+  async getForumPosts(topicId: number, userId: number): Promise<(ForumPost & { authorName: string; userLiked: boolean })[]> {
     const rows = await db.select({
       id: forumPosts.id, topicId: forumPosts.topicId, content: forumPosts.content,
       authorId: forumPosts.authorId, likeCount: forumPosts.likeCount, createdAt: forumPosts.createdAt,
@@ -1215,7 +1224,17 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(forumPosts.authorId, users.id))
       .where(eq(forumPosts.topicId, topicId))
       .orderBy(forumPosts.createdAt);
-    return rows.map(r => ({ ...r, authorName: `${r.firstName} ${r.lastName}` }));
+
+    const postIds = rows.map(r => r.id);
+    let likedSet = new Set<number>();
+    if (postIds.length > 0) {
+      const liked = await db.select({ postId: forumPostLikes.postId })
+        .from(forumPostLikes)
+        .where(and(eq(forumPostLikes.userId, userId), inArray(forumPostLikes.postId, postIds)));
+      likedSet = new Set(liked.map(l => l.postId));
+    }
+
+    return rows.map(r => ({ ...r, authorName: `${r.firstName} ${r.lastName}`, userLiked: likedSet.has(r.id) }));
   }
 
   async createForumPost(data: InsertForumPost): Promise<ForumPost> {
@@ -1226,16 +1245,40 @@ export class DatabaseStorage implements IStorage {
     return p;
   }
 
-  async likeForumTopic(id: number): Promise<void> {
-    await db.update(forumTopics)
-      .set({ likeCount: sql`${forumTopics.likeCount} + 1` })
-      .where(eq(forumTopics.id, id));
+  async toggleForumTopicLike(topicId: number, userId: number): Promise<{ liked: boolean; likeCount: number }> {
+    const [existing] = await db.select().from(forumTopicLikes)
+      .where(and(eq(forumTopicLikes.topicId, topicId), eq(forumTopicLikes.userId, userId)));
+    if (existing) {
+      await db.delete(forumTopicLikes).where(and(eq(forumTopicLikes.topicId, topicId), eq(forumTopicLikes.userId, userId)));
+      const [updated] = await db.update(forumTopics)
+        .set({ likeCount: sql`GREATEST(${forumTopics.likeCount} - 1, 0)` })
+        .where(eq(forumTopics.id, topicId)).returning({ likeCount: forumTopics.likeCount });
+      return { liked: false, likeCount: updated?.likeCount ?? 0 };
+    } else {
+      await db.insert(forumTopicLikes).values({ topicId, userId });
+      const [updated] = await db.update(forumTopics)
+        .set({ likeCount: sql`${forumTopics.likeCount} + 1` })
+        .where(eq(forumTopics.id, topicId)).returning({ likeCount: forumTopics.likeCount });
+      return { liked: true, likeCount: updated?.likeCount ?? 0 };
+    }
   }
 
-  async likeForumPost(id: number): Promise<void> {
-    await db.update(forumPosts)
-      .set({ likeCount: sql`${forumPosts.likeCount} + 1` })
-      .where(eq(forumPosts.id, id));
+  async toggleForumPostLike(postId: number, userId: number): Promise<{ liked: boolean; likeCount: number }> {
+    const [existing] = await db.select().from(forumPostLikes)
+      .where(and(eq(forumPostLikes.postId, postId), eq(forumPostLikes.userId, userId)));
+    if (existing) {
+      await db.delete(forumPostLikes).where(and(eq(forumPostLikes.postId, postId), eq(forumPostLikes.userId, userId)));
+      const [updated] = await db.update(forumPosts)
+        .set({ likeCount: sql`GREATEST(${forumPosts.likeCount} - 1, 0)` })
+        .where(eq(forumPosts.id, postId)).returning({ likeCount: forumPosts.likeCount });
+      return { liked: false, likeCount: updated?.likeCount ?? 0 };
+    } else {
+      await db.insert(forumPostLikes).values({ postId, userId });
+      const [updated] = await db.update(forumPosts)
+        .set({ likeCount: sql`${forumPosts.likeCount} + 1` })
+        .where(eq(forumPosts.id, postId)).returning({ likeCount: forumPosts.likeCount });
+      return { liked: true, likeCount: updated?.likeCount ?? 0 };
+    }
   }
 
   // ─── Wallet Deposits ─────────────────────────────────────────────────────────

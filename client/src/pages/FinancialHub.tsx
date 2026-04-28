@@ -423,12 +423,12 @@ export default function FinancialHub() {
     <div className="space-y-6">
       {/* Swift Hub branded header */}
       <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1a5c38] to-[#0b3320] flex flex-col items-center justify-center shadow-md shrink-0">
+        <div className="w-12 h-12 rounded-2xl bg-tsia-green flex flex-col items-center justify-center shadow-md shrink-0">
           <span className="text-white font-black text-sm tracking-tighter leading-none">SH</span>
-          <span className="text-white/50 text-[7px] font-bold tracking-widest uppercase mt-0.5">Hub</span>
+          <span className="text-tsia-gold text-[7px] font-bold tracking-widest uppercase mt-0.5">Hub</span>
         </div>
         <div>
-          <p className="font-black text-lg leading-none text-[#1a5c38] dark:text-green-400 tracking-tight">Swift Hub</p>
+          <p className="font-black text-lg leading-none text-tsia-green tracking-tight">Swift Hub</p>
           <p className="text-[11px] text-muted-foreground leading-none mt-0.5 tracking-wide">TSIA · Financial Centre</p>
         </div>
       </div>

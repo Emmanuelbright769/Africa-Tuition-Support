@@ -1123,10 +1123,10 @@ export default function WalletPage() {
             </div>
 
             {/* Options */}
-            <div className="flex-1 px-5 py-8 space-y-4">
-              {/* Bank */}
+            <div className="flex-1 px-5 py-6 space-y-3 overflow-y-auto">
+              {/* Squad Bank Withdrawal */}
               <button
-                onClick={() => { setWithdrawChoiceOpen(false); setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); setBwOpen(true); }}
+                onClick={() => { setWithdrawChoiceOpen(false); setBwGateway("squad"); setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); setBwOpen(true); }}
                 className="w-full flex items-center gap-4 p-5 rounded-3xl bg-[#1a5c38] hover:bg-[#1e6b42] active:scale-[0.98] transition-all text-left group shadow-lg"
                 data-testid="btn-choose-bank-withdraw"
               >
@@ -1136,12 +1136,32 @@ export default function WalletPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-black text-lg text-white leading-tight">Bank Withdrawal</p>
-                    <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Active</span>
+                    <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Squad</span>
                   </div>
                   <p className="text-sm text-white/60">NGN to Nigerian bank · 7.5% VAT</p>
-                  <p className="text-xs text-white/40 mt-0.5">30 minutes – 24 hours</p>
+                  <p className="text-xs text-white/40 mt-0.5">Powered by Squad by GTco · 30 min – 24 h</p>
                 </div>
                 <ArrowUpRight className="w-6 h-6 text-white/70 group-hover:text-white shrink-0 transition-colors" />
+              </button>
+
+              {/* Korapay Bank Withdrawal */}
+              <button
+                onClick={() => { setWithdrawChoiceOpen(false); setBwGateway("korapay"); setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); setBwOpen(true); }}
+                className="w-full flex items-center gap-4 p-5 rounded-3xl bg-orange-500 hover:bg-orange-600 active:scale-[0.98] transition-all text-left group shadow-lg"
+                data-testid="btn-choose-korapay-withdraw"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                  <Building2 className="w-8 h-8 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-black text-lg text-white leading-tight">Bank Withdrawal</p>
+                    <span className="text-[9px] font-black bg-white/30 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">Korapay</span>
+                  </div>
+                  <p className="text-sm text-white/80">NGN to Nigerian bank · 7.5% VAT</p>
+                  <p className="text-xs text-white/60 mt-0.5">Powered by Korapay · 30 min – 24 h</p>
+                </div>
+                <ArrowUpRight className="w-6 h-6 text-white/80 group-hover:text-white shrink-0 transition-colors" />
               </button>
 
               {/* USDT Crypto */}
@@ -1341,7 +1361,7 @@ export default function WalletPage() {
         <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !rounded-none !m-0 !p-0 !border-0 !overflow-y-auto bg-background">
           <div>
             {/* Header */}
-            <div className="bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] px-6 pt-14 pb-6 text-white sticky top-0 z-10">
+            <div className={`px-6 pt-14 pb-6 text-white sticky top-0 z-10 bg-gradient-to-br ${bwGateway === "korapay" ? "from-orange-500 to-orange-400" : "from-[#1a5c38] to-[#2d9d5c]"}`}>
               <button onClick={() => { setBwOpen(false); setWithdrawChoiceOpen(true); }} className="flex items-center gap-1 text-white/70 hover:text-white text-xs mb-3 transition-colors">
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
@@ -1351,8 +1371,13 @@ export default function WalletPage() {
                 </div>
                 <div>
                   <h2 className="font-black text-xl leading-tight">Bank Withdrawal</h2>
-                  <p className="text-white/70 text-xs mt-0.5">NGN to your Nigerian bank · 7.5% VAT · 30min–24h</p>
+                  <p className="text-white/70 text-xs mt-0.5">
+                    {bwGateway === "korapay" ? "via Korapay" : "via Squad by GTco"} · NGN · 7.5% VAT · 30min–24h
+                  </p>
                 </div>
+                <span className={`ml-auto text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-wide ${bwGateway === "korapay" ? "bg-white/20 text-white" : "bg-amber-400 text-amber-900"}`}>
+                  {bwGateway === "korapay" ? "Korapay" : "Squad"}
+                </span>
               </div>
             </div>
 

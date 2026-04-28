@@ -11,6 +11,7 @@ declare global {
     }) => { setup: () => void; open: () => void };
   }
 }
+type FundMethod = "squad" | "korapay" | "crypto";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -89,9 +90,10 @@ export default function WalletPage() {
 
   // ── Fund state ──────────────────────────────────────────────────────────
   const [fundOpen, setFundOpen]         = useState(false);
-  const [fundMethod, setFundMethod]     = useState<"squad" | "crypto">("squad");
+  const [fundMethod, setFundMethod]     = useState<FundMethod>("squad");
   const [fundAmount, setFundAmount]     = useState("");
   const [squadLoading, setSquadLoading] = useState(false);
+  const [koraLoading, setKoraLoading]   = useState(false);
   const [cryptoNetwork, setCryptoNetwork] = useState<"trc20" | "bep20">("trc20");
   const [cryptoAmount, setCryptoAmount]   = useState("");
   const [cryptoTxHash, setCryptoTxHash]   = useState("");
@@ -106,6 +108,7 @@ export default function WalletPage() {
   const [bwAccount, setBwAccount]       = useState("");
   const [bwAccountName, setBwAccountName] = useState("");
   const [bwAmount, setBwAmount]         = useState("");
+  const [bwGateway, setBwGateway]       = useState<"squad" | "korapay">("squad");
   const [bwSuccessOpen, setBwSuccessOpen] = useState(false);
   const [bwSuccessData, setBwSuccessData] = useState<{ amount: number; vatAmount: number; netAmountNgn: number; bankName: string; accountNumber: string; accountName: string } | null>(null);
   // Crypto withdrawal
@@ -197,7 +200,7 @@ export default function WalletPage() {
   const needsKyc = portalFeePaid && !walletKycDone;
 
   // ── Open fund section ────────────────────────────────────────────────────
-  const openFund = (method: "squad" | "crypto" = "squad") => {
+  const openFund = (method: FundMethod = "squad") => {
     if (!walletKycDone && needsKyc) {
       toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification to unlock funding.", variant: "destructive" });
       return;
@@ -208,6 +211,47 @@ export default function WalletPage() {
     setFundOpen(true);
     setTimeout(() => fundRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   };
+
+  // ── Korapay: initiate checkout → open in new tab → verify on return ───────
+  const openKorapayCheckout = useCallback(async () => {
+    const amount = parseFloat(fundAmount);
+    if (!amount || amount < 1) { toast({ title: "Enter a valid amount", description: "Minimum funding is $1.", variant: "destructive" }); return; }
+    setKoraLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/wallet/korapay/initiate", { amountUsd: amount });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message ?? "Could not start payment");
+      const { checkoutUrl, reference } = d as { checkoutUrl: string; reference: string };
+      // Open Korapay checkout in new tab
+      const win = window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+      if (!win) {
+        // Fallback: redirect current tab
+        window.location.href = checkoutUrl;
+        return;
+      }
+      toast({ title: "Korapay checkout opened", description: "Complete payment in the new tab, then return here to verify.", className: "border-tsia-green" });
+      // Poll for verification every 5s for up to 5 minutes
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        if (attempts > 60) { clearInterval(poll); setKoraLoading(false); return; }
+        try {
+          const vRes = await apiRequest("POST", "/api/wallet/korapay/verify", { reference });
+          const vd = await vRes.json();
+          if (vRes.ok) {
+            clearInterval(poll);
+            toast({ title: "Wallet funded! 🎉", description: vd.message, className: "border-tsia-green" });
+            refetchWallet(); refetchDeposits();
+            queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+            setFundOpen(false); setFundAmount(""); setKoraLoading(false);
+          }
+        } catch { /* keep polling */ }
+      }, 5000);
+    } catch (e: any) {
+      setKoraLoading(false);
+      toast({ title: "Payment error", description: e.message, variant: "destructive" });
+    }
+  }, [fundAmount, toast, refetchWallet, refetchDeposits]);
 
   // ── Helper: load Squad widget script once ─────────────────────────────────
   const loadSquadScript = useCallback((): Promise<void> => {
@@ -331,6 +375,7 @@ export default function WalletPage() {
         accountNumber: bwAccount,
         accountName: bwAccountName.trim(),
         otpCode: bwOtpCode.trim(),
+        gateway: bwGateway,
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
@@ -681,10 +726,10 @@ export default function WalletPage() {
           {/* ── Payment method cards ─────────────────────────────────────────── */}
           <motion.div initial="hidden" animate="visible" variants={fade} className="grid grid-cols-4 gap-2">
             {[
-              { icon: CreditCard, label: "Card",   desc: "Visa / MC",  color: "text-blue-600",   bg: "bg-blue-50 dark:bg-blue-900/20",    method: "squad" as const },
-              { icon: Building2,  label: "Bank",   desc: "Transfer",   color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20", method: "squad" as const },
-              { icon: Smartphone, label: "USSD",   desc: "All nets",   color: "text-tsia-green", bg: "bg-green-50 dark:bg-green-900/20",   method: "squad" as const },
-              { icon: Coins,      label: "Crypto", desc: "USDT",       color: "text-amber-600",  bg: "bg-amber-50 dark:bg-amber-900/20",   method: "crypto" as const },
+              { icon: CreditCard, label: "Card",     desc: "via Squad",    color: "text-blue-600",   bg: "bg-blue-50 dark:bg-blue-900/20",    method: "squad" as FundMethod },
+              { icon: Building2,  label: "Korapay",  desc: "Card/Bank",    color: "text-orange-500", bg: "bg-orange-50 dark:bg-orange-900/20", method: "korapay" as FundMethod },
+              { icon: Smartphone, label: "USSD",     desc: "All nets",     color: "text-tsia-green", bg: "bg-green-50 dark:bg-green-900/20",   method: "squad" as FundMethod },
+              { icon: Coins,      label: "Crypto",   desc: "USDT",         color: "text-amber-600",  bg: "bg-amber-50 dark:bg-amber-900/20",   method: "crypto" as FundMethod },
             ].map(({ icon: Icon, label, desc, color, bg, method }) => (
               <button key={label} onClick={() => openFund(method)}
                 className={`${bg} rounded-2xl p-3 text-center hover:opacity-80 transition-all active:scale-95 ${fundOpen && fundMethod === method ? "ring-2 ring-tsia-green ring-offset-1" : ""}`}
@@ -720,17 +765,25 @@ export default function WalletPage() {
                 </div>
 
                 <div className="p-5 space-y-5">
-                  {/* Method tabs */}
-                  <div className="flex bg-muted/40 rounded-2xl p-1">
+                  {/* Method tabs — 3 options */}
+                  <div className="grid grid-cols-3 bg-muted/40 rounded-2xl p-1 gap-0.5">
                     <button onClick={() => setFundMethod("squad")}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${fundMethod === "squad" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+                      className={`py-2.5 rounded-xl text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all ${fundMethod === "squad" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
                       data-testid="btn-fund-method-squad">
-                      <CreditCard className="w-4 h-4" /> Card / Bank / USSD
+                      <CreditCard className="w-4 h-4" />
+                      <span>Squad</span>
+                    </button>
+                    <button onClick={() => setFundMethod("korapay")}
+                      className={`py-2.5 rounded-xl text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all ${fundMethod === "korapay" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+                      data-testid="btn-fund-method-korapay">
+                      <Building2 className="w-4 h-4" />
+                      <span>Korapay</span>
                     </button>
                     <button onClick={() => setFundMethod("crypto")}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${fundMethod === "crypto" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+                      className={`py-2.5 rounded-xl text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all ${fundMethod === "crypto" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
                       data-testid="btn-fund-method-crypto">
-                      <Coins className="w-4 h-4" /> USDT Crypto
+                      <Coins className="w-4 h-4" />
+                      <span>Crypto</span>
                     </button>
                   </div>
 
@@ -769,6 +822,51 @@ export default function WalletPage() {
                         data-testid="btn-pay-squad">
                         {squadLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CreditCard className="w-4 h-4 mr-2" />}
                         {squadLoading ? "Opening secure checkout…" : `Pay ${parseFloat(fundAmount) > 0 ? `$${parseFloat(fundAmount).toFixed(2)}` : "Now"}`}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* ── KORAPAY TAB ── */}
+                  {fundMethod === "korapay" && (
+                    <div className="space-y-4">
+                      {/* Accepted channels */}
+                      <div className="flex gap-2 justify-center">
+                        {[{ icon: CreditCard, label: "Card" }, { icon: Building2, label: "Bank" }, { icon: Banknote, label: "Transfer" }].map(({ icon: Icon, label }) => (
+                          <div key={label} className="flex flex-col items-center gap-1 bg-muted/50 rounded-xl p-2.5 flex-1">
+                            <Icon className="w-5 h-5 text-orange-500" />
+                            <span className="text-[10px] text-muted-foreground font-semibold">{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <Label htmlFor="korapay-fund-amount">Amount (USD)</Label>
+                        <Input id="korapay-fund-amount" type="number" min={1} step={0.01} placeholder="e.g. 10.00"
+                          value={fundAmount} onChange={e => setFundAmount(e.target.value)}
+                          className="mt-1 text-lg font-bold" data-testid="input-korapay-fund-amount" />
+                        {parseFloat(fundAmount) > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            ≈ ₦{(parseFloat(fundAmount) * 1480).toLocaleString()} NGN &nbsp;·&nbsp; {formatAmount(parseFloat(fundAmount))} {rateLabel()}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-start gap-2 bg-orange-50 dark:bg-orange-900/20 rounded-xl p-3">
+                        <Shield className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-orange-800 dark:text-orange-200">
+                          Secured by <strong>Korapay</strong> — pay with card, bank transfer, or pay-with-bank. A checkout page will open in a new tab.
+                        </p>
+                      </div>
+                      {koraLoading && (
+                        <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-900/20 rounded-xl px-4 py-3 text-sm text-orange-700 dark:text-orange-300 font-medium">
+                          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                          <span>Waiting for payment confirmation… Complete payment in the new tab, then return here.</span>
+                        </div>
+                      )}
+                      <Button className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white font-bold"
+                        onClick={openKorapayCheckout}
+                        disabled={koraLoading || !fundAmount || parseFloat(fundAmount) < 1}
+                        data-testid="btn-pay-korapay">
+                        {koraLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                        {koraLoading ? "Awaiting payment…" : `Pay ${parseFloat(fundAmount) > 0 ? `$${parseFloat(fundAmount).toFixed(2)}` : "Now"} via Korapay`}
                       </Button>
                     </div>
                   )}
@@ -1339,6 +1437,26 @@ export default function WalletPage() {
                   </div>
                 );
               })()}
+
+              {/* Gateway picker */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payout Gateway</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { id: "squad",   label: "Squad by GTco", desc: "Instant NGN payout" },
+                    { id: "korapay", label: "Korapay",        desc: "Alternative gateway" },
+                  ] as const).map(g => (
+                    <button key={g.id} onClick={() => setBwGateway(g.id)}
+                      className={`rounded-xl border-2 p-2.5 text-left transition-all ${bwGateway === g.id
+                        ? (g.id === "squad" ? "border-[#1a5c38] bg-green-50 dark:bg-green-900/20 text-[#1a5c38]" : "border-orange-400 bg-orange-50 dark:bg-orange-900/20 text-orange-600")
+                        : "border-border text-muted-foreground"}`}
+                      data-testid={`btn-bw-gateway-${g.id}`}>
+                      <p className="text-xs font-bold">{g.label}</p>
+                      <p className="text-[10px] opacity-70 mt-0.5">{g.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* Info box */}
               <div className="flex items-start gap-2.5 rounded-2xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700/50 p-3">

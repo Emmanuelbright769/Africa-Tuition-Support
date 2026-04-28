@@ -1149,7 +1149,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: bankWdWindow.message });
       }
 
-      const { amount, bankName, bankCode, accountNumber, accountName, otpCode } = req.body;
+      const { amount, bankName, bankCode, accountNumber, accountName, otpCode, gateway } = req.body;
+      const payoutGateway: "squad" | "korapay" = gateway === "korapay" ? "korapay" : "squad";
       if (!otpCode || otpCode.trim().length !== 6) {
         return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this withdrawal" });
       }
@@ -1192,7 +1193,7 @@ export async function registerRoutes(
         amount: (-withdrawAmount).toFixed(2),
         fee: vatAmount.toFixed(2),
         paymentMethod: "bank_transfer",
-        description: `Bank withdrawal ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} — 7.5% VAT $${vatAmount.toFixed(2)} | Ref: ${txRef}`,
+        description: `Bank withdrawal ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} via ${payoutGateway === "korapay" ? "Korapay" : "Squad"} — 7.5% VAT $${vatAmount.toFixed(2)} | Ref: ${txRef}`,
       });
 
       // Create withdrawal request for admin dashboard
@@ -1247,7 +1248,7 @@ export async function registerRoutes(
           email: user.email,
           amount: withdrawAmount.toFixed(2),
           method: "bank",
-          bankName,
+          bankName: `${bankName} [via ${payoutGateway === "korapay" ? "Korapay" : "Squad"}]`,
           accountNumber,
           accountName,
           userId,
@@ -4625,6 +4626,203 @@ export async function registerRoutes(
     res.sendStatus(200);
   });
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // ── KORAPAY INTEGRATION ───────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════════════════════
+  const KORA_BASE = "https://api.korapay.com/merchant/api/v1";
+
+  // ── Korapay: initiate checkout (redirect-based) ───────────────────────────
+  app.post("/api/wallet/korapay/initiate", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { amountUsd } = req.body;
+    const amount = parseFloat(amountUsd);
+    if (!amount || amount < 1) return res.status(400).json({ message: "Minimum funding amount is $1" });
+    const secretKey = process.env.KORAPAY_SECRET_KEY;
+    if (!secretKey) return res.status(500).json({ message: "Korapay not configured. Please contact support." });
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const amountNgn = Math.round(amount * 1480); // 1 USD = ₦1,480
+      const reference = `TSIA-KORA-${userId}-${Date.now()}`;
+      const notifUrl = `${req.protocol}://${req.get("host")}/api/webhook/korapay`;
+      const koraRes = await fetch(`${KORA_BASE}/charges/initialize`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: amountNgn,
+          currency: "NGN",
+          reference,
+          notification_url: notifUrl,
+          customer: { name: `${user.firstName} ${user.lastName}`, email: user.email },
+          channels: ["card", "bank_transfer", "pay_with_bank"],
+          metadata: { userId, amountUsd: amount.toFixed(2), platform: "TSIA" },
+        }),
+        signal: AbortSignal.timeout(12000),
+      });
+      const koraData = await koraRes.json() as any;
+      if (!koraData.status) return res.status(502).json({ message: koraData.message ?? "Could not initiate Korapay payment" });
+      // Save pending deposit
+      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "korapay", status: "pending" });
+      sendAdminDepositEmail({ name: `${user.firstName} ${user.lastName}`, email: user.email, amount: amount.toFixed(2), txHash: reference, walletType: "korapay", userId })
+        .catch((err: any) => console.error("[EMAIL] Korapay deposit notify failed:", err?.message ?? err));
+      res.json({ checkoutUrl: koraData.data.checkout_url, reference, amountNgn });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Korapay: verify & credit after redirect back ──────────────────────────
+  app.post("/api/wallet/korapay/verify", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { reference } = req.body;
+    if (!reference) return res.status(400).json({ message: "reference is required" });
+    const secretKey = process.env.KORAPAY_SECRET_KEY;
+    if (!secretKey) return res.status(500).json({ message: "Korapay not configured" });
+    try {
+      const deposits = await storage.getWalletDepositsByUser(userId);
+      const existing = deposits.find((d: any) => d.txHash === reference);
+      if (existing && existing.status === "completed") return res.status(400).json({ message: "This payment has already been credited to your wallet." });
+      const verRes = await fetch(`${KORA_BASE}/charges/${encodeURIComponent(reference)}`, {
+        headers: { "Authorization": `Bearer ${secretKey}` },
+        signal: AbortSignal.timeout(12000),
+      });
+      const verData = await verRes.json() as any;
+      if (!verData.status || verData.data?.status !== "success") {
+        return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment or contact support." });
+      }
+      const gross = parseFloat(existing?.amountUsd ?? (verData.data.amount / 1480).toFixed(2));
+      await creditWalletWithSplit(userId, gross, "korapay", reference, existing);
+      res.json({ message: `$${(gross * 0.75).toFixed(2)} has been credited to your TSIA SwiftWallet`, amountUsd: (gross * 0.75).toFixed(2) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Korapay bank list (for payout / bank-transfer) ────────────────────────
+  app.get("/api/korapay/banks", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const secretKey = process.env.KORAPAY_SECRET_KEY;
+    if (!secretKey) return res.status(500).json({ message: "Korapay not configured" });
+    try {
+      const r = await fetch(`${KORA_BASE}/misc/banks?countryCode=NG`, {
+        headers: { "Authorization": `Bearer ${secretKey}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      const d = await r.json() as any;
+      if (!d.status) return res.status(502).json({ message: d.message ?? "Could not fetch bank list" });
+      res.json(d.data ?? []);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Korapay account resolve ───────────────────────────────────────────────
+  app.post("/api/korapay/resolve-bank", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { bank, account } = req.body;
+    if (!bank || !account) return res.status(400).json({ message: "bank and account are required" });
+    const secretKey = process.env.KORAPAY_SECRET_KEY;
+    if (!secretKey) return res.status(500).json({ message: "Korapay not configured" });
+    try {
+      const r = await fetch(`${KORA_BASE}/misc/banks/resolve`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ bank, account }),
+        signal: AbortSignal.timeout(12000),
+      });
+      const d = await r.json() as any;
+      if (!d.status) return res.status(400).json({ message: d.message ?? "Account lookup failed" });
+      res.json({ success: true, accountName: d.data?.account_name });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Korapay: payout (bank transfer) ──────────────────────────────────────
+  // NOTE: Korapay requires IP whitelisting for disbursements.
+  // If not whitelisted, requests are rejected with "not_authorized".
+  app.post("/api/korapay/payout", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { bankCode, accountNumber, accountName, amountNgn, narration, reference } = req.body;
+    if (!bankCode || !accountNumber || !accountName || !amountNgn) {
+      return res.status(400).json({ message: "bankCode, accountNumber, accountName, and amountNgn are required" });
+    }
+    const secretKey = process.env.KORAPAY_SECRET_KEY;
+    if (!secretKey) return res.status(500).json({ message: "Korapay not configured" });
+    try {
+      const r = await fetch(`${KORA_BASE}/transactions/disburse`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: reference ?? `TSIA-KP-${userId}-${Date.now()}`,
+          destination: {
+            type: "bank_account",
+            amount: parseInt(amountNgn),
+            currency: "NGN",
+            bank_account: { bank: bankCode, account: accountNumber },
+            customer: { name: accountName, email: "noreply@tsia.com" },
+          },
+          description: narration ?? "TSIA Wallet Transfer",
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const d = await r.json() as any;
+      if (!d.status) {
+        const isIpBlock = d.error === "not_authorized" || (d.message ?? "").toLowerCase().includes("whitelist");
+        if (isIpBlock) {
+          return res.status(503).json({ message: "Korapay payouts require IP whitelisting. Please contact TSIA support or use Squad to complete this transfer.", code: "IP_WHITELIST_REQUIRED" });
+        }
+        return res.status(502).json({ message: d.message ?? "Korapay payout failed" });
+      }
+      res.json({ success: true, data: d.data });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Korapay webhook ───────────────────────────────────────────────────────
+  app.post("/api/webhook/korapay", async (req, res) => {
+    try {
+      const { event, data } = req.body;
+      if (event === "charge.success" && data?.status === "success") {
+        const ref = data.reference as string;
+        if (!ref) { res.sendStatus(200); return; }
+        const { Pool } = await import("pg");
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+        const row = await pool.query("SELECT * FROM wallet_deposits WHERE tx_hash=$1 LIMIT 1", [ref]);
+        await pool.end();
+        const dep = row.rows[0];
+        if (dep && dep.status !== "completed") {
+          const gross = parseFloat(dep.amount_usd);
+          await creditWalletWithSplit(dep.user_id, gross, "korapay", ref, { id: dep.id, amountUsd: dep.amount_usd, status: dep.status });
+        }
+      }
+    } catch { /* webhook errors must not crash the server */ }
+    res.sendStatus(200);
+  });
+
+  // ── Shared helper: apply 75/20/5 split and credit wallet ─────────────────
+  async function creditWalletWithSplit(userId: number, gross: number, method: string, ref: string, existingDeposit?: any) {
+    const reserveCut   = parseFloat((gross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
+    const affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
+    const userCredit   = parseFloat((gross - reserveCut - affiliateCut).toFixed(2));
+    const w = await storage.getOrCreateWallet(userId);
+    const newBal = (parseFloat(w.balance) + userCredit).toFixed(2);
+    await storage.updateWalletBalance(userId, newBal);
+    await storage.addToReserveFund(reserveCut.toFixed(6));
+    const affCount = await storage.getAffiliateCount();
+    const perAff = affCount > 0 ? affiliateCut / affCount : 0;
+    await storage.recordAffiliateTradeShare(null, affiliateCut.toFixed(6), affCount, perAff.toFixed(6), `personal_wallet_${method}`);
+    if (!w.activated && parseFloat(newBal) >= 5) {
+      try {
+        await storage.activateWallet(userId);
+        await creditReferrerCommissionOnce(userId, gross, "personal wallet activation");
+      } catch { /* non-critical */ }
+    }
+    await storage.createTransaction({ userId, type: "deposit", amount: userCredit.toFixed(2), fee: (reserveCut + affiliateCut).toFixed(2), paymentMethod: method, description: `Wallet funded via ${method} (${ref}) — $${userCredit.toFixed(2)} (75%) credited, $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool` });
+    if (existingDeposit?.id) await storage.updateWalletDeposit(existingDeposit.id, { status: "completed" });
+    const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${gross.toFixed(2)} received — $${userCredit.toFixed(2)} (75%) credited to your TSIA SwiftWallet`, data: { ref }, isRead: false });
+    pushToUser(userId, "notification", notif);
+    const u = await storage.getUser(userId);
+    if (u) sendAdminDepositConfirmedEmail({ name: `${u.firstName} ${u.lastName}`, email: u.email, gross: gross.toFixed(2), credited: userCredit.toFixed(2), reserveCut: reserveCut.toFixed(2), affiliateCut: affiliateCut.toFixed(2), newBalance: newBal, walletType: method, txHash: ref, userId })
+      .catch((err: any) => console.error(`[EMAIL] ${method} deposit email failed:`, err?.message ?? err));
+  }
+
   // ── Paystack: initialize payment (legacy – kept for backward compat) ───────
   app.post("/api/wallet/paystack/initialize", async (req, res) => {
     const userId = (req.session as any)?.userId;
@@ -5118,7 +5316,7 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { bankCode, bankName, accountNumber, accountName, amount, narration } = req.body;
+      const { bankCode, bankName, accountNumber, accountName, amount, narration, gateway = "squad" } = req.body;
       if (!bankCode || !accountNumber || !accountName || !amount) {
         return res.status(400).json({ message: "bankCode, accountNumber, accountName, and amount are required" });
       }
@@ -5134,43 +5332,74 @@ export async function registerRoutes(
       const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
       const txRef = `TSIA-FT-${userId}-${Date.now()}`;
 
-      // Call Squad payout API
-      const secretKey = process.env.SQUAD_SECRET_KEY;
-      let squadSuccess = false, squadMsg = "";
-      try {
-        const squadRes = await fetch("https://api.squadco.com/payout/initiate", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transaction_reference: txRef,
-            amount: netAmountNgn * 100,
-            bank_code: bankCode,
-            account_number: accountNumber,
-            account_name: accountName,
-            currency_id: "NGN",
-            narration: narration || `TSIA Bank Transfer | Ref: ${txRef}`,
-          }),
-          signal: AbortSignal.timeout(15000),
-        });
-        const squadData = await squadRes.json() as any;
-        squadSuccess = !!squadData.success;
-        if (!squadSuccess) squadMsg = squadData.message ?? "Transfer failed";
-      } catch (e: any) { squadMsg = e.message ?? "Network error"; }
+      let transferSuccess = false, transferMsg = "";
 
-      if (!squadSuccess) {
-        return res.status(502).json({ message: `Bank transfer failed: ${squadMsg}. Please try again or contact support.` });
+      if (gateway === "korapay") {
+        // ── Korapay payout ─────────────────────────────────────────────
+        const koraKey = process.env.KORAPAY_SECRET_KEY;
+        if (!koraKey) return res.status(500).json({ message: "Korapay not configured" });
+        try {
+          const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reference: txRef,
+              destination: {
+                type: "bank_account",
+                amount: netAmountNgn,
+                currency: "NGN",
+                bank_account: { bank: bankCode, account: accountNumber },
+                customer: { name: accountName, email: "noreply@tsia.com" },
+              },
+              description: narration || `TSIA Bank Transfer | Ref: ${txRef}`,
+            }),
+            signal: AbortSignal.timeout(20000),
+          });
+          const kData = await kRes.json() as any;
+          transferSuccess = !!kData.status;
+          if (!transferSuccess) {
+            const isIpBlock = kData.error === "not_authorized" || (kData.message ?? "").toLowerCase().includes("whitelist");
+            transferMsg = isIpBlock ? "Korapay requires IP whitelisting for payouts. Please use Squad gateway instead." : (kData.message ?? "Korapay transfer failed");
+          }
+        } catch (e: any) { transferMsg = e.message ?? "Network error"; }
+      } else {
+        // ── Squad payout (default) ─────────────────────────────────────
+        const secretKey = process.env.SQUAD_SECRET_KEY;
+        try {
+          const squadRes = await fetch("https://api.squadco.com/payout/initiate", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transaction_reference: txRef,
+              amount: netAmountNgn * 100,
+              bank_code: bankCode,
+              account_number: accountNumber,
+              account_name: accountName,
+              currency_id: "NGN",
+              narration: narration || `TSIA Bank Transfer | Ref: ${txRef}`,
+            }),
+            signal: AbortSignal.timeout(15000),
+          });
+          const squadData = await squadRes.json() as any;
+          transferSuccess = !!squadData.success;
+          if (!transferSuccess) transferMsg = squadData.message ?? "Transfer failed";
+        } catch (e: any) { transferMsg = e.message ?? "Network error"; }
+      }
+
+      if (!transferSuccess) {
+        return res.status(502).json({ message: `Bank transfer failed: ${transferMsg}. Please try again or contact support.` });
       }
 
       // Deduct + record
       await storage.updateWalletBalance(userId, (balance - transferAmount).toFixed(2));
       const billRef = `${accountName} | ${accountNumber} | ${bankName || bankCode} | Ref: ${txRef}`;
       await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: billRef });
-      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer", description: `Bank transfer ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) — 7.5% VAT: $${vatAmount.toFixed(2)} | Ref: ${txRef}` });
+      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: `bank_transfer_${gateway}`, description: `Bank transfer ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) via ${gateway.toUpperCase()} — 7.5% VAT: $${vatAmount.toFixed(2)} | Ref: ${txRef}` });
       const msg = `₦${netAmountNgn.toLocaleString()} sent to ${accountName} (${accountNumber}). Processing within 24h. Ref: ${txRef}`;
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Initiated ✓", message: msg, data: { ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg });
+      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway });
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 

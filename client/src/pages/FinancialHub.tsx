@@ -168,6 +168,7 @@ export default function FinancialHub() {
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [resolveWarning, setResolveWarning] = useState(false);
+  const [bankGateway, setBankGateway]   = useState<"squad" | "korapay">("squad");
 
   // ── Send-to-TSIA state ────────────────────────────────────────────────────
   const [tsiaEmail, setTsiaEmail]         = useState("");
@@ -272,6 +273,7 @@ export default function FinancialHub() {
         accountName: resolvedName || acctNumber,
         amount: parseFloat(amount),
         narration: note || undefined,
+        gateway: bankGateway,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
@@ -910,6 +912,24 @@ export default function FinancialHub() {
           className="w-full text-center text-sm border border-border rounded-2xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
           data-testid="input-narration" />
 
+        {/* Gateway picker */}
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payout Gateway</p>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { id: "squad",   label: "Squad by GTco",  desc: "Instant bank payout", color: "border-tsia-green bg-tsia-green/5 text-tsia-green" },
+              { id: "korapay", label: "Korapay",         desc: "Alternative gateway",  color: "border-orange-400 bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400" },
+            ] as const).map(g => (
+              <button key={g.id} onClick={() => setBankGateway(g.id)}
+                className={`rounded-xl border-2 p-2.5 text-left transition-all ${bankGateway === g.id ? g.color : "border-border text-muted-foreground"}`}
+                data-testid={`btn-gateway-${g.id}`}>
+                <p className="text-xs font-bold">{g.label}</p>
+                <p className="text-[10px] opacity-70 mt-0.5">{g.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <Numpad value={amount} onChange={setAmount} />
 
         <div className="flex gap-3">
@@ -918,7 +938,7 @@ export default function FinancialHub() {
             disabled={sendBankMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
             onClick={() => sendBankMutation.mutate()} data-testid="btn-send-bank">
             {sendBankMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
-            Send ${fmt(amount)}
+            Send ${fmt(amount)} via {bankGateway === "korapay" ? "Korapay" : "Squad"}
           </Button>
         </div>
       </motion.div>

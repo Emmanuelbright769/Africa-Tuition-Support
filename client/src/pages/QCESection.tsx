@@ -156,7 +156,10 @@ export default function QCESection() {
       <Card className="shadow-sm border-0 overflow-hidden" data-testid="card-qce-savings-home">
         <CardContent className="pt-5 pb-5">
           <div className="flex items-start gap-3">
-            <img src="/swift-vault-logo.jpeg" alt="Swift Vault" className="h-12 w-auto object-contain shrink-0" />
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-600 flex flex-col items-center justify-center shadow-sm shrink-0">
+              <span className="text-white font-black text-sm tracking-tighter leading-none">SV</span>
+              <span className="text-white/60 text-[7px] font-bold tracking-widest uppercase mt-0.5">Vault</span>
+            </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-bold">QCE SwiftVault</p>
@@ -273,7 +276,10 @@ export default function QCESection() {
             {/* Header row */}
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-3">
-                <img src="/swift-vault-logo.jpeg" alt="Swift Vault" className="h-12 w-auto object-contain" />
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-600 flex flex-col items-center justify-center shadow-sm shrink-0">
+                  <span className="text-white font-black text-base tracking-tighter leading-none">SV</span>
+                  <span className="text-white/60 text-[7px] font-bold tracking-widest uppercase mt-0.5">Vault</span>
+                </div>
                 <div>
                   <h3 className="text-lg font-bold">QCE SwiftVault</h3>
                   <p className="text-xs text-muted-foreground">Quick Credit Eligibility · 90-day programme</p>

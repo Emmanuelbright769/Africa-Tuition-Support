@@ -138,7 +138,10 @@ export default function TourAfrica() {
             <button onClick={() => setMenuOpen(o => !o)} className="p-2 rounded-xl hover:bg-muted transition-colors" data-testid="button-tour-menu" aria-label="Open Glide Africa menu">
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
-            <img src="/glide-africa-logo.jpeg" alt="Glide Africa" className="h-9 w-auto object-contain hidden sm:block" />
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-green-700 flex items-center justify-center text-white font-black text-sm shrink-0">GA</span>
+              <span className="font-black text-[#1a2d6b] dark:text-green-400 tracking-tight text-sm uppercase">Glide Africa</span>
+            </div>
             <span className="text-xl font-bold tracking-tight sm:hidden text-primary">Glide Africa</span>
             <span className="text-sm text-muted-foreground hidden sm:flex items-center gap-1">
               <ChevronRight className="w-3.5 h-3.5" />
@@ -175,9 +178,11 @@ export default function TourAfrica() {
               className="fixed top-0 left-0 h-full w-72 bg-card border-r shadow-2xl z-40 flex flex-col">
               <div className="p-5 border-b flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <img src="/glide-africa-logo.jpeg" alt="Glide Africa" className="h-12 w-auto object-contain" />
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-green-700 to-green-900 flex items-center justify-center shadow-md shrink-0">
+                    <span className="text-white font-black text-base tracking-tighter">GA</span>
+                  </div>
                   <div>
-                    <p className="font-bold text-sm text-[#1a2d6b]">GLIDE AFRICA</p>
+                    <p className="font-black text-sm text-[#1a2d6b] dark:text-green-400 uppercase tracking-wide">Glide Africa</p>
                     <p className="text-xs text-muted-foreground">Your journey, Their education</p>
                   </div>
                 </div>
@@ -222,9 +227,12 @@ export default function TourAfrica() {
                     <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -mr-20 -mt-20 blur-3xl pointer-events-none"></div>
                     <div className="relative z-10">
                       <div className="flex items-center gap-5 mb-4">
-                        <img src="/glide-africa-logo.jpeg" alt="Glide Africa" className="h-20 w-auto object-contain rounded-xl shadow-lg bg-white/10 p-1" />
+                        <div className="w-20 h-20 rounded-2xl bg-white/15 border border-white/25 backdrop-blur-sm flex flex-col items-center justify-center shadow-lg shrink-0">
+                          <span className="text-white font-black text-2xl tracking-tighter leading-none">GA</span>
+                          <span className="text-white/60 text-[9px] font-bold tracking-widest uppercase mt-0.5">Travel</span>
+                        </div>
                         <div>
-                          <h1 className="text-3xl font-bold tracking-tight">GLIDE AFRICA</h1>
+                          <h1 className="text-3xl font-black tracking-tight uppercase">Glide Africa</h1>
                           <p className="text-green-200 text-sm italic">Your journey, Their education</p>
                           <p className="text-green-100/70 text-xs mt-1">Hotels · Car Hire · Flights · Dispatch · E-Taxi</p>
                         </div>

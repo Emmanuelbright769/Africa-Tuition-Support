@@ -177,15 +177,12 @@ export default function TourAfrica() {
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               className="fixed top-0 left-0 h-full w-72 bg-card border-r shadow-2xl z-40 flex flex-col">
               <div className="p-5 border-b flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-tsia-green flex flex-col items-center justify-center shadow-md shrink-0">
-                    <span className="text-white font-black text-base tracking-tighter leading-none">GA</span>
-                    <span className="text-tsia-gold text-[7px] font-bold tracking-widest uppercase mt-0.5">Africa</span>
-                  </div>
-                  <div>
-                    <p className="font-black text-sm text-tsia-green uppercase tracking-wide">Glide Africa</p>
-                    <p className="text-xs text-muted-foreground">Your journey, Their education</p>
-                  </div>
+                <div className="flex items-center">
+                  <img
+                    src="/glide-africa-logo.png"
+                    alt="Glide Africa"
+                    className="h-10 w-auto object-contain dark:brightness-0 dark:invert"
+                  />
                 </div>
                 <button onClick={() => setMenuOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X className="w-4 h-4" /></button>
               </div>
@@ -227,16 +224,13 @@ export default function TourAfrica() {
                   <div className="bg-gradient-to-br from-green-800 via-green-700 to-emerald-600 text-white p-8">
                     <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -mr-20 -mt-20 blur-3xl pointer-events-none"></div>
                     <div className="relative z-10">
-                      <div className="flex items-center gap-5 mb-4">
-                        <div className="w-20 h-20 rounded-2xl bg-white/15 border border-tsia-gold/40 backdrop-blur-sm flex flex-col items-center justify-center shadow-lg shrink-0">
-                          <span className="text-white font-black text-2xl tracking-tighter leading-none">GA</span>
-                          <span className="text-tsia-gold text-[9px] font-bold tracking-widest uppercase mt-0.5">Travel</span>
-                        </div>
-                        <div>
-                          <h1 className="text-3xl font-black tracking-tight uppercase">Glide Africa</h1>
-                          <p className="text-green-200 text-sm italic">Your journey, Their education</p>
-                          <p className="text-green-100/70 text-xs mt-1">Hotels · Car Hire · Flights · Dispatch · E-Taxi</p>
-                        </div>
+                      <div className="mb-4">
+                        <img
+                          src="/glide-africa-logo.png"
+                          alt="Glide Africa"
+                          className="h-20 w-auto object-contain brightness-0 invert mb-3"
+                        />
+                        <p className="text-green-100/70 text-xs">Hotels · Car Hire · Flights · Dispatch · E-Taxi</p>
                       </div>
                     </div>
                   </div>

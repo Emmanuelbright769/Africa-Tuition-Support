@@ -5011,6 +5011,8 @@ export async function registerRoutes(
     // Serve from memory cache (1 hour TTL)
     if (cachedBankList && Date.now() - bankListCachedAt < 3600_000) return res.json(cachedBankList);
     const secretKey = process.env.SQUAD_SECRET_KEY;
+
+    // Primary: Squad
     try {
       const r = await fetch("https://api.squadco.com/bank/list", {
         headers: { "Authorization": `Bearer ${secretKey}` },
@@ -5027,7 +5029,29 @@ export async function registerRoutes(
         return res.json(banks);
       }
     } catch (_) {}
-    // Fallback
+
+    // Fallback: Korapay bank list (comprehensive, NIP-coded)
+    try {
+      const koraKey = process.env.KORAPAY_SECRET_KEY;
+      if (koraKey) {
+        const rk = await fetch(`${KORA_BASE}/misc/banks?countryCode=NG`, {
+          headers: { "Authorization": `Bearer ${koraKey}` },
+          signal: AbortSignal.timeout(8000),
+        });
+        const dk = await rk.json() as any;
+        if (dk.status && Array.isArray(dk.data) && dk.data.length > 0) {
+          const banks = dk.data
+            .map((b: any) => ({ code: String(b.nibss_bank_code || b.bank_code || b.code || ""), name: String(b.name || "") }))
+            .filter((b: any) => b.code && b.name)
+            .sort((a: any, z: any) => a.name.localeCompare(z.name));
+          cachedBankList = banks;
+          bankListCachedAt = Date.now();
+          return res.json(banks);
+        }
+      }
+    } catch (_) {}
+
+    // Final hardcoded fallback
     res.json(FALLBACK_BANKS);
   });
 
@@ -5085,6 +5109,30 @@ export async function registerRoutes(
           if (!accountName) lastMsg = data2.message || lastMsg;
         } catch (e2: any) {
           console.warn("[SQUAD] resolve-bank GET fallback failed:", e2.message);
+        }
+      }
+
+      // Fallback: Korapay /misc/banks/resolve (uses same NIP bank codes)
+      if (!accountName) {
+        try {
+          const koraKey = process.env.KORAPAY_SECRET_KEY;
+          if (koraKey) {
+            const rk = await fetch(`${KORA_BASE}/misc/banks/resolve`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ bank: bankCode, account: accountNumber }),
+              signal: AbortSignal.timeout(12000),
+            });
+            const dk = await rk.json() as any;
+            console.log(`[KORAPAY] resolve-bank → HTTP ${rk.status} | status=${dk.status} | name="${dk.data?.account_name ?? ""}" | msg="${dk.message}"`);
+            if (dk.status && dk.data?.account_name) {
+              accountName = dk.data.account_name;
+            } else {
+              lastMsg = dk.message || lastMsg;
+            }
+          }
+        } catch (ek: any) {
+          console.warn("[KORAPAY] resolve-bank fallback failed:", ek.message);
         }
       }
 

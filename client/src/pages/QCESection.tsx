@@ -155,22 +155,24 @@ export default function QCESection() {
       {/* QCE SwiftVault card */}
       <Card className="shadow-sm border-0 overflow-hidden" data-testid="card-qce-savings-home">
         <CardContent className="pt-5 pb-5">
-          <div className="flex items-start gap-3">
-            <div className="w-11 h-11 rounded-xl bg-tsia-gold flex flex-col items-center justify-center shadow-sm shrink-0">
-              <span className="text-white font-black text-sm tracking-tighter leading-none">SV</span>
-              <span className="text-white/70 text-[7px] font-bold tracking-widest uppercase mt-0.5">Vault</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="font-bold">QCE SwiftVault</p>
-                {isActivated
-                  ? <Badge className="bg-tsia-green/10 text-tsia-green border-0 text-[10px]">Active · {daysActive}/{QCE.PERIOD_DAYS} days</Badge>
-                  : <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">Not activated</Badge>}
+          <div className="w-full">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <div>
+                <div className="flex items-baseline gap-1 leading-none">
+                  <span className="text-xl font-black text-tsia-gold tracking-tight uppercase">SWIFT</span>
+                  <span className="text-xl font-black text-tsia-gold tracking-tight uppercase">VAULT</span>
+                </div>
+                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-[0.18em] mt-0.5">
+                  Fast. Secure. Empowering.
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {isActivated ? `Balance: $${qceBalance.toFixed(2)} · Eligibility: ${eligibilityPct.toFixed(1)}%` : "Activate with min $5 to start building credit eligibility"}
-              </p>
+              {isActivated
+                ? <Badge className="bg-tsia-green/10 text-tsia-green border-0 text-[10px] shrink-0">Active · {daysActive}/{QCE.PERIOD_DAYS} days</Badge>
+                : <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] shrink-0">Not activated</Badge>}
             </div>
+            <p className="text-xs text-muted-foreground">
+              {isActivated ? `Balance: $${qceBalance.toFixed(2)} · Eligibility: ${eligibilityPct.toFixed(1)}%` : "Activate with min $5 to start building credit eligibility"}
+            </p>
           </div>
           <div className="flex gap-2 mt-4">
             <Button size="sm" className="bg-tsia-green hover:bg-tsia-green/90 text-white flex-1" onClick={() => setContributeOpen(true)} data-testid="btn-home-qce-contribute">
@@ -275,15 +277,14 @@ export default function QCESection() {
 
             {/* Header row */}
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-tsia-gold flex flex-col items-center justify-center shadow-sm shrink-0">
-                  <span className="text-white font-black text-base tracking-tighter leading-none">SV</span>
-                  <span className="text-white/70 text-[7px] font-bold tracking-widest uppercase mt-0.5">Vault</span>
+              <div>
+                <div className="flex items-baseline gap-1.5 leading-none">
+                  <span className="text-2xl font-black text-tsia-gold tracking-tight uppercase">SWIFT</span>
+                  <span className="text-2xl font-black text-tsia-gold tracking-tight uppercase">VAULT</span>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold">QCE SwiftVault</h3>
-                  <p className="text-xs text-muted-foreground">Quick Credit Eligibility · 90-day programme</p>
-                </div>
+                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-[0.18em] mt-0.5">
+                  Fast. Secure. Empowering.
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 {isActivated && (

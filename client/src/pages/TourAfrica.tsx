@@ -177,12 +177,9 @@ export default function TourAfrica() {
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               className="fixed top-0 left-0 h-full w-72 bg-card border-r shadow-2xl z-40 flex flex-col">
               <div className="p-5 border-b flex items-center justify-between">
-                <div className="flex items-center">
-                  <img
-                    src="/glide-africa-logo.png"
-                    alt="Glide Africa"
-                    className="h-10 w-auto object-contain dark:brightness-0 dark:invert"
-                  />
+                <div>
+                  <p className="font-black text-sm uppercase tracking-widest text-tsia-green leading-none">GLIDE AFRICA</p>
+                  <p className="text-[10px] text-muted-foreground italic mt-0.5">Your journey, Their education</p>
                 </div>
                 <button onClick={() => setMenuOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X className="w-4 h-4" /></button>
               </div>
@@ -224,13 +221,12 @@ export default function TourAfrica() {
                   <div className="bg-gradient-to-br from-green-800 via-green-700 to-emerald-600 text-white p-8">
                     <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -mr-20 -mt-20 blur-3xl pointer-events-none"></div>
                     <div className="relative z-10">
-                      <div className="mb-4">
-                        <img
-                          src="/glide-africa-logo.png"
-                          alt="Glide Africa"
-                          className="h-20 w-auto object-contain brightness-0 invert mb-3"
-                        />
-                        <p className="text-green-100/70 text-xs">Hotels · Car Hire · Flights · Dispatch · E-Taxi</p>
+                      <div className="mb-4 w-full">
+                        <h1 className="text-4xl font-black tracking-tight uppercase text-white w-full leading-none">
+                          GLIDE AFRICA
+                        </h1>
+                        <p className="text-green-200 text-base italic mt-1.5">Your journey, Their education</p>
+                        <p className="text-green-100/60 text-xs mt-2 tracking-wide">Hotels · Car Hire · Flights · Dispatch · E-Taxi</p>
                       </div>
                     </div>
                   </div>

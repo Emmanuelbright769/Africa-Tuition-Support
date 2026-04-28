@@ -424,12 +424,14 @@ export default function FinancialHub() {
   if (view === "home") return (
     <div className="space-y-6">
       {/* Swift Hub branded header */}
-      <div className="flex items-center">
-        <img
-          src="/tsia-swift-hub-logo.png"
-          alt="TSIA Swift Hub"
-          className="h-16 w-auto object-contain dark:brightness-0 dark:invert"
-        />
+      <div className="w-full">
+        <div className="flex items-baseline gap-1.5 leading-none">
+          <span className="text-2xl font-medium text-foreground tracking-tight">TSIA</span>
+          <span className="text-2xl font-black text-foreground tracking-tight">SWIFT HUB</span>
+        </div>
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.18em] mt-1 leading-relaxed">
+          Fintech for Educational Empowerment in Africa
+        </p>
       </div>
 
       {/* Greeting — only on home */}

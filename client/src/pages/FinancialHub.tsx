@@ -428,7 +428,7 @@ export default function FinancialHub() {
         <img
           src="/tsia-swift-hub-logo.png"
           alt="TSIA Swift Hub"
-          className="h-10 w-auto object-contain dark:brightness-0 dark:invert"
+          className="h-16 w-auto object-contain dark:brightness-0 dark:invert"
         />
       </div>
 

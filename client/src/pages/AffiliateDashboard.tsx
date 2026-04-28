@@ -1292,6 +1292,17 @@ export default function AffiliateDashboard() {
                                 <p className="text-xs text-muted-foreground">Your 120-day trading cycle has ended. All funds are now available. Top up to start a new cycle.</p>
                               </div>
                             </div>
+                          ) : !selectedBroker ? (
+                            // No broker selected — block the bot
+                            <div className="flex-1 flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                                <AlertCircle className="w-4 h-4 text-red-500" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-red-600 dark:text-red-400">Broker required</p>
+                                <p className="text-xs text-muted-foreground">Select a broker above before activating the AI trading bot.</p>
+                              </div>
+                            </div>
                           ) : tradeBalance < TRADE_MARKET.MIN_DEPOSIT ? (
                             // No investment plan — block the bot entirely
                             <div className="flex-1 flex items-center gap-3">
@@ -1622,10 +1633,21 @@ export default function AffiliateDashboard() {
                 {/* Broker Selection — dropdown */}
                 <motion.div variants={itemVariants}>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-semibold text-muted-foreground">Select your broker</p>
-                    {selectedBroker && (
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-muted-foreground">Your broker</p>
+                      {botActive && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-700">
+                          <Lock className="w-2.5 h-2.5" /> Locked during session
+                        </span>
+                      )}
+                    </div>
+                    {selectedBroker ? (
                       <Badge className="bg-tsia-green/10 text-tsia-green border-tsia-green/30">
                         <CheckCircle2 className="w-3 h-3 mr-1" /> {selectedBroker.name}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-red-500 border-red-300 bg-red-50 dark:bg-red-900/20">
+                        No broker selected
                       </Badge>
                     )}
                   </div>
@@ -1633,13 +1655,27 @@ export default function AffiliateDashboard() {
                     data-testid="select-broker"
                     value={selectedBrokerId}
                     onChange={e => handleBrokerChange(e.target.value)}
-                    className="w-full h-11 rounded-xl border border-border bg-card px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-tsia-green/40 appearance-none cursor-pointer"
+                    disabled={botActive}
+                    title={botActive ? "You cannot change your broker during an active trade session" : undefined}
+                    className={`w-full h-11 rounded-xl border border-border bg-card px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-tsia-green/40 appearance-none ${botActive ? "opacity-50 cursor-not-allowed bg-muted" : "cursor-pointer"}`}
                   >
                     <option value="" disabled>— Choose a broker —</option>
                     {TRADE_BROKERS.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
+                      <option key={b.id} value={b.id}>{b.name} — {b.specialty}</option>
                     ))}
                   </select>
+                  {!selectedBroker && !botActive && (
+                    <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 shrink-0" />
+                      Select a broker before you can activate the AI trading bot.
+                    </p>
+                  )}
+                  {botActive && selectedBroker && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
+                      <Lock className="w-3 h-3 shrink-0" />
+                      Broker locked to <strong>{selectedBroker.name}</strong> for the duration of this session.
+                    </p>
+                  )}
                 </motion.div>
 
                 {/* ── Trade Transaction History — after broker selection, collapsible ── */}

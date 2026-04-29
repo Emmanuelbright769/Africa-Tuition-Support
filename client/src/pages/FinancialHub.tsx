@@ -12,6 +12,28 @@ import {
   Copy, Search, ChevronDown, AlertCircle, Users, Building2
 } from "lucide-react";
 
+// ─── Local-currency payout map (fixed platform rates) ──────────────────────────
+const PAYOUT_CURRENCY: Record<string, { symbol: string; code: string; rate: number }> = {
+  ng: { symbol: "₦", code: "NGN", rate: 1_280 },
+  gh: { symbol: "₵", code: "GHS", rate: 15   },
+  ke: { symbol: "Ksh", code: "KES", rate: 130  },
+  za: { symbol: "R",  code: "ZAR", rate: 18   },
+  ug: { symbol: "USh",code: "UGX", rate: 3_720 },
+  tz: { symbol: "TSh",code: "TZS", rate: 2_600 },
+  rw: { symbol: "Fr", code: "RWF", rate: 1_350 },
+};
+
+function LocalEquiv({ usd, country }: { usd: number; country?: string }) {
+  const info = PAYOUT_CURRENCY[(country ?? "").toLowerCase()];
+  if (!info || usd <= 0) return null;
+  const local = Math.round(usd * info.rate);
+  return (
+    <p className="text-xs font-semibold text-tsia-green/80 mt-0.5 animate-in fade-in">
+      ≈ {info.symbol}{local.toLocaleString()} {info.code}
+    </p>
+  );
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
 type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "receipt";
@@ -904,6 +926,7 @@ export default function FinancialHub() {
         <div className="text-center py-2">
           <div className="text-5xl font-black">${fmt(amount)}</div>
           <p className="text-xs text-muted-foreground mt-1">Available: ${balance.toFixed(2)}</p>
+          <LocalEquiv usd={parseFloat(amount) || 0} country={user?.country} />
           {parseFloat(amount) > balance && <p className="text-xs text-red-500 font-semibold mt-1">Exceeds your balance</p>}
         </div>
 
@@ -966,6 +989,7 @@ export default function FinancialHub() {
         <div className="text-center py-2">
           <div className="text-5xl font-black">${fmt(amount)}</div>
           <p className="text-xs text-muted-foreground mt-1">Available: ${balance.toFixed(2)}</p>
+          <LocalEquiv usd={parseFloat(amount) || 0} country={user?.country} />
           {parseFloat(amount) > balance && <p className="text-xs text-red-500 font-semibold mt-1">Exceeds your balance</p>}
         </div>
 

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/ui/Logo";
 import {
-  CheckCircle2, Clock, Copy, Check, X, Printer, RefreshCw
+  CheckCircle2, Clock, Copy, Check, X, Printer, RefreshCw, Share2, Download
 } from "lucide-react";
+import { toPng } from "html-to-image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ReceiptRow = {
@@ -108,6 +109,8 @@ export function TransactionReceipt({
   referenceRow,
 }: ReceiptProps) {
   const [copied, setCopied] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const receiptRef = useRef<HTMLDivElement>(null);
 
   const statusConfig = {
     success:    { label: "Successful",  cls: "bg-tsia-green/10 text-tsia-green border-tsia-green/30",  icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
@@ -122,6 +125,39 @@ export function TransactionReceipt({
     });
   };
 
+  const handleShare = async () => {
+    if (!receiptRef.current || sharing) return;
+    setSharing(true);
+    try {
+      const dataUrl = await toPng(receiptRef.current, {
+        quality: 1,
+        pixelRatio: 2,
+        backgroundColor: "white",
+      });
+      const filename = `TSIA-Receipt-${Date.now()}.png`;
+
+      if (navigator.canShare && navigator.share) {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: "image/png" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: "TSIA Transaction Receipt" });
+          setSharing(false);
+          return;
+        }
+      }
+      // Fallback: download as PNG
+      const link = document.createElement("a");
+      link.download = filename;
+      link.href = dataUrl;
+      link.click();
+    } catch {
+      // ignore
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const now = timestamp ?? new Date().toLocaleString("en-GB", {
     day: "2-digit", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
@@ -134,82 +170,85 @@ export function TransactionReceipt({
       <DialogContent className="max-w-sm p-0 overflow-hidden rounded-3xl border-0 shadow-2xl bg-transparent">
         <div className="bg-background dark:bg-slate-900 rounded-3xl overflow-hidden flex flex-col max-h-[92vh]">
 
-          {/* ── Header green banner ── */}
-          <div className="bg-gradient-to-br from-tsia-green via-emerald-700 to-[#0f3d25] px-5 pt-7 pb-8 relative overflow-hidden">
-            {/* Background rings */}
-            <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5" />
-            <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-white/5" />
-            <div className="absolute -bottom-6 -left-6 w-28 h-28 rounded-full bg-tsia-gold/10" />
+          {/* ── Capturable receipt area ── */}
+          <div ref={receiptRef} className="flex flex-col">
+            {/* ── Header green banner ── */}
+            <div className="bg-gradient-to-br from-tsia-green via-emerald-700 to-[#0f3d25] px-5 pt-7 pb-8 relative overflow-hidden">
+              {/* Background rings */}
+              <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5" />
+              <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-white/5" />
+              <div className="absolute -bottom-6 -left-6 w-28 h-28 rounded-full bg-tsia-gold/10" />
 
-            {/* Logo row */}
-            <div className="flex items-center justify-between mb-6 relative z-10">
-              <div>
-                <p className="text-white/50 text-[9px] font-bold uppercase tracking-widest">Powered by</p>
-                <p className="text-white font-black text-xs tracking-wide">TSIA SWIFT WALLET</p>
-              </div>
-              <Logo variant="badge" forceDark height={38} className="opacity-90" />
-            </div>
-
-            {/* Status badge */}
-            <div className="relative z-10 flex items-center gap-1.5 mb-3">
-              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusConfig.cls}`}>
-                {statusConfig.icon}
-                {statusConfig.label}
-              </span>
-            </div>
-
-            {/* Title */}
-            <p className="relative z-10 text-white/70 text-xs font-semibold uppercase tracking-widest mb-1">{title}</p>
-
-            {/* Amount */}
-            <div className="relative z-10">
-              <p className="text-white font-black text-4xl leading-none">{amount}</p>
-              {amountLabel && <p className="text-white/60 text-[11px] mt-0.5">{amountLabel}</p>}
-              {words && <p className="text-tsia-gold/80 text-[11px] mt-1 font-medium italic">{words}</p>}
-            </div>
-
-            {/* Timestamp */}
-            <p className="relative z-10 text-white/50 text-[10px] mt-3 font-mono">{now}</p>
-          </div>
-
-          {/* ── Perforated edge ── */}
-          <div className="bg-background dark:bg-slate-900 px-4">
-            <PerforationDivider />
-          </div>
-
-          {/* ── Receipt body ── */}
-          <div className="relative bg-background dark:bg-slate-900 flex-1 overflow-y-auto px-4 pb-4">
-            <Watermark />
-
-            {subtitle && (
-              <p className="text-center text-xs text-muted-foreground font-medium pt-2 pb-1">{subtitle}</p>
-            )}
-
-            {/* Receipt rows */}
-            <div className="space-y-0 relative z-10">
-              {rows.map((row, i) => (
-                <div key={i} className={`flex items-start justify-between py-2.5 ${i < rows.length - 1 ? "border-b border-dashed border-border/50" : ""}`}>
-                  <span className={`text-[11px] font-bold uppercase tracking-wide shrink-0 mr-3 pt-0.5 ${row.gold ? "text-tsia-gold" : row.green ? "text-tsia-green" : "text-tsia-gold"}`}>
-                    {row.label}
-                  </span>
-                  <span className={`text-right text-xs leading-snug max-w-[60%] break-all ${row.mono ? "font-mono" : "font-semibold"} ${row.red ? "text-red-500" : row.green ? "text-tsia-green" : "text-foreground"} ${row.bold ? "font-black" : ""}`}>
-                    {row.value}
-                  </span>
+              {/* Logo row */}
+              <div className="flex items-center justify-between mb-6 relative z-10">
+                <div>
+                  <p className="text-white/50 text-[9px] font-bold uppercase tracking-widest">Powered by</p>
+                  <p className="text-white font-black text-xs tracking-wide">TSIA SWIFT WALLET</p>
                 </div>
-              ))}
+                <Logo variant="badge" forceDark height={38} className="opacity-90" />
+              </div>
+
+              {/* Status badge */}
+              <div className="relative z-10 flex items-center gap-1.5 mb-3">
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusConfig.cls}`}>
+                  {statusConfig.icon}
+                  {statusConfig.label}
+                </span>
+              </div>
+
+              {/* Title */}
+              <p className="relative z-10 text-white/70 text-xs font-semibold uppercase tracking-widest mb-1">{title}</p>
+
+              {/* Amount */}
+              <div className="relative z-10">
+                <p className="text-white font-black text-4xl leading-none">{amount}</p>
+                {amountLabel && <p className="text-white/60 text-[11px] mt-0.5">{amountLabel}</p>}
+                {words && <p className="text-tsia-gold/80 text-[11px] mt-1 font-medium italic">{words}</p>}
+              </div>
+
+              {/* Timestamp */}
+              <p className="relative z-10 text-white/50 text-[10px] mt-3 font-mono">{now}</p>
             </div>
 
-            {/* Footer note */}
-            <div className="relative z-10 mt-4 rounded-xl bg-muted/60 border border-border/60 px-3 py-2.5">
-              <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
-                {footerNote ?? "Keep this receipt for your records. For disputes or enquiries, contact support@tsiforafrica.com or visit tsiforafrica.com. Powered by TSIA Swift Wallet — Fintech for Educational Empowerment."}
-              </p>
+            {/* ── Perforated edge ── */}
+            <div className="bg-background dark:bg-slate-900 px-4">
+              <PerforationDivider />
             </div>
 
-            {/* TSIA footer brand */}
-            <div className="relative z-10 flex items-center justify-center gap-1.5 mt-3">
-              <Logo variant="badge" height={16} />
-              <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">TSIA · tsiforafrica.com</span>
+            {/* ── Receipt body ── */}
+            <div className="relative bg-background dark:bg-slate-900 flex-1 overflow-y-auto px-4 pb-4">
+              <Watermark />
+
+              {subtitle && (
+                <p className="text-center text-xs text-muted-foreground font-medium pt-2 pb-1">{subtitle}</p>
+              )}
+
+              {/* Receipt rows */}
+              <div className="space-y-0 relative z-10">
+                {rows.map((row, i) => (
+                  <div key={i} className={`flex items-start justify-between py-2.5 ${i < rows.length - 1 ? "border-b border-dashed border-border/50" : ""}`}>
+                    <span className={`text-[11px] font-bold uppercase tracking-wide shrink-0 mr-3 pt-0.5 ${row.gold ? "text-tsia-gold" : row.green ? "text-tsia-green" : "text-tsia-gold"}`}>
+                      {row.label}
+                    </span>
+                    <span className={`text-right text-xs leading-snug max-w-[60%] break-all ${row.mono ? "font-mono" : "font-semibold"} ${row.red ? "text-red-500" : row.green ? "text-tsia-green" : "text-foreground"} ${row.bold ? "font-black" : ""}`}>
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Footer note */}
+              <div className="relative z-10 mt-4 rounded-xl bg-muted/60 border border-border/60 px-3 py-2.5">
+                <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
+                  {footerNote ?? "Keep this receipt for your records. For disputes or enquiries, contact support@tsiforafrica.com or visit tsiforafrica.com. Powered by TSIA Swift Wallet — Fintech for Educational Empowerment."}
+                </p>
+              </div>
+
+              {/* TSIA footer brand */}
+              <div className="relative z-10 flex items-center justify-center gap-1.5 mt-3">
+                <Logo variant="badge" height={16} />
+                <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">TSIA · tsiforafrica.com</span>
+              </div>
             </div>
           </div>
 
@@ -227,6 +266,19 @@ export function TransactionReceipt({
                 {copied ? "Copied!" : "Copy Ref"}
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-10 rounded-2xl text-xs border-tsia-green/40 text-tsia-green hover:bg-tsia-green/5"
+              onClick={handleShare}
+              disabled={sharing}
+              data-testid="btn-receipt-share"
+            >
+              {sharing
+                ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
+                : <Share2 className="w-3.5 h-3.5 mr-1" />}
+              {sharing ? "…" : "Save"}
+            </Button>
             {onNewTx && (
               <Button
                 variant="outline"

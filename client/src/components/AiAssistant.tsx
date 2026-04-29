@@ -188,6 +188,7 @@ export function AiAssistant() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [showLabel, setShowLabel] = useState(false);
+  const [minimized, setMinimized] = useState(false);
 
   const welcomeMsg: Message = {
     id: "welcome",
@@ -212,11 +213,16 @@ export function AiAssistant() {
 
   useEffect(() => {
     if (open) {
+      setMinimized(false);
       setTimeout(() => inputRef.current?.focus(), 150);
     } else {
       setShowLabel(true);
-      const t = setTimeout(() => setShowLabel(false), 4000);
-      return () => clearTimeout(t);
+      const labelTimer = setTimeout(() => setShowLabel(false), 4000);
+      const minimizeTimer = setTimeout(() => setMinimized(true), 10_000);
+      return () => {
+        clearTimeout(labelTimer);
+        clearTimeout(minimizeTimer);
+      };
     }
   }, [open]);
 
@@ -415,44 +421,65 @@ export function AiAssistant() {
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
             className="fixed bottom-6 right-5 z-30 flex flex-col items-end gap-2"
           >
-            {/* Floating label */}
-            <AnimatePresence>
-              {showLabel && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6, scale: 0.9 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.9 }}
-                  transition={{ duration: 0.25 }}
-                  className="flex items-center gap-1.5 bg-white dark:bg-gray-900 border border-tsia-green/30 text-tsia-green dark:text-green-400 font-semibold text-xs px-3.5 py-2 rounded-full shadow-xl whitespace-nowrap"
-                >
-                  <Bot className="w-3.5 h-3.5 shrink-0" />
-                  Ask AI anything
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse ml-0.5" />
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {minimized ? (
+              /* ── Minimized: small indicator dot ── */
+              <motion.button
+                onClick={() => { setMinimized(false); setOpen(true); }}
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.9 }}
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative w-10 h-10 bg-tsia-green text-white rounded-full shadow-lg flex items-center justify-center ring-2 ring-tsia-green/30 hover:ring-tsia-green/60 transition-shadow"
+                data-testid="button-open-ai-mini"
+                aria-label="Open AI assistant"
+                title="TSIA AI — click to open"
+              >
+                <MessageCircle className="w-5 h-5" />
+                <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-white dark:border-tsia-green animate-pulse" />
+              </motion.button>
+            ) : (
+              /* ── Full button ── */
+              <>
+                {/* Floating label */}
+                <AnimatePresence>
+                  {showLabel && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.9 }}
+                      transition={{ duration: 0.25 }}
+                      className="flex items-center gap-1.5 bg-white dark:bg-gray-900 border border-tsia-green/30 text-tsia-green dark:text-green-400 font-semibold text-xs px-3.5 py-2 rounded-full shadow-xl whitespace-nowrap"
+                    >
+                      <Bot className="w-3.5 h-3.5 shrink-0" />
+                      Ask AI anything
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse ml-0.5" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-            {/* Button */}
-            <motion.button
-              onClick={() => setOpen(true)}
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.93 }}
-              className="relative w-16 h-16"
-              data-testid="button-open-ai"
-              aria-label="Open AI assistant"
-            >
-              {/* Pulse rings */}
-              <span className="absolute inset-0 rounded-full bg-tsia-green opacity-25 animate-ping" />
-              <span className="absolute inset-1 rounded-full bg-tsia-green opacity-15 animate-ping [animation-delay:0.6s]" />
-              {/* Main disc */}
-              <div className="relative w-16 h-16 bg-gradient-to-br from-[#1a5c38] to-[#0e3d25] text-white rounded-full shadow-2xl flex items-center justify-center ring-2 ring-tsia-green/40">
-                <MessageCircle className="w-7 h-7" />
-              </div>
-              {/* AI badge */}
-              <span className="absolute -top-1 -right-1 w-6 h-6 bg-tsia-gold rounded-full text-[9px] font-black text-slate-900 flex items-center justify-center shadow-lg border-2 border-white dark:border-gray-900">
-                AI
-              </span>
-            </motion.button>
+                {/* Button */}
+                <motion.button
+                  onClick={() => setOpen(true)}
+                  whileHover={{ scale: 1.08 }}
+                  whileTap={{ scale: 0.93 }}
+                  className="relative w-16 h-16"
+                  data-testid="button-open-ai"
+                  aria-label="Open AI assistant"
+                >
+                  {/* Pulse rings */}
+                  <span className="absolute inset-0 rounded-full bg-tsia-green opacity-25 animate-ping" />
+                  <span className="absolute inset-1 rounded-full bg-tsia-green opacity-15 animate-ping [animation-delay:0.6s]" />
+                  {/* Main disc */}
+                  <div className="relative w-16 h-16 bg-gradient-to-br from-[#1a5c38] to-[#0e3d25] text-white rounded-full shadow-2xl flex items-center justify-center ring-2 ring-tsia-green/40">
+                    <MessageCircle className="w-7 h-7" />
+                  </div>
+                  {/* AI badge */}
+                  <span className="absolute -top-1 -right-1 w-6 h-6 bg-tsia-gold rounded-full text-[9px] font-black text-slate-900 flex items-center justify-center shadow-lg border-2 border-white dark:border-gray-900">
+                    AI
+                  </span>
+                </motion.button>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

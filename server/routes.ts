@@ -19,6 +19,7 @@ import {
   sendDisbursementProcessedEmail, sendDisbursementDeclinedEmail, sendDisbursementEditedEmail,
   sendWithdrawalOtpEmail,
   sendTransferOtpEmail,
+  sendTransactionReceiptEmail,
 } from "./email";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -1224,30 +1225,24 @@ export async function registerRoutes(
       });
       pushToUser(userId, "notification", notif);
 
-      // Email confirmation
-      try {
-        await sendEmail(
-          user!.email,
-          "Withdrawal Request Received — TSIA",
-          `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
-            <h2 style="color:#1a5c38;margin-bottom:4px">Withdrawal Request Received</h2>
-            <p style="color:#6b7280;margin-top:0">Hi ${user!.firstName}, your withdrawal request has been received.</p>
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin:20px 0">
-              <table width="100%" cellpadding="6" style="font-size:14px;color:#374151">
-                <tr><td>Amount Requested</td><td align="right"><strong>$${withdrawAmount.toFixed(2)}</strong></td></tr>
-                <tr><td style="color:#ef4444">VAT (7.5%)</td><td align="right" style="color:#ef4444">−$${vatAmount.toFixed(2)}</td></tr>
-                <tr style="border-top:1px solid #e5e7eb"><td><strong style="color:#1a5c38">You Receive</strong></td><td align="right"><strong style="color:#1a5c38">₦${netAmountNgn.toLocaleString()}</strong></td></tr>
-              </table>
-            </div>
-            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:16px;margin-bottom:16px">
-              <p style="margin:0;font-size:13px;color:#92400e"><strong>Bank:</strong> ${bankName}</p>
-              <p style="margin:4px 0 0;font-size:13px;color:#92400e"><strong>Account:</strong> ${accountNumber} — ${accountName}</p>
-            </div>
-            <p style="font-size:13px;color:#6b7280">Your funds will be credited to your bank account within <strong>30 minutes to 24 hours</strong>. If you do not receive it within 24 hours, your balance will be automatically refunded.</p>
-            <p style="font-size:12px;color:#9ca3af">Reference: ${txRef}</p>
-          </div>`
-        );
-      } catch {}
+      // Email receipt
+      sendTransactionReceiptEmail(user!.email, user!.firstName, {
+        title: "Bank Withdrawal",
+        status: "processing",
+        amount: `₦${netAmountNgn.toLocaleString()}`,
+        amountLabel: `$${withdrawAmount.toFixed(2)} requested`,
+        reference: txRef,
+        rows: [
+          { label: "Amount Requested", value: `$${withdrawAmount.toFixed(2)}` },
+          { label: "VAT (7.5%)", value: `-$${vatAmount.toFixed(2)}`, color: "red" },
+          { label: "Net (USD)", value: `$${netAmountUsd.toFixed(2)}` },
+          { label: "You Receive (NGN)", value: `₦${netAmountNgn.toLocaleString()}`, color: "green" },
+          { label: "Bank", value: bankName },
+          { label: "Account", value: `${accountNumber} — ${accountName}` },
+          { label: "Gateway", value: payoutGateway === "korapay" ? "Korapay" : "Squad" },
+        ],
+        footerNote: "Funds are credited to your bank within 30 minutes to 24 hours.",
+      }).catch(() => {});
 
       // Notify admin — bank withdrawal needs manual processing
       if (user) {
@@ -1374,26 +1369,25 @@ export async function registerRoutes(
       });
       pushToUser(userId, "notification", notif);
 
-      // Email confirmation
-      try {
-        await sendEmail(
-          cryptoUser!.email,
-          "Crypto Withdrawal Request Received — TSIA",
-          `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
-            <h2 style="color:#1a5c38">Crypto Withdrawal Request Received</h2>
-            <p style="color:#6b7280">Hi ${cryptoUser!.firstName}, your USDT withdrawal request is being processed.</p>
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin:20px 0;font-size:14px;color:#374151">
-              <div style="margin-bottom:8px"><span>Amount Requested:</span> <strong>$${withdrawAmt.toFixed(2)}</strong></div>
-              <div style="margin-bottom:8px;color:#ef4444"><span>Handling fee (1%):</span> <strong>−$${feeAmt.toFixed(2)}</strong></div>
-              <div style="border-top:1px solid #e5e7eb;padding-top:8px"><span>You Receive (USDT):</span> <strong style="color:#1a5c38">$${netAmt.toFixed(2)}</strong></div>
-            </div>
-            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px;font-size:13px;color:#92400e">
-              <strong>Network:</strong> ${networkLabel}<br><strong>Address:</strong> ${address.trim()}
-            </div>
-            <p style="font-size:13px;color:#6b7280;margin-top:16px">Your USDT will be sent within <strong>24 hours</strong>. No VAT is charged on crypto withdrawals.</p>
-          </div>`
-        );
-      } catch {}
+      // Email receipt
+      if (cryptoUser) {
+        const cryptoTxRef = `TSIA-CRYPTO-WD-${userId}-${Date.now()}`;
+        sendTransactionReceiptEmail(cryptoUser.email, cryptoUser.firstName, {
+          title: "Crypto (USDT) Withdrawal",
+          status: "processing",
+          amount: `$${netAmt.toFixed(2)} USDT`,
+          amountLabel: `$${withdrawAmt.toFixed(2)} requested`,
+          reference: cryptoTxRef,
+          rows: [
+            { label: "Amount Requested", value: `$${withdrawAmt.toFixed(2)} USDT` },
+            { label: "Handling Fee (1%)", value: `-$${feeAmt.toFixed(2)}`, color: "red" },
+            { label: "You Receive", value: `$${netAmt.toFixed(2)} USDT`, color: "green" },
+            { label: "Network", value: networkLabel },
+            { label: "Address", value: truncated, mono: true },
+          ],
+          footerNote: "Your USDT will be sent within 24 hours. No VAT on crypto withdrawals.",
+        }).catch(() => {});
+      }
 
       // Notify admin — crypto withdrawal to process
       if (cryptoUser) {
@@ -5486,6 +5480,26 @@ export async function registerRoutes(
       pushToUser(userId, "notification", notif);
       const updated = await storage.getOrCreateWallet(userId);
       res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway });
+      // Fire-and-forget receipt email
+      storage.getUser(userId).then(u => {
+        if (!u) return;
+        sendTransactionReceiptEmail(u.email, u.firstName, {
+          title: "Bank Transfer",
+          status: "processing",
+          amount: `₦${netAmountNgn.toLocaleString()}`,
+          amountLabel: `$${transferAmount.toFixed(2)} requested`,
+          reference: txRef,
+          rows: [
+            { label: "To", value: `${accountName} — ${accountNumber}` },
+            { label: "Bank", value: bankName || bankCode },
+            { label: "Amount (USD)", value: `$${transferAmount.toFixed(2)}` },
+            { label: "VAT (7.5%)", value: `-$${vatAmount.toFixed(2)}`, color: "red" },
+            { label: "You Send (NGN)", value: `₦${netAmountNgn.toLocaleString()}`, color: "green" },
+            { label: "Gateway", value: (gateway as string).toUpperCase() },
+          ],
+          footerNote: "Funds are processed within 30 minutes to 24 hours.",
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
@@ -5531,6 +5545,22 @@ export async function registerRoutes(
       const msg = `₦${amountNgn.toLocaleString()} airtime delivered to ${phone} (${networkCode}).`;
       await fintechDebitWallet(userId, amountUsd, "airtime", ref, desc, "Airtime Delivered ✓", msg, { ref: txRef });
       res.json({ success: true, reference: txRef, amountNgn, message: msg });
+      storage.getUser(userId).then(u => {
+        if (!u) return;
+        sendTransactionReceiptEmail(u.email, u.firstName, {
+          title: "Airtime Purchase",
+          status: "success",
+          amount: `₦${amountNgn.toLocaleString()}`,
+          amountLabel: `$${amountUsd.toFixed(2)}`,
+          reference: txRef,
+          rows: [
+            { label: "Network", value: networkCode },
+            { label: "Phone", value: phone },
+            { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" },
+            { label: "Amount (USD)", value: `$${amountUsd.toFixed(2)}` },
+          ],
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
@@ -5577,6 +5607,23 @@ export async function registerRoutes(
       const msg = `${planInfo} data bundle activated on ${phone} (${networkCode}).`;
       await fintechDebitWallet(userId, amountUsd, "internet", ref, desc, "Data Bundle Activated ✓", msg, { ref: txRef });
       res.json({ success: true, reference: txRef, amountNgn, message: msg });
+      storage.getUser(userId).then(u => {
+        if (!u) return;
+        sendTransactionReceiptEmail(u.email, u.firstName, {
+          title: "Data Bundle Purchase",
+          status: "success",
+          amount: `₦${amountNgn.toLocaleString()}`,
+          amountLabel: `$${amountUsd.toFixed(2)}`,
+          reference: txRef,
+          rows: [
+            { label: "Network", value: networkCode },
+            { label: "Plan", value: planInfo },
+            { label: "Phone", value: phone },
+            { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" },
+            { label: "Amount (USD)", value: `$${amountUsd.toFixed(2)}` },
+          ],
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
@@ -5629,6 +5676,25 @@ export async function registerRoutes(
         : `₦${amountNgn.toLocaleString()} electricity submitted for ${meterNumber} (${discoCode}).`;
       await fintechDebitWallet(userId, amountUsd, "electricity", ref, desc, "Electricity Credited ✓", msg, { ref: txRef, token });
       res.json({ success: true, reference: txRef, amountNgn, token, message: msg });
+      storage.getUser(userId).then(u => {
+        if (!u) return;
+        const rows: import("./email").ReceiptEmailRow[] = [
+          { label: "Disco Code", value: discoCode },
+          { label: "Meter Type", value: meterType },
+          { label: "Meter Number", value: meterNumber, mono: true },
+          { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" },
+          { label: "Amount (USD)", value: `$${amountUsd.toFixed(2)}` },
+        ];
+        if (token) rows.push({ label: "Token", value: token, mono: true, color: "gold" });
+        sendTransactionReceiptEmail(u.email, u.firstName, {
+          title: "Electricity Payment",
+          status: "success",
+          amount: `₦${amountNgn.toLocaleString()}`,
+          amountLabel: `$${amountUsd.toFixed(2)}`,
+          reference: txRef,
+          rows,
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
@@ -5649,6 +5715,22 @@ export async function registerRoutes(
       const msg = `₦${amountNgn.toLocaleString()} funded to ${platform} wallet (ID: ${bettingUserId}).`;
       await fintechDebitWallet(userId, amountUsd, "betting", ref, desc, "Betting Wallet Funded ✓", msg, { ref: txRef });
       res.json({ success: true, reference: txRef, amountNgn, message: msg });
+      storage.getUser(userId).then(u => {
+        if (!u) return;
+        sendTransactionReceiptEmail(u.email, u.firstName, {
+          title: "Betting Wallet Funded",
+          status: "success",
+          amount: `₦${amountNgn.toLocaleString()}`,
+          amountLabel: `$${amountUsd.toFixed(2)}`,
+          reference: txRef,
+          rows: [
+            { label: "Platform", value: platform },
+            { label: "User ID", value: bettingUserId, mono: true },
+            { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" },
+            { label: "Amount (USD)", value: `$${amountUsd.toFixed(2)}` },
+          ],
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 

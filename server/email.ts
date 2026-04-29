@@ -1231,3 +1231,68 @@ export async function sendAdminCommissionWithdrawalEmail(data: {
   );
   await sendEmail(ADMIN_EMAIL, subject, html);
 }
+
+// ─── Generic transaction receipt email ───────────────────────────────────────
+
+export type ReceiptEmailRow = {
+  label: string;
+  value: string;
+  color?: "red" | "green" | "gold";
+  mono?: boolean;
+};
+
+export async function sendTransactionReceiptEmail(
+  to: string,
+  firstName: string,
+  opts: {
+    title: string;
+    status: "success" | "processing" | "pending";
+    amount: string;
+    amountLabel?: string;
+    reference: string;
+    rows: ReceiptEmailRow[];
+    footerNote?: string;
+  },
+): Promise<void> {
+  const statusConfig = {
+    success:    { color: "#1a6b3c", bg: "#f0f8f4", border: "#1a6b3c", label: "&#x2705; Successful" },
+    processing: { color: "#1e40af", bg: "#eff6ff", border: "#3b82f6", label: "&#x23F3; Processing" },
+    pending:    { color: "#b45309", bg: "#fffbeb", border: "#d97706", label: "&#x1F504; Pending" },
+  }[opts.status];
+
+  const rowsHtml = opts.rows.map((row, i) => {
+    const valColor  = row.color === "red" ? "#c0392b" : row.color === "green" ? "#1a6b3c" : row.color === "gold" ? "#c9a227" : "#1a1a1a";
+    const valWeight = row.color || row.mono ? "700" : "500";
+    const valFamily = row.mono ? "font-family:monospace;" : "";
+    return `<tr style="${i > 0 ? "border-top:1px dashed #d5e8dc;" : ""}">
+      <td style="padding:11px 18px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;width:45%;">${row.label}</td>
+      <td style="padding:11px 18px;font-size:13px;color:${valColor};font-weight:${valWeight};${valFamily}text-align:right;">${row.value}</td>
+    </tr>`;
+  }).join("\n");
+
+  const subject = `${opts.title} — TSIA Receipt`;
+  const html = baseTemplate(`
+    <div style="background:linear-gradient(135deg,#1a6b3c 0%,#2d9d5c 100%);border-radius:16px;padding:28px 24px;margin:0 0 20px;text-align:center;">
+      <span style="display:inline-block;background:${statusConfig.bg};color:${statusConfig.color};border:1px solid ${statusConfig.border};font-size:11px;font-weight:700;padding:4px 12px;border-radius:999px;margin-bottom:10px;">${statusConfig.label}</span>
+      <p style="color:rgba(255,255,255,0.65);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 4px;">${opts.title}</p>
+      <p style="color:#fff;font-size:38px;font-weight:900;margin:0;letter-spacing:-1px;">${opts.amount}</p>
+      ${opts.amountLabel ? `<p style="color:rgba(255,255,255,0.55);font-size:11px;margin:4px 0 0;">${opts.amountLabel}</p>` : ""}
+    </div>
+    <p style="color:#4a5e50;font-size:14px;margin:0 0 16px;line-height:1.6;">Hi <strong>${firstName}</strong>, your transaction has been recorded. Here is your receipt from TSIA Swift Wallet.</p>
+
+    <div style="background:#f7f9f7;border:1px solid #e2ede8;border-radius:14px;overflow:hidden;margin:0 0 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${rowsHtml}
+      </table>
+    </div>
+
+    <div style="background:#f0f8f4;border-radius:10px;padding:12px 16px;margin:0 0 16px;text-align:center;">
+      <p style="margin:0;font-size:12px;color:#4a5e50;">Reference: <strong style="font-family:monospace;color:#1a6b3c;letter-spacing:0.5px;">${opts.reference}</strong></p>
+    </div>
+    ${opts.footerNote ? `<p style="font-size:11px;color:#9caa9f;text-align:center;margin:0 0 8px;">${opts.footerNote}</p>` : ""}
+    <p style="font-size:11px;color:#9caa9f;text-align:center;margin:0 0 16px;">Keep this receipt for your records. Disputes: <a href="mailto:support@tsiforafrica.com" style="color:#1a6b3c;">support@tsiforafrica.com</a></p>
+    ${btn("https://tsiforafrica.com/wallet", "View My Wallet")}
+  `);
+
+  await sendEmail(to, subject, html);
+}

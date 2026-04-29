@@ -3966,11 +3966,27 @@ export async function registerRoutes(
       const reserveFund = await storage.getTradeReserveFund();
       const affiliateCount = await storage.getAffiliateCount();
       const tradeTxns = await db.select().from(tradeTransactions).orderBy(desc(tradeTransactions.createdAt)).limit(50);
-      const totalBotEarnings = tradeTxns.filter(t => t.type === "bot_earning").reduce((s, t) => s + parseFloat(t.amount), 0);
+
+      const totalBotEarnings = tradeTxns
+        .filter(t => t.type === "bot_earning")
+        .reduce((s, t) => s + parseFloat(t.amountUsd ?? "0"), 0);
+
+      // Actual gross trade deposits (100% of each deposit, not just the 20% reserve portion)
+      const depositAggResult = await db.execute(sql`
+        SELECT
+          COALESCE(SUM(CAST(amount_usd AS numeric)), 0) AS total_deposits,
+          COUNT(*) FILTER (WHERE type = 'deposit') AS deposit_count
+        FROM trade_transactions
+        WHERE type = 'deposit'
+      `);
+      const depositAgg = (depositAggResult.rows[0] as any) ?? {};
+      const totalTradeDeposits = parseFloat(depositAgg.total_deposits ?? "0");
 
       res.json({
         reserveBalance: reserveFund.total_balance,
-        totalDeposited: reserveFund.total_deposited,
+        totalDeposited: totalTradeDeposits.toFixed(2),
+        reserveAccumulated: reserveFund.total_deposited,
+        depositCount: parseInt(depositAgg.deposit_count ?? "0", 10),
         affiliateCount,
         totalBotEarnings: totalBotEarnings.toFixed(2),
         recentTransactions: tradeTxns.slice(0, 20),

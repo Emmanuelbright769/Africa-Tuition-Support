@@ -169,7 +169,7 @@ export default function AdminDashboard() {
   const { data: allLoans = [] }            = useQuery({ queryKey: ["/api/admin/loans-all"], enabled: activeTab === "loans" });
   const { data: allTransactions = [] }     = useQuery({ queryKey: ["/api/admin/transactions-all"], enabled: activeTab === "transactions" });
   const { data: ecommerceStats }           = useQuery({ queryKey: ["/api/admin/ecommerce-stats"], enabled: activeTab === "ecommerce" });
-  const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade" });
+  const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade", refetchInterval: 30_000, staleTime: 15_000 });
   const { data: allDeposits = [] }         = useQuery({ queryKey: ["/api/admin/wallet-deposits"], enabled: activeTab === "deposits" });
   const { data: allMessages = [] }         = useQuery({ queryKey: ["/api/admin/messages"], enabled: activeTab === "messages" });
   const { data: reserveFundData }          = useQuery({ queryKey: ["/api/reserve-fund/live"], enabled: activeTab === "reserve" });
@@ -1430,10 +1430,10 @@ export default function AdminDashboard() {
             {activeTab === "trade" && (
               <motion.div key="trade" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-6">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard title="Reserve Fund"    value={fmtUSD(tradeStats?.reserveBalance)}  icon={Wallet}     color="green"  />
-                  <StatCard title="Total Deposited" value={fmtUSD(tradeStats?.totalDeposited)}  icon={TrendingUp} color="blue"   />
-                  <StatCard title="Bot Earnings"    value={fmtUSD(tradeStats?.totalBotEarnings)}icon={BarChart2}  color="tsia"   />
-                  <StatCard title="Active Affiliates" value={tradeStats?.affiliateCount ?? 0}   icon={Share2}     color="purple" />
+                  <StatCard title="Reserve Fund"       value={fmtUSD(tradeStats?.reserveBalance)}   icon={Wallet}     color="green"  />
+                  <StatCard title="Total Trade Deposits" value={fmtUSD(tradeStats?.totalDeposited)} icon={TrendingUp} color="blue"   />
+                  <StatCard title="Bot Earnings"       value={fmtUSD(tradeStats?.totalBotEarnings)} icon={BarChart2}  color="tsia"   />
+                  <StatCard title="Active Affiliates"  value={tradeStats?.affiliateCount ?? 0}      icon={Share2}     color="purple" />
                 </div>
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
@@ -1462,10 +1462,10 @@ export default function AdminDashboard() {
                                 {t.type?.replace(/_/g, " ")}
                               </Badge>
                             </TableCell>
-                            <TableCell className={`font-bold text-sm ${parseFloat(t.amount) >= 0 ? "text-green-600" : "text-red-500"}`}>
-                              {fmtUSD(t.amount)}
+                            <TableCell className={`font-bold text-sm ${parseFloat(t.amountUsd) >= 0 ? "text-green-600" : "text-red-500"}`}>
+                              {fmtUSD(t.amountUsd)}
                             </TableCell>
-                            <TableCell className="text-xs text-slate-500 max-w-xs truncate">{t.description || "—"}</TableCell>
+                            <TableCell className="text-xs text-slate-500 max-w-xs truncate">{t.note || "—"}</TableCell>
                             <TableCell className="text-xs text-slate-500">{fmtDate(t.createdAt)}</TableCell>
                           </TableRow>
                         ))}

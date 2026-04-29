@@ -18,7 +18,7 @@ import {
   LayoutDashboard, Star, History, ChevronRight, ChevronDown, Car, Globe, Loader2,
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
   ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Info, KeyRound,
-  Film
+  Film, GraduationCap, BookOpen, Send
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -34,7 +34,7 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies";
+type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies" | "msc_plans";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
@@ -46,6 +46,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "movies",             label: "Movies",            icon: Film, badge: "Soon" },
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
   { id: "plans",        label: "Swift-Pay Plans",        icon: Star },
+  { id: "msc_plans",    label: "Swift Pay MSc plans",    icon: GraduationCap, badge: "Soon" },
   { id: "activity",     label: "Activity",               icon: History },
   { id: "loan",               label: "Student loan",      icon: Banknote },
   { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
@@ -625,6 +626,45 @@ export default function StudentDashboard() {
                   </Card>
                 </motion.div>
 
+                {/* MSc Sponsorship teaser card */}
+                <motion.div variants={itemVariants}>
+                  <Card className="shadow-md border-0 overflow-hidden relative group bg-gradient-to-br from-tsia-green/5 to-tsia-gold/5 dark:from-tsia-green/10 dark:to-tsia-gold/10">
+                    <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-tsia-gold/20 to-transparent rounded-bl-full pointer-events-none" />
+                    <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 relative z-10">
+                      <div className="w-12 h-12 rounded-xl bg-tsia-green/10 dark:bg-tsia-green/20 flex items-center justify-center shrink-0">
+                        <GraduationCap className="w-7 h-7 text-tsia-green" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <h3 className="font-bold text-base">Master's Degree (MSc) Sponsorship</h3>
+                          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] px-2 py-0.5 font-bold">Coming Soon</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          TSIA's postgraduate sponsorship programme — funding verified students pursuing an MSc or equivalent master's qualification. Identity and degree verification required.
+                        </p>
+                        <div className="flex flex-wrap gap-3 mt-3">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green" /> Identity Verification (KYC)
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <BookOpen className="w-3.5 h-3.5 text-tsia-green" /> Bachelor's Degree Transcript
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green" /> University Admission Letter
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => navigate("msc_plans")}
+                        data-testid="button-view-msc-plans"
+                        className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-tsia-green hover:bg-tsia-green/90 text-white text-xs font-bold shadow-md shadow-tsia-green/20 transition-all hover:scale-105 active:scale-95"
+                      >
+                        <ArrowUpRight className="w-4 h-4" /> Learn More
+                      </button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
                 {/* Quick nav dropdown */}
                 <motion.div variants={itemVariants} className="relative">
                   <button
@@ -1046,6 +1086,75 @@ export default function StudentDashboard() {
                     A curated streaming platform celebrating African storytelling — from Nollywood hits to pan-African documentaries. Stay tuned.
                   </p>
                 </div>
+              </motion.div>
+            )}
+
+            {/* ── MSC PLANS ── */}
+            {activeSection === "msc_plans" && (
+              <motion.div variants={itemVariants} className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
+                    <GraduationCap className="w-6 h-6 text-tsia-green" /> Swift Pay MSc Plans
+                  </h2>
+                  <p className="text-muted-foreground text-sm">Postgraduate sponsorship for eligible TSIA students pursuing a Master's degree.</p>
+                </div>
+
+                {/* Coming soon hero */}
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-24 h-24 bg-tsia-green/10 rounded-full flex items-center justify-center mb-6">
+                    <GraduationCap className="w-12 h-12 text-tsia-green" />
+                  </div>
+                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-sm px-4 py-1.5 mb-4">Coming Soon</Badge>
+                  <h3 className="text-2xl font-bold mb-3">MSc Sponsorship Launching Soon</h3>
+                  <p className="text-muted-foreground max-w-sm mx-auto leading-relaxed text-sm mb-8">
+                    TSIA is building a dedicated postgraduate sponsorship track. Verified BSc holders admitted to a recognised MSc programme will be eligible to apply for tuition co-funding.
+                  </p>
+                </div>
+
+                {/* Requirements preview */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <BookOpen className="w-5 h-5 text-tsia-green" /> Eligibility Requirements (Preview)
+                    </CardTitle>
+                    <CardDescription>What you will need when applications open</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {[
+                        { label: "Identity Verification", desc: "Valid NIN, BVN, or government-issued ID confirmed via KYC" },
+                        { label: "Bachelor's Degree", desc: "First-class or second-class upper division (2:1 minimum) transcript" },
+                        { label: "MSc Admission Letter", desc: "Unconditional offer from a recognised university (local or international)" },
+                        { label: "Programme Duration", desc: "Full-time or part-time MSc of at least 12 months" },
+                        { label: "Active TSIA SwiftWallet", desc: "Wallet must be funded and verified before applying" },
+                      ].map((req, i) => (
+                        <div key={i} className="flex items-start gap-3 py-2 border-b last:border-0">
+                          <div className="w-6 h-6 rounded-full bg-tsia-green/10 flex items-center justify-center shrink-0 mt-0.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-sm">{req.label}</p>
+                            <p className="text-xs text-muted-foreground">{req.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Expression of interest */}
+                <Card className="border-0 shadow-sm bg-tsia-green/5 dark:bg-tsia-green/10">
+                  <CardContent className="p-5 flex flex-col sm:flex-row items-center gap-4">
+                    <div className="w-10 h-10 bg-tsia-green/20 rounded-xl flex items-center justify-center shrink-0">
+                      <Send className="w-5 h-5 text-tsia-green" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm mb-0.5">Be the First to Know</p>
+                      <p className="text-xs text-muted-foreground">We'll notify you via your registered email and dashboard as soon as MSc applications open. No action needed — you're already in the queue.</p>
+                    </div>
+                    <Badge className="bg-tsia-green text-white text-xs px-3 py-1.5 shrink-0">Auto-notified</Badge>
+                  </CardContent>
+                </Card>
               </motion.div>
             )}
 

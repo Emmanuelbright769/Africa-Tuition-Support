@@ -11,6 +11,8 @@ import {
 type FundData = {
   totalBalance: string;
   totalDeposited: string;
+  totalTradeDeposits: string;
+  depositCount: number;
   contributionRate: number;
   description: string;
   walletFloorReserve: string;
@@ -167,14 +169,16 @@ export default function ReserveFund() {
     return () => clearInterval(t);
   }, [lastTick]);
 
-  const balance          = parseFloat(data?.totalBalance      ?? "0");
-  const deposited        = parseFloat(data?.totalDeposited    ?? "0");
-  const rate             = data?.contributionRate ?? 20;
-  const floorReserve     = parseFloat(data?.walletFloorReserve ?? "0");
-  const combinedReserve  = parseFloat(data?.combinedReserve    ?? "0");
-  const walletsAtMin     = data?.walletsAtMin     ?? 0;
-  const totalWallets     = data?.totalWallets     ?? 0;
-  const minPerWallet     = data?.minBalancePerWallet ?? 2;
+  const balance             = parseFloat(data?.totalBalance        ?? "0");
+  const deposited           = parseFloat(data?.totalDeposited      ?? "0");
+  const totalTradeDeposits  = parseFloat(data?.totalTradeDeposits  ?? "0");
+  const depositCount        = data?.depositCount ?? 0;
+  const rate                = data?.contributionRate ?? 20;
+  const floorReserve        = parseFloat(data?.walletFloorReserve  ?? "0");
+  const combinedReserve     = parseFloat(data?.combinedReserve     ?? "0");
+  const walletsAtMin        = data?.walletsAtMin     ?? 0;
+  const totalWallets        = data?.totalWallets     ?? 0;
+  const minPerWallet        = data?.minBalancePerWallet ?? 2;
   const targetFund       = 150_000_000 * 0.20;
   const pct = Math.min((combinedReserve / Math.max(targetFund, 1)) * 100, 100);
 
@@ -229,22 +233,26 @@ export default function ReserveFund() {
 
             <div className="flex items-center gap-4 mt-4 flex-wrap">
               <div>
-                <p className="text-white/40 text-[10px] uppercase tracking-wide">Total Deposited</p>
-                <p className="text-white/80 font-bold text-sm">
+                <p className="text-white/40 text-[10px] uppercase tracking-wide">Total Trade Deposits</p>
+                <p className="text-white/90 font-bold text-sm">
+                  {isLoading ? "—" : <AnimatedCounter value={totalTradeDeposits} decimals={2} prefix="$" />}
+                </p>
+                <p className="text-white/30 text-[9px] mt-0.5">{depositCount} deposit{depositCount !== 1 ? "s" : ""}</p>
+              </div>
+              <div className="w-px h-10 bg-white/20" />
+              <div>
+                <p className="text-white/40 text-[10px] uppercase tracking-wide">Reserve Accumulated</p>
+                <p className="text-[#f0c040] font-bold text-sm">
                   {isLoading ? "—" : <AnimatedCounter value={deposited} decimals={2} prefix="$" />}
                 </p>
+                <p className="text-white/30 text-[9px] mt-0.5">{rate}% of deposits</p>
               </div>
-              <div className="w-px h-8 bg-white/20" />
-              <div>
-                <p className="text-white/40 text-[10px] uppercase tracking-wide">Reserve Rate</p>
-                <p className="text-[#f0c040] font-bold text-sm">{rate}% of every deposit</p>
-              </div>
-              <div className="w-px h-8 bg-white/20" />
+              <div className="w-px h-10 bg-white/20" />
               <div>
                 <p className="text-white/40 text-[10px] uppercase tracking-wide">Wallet Floor</p>
                 <p className="text-emerald-300 font-bold text-sm">${isLoading ? "—" : floorReserve.toFixed(2)}</p>
               </div>
-              <div className="w-px h-8 bg-white/20" />
+              <div className="w-px h-10 bg-white/20" />
               <div>
                 <p className="text-white/40 text-[10px] uppercase tracking-wide">Backed by</p>
                 <p className="text-white/80 font-bold text-sm">$150M Fund</p>
@@ -273,7 +281,12 @@ export default function ReserveFund() {
           <Info className="w-4 h-4 text-tsia-green" /> How This Fund Works
         </h3>
         {[
-          { icon: Globe,      color: "bg-blue-500",   title: "Every Trade Deposit",      desc: "When any member deposits into the Global Trade Market, 20% is automatically ring-fenced." },
+          {
+            icon: Globe, color: "bg-blue-500", title: "Every Trade Deposit",
+            desc: isLoading
+              ? "When any member deposits into the Global Trade Market, 20% is automatically ring-fenced."
+              : `${depositCount} trade deposit${depositCount !== 1 ? "s" : ""} totalling $${totalTradeDeposits.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} have been made so far. 20% of each deposit ($${deposited.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} accumulated) is automatically ring-fenced into this reserve.`,
+          },
           { icon: Shield,     color: "bg-tsia-green", title: "Ring-fenced & Protected",  desc: "The reserve is locked — it cannot be withdrawn by individual members. It belongs to TSIA." },
           { icon: TrendingUp, color: "bg-amber-500",  title: "Strategic Development",    desc: "Funds back TSIA's $150M UK/Turkey partner fund and drive long-term operational growth." },
           { icon: Lock,       color: "bg-violet-500", title: "Transparent & Auditable",  desc: "Every contribution is logged on-chain and reconciled against TSIA's compliance framework." },

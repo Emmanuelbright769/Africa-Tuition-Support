@@ -2816,11 +2816,25 @@ export async function registerRoutes(
       const walletsAtMin       = parseInt(floorRow.wallets_at_min ?? "0", 10);
       const totalWallets       = parseInt(floorRow.total_wallets ?? "0", 10);
 
+      // Sum actual trade deposit amounts (the source that generates the 20% reserve)
+      const depositSumResult = await db.execute(sql`
+        SELECT
+          COALESCE(SUM(CAST(amount_usd AS numeric)), 0) AS total_trade_deposits,
+          COUNT(*) AS deposit_count
+        FROM trade_transactions
+        WHERE type = 'deposit'
+      `);
+      const depositSumRow      = (depositSumResult.rows[0] as any) ?? {};
+      const totalTradeDeposits = parseFloat(depositSumRow.total_trade_deposits ?? "0");
+      const depositCount       = parseInt(depositSumRow.deposit_count ?? "0", 10);
+
       const tradeReserve = parseFloat(fund.total_balance ?? "0");
 
       const fundResult = {
         totalBalance: fund.total_balance ?? "0",
         totalDeposited: fund.total_deposited ?? "0",
+        totalTradeDeposits: totalTradeDeposits.toFixed(2),
+        depositCount,
         contributionRate: 20,
         description: "20% of every Global Trade Market deposit is ring-fenced into this strategic reserve.",
         walletFloorReserve: walletFloorReserve.toFixed(2),

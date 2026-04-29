@@ -237,6 +237,18 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  app.patch("/api/user/country", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { country } = req.body;
+    if (!country || typeof country !== "string" || country.trim().length < 2) {
+      return res.status(400).json({ message: "Valid country code is required" });
+    }
+    await storage.updateUserCountry(userId, country.trim().toLowerCase());
+    const user = await storage.getUser(userId);
+    res.json({ ok: true, country: user?.country });
+  });
+
   // GET /api/auth/linked-roles — returns all roles this email has accounts for
   app.get("/api/auth/linked-roles", async (req, res) => {
     const userId = (req.session as any)?.userId;

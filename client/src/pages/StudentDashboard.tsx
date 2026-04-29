@@ -17,7 +17,8 @@ import {
   LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X,
   LayoutDashboard, Star, History, ChevronRight, ChevronDown, Car, Globe, Loader2,
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
-  ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Info, KeyRound
+  ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Info, KeyRound,
+  Film
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -33,7 +34,7 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response";
+type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
@@ -42,6 +43,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "qce",          label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
   { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
   { id: "tour_africa",  label: "Glide Africa",           icon: Car },
+  { id: "movies",             label: "Movies",            icon: Film, badge: "Soon" },
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
   { id: "plans",        label: "Swift-Pay Plans",        icon: Star },
   { id: "activity",     label: "Activity",               icon: History },
@@ -392,12 +394,12 @@ export default function StudentDashboard() {
                                 className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                                   isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                                 }`}>
-                                <div className="flex items-center gap-2">
-                                  <item.icon className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{item.label}</span>
+                                <div className="flex items-start gap-2">
+                                  <item.icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                  <span className="leading-tight">{item.label}</span>
                                 </div>
                                 {item.badge && (
-                                  <Badge className={`text-[10px] py-0 px-2 font-semibold ${(item as any)._badgeRed ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>{item.badge}</Badge>
+                                  <Badge className={`text-[10px] py-0 px-2 font-semibold shrink-0 ${(item as any)._badgeRed ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>{item.badge}</Badge>
                                 )}
                               </button>
                             );
@@ -1022,6 +1024,28 @@ export default function StudentDashboard() {
             {activeSection === "forum" && walletActivated && (
               <motion.div variants={itemVariants}>
                 <ForumSection userSection="student" />
+              </motion.div>
+            )}
+
+            {/* ── MOVIES ── */}
+            {activeSection === "movies" && (
+              <motion.div variants={itemVariants} className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
+                    <Film className="w-6 h-6 text-tsia-green" /> Movies
+                  </h2>
+                  <p className="text-muted-foreground text-sm">Stream and enjoy curated African films — under Glide Africa.</p>
+                </div>
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-24 h-24 bg-tsia-green/10 rounded-full flex items-center justify-center mb-6">
+                    <Film className="w-12 h-12 text-tsia-green" />
+                  </div>
+                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-sm px-4 py-1.5 mb-4">Coming Soon</Badge>
+                  <h3 className="text-2xl font-bold mb-3">TSIA Movies Launching Soon</h3>
+                  <p className="text-muted-foreground max-w-sm mx-auto leading-relaxed text-sm">
+                    A curated streaming platform celebrating African storytelling — from Nollywood hits to pan-African documentaries. Stay tuned.
+                  </p>
+                </div>
               </motion.div>
             )}
 

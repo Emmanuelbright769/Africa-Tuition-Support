@@ -21,7 +21,8 @@ import {
   Bot, Car, Package, ArrowRight, TrendingDown, Info, ExternalLink,
   Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
   Eye, EyeOff, Bell, Power, Timer, CreditCard, PiggyBank,
-  HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Lock
+  HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Lock,
+  Film, MapPin
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -66,7 +67,7 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum" | "qce" | "emergency_response";
+type Section = "overview" | "wallet" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum" | "qce" | "emergency_response" | "movies" | "location";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
@@ -78,9 +79,11 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "trust_fund",   label: "Affiliate Trust Fund",   icon: Crown },
   { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
   { id: "tour_africa",  label: "Glide Africa",           icon: Car },
+  { id: "movies",             label: "Movies",            icon: Film, badge: "Soon" },
   { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
   { id: "forum",              label: "Community Forum",   icon: MessageSquareText },
   { id: "referrals",          label: "Referrals",         icon: Users },
+  { id: "location",           label: "My Location",       icon: MapPin },
 ];
 
 // ─── Referral Section Component ─────────────────────────────────────────────
@@ -314,6 +317,92 @@ function ReferralSection({ referralStats, referrals, navigate }: {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+// ─── Location Section Component ────────────────────────────────────────────
+const COUNTRIES = [
+  { code: "ng", name: "Nigeria" }, { code: "gh", name: "Ghana" }, { code: "ke", name: "Kenya" },
+  { code: "za", name: "South Africa" }, { code: "ug", name: "Uganda" }, { code: "tz", name: "Tanzania" },
+  { code: "rw", name: "Rwanda" }, { code: "et", name: "Ethiopia" }, { code: "ci", name: "Côte d'Ivoire" },
+  { code: "sn", name: "Senegal" }, { code: "cm", name: "Cameroon" }, { code: "eg", name: "Egypt" },
+  { code: "ma", name: "Morocco" }, { code: "tn", name: "Tunisia" }, { code: "dz", name: "Algeria" },
+  { code: "zm", name: "Zambia" }, { code: "zw", name: "Zimbabwe" }, { code: "ao", name: "Angola" },
+  { code: "gb", name: "United Kingdom" }, { code: "us", name: "United States" }, { code: "ca", name: "Canada" },
+  { code: "de", name: "Germany" }, { code: "fr", name: "France" }, { code: "ae", name: "UAE" },
+  { code: "other", name: "Other" },
+];
+
+function LocationSection({ user }: { user: any }) {
+  const { toast } = useToast();
+  const [selected, setSelected] = useState(user?.country || "ng");
+  const [saved, setSaved] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: async (country: string) => {
+      return apiRequest("PATCH", "/api/user/country", { country });
+    },
+    onSuccess: () => {
+      setSaved(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "Location updated", description: "Your location has been saved successfully." });
+      setTimeout(() => setSaved(false), 3000);
+    },
+    onError: () => {
+      toast({ title: "Update failed", description: "Could not save your location. Please try again.", variant: "destructive" });
+    },
+  });
+
+  const currentCountry = COUNTRIES.find(c => c.code === (user?.country || "ng"))?.name || user?.country || "Unknown";
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
+          <MapPin className="w-6 h-6 text-tsia-green" /> My Location
+        </h2>
+        <p className="text-muted-foreground text-sm">Manually update your location to ensure accurate regional services and referral matching.</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-tsia-green" /> Current Location
+          </CardTitle>
+          <CardDescription>Your registered country: <strong>{currentCountry}</strong></CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="country-select">Select your country</Label>
+            <select
+              id="country-select"
+              data-testid="select-country"
+              value={selected}
+              onChange={e => setSelected(e.target.value)}
+              className="w-full border border-input bg-background rounded-md px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              {COUNTRIES.map(c => (
+                <option key={c.code} value={c.code}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <Button
+            data-testid="button-save-location"
+            className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white"
+            onClick={() => mutation.mutate(selected)}
+            disabled={mutation.isPending || selected === (user?.country || "ng")}
+          >
+            {mutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</> : saved ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Saved!</> : "Save Location"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4">
+        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">Why does location matter?</p>
+        <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+          Your location is used for referral matching, regional pricing, currency display, and access to country-specific TSIA services. Keep it accurate for the best experience.
+        </p>
+      </div>
+    </div>
   );
 }
 // ────────────────────────────────────────────────────────────────────────────
@@ -983,12 +1072,12 @@ export default function AffiliateDashboard() {
                                 className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                                   isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                                 }`}>
-                                <div className="flex items-center gap-2">
-                                  <item.icon className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{item.label}</span>
+                                <div className="flex items-start gap-2">
+                                  <item.icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                  <span className="leading-tight">{item.label}</span>
                                 </div>
                                 {item.badge && (
-                                  <Badge className={`text-[10px] py-0 px-2 font-semibold ${(item as any)._badgeRed ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>{item.badge}</Badge>
+                                  <Badge className={`text-[10px] py-0 px-2 font-semibold shrink-0 ${(item as any)._badgeRed ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>{item.badge}</Badge>
                                 )}
                               </button>
                             );
@@ -1013,7 +1102,7 @@ export default function AffiliateDashboard() {
           <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
             {/* ── WALLET GATE ── */}
-            {!walletActivated && activeSection !== "overview" && activeSection !== "referrals" && (
+            {!walletActivated && activeSection !== "overview" && activeSection !== "referrals" && activeSection !== "location" && activeSection !== "movies" && (
               <motion.div variants={itemVariants} className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
                 <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
                   <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />
@@ -2153,6 +2242,28 @@ export default function AffiliateDashboard() {
               </motion.div>
             )}
 
+            {/* ── MOVIES ── */}
+            {activeSection === "movies" && (
+              <motion.div variants={itemVariants} className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
+                    <Film className="w-6 h-6 text-tsia-green" /> Movies
+                  </h2>
+                  <p className="text-muted-foreground text-sm">Stream and enjoy curated African films — under Glide Africa.</p>
+                </div>
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-24 h-24 bg-tsia-green/10 rounded-full flex items-center justify-center mb-6">
+                    <Film className="w-12 h-12 text-tsia-green" />
+                  </div>
+                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-sm px-4 py-1.5 mb-4">Coming Soon</Badge>
+                  <h3 className="text-2xl font-bold mb-3">TSIA Movies Launching Soon</h3>
+                  <p className="text-muted-foreground max-w-sm mx-auto leading-relaxed text-sm">
+                    A curated streaming platform celebrating African storytelling — from Nollywood hits to pan-African documentaries. Stay tuned.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
             {/* ── STRATEGIC RESERVE FUND ── */}
             {activeSection === "reserve_fund" && walletActivated && (
               <motion.div variants={itemVariants}>
@@ -2459,6 +2570,11 @@ export default function AffiliateDashboard() {
                 queryClient={queryClient}
                 navigate={navigate}
               />
+            )}
+
+            {/* ── MY LOCATION ── */}
+            {activeSection === "location" && (
+              <LocationSection user={user} />
             )}
 
           </motion.div>

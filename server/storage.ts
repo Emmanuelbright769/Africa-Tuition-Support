@@ -62,6 +62,7 @@ export interface IStorage {
   searchMembersByEmail(query: string, excludeUserId: number): Promise<{ id: number; firstName: string; lastName: string; email: string; role: string; isDual: boolean; roles: string[] }[]>;
   getAllStudents(): Promise<User[]>;
   updateUserAffiliateCode(userId: number, code: string): Promise<void>;
+  updateUserCountry(userId: number, country: string): Promise<void>;
   getReferralsByCode(affiliateCode: string): Promise<User[]>;
   getUserByAffiliateCode(affiliateCode: string): Promise<User | undefined>;
 
@@ -453,6 +454,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserAffiliateCode(userId: number, code: string): Promise<void> {
     await db.update(users).set({ affiliateCode: code }).where(eq(users.id, userId));
+  }
+
+  async updateUserCountry(userId: number, country: string): Promise<void> {
+    await db.update(users).set({ country }).where(eq(users.id, userId));
   }
 
   async getReferralsByCode(affiliateCode: string): Promise<User[]> {

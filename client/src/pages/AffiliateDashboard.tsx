@@ -1072,9 +1072,9 @@ export default function AffiliateDashboard() {
                                 className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                                   isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                                 }`}>
-                                <div className="flex items-start gap-2">
-                                  <item.icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                                  <span className="leading-tight">{item.label}</span>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <item.icon className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="leading-tight truncate">{item.label}</span>
                                 </div>
                                 {item.badge && (
                                   <Badge className={`text-[10px] py-0 px-2 font-semibold shrink-0 ${(item as any)._badgeRed ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>{item.badge}</Badge>

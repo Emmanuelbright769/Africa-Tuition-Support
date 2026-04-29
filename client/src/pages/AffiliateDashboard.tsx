@@ -1271,7 +1271,11 @@ export default function AffiliateDashboard() {
             {activeSection === "trade" && walletActivated && (
               <>
                 <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Global Trade Market</h2>
+                  <h2 className="text-2xl font-bold mb-1">
+                    <span className="text-tsia-gold">Eduvault</span>{" "}
+                    <span className="text-tsia-green">Trade</span>{" "}
+                    <span className="text-red-500">Market</span>
+                  </h2>
                   <p className="text-muted-foreground text-sm mb-4">Invest globally — deposit & withdraw using BYBIT, BINANCE & more.</p>
 
                 </motion.div>

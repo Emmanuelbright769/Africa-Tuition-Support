@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentProps } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
+import { TransactionReceipt, type ReceiptRow } from "@/components/ui/TransactionReceipt";
 import {
   ArrowUpRight, ArrowDownLeft, RefreshCw, Receipt, Wifi, Eye, EyeOff,
   ChevronRight, ArrowLeft, ArrowRight, Send, Bell, TrendingUp, TrendingDown,
@@ -180,6 +181,15 @@ export default function FinancialHub() {
   const [activeTab, setActiveTab] = useState<"transfers" | "bills">("transfers");
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
 
+  // ── Universal transaction receipt dialog ──────────────────────────────────
+  const [txReceiptOpen, setTxReceiptOpen]       = useState(false);
+  const [txReceiptProps, setTxReceiptProps]     = useState<Omit<ComponentProps<typeof TransactionReceipt>, "open" | "onClose"> | null>(null);
+
+  const showReceipt = (props: Omit<ComponentProps<typeof TransactionReceipt>, "open" | "onClose">) => {
+    setTxReceiptProps(props);
+    setTxReceiptOpen(true);
+  };
+
   // ── Send-to-bank state ────────────────────────────────────────────────────
   const [sendMode, setSendMode]         = useState<SendMode>("bank");
   const [bankSearch, setBankSearch]     = useState("");
@@ -301,11 +311,33 @@ export default function FinancialHub() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "Transfer Initiated ✓", description: data.message, className: "border-tsia-green" });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/bills"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      const amt = parseFloat(amount);
+      const vat = parseFloat(data.vatAmount ?? "0");
       setView("home"); resetSend();
+      showReceipt({
+        title: "Bank Transfer",
+        status: "processing",
+        amount: `$${amt.toFixed(2)}`,
+        rows: [
+          { label: "Reference",      value: data.reference,                     mono: true },
+          { label: "Sender",         value: `${user?.firstName} ${user?.lastName} (You)` },
+          { label: "Beneficiary",    value: resolvedName || acctNumber },
+          { label: "Account No",     value: acctNumber },
+          { label: "Bank",           value: selectedBank?.name || "—" },
+          { label: "Gateway",        value: (data.gateway ?? "squad").toUpperCase() },
+          { label: "Tx Type",        value: "Bank Transfer" },
+          { label: "Amount",         value: `$${amt.toFixed(2)}` },
+          { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                red: true },
+          { label: "You Receive",    value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
+          { label: "Narration",      value: note || "None" },
+        ] as ReceiptRow[],
+        referenceRow: data.reference,
+        onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
+        newTxLabel: "New Transfer",
+      });
     },
     onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
   });
@@ -346,12 +378,27 @@ export default function FinancialHub() {
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      if (data.receipt) {
-        setReceiptData(data.receipt);
-        setView("receipt");
-      } else {
-        toast({ title: "Money sent! ✓", description: data.message, className: "border-tsia-green" });
-        setView("home"); resetSend();
+      setView("home"); resetSend();
+      const r = data.receipt;
+      if (r) {
+        showReceipt({
+          title: "TSIA Transfer",
+          status: "success",
+          amount: `-$${r.amount}`,
+          rows: [
+            { label: "Reference",   value: r.txRef,                                    mono: true },
+            { label: "Date & Time", value: r.txDate },
+            { label: "Sender",      value: `${r.senderName} (You)` },
+            { label: "Recipient",   value: `${r.recipientName} — ${r.walletLabel}` },
+            { label: "Amount",      value: `-$${r.amount}`,                            red: true },
+            { label: "Fee",         value: "$0.00 — Free",                             green: true },
+            ...(r.note ? [{ label: "Narration", value: `"${r.note}"` }] : []),
+            { label: "New Balance", value: `$${r.newBalance}`,                         bold: true, green: true },
+          ] as ReceiptRow[],
+          referenceRow: r.txRef,
+          onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
+          newTxLabel: "New Transfer",
+        });
       }
     },
     onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
@@ -395,11 +442,51 @@ export default function FinancialHub() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      setTxResult({ ref: data.reference, amountNgn: data.amountNgn, token: data.token, message: data.message });
-      setBillStep("success");
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/bills"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+
+      const sid = selectedService?.id ?? "bill";
+      const titleMap: Record<string, string> = {
+        airtime: "Airtime Purchase", internet: "Data Bundle",
+        electricity: "Electricity Bill", betting: "Betting Top-up",
+      };
+      const rows: ReceiptRow[] = [
+        { label: "Reference",   value: data.reference || "—",     mono: true },
+        { label: "Service",     value: titleMap[sid] || "Bill Payment" },
+        { label: "Amount Paid", value: `₦${(data.amountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
+      ];
+
+      if (sid === "airtime") {
+        rows.push({ label: "Network", value: selectedNetwork?.toUpperCase() || "—" });
+        rows.push({ label: "Phone",   value: billRef });
+      } else if (sid === "internet") {
+        rows.push({ label: "Network", value: selectedISP?.toUpperCase() || "—" });
+        rows.push({ label: "Plan",    value: selectedPlan?.label || "—" });
+        rows.push({ label: "Validity",value: selectedPlan?.validity || "—" });
+        rows.push({ label: "Phone",   value: billRef });
+      } else if (sid === "electricity") {
+        rows.push({ label: "Provider", value: selectedDisco?.label || "—" });
+        rows.push({ label: "Meter",    value: billRef,   mono: true });
+        rows.push({ label: "Type",     value: meterType ?? "prepaid" });
+        if (data.token) rows.push({ label: "PREPAID TOKEN", value: data.token, mono: true, gold: true, bold: true });
+      } else if (sid === "betting") {
+        rows.push({ label: "Platform", value: selectedPlatform || "—" });
+        rows.push({ label: "User ID",  value: billRef });
+      }
+
+      resetBill();
+      setView("home");
+      showReceipt({
+        title:       titleMap[sid] || "Bill Payment",
+        status:      "success",
+        amount:      `₦${(data.amountNgn ?? 0).toLocaleString()}`,
+        amountLabel: "Nigerian Naira",
+        rows,
+        referenceRow: data.reference,
+        onNewTx: () => { setTxReceiptOpen(false); resetBill(); setView("pay-bill"); },
+        newTxLabel: "New Bill",
+      });
     },
     onError: (e: any) => toast({ title: "Payment failed", description: e.message, variant: "destructive" }),
   });
@@ -606,6 +693,15 @@ export default function FinancialHub() {
           )}
         </div>
       </div>
+
+      {/* Universal Transaction Receipt Dialog */}
+      {txReceiptProps && (
+        <TransactionReceipt
+          open={txReceiptOpen}
+          onClose={() => { setTxReceiptOpen(false); setTxReceiptProps(null); }}
+          {...txReceiptProps}
+        />
+      )}
     </div>
   );
 
@@ -1097,75 +1193,7 @@ export default function FinancialHub() {
   );
 
   // ═════════════════════════════════════════════════════════════════════════
-  // TSIA TRANSFER — Receipt screen
-  // ═════════════════════════════════════════════════════════════════════════
-  if (view === "receipt" && receiptData) return (
-    <AnimatePresence mode="wait">
-      <motion.div key="receipt" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="space-y-0">
-        {/* Success banner */}
-        <div className="rounded-2xl bg-gradient-to-br from-tsia-green to-emerald-600 text-white p-6 text-center mb-4">
-          <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
-            <CheckCircle2 className="w-8 h-8 text-white" />
-          </div>
-          <p className="text-xs font-bold uppercase tracking-widest text-white/70 mb-1">Transfer Successful</p>
-          <p className="text-4xl font-black tracking-tight">-${receiptData.amount}</p>
-          <p className="text-sm text-white/80 mt-1">Sent to {receiptData.recipientName}</p>
-        </div>
-
-        {/* Receipt card */}
-        <div className="rounded-2xl border border-border overflow-hidden bg-card shadow-sm mb-4">
-          {/* TSIA branding strip */}
-          <div className="flex items-center gap-2.5 bg-muted/60 px-4 py-3 border-b border-border">
-            <div className="w-7 h-7 rounded-full bg-tsia-gold flex items-center justify-center text-white font-black text-xs">T</div>
-            <div>
-              <p className="text-xs font-bold text-foreground leading-none">TSIA SwiftWallet</p>
-              <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Tuition Support Initiative for Africa</p>
-            </div>
-            <span className="ml-auto text-[10px] font-bold text-tsia-green bg-tsia-green/10 px-2 py-0.5 rounded-full">Completed</span>
-          </div>
-
-          {/* Receipt rows */}
-          {[
-            { label: "Reference", value: receiptData.txRef, mono: true },
-            { label: "Date & Time", value: receiptData.txDate },
-            { label: "Sender", value: `${receiptData.senderName} (You)` },
-            { label: "Recipient", value: `${receiptData.recipientName} — ${receiptData.walletLabel}` },
-            { label: "Amount", value: `-$${receiptData.amount}`, red: true },
-            { label: "Fee", value: "$0.00 — Free", green: true },
-            ...(receiptData.note ? [{ label: "Note", value: `"${receiptData.note}"`, italic: true }] : []),
-          ].map((row, i) => (
-            <div key={row.label} className={`flex items-center justify-between px-4 py-3 text-sm ${i > 0 ? "border-t border-dashed border-border" : ""}`}>
-              <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide shrink-0">{row.label}</span>
-              <span className={`text-right font-semibold ml-4 text-xs ${row.mono ? "font-mono text-foreground" : ""} ${row.red ? "text-red-500 font-bold" : ""} ${row.green ? "text-tsia-green font-bold" : ""} ${(row as any).italic ? "italic text-muted-foreground font-normal" : ""}`}>
-                {row.value}
-              </span>
-            </div>
-          ))}
-
-          {/* New balance */}
-          <div className="flex items-center justify-between px-4 py-3.5 border-t-2 border-tsia-green/40 bg-tsia-green/5">
-            <span className="text-xs font-bold uppercase tracking-wide text-tsia-green">New Balance</span>
-            <span className="text-base font-black text-foreground">${receiptData.newBalance}</span>
-          </div>
-        </div>
-
-        {/* Footnote */}
-        <p className="text-[11px] text-muted-foreground text-center px-4 mb-4">
-          A receipt has been sent to your email address. Keep this reference for your records.
-        </p>
-
-        {/* Actions */}
-        <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 h-11 rounded-2xl" onClick={() => { setView("send"); resetSend(); setReceiptData(null); }} data-testid="btn-receipt-new-transfer">
-            <Send className="w-4 h-4 mr-1.5" /> New Transfer
-          </Button>
-          <Button className="flex-1 h-11 bg-tsia-green text-white font-bold rounded-2xl" onClick={() => { setView("home"); resetSend(); setReceiptData(null); }} data-testid="btn-receipt-done">
-            Done
-          </Button>
-        </div>
-      </motion.div>
-    </AnimatePresence>
-  );
+  // (TSIA Transfer receipt now handled by the universal TransactionReceipt dialog)
 
   // ═════════════════════════════════════════════════════════════════════════
   // REQUEST MONEY

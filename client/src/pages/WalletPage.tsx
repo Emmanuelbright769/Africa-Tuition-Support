@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type ComponentProps } from "react";
+import { TransactionReceipt, type ReceiptRow } from "@/components/ui/TransactionReceipt";
 
 // Squad inline widget type
 declare global {
@@ -110,14 +111,22 @@ export default function WalletPage() {
   const [bwAmount, setBwAmount]         = useState("");
   const [bwGateway, setBwGateway]       = useState<"squad" | "korapay">("squad");
   const [bwSuccessOpen, setBwSuccessOpen] = useState(false);
-  const [bwSuccessData, setBwSuccessData] = useState<{ amount: number; vatAmount: number; netAmountNgn: number; bankName: string; accountNumber: string; accountName: string } | null>(null);
+  const [bwSuccessData, setBwSuccessData] = useState<{ amount: number; vatAmount: number; netAmountNgn: number; bankName: string; accountNumber: string; accountName: string; txRef?: string } | null>(null);
   // Crypto withdrawal
   const [cwOpen, setCwOpen]               = useState(false);
   const [cwNetwork, setCwNetwork]         = useState<"bep20" | "trc20">("bep20");
   const [cwAddress, setCwAddress]         = useState("");
   const [cwAmount, setCwAmount]           = useState("");
   const [cwSuccessOpen, setCwSuccessOpen] = useState(false);
-  const [cwSuccessData, setCwSuccessData] = useState<{ amount: number; netAmount: number; fee: number; network: string } | null>(null);
+  const [cwSuccessData, setCwSuccessData] = useState<{ amount: number; netAmount: number; fee: number; network: string; txRef?: string } | null>(null);
+
+  // ── Universal transaction receipt dialog ──────────────────────────────────
+  const [txReceiptOpen, setTxReceiptOpen] = useState(false);
+  const [txReceiptProps, setTxReceiptProps] = useState<Omit<ComponentProps<typeof TransactionReceipt>, "open" | "onClose"> | null>(null);
+  const showWalletReceipt = (props: Omit<ComponentProps<typeof TransactionReceipt>, "open" | "onClose">) => {
+    setTxReceiptProps(props);
+    setTxReceiptOpen(true);
+  };
   // Withdrawal OTP state
   const [bwOtpCode, setBwOtpCode]         = useState("");
   const [bwOtpSent, setBwOtpSent]         = useState(false);
@@ -350,11 +359,30 @@ export default function WalletPage() {
       return d;
     },
     onSuccess: (d: any) => {
-      setCwSuccessData({ amount: parseFloat(cwAmount), netAmount: d.netAmount, fee: d.fee, network: cwNetwork });
+      const amt = parseFloat(cwAmount);
+      const networkLabel = cwNetwork === "bep20" ? "BEP20 (BSC)" : "TRC20 (TRON)";
       setCwOpen(false); setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); setCwOtpCode(""); setCwOtpSent(false);
-      setCwSuccessOpen(true);
       refetchWallet();
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/withdrawals"] });
+      showWalletReceipt({
+        title: "USDT Withdrawal",
+        status: "pending",
+        amount: `$${amt.toFixed(2)}`,
+        amountLabel: "USDT",
+        rows: [
+          { label: "Reference",      value: d.reference || "—",                   mono: true },
+          { label: "Network",        value: networkLabel },
+          { label: "USDT Address",   value: `${cwAddress.slice(0, 8)}...${cwAddress.slice(-6)}`, mono: true },
+          { label: "Requested",      value: `$${amt.toFixed(2)} USD` },
+          { label: "Handling Fee",   value: `-$${(d.fee ?? 0).toFixed(2)} (1%)`,  red: true },
+          { label: "You'll Receive", value: `$${(d.netAmount ?? 0).toFixed(2)} USDT`, green: true, bold: true },
+          { label: "ETA",            value: "Within 24 hours" },
+        ] as ReceiptRow[],
+        referenceRow: d.reference,
+        footerNote: "USDT withdrawals are processed by the TSIA ops team. No VAT on crypto.",
+        onNewTx: () => { setTxReceiptOpen(false); setCwOpen(true); },
+        newTxLabel: "New Withdrawal",
+      });
     },
     onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
@@ -383,20 +411,34 @@ export default function WalletPage() {
     },
     onSuccess: (d: any) => {
       const effectiveBankName = bwBankName === "__other__" ? bwBankOther.trim() : bwBankName;
-      setBwSuccessData({
-        amount: parseFloat(bwAmount),
-        vatAmount: parseFloat(d.vatAmount),
-        netAmountNgn: parseInt(d.netAmountNgn),
-        bankName: effectiveBankName,
-        accountNumber: bwAccount,
-        accountName: bwAccountName,
-      });
+      const amt = parseFloat(bwAmount);
+      const vat = parseFloat(d.vatAmount ?? "0");
+      const ref = d.reference || "—";
       setBwOpen(false);
-      setBwSuccessOpen(true);
       setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount("");
       setBwOtpCode(""); setBwOtpSent(false);
       refetchWallet();
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      showWalletReceipt({
+        title: "Bank Withdrawal",
+        status: "processing",
+        amount: `$${amt.toFixed(2)}`,
+        rows: [
+          { label: "Reference",      value: ref,                                         mono: true },
+          { label: "Bank",           value: effectiveBankName },
+          { label: "Account No",     value: bwAccount,                                   mono: true },
+          { label: "Account Name",   value: bwAccountName },
+          { label: "Gateway",        value: (d.gateway ?? bwGateway).toUpperCase() },
+          { label: "Amount",         value: `$${amt.toFixed(2)}` },
+          { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                       red: true },
+          { label: "You'll Receive", value: `₦${(d.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
+          { label: "ETA",            value: "30 minutes — 24 hours" },
+        ] as ReceiptRow[],
+        referenceRow: ref,
+        footerNote: "Processing time: 30 minutes to 24 hours. Auto-refunded if not processed.",
+        onNewTx: () => { setTxReceiptOpen(false); setBwOpen(true); },
+        newTxLabel: "New Withdrawal",
+      });
     },
     onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
@@ -1336,25 +1378,7 @@ export default function WalletPage() {
       </Dialog>
 
       {/* ══ CRYPTO WITHDRAWAL SUCCESS ══ */}
-      <Dialog open={cwSuccessOpen} onOpenChange={setCwSuccessOpen}>
-        <DialogContent className="max-w-sm text-center">
-          <div className="flex flex-col items-center gap-4 py-4">
-            <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <CheckCircle2 className="w-9 h-9 text-amber-500" />
-            </div>
-            <div>
-              <h3 className="text-xl font-black">Withdrawal Received!</h3>
-              <p className="text-muted-foreground text-sm mt-1">{cwSuccessData?.network === "bep20" ? "BEP20/BSC" : "TRC20/TRON"} · Processing within 24 hours</p>
-            </div>
-            <div className="rounded-xl border bg-slate-50 dark:bg-slate-800/40 p-3 w-full space-y-1.5 text-sm">
-              <div className="flex justify-between text-slate-600 dark:text-slate-400"><span>Requested</span><span>${cwSuccessData?.amount.toFixed(2)}</span></div>
-              <div className="flex justify-between text-red-500"><span>Handling fee (1%)</span><span>−${cwSuccessData?.fee.toFixed(2)}</span></div>
-              <div className="flex justify-between font-bold text-tsia-green border-t pt-1.5"><span>You will receive (USDT)</span><span>${cwSuccessData?.netAmount.toFixed(2)}</span></div>
-            </div>
-            <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold" onClick={() => setCwSuccessOpen(false)}>Got it, thanks!</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Crypto + Bank Withdrawal receipts rendered by universal TransactionReceipt below */}
 
       {/* ══ BANK WITHDRAWAL — STEP 2: FORM ══ */}
       <Dialog open={bwOpen} onOpenChange={v => { setBwOpen(v); if (!v) { setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); } }}>
@@ -1550,42 +1574,14 @@ export default function WalletPage() {
       </Dialog>
 
       {/* ══ BANK WITHDRAWAL SUCCESS ══ */}
-      <Dialog open={bwSuccessOpen} onOpenChange={setBwSuccessOpen}>
-        <DialogContent className="max-w-sm p-0 overflow-hidden rounded-3xl border-0 shadow-2xl">
-          <div className="flex flex-col items-center gap-0">
-            {/* Green top band */}
-            <div className="w-full bg-gradient-to-br from-[#1a5c38] to-[#2d9d5c] flex flex-col items-center py-8 px-6">
-              <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mb-3">
-                <CheckCircle2 className="w-11 h-11 text-white" />
-              </div>
-              <h2 className="text-white font-black text-2xl text-center">Withdrawal Submitted!</h2>
-              <p className="text-white/70 text-sm text-center mt-1">Your bank transfer is being processed</p>
-            </div>
-            {/* Details */}
-            <div className="w-full p-5 space-y-3">
-              <div className="rounded-2xl border bg-slate-50 dark:bg-slate-800/50 divide-y divide-border text-sm overflow-hidden">
-                <div className="flex justify-between items-center px-4 py-2.5"><span className="text-muted-foreground">Amount</span><span className="font-semibold">${bwSuccessData?.amount.toFixed(2)}</span></div>
-                <div className="flex justify-between items-center px-4 py-2.5 text-red-500"><span>VAT (7.5%)</span><span>−${bwSuccessData?.vatAmount.toFixed(2)}</span></div>
-                <div className="flex justify-between items-center px-4 py-3 bg-[#1a5c38]/5">
-                  <span className="font-bold text-[#1a5c38]">You'll receive (NGN)</span>
-                  <span className="font-black text-[#1a5c38] text-base">₦{bwSuccessData?.netAmountNgn.toLocaleString()}</span>
-                </div>
-              </div>
-              <div className="rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 px-4 py-3 text-sm">
-                <p className="font-semibold text-amber-900 dark:text-amber-300">{bwSuccessData?.bankName}</p>
-                <p className="text-amber-700 dark:text-amber-400 font-mono text-xs mt-0.5">{bwSuccessData?.accountNumber} · {bwSuccessData?.accountName}</p>
-              </div>
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#1a5c38]" />
-                <span>Processing takes <strong>30 minutes to 24 hours</strong>. You'll receive an email once sent. Auto-refunded if not processed in time.</span>
-              </div>
-              <Button className="w-full bg-[#1a5c38] hover:bg-[#1e6b42] text-white font-bold rounded-2xl" onClick={() => setBwSuccessOpen(false)} data-testid="btn-bank-wd-done">
-                Done
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Universal Transaction Receipt Dialog */}
+      {txReceiptProps && (
+        <TransactionReceipt
+          open={txReceiptOpen}
+          onClose={() => { setTxReceiptOpen(false); setTxReceiptProps(null); }}
+          {...txReceiptProps}
+        />
+      )}
 
     </div>
   );

@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type ComponentProps } from "react";
+import { TransactionReceipt, type ReceiptRow } from "@/components/ui/TransactionReceipt";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -94,6 +95,14 @@ export default function WalletSection() {
   const [cwAmount, setCwAmount]           = useState("");
   const [cwSuccessOpen, setCwSuccessOpen] = useState(false);
   const [cwSuccessData, setCwSuccessData] = useState<{ amount: number; netAmount: number; fee: number; network: string } | null>(null);
+
+  // ── Universal transaction receipt dialog ──────────────────────────────────
+  const [txReceiptOpen, setTxReceiptOpen] = useState(false);
+  const [txReceiptProps, setTxReceiptProps] = useState<Omit<ComponentProps<typeof TransactionReceipt>, "open" | "onClose"> | null>(null);
+  const showWalletReceipt = (props: Omit<ComponentProps<typeof TransactionReceipt>, "open" | "onClose">) => {
+    setTxReceiptProps(props);
+    setTxReceiptOpen(true);
+  };
   // OTP state
   const [cwOtpCode, setCwOtpCode]         = useState("");
   const [cwOtpSent, setCwOtpSent]         = useState(false);
@@ -205,10 +214,30 @@ export default function WalletSection() {
       refetchWallet();
       refetchWithdrawals();
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      const amt = parseFloat(cwAmount);
+      const networkLabel = cwNetwork === "bep20" ? "BEP20 (BSC)" : "TRC20 (TRON)";
+      const addr = cwAddress;
       setCwOpen(false);
-      setCwSuccessData({ amount: d.amount, netAmount: d.netAmount ?? d.amount, fee: d.fee ?? 0, network: d.network });
-      setCwSuccessOpen(true);
       setCwAmount(""); setCwAddress(""); setCwNetwork("bep20"); setCwOtpCode(""); setCwOtpSent(false);
+      showWalletReceipt({
+        title: "USDT Withdrawal",
+        status: "pending",
+        amount: `$${amt.toFixed(2)}`,
+        amountLabel: "USDT",
+        rows: [
+          { label: "Reference",      value: d.reference || "—",                       mono: true },
+          { label: "Network",        value: networkLabel },
+          { label: "USDT Address",   value: `${addr.slice(0, 8)}...${addr.slice(-6)}`, mono: true },
+          { label: "Requested",      value: `$${amt.toFixed(2)} USD` },
+          { label: "Handling Fee",   value: `-$${(d.fee ?? 0).toFixed(2)} (1%)`,      red: true },
+          { label: "You'll Receive", value: `$${(d.netAmount ?? 0).toFixed(2)} USDT`, green: true, bold: true },
+          { label: "ETA",            value: "Within 24 hours" },
+        ] as ReceiptRow[],
+        referenceRow: d.reference,
+        footerNote: "USDT withdrawals are processed by the TSIA ops team. No VAT on crypto.",
+        onNewTx: () => { setTxReceiptOpen(false); setCwOpen(true); },
+        newTxLabel: "New Withdrawal",
+      });
     },
     onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
@@ -1073,45 +1102,14 @@ export default function WalletSection() {
         </DialogContent>
       </Dialog>
 
-      {/* ── CRYPTO WITHDRAWAL SUCCESS DIALOG ─────────────────────────────── */}
-      <Dialog open={cwSuccessOpen} onOpenChange={setCwSuccessOpen}>
-        <DialogContent className="max-w-sm text-center">
-          <div className="flex flex-col items-center gap-4 py-4">
-            <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <CheckCircle2 className="w-9 h-9 text-amber-500" />
-            </div>
-            <div>
-              <h3 className="text-xl font-black">Withdrawal Received!</h3>
-              <p className="text-muted-foreground text-sm mt-1">
-                {cwSuccessData?.network === "bep20" ? "BEP20/BSC" : "TRC20/TRON"} · Processing within 24 hours
-              </p>
-            </div>
-            {/* Fee summary */}
-            <div className="rounded-xl border bg-slate-50 dark:bg-slate-800/40 p-3 w-full space-y-1.5 text-sm">
-              <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                <span>Requested</span><span>${cwSuccessData?.amount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-red-500">
-                <span>Handling fee (1%)</span><span>−${cwSuccessData?.fee.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-tsia-green border-t pt-1.5">
-                <span>You will receive (USDT)</span><span>${cwSuccessData?.netAmount.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 w-full text-left">
-              <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">What happens next?</p>
-              <ul className="text-xs text-amber-700 dark:text-amber-400 mt-2 space-y-1">
-                <li>• TSIA ops team processes all crypto withdrawals within 24 hours</li>
-                <li>• 1% handling fee deducted — no VAT applied</li>
-                <li>• Check your wallet transaction history for status updates</li>
-              </ul>
-            </div>
-            <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold" onClick={() => setCwSuccessOpen(false)} data-testid="btn-cw-success-ok">
-              Got it, thanks!
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Universal Transaction Receipt Dialog */}
+      {txReceiptProps && (
+        <TransactionReceipt
+          open={txReceiptOpen}
+          onClose={() => { setTxReceiptOpen(false); setTxReceiptProps(null); }}
+          {...txReceiptProps}
+        />
+      )}
 
     </div>
   );

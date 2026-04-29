@@ -172,7 +172,7 @@ export default function WalletSection() {
   const cryptoDepositMutation = useMutation({
     mutationFn: async () => {
       const amount = parseFloat(cryptoAmount);
-      if (!amount || amount < 5) throw new Error("Minimum crypto deposit is $5");
+      if (!amount || amount < 5) throw new Error("Crypto deposit must be above $5");
       if (!cryptoTxHash.trim()) throw new Error("Transaction hash is required");
       const res = await apiRequest("POST", "/api/wallet/deposit", {
         amountUsd: amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,
@@ -802,7 +802,7 @@ export default function WalletSection() {
 
                 <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">
                   <Shield className="w-4 h-4 text-tsia-green shrink-0 mt-0.5" />
-                  <p className="text-xs text-tsia-green">Minimum deposit: <strong>$5 USDT</strong>. Accepted via BYBIT, BINANCE, Coinbase and any compatible exchange wallet.</p>
+                  <p className="text-xs text-tsia-green">Above <strong>$5 USDT</strong>. Accepted via BYBIT, BINANCE, Coinbase and any compatible exchange wallet.</p>
                 </div>
               </div>
 

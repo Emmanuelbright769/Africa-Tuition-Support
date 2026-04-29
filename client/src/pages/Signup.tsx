@@ -407,7 +407,7 @@ export default function Signup() {
                 <Zap className="w-4 h-4 text-tsia-green" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Minimum Activation: $5</p>
+                <p className="text-sm font-semibold text-foreground">Activate with above $5</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Head to your SwiftWallet to make your first deposit via USDT (TRC20 or BEP20).</p>
               </div>
             </div>

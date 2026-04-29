@@ -1020,13 +1020,13 @@ export default function AffiliateDashboard() {
                 </div>
                 <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
                 <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  Fund your TSIA SwiftWallet with a minimum of <strong>$5</strong> to unlock trade markets, referral commissions, e-commerce, loans, and all platform services.
+                  Fund your TSIA SwiftWallet with above <strong>$5</strong> to unlock trade markets, referral commissions, e-commerce, loans, and all platform services.
                 </p>
                 <Button size="lg" className="bg-primary text-primary-foreground font-bold px-8" onClick={() => setLocation("/wallet")} data-testid="button-wallet-gate-activate-affiliate">
                   <Wallet className="w-4 h-4 mr-2" />
                   Fund & Activate Wallet
                 </Button>
-                <p className="text-xs text-muted-foreground mt-4">Minimum deposit: $5 · Activates immediately on confirmation</p>
+                <p className="text-xs text-muted-foreground mt-4">Deposit above $5 · Activates immediately on confirmation</p>
               </motion.div>
             )}
 
@@ -1055,7 +1055,7 @@ export default function AffiliateDashboard() {
                     </div>
                     <div className="flex-1">
                       <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with a minimum of <strong>$5</strong> to access all platform services.</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with above <strong>$5</strong> to access all platform services.</p>
                     </div>
                     <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate-affiliate">
                       Fund Wallet
@@ -1429,7 +1429,7 @@ export default function AffiliateDashboard() {
                           onClick={() => setWithdrawOpen(true)}
                           disabled={withdrawableAmt < 5 || botActive}
                           data-testid="button-trade-withdraw"
-                          title={botActive ? "Withdrawals are locked during an active trade session" : withdrawableAmt < 5 ? `Minimum $5 earnings required (you have $${withdrawableAmt.toFixed(2)})` : "Withdraw your earnings"}
+                          title={botActive ? "Withdrawals are locked during an active trade session" : withdrawableAmt < 5 ? `Earnings must be above $5 (you have $${withdrawableAmt.toFixed(2)})` : "Withdraw your earnings"}
                           className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 h-7 text-xs px-2.5 disabled:opacity-40"
                         >
                           {botActive ? <Lock className="w-3 h-3 mr-1" /> : <ArrowUpRight className="w-3 h-3 mr-1" />} Withdraw
@@ -2762,7 +2762,7 @@ export default function AffiliateDashboard() {
             {withdrawType === "transfer_wallet" && (
               <>
                 <div className="bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3 text-xs text-tsia-green font-medium">
-                  Instant transfer — no fees charged. Funds appear in your SwiftWallet immediately. Only trade <strong>earnings</strong> can be transferred (minimum $5).
+                  Instant transfer — no fees charged. Funds appear in your SwiftWallet immediately. Only trade <strong>earnings</strong> can be transferred (above $5).
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
@@ -3101,7 +3101,7 @@ export default function AffiliateDashboard() {
                 <Zap className="w-4 h-4 text-tsia-green" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Minimum Activation: $5</p>
+                <p className="text-sm font-semibold text-foreground">Activate with above $5</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Go to SwiftWallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
               </div>
             </div>

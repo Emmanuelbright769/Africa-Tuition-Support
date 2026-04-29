@@ -435,7 +435,7 @@ export default function StudentDashboard() {
                 </div>
                 <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
                 <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  To access this feature, you need to activate your TSIA SwiftWallet by funding it with a minimum of <strong>$5</strong>. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
+                  To access this feature, you need to activate your TSIA SwiftWallet by funding it above <strong>$5</strong>. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
                 </p>
                 <Button
                   size="lg"
@@ -446,7 +446,7 @@ export default function StudentDashboard() {
                   <Wallet className="w-4 h-4 mr-2" />
                   Fund & Activate Wallet
                 </Button>
-                <p className="text-xs text-muted-foreground mt-4">Minimum deposit: $5 · Activates immediately on confirmation</p>
+                <p className="text-xs text-muted-foreground mt-4">Deposit above $5 · Activates immediately on confirmation</p>
               </motion.div>
             )}
 
@@ -575,7 +575,7 @@ export default function StudentDashboard() {
                     </div>
                     <div className="flex-1">
                       <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with a minimum of <strong>$5</strong> to access all platform services.</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with above <strong>$5</strong> to access all platform services.</p>
                     </div>
                     <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate">
                       Fund Wallet
@@ -1257,7 +1257,7 @@ export default function StudentDashboard() {
                 <Zap className="w-4 h-4 text-tsia-green" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Minimum Activation: $5</p>
+                <p className="text-sm font-semibold text-foreground">Activate with above $5</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Go to SwiftWallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
               </div>
             </div>

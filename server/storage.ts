@@ -13,6 +13,7 @@ import {
   priceAlerts, categorySubscriptions,
   sponsorCohorts, cohortCodes, sponsorshipBatches,
   withdrawalRequests, withdrawalOtps,
+  personalInvitations, type PersonalInvitation,
   platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
   type User, type InsertUser,
   type Verification, type InsertVerification,
@@ -241,6 +242,10 @@ export interface IStorage {
   incrementBatchEnrollment(id: number, maxSize: number): Promise<{ batch: SponsorshipBatch; wasClosed: boolean }>;
   openBatchSlots(slots: number): Promise<{ batch: SponsorshipBatch; totalCapacity: number; remaining: number }>;
   getAdminBatchStatus(baseMax: number): Promise<{ batch: SponsorshipBatch | null; totalCapacity: number; remaining: number; enrolled: number } | null>;
+  createPersonalInvitation(data: { email: string; name?: string; note?: string; createdByAdminId: number }): Promise<PersonalInvitation>;
+  getPersonalInvitationByEmail(email: string): Promise<PersonalInvitation | null>;
+  usePersonalInvitation(email: string, userId: number): Promise<void>;
+  listPersonalInvitations(): Promise<PersonalInvitation[]>;
 
   // Wallet activation
   activateWallet(userId: number): Promise<WalletRecord>;
@@ -1726,6 +1731,35 @@ export class DatabaseStorage implements IStorage {
     const totalCapacity = baseMax + (latest.extraSlots ?? 0);
     const remaining = Math.max(0, totalCapacity - latest.enrollmentCount);
     return { batch: latest, totalCapacity, remaining, enrolled: latest.enrollmentCount };
+  }
+
+  // ─── Personal Enrollment Invitations ────────────────────────────────────────
+  async createPersonalInvitation(data: { email: string; name?: string; note?: string; createdByAdminId: number }): Promise<PersonalInvitation> {
+    const [inv] = await db.insert(personalInvitations).values({
+      email: data.email.toLowerCase().trim(),
+      name: data.name ?? null,
+      note: data.note ?? null,
+      createdByAdminId: data.createdByAdminId,
+    }).returning();
+    return inv;
+  }
+
+  async getPersonalInvitationByEmail(email: string): Promise<PersonalInvitation | null> {
+    const [inv] = await db.select().from(personalInvitations)
+      .where(and(eq(personalInvitations.email, email.toLowerCase().trim()), eq(personalInvitations.used, false)))
+      .orderBy(desc(personalInvitations.createdAt))
+      .limit(1);
+    return inv ?? null;
+  }
+
+  async usePersonalInvitation(email: string, userId: number): Promise<void> {
+    await db.update(personalInvitations)
+      .set({ used: true, usedAt: new Date(), usedByUserId: userId })
+      .where(and(eq(personalInvitations.email, email.toLowerCase().trim()), eq(personalInvitations.used, false)));
+  }
+
+  async listPersonalInvitations(): Promise<PersonalInvitation[]> {
+    return db.select().from(personalInvitations).orderBy(desc(personalInvitations.createdAt));
   }
 
   // ─── Wallet activation ──────────────────────────────────────────────────────

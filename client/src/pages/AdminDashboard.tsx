@@ -17,7 +17,7 @@ import {
   ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
   Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight, GitBranch,
   Banknote, Copy, Phone, ThumbsUp, ThumbsDown, Settings, Save, Percent,
-  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info
+  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info, Mail
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -150,6 +150,9 @@ export default function AdminDashboard() {
   const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "", silverMin: "", silverMax: "", goldMin: "", goldMax: "", platinumMin: "", platinumMax: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [openSlotsInput, setOpenSlotsInput] = useState("1");
+  const [inviteEmail, setInviteEmail]     = useState("");
+  const [inviteName,  setInviteName]      = useState("");
+  const [inviteNote,  setInviteNote]      = useState("");
   const [wdAction, setWdAction]           = useState<"approve" | "decline" | "refund" | null>(null);
   const [wdCopied, setWdCopied]           = useState<string | null>(null);
 
@@ -477,6 +480,26 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/ecommerce-stats"] });
       setAdminDeleteListingId(null);
       toast({ title: "Listing Removed", description: "The listing has been permanently deleted." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const { data: personalInvitations = [] } = useQuery<any[]>({
+    queryKey: ["/api/admin/personal-invitations"],
+    enabled: activeTab === "batches",
+  });
+
+  const inviteStudentMutation = useMutation({
+    mutationFn: async (payload: { email: string; name?: string; note?: string }) => {
+      const res = await apiRequest("POST", "/api/admin/invite-student", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/personal-invitations"] });
+      toast({ title: "Invitation sent", description: `${inviteEmail} can now enroll even while the batch is closed.` });
+      setInviteEmail("");
+      setInviteName("");
+      setInviteNote("");
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -2235,6 +2258,87 @@ export default function AdminDashboard() {
                         The standard batch size is <strong>15</strong>; extra slots add on top of that.
                       </p>
                     </div>
+                  </CardContent>
+                </Card>
+
+                {/* ── Invite Specific Student ── */}
+                <Card className="border border-tsia-gold/30 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2 text-slate-800">
+                      <Mail className="w-4 h-4 text-tsia-gold" /> Invite a Specific Student
+                    </CardTitle>
+                    <CardDescription className="text-sm text-slate-500">
+                      Grant a named student the ability to enroll even while the batch is closed. The countdown timer on all other students' dashboards is <strong>not affected</strong>.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="invite-email" className="text-xs font-semibold text-slate-600 mb-1.5 block">Student Email <span className="text-red-500">*</span></Label>
+                        <Input
+                          id="invite-email"
+                          type="email"
+                          placeholder="student@example.com"
+                          value={inviteEmail}
+                          onChange={e => setInviteEmail(e.target.value)}
+                          data-testid="input-invite-email"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="invite-name" className="text-xs font-semibold text-slate-600 mb-1.5 block">Student Name (optional)</Label>
+                        <Input
+                          id="invite-name"
+                          placeholder="e.g. Chukwuemeka Obi"
+                          value={inviteName}
+                          onChange={e => setInviteName(e.target.value)}
+                          data-testid="input-invite-name"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="invite-note" className="text-xs font-semibold text-slate-600 mb-1.5 block">Internal Note (optional)</Label>
+                      <Input
+                        id="invite-note"
+                        placeholder="e.g. Referred by regional coordinator"
+                        value={inviteNote}
+                        onChange={e => setInviteNote(e.target.value)}
+                        data-testid="input-invite-note"
+                      />
+                    </div>
+                    <Button
+                      onClick={() => {
+                        if (!inviteEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail))
+                          return toast({ title: "Invalid email", description: "Enter a valid email address.", variant: "destructive" });
+                        inviteStudentMutation.mutate({ email: inviteEmail.trim(), name: inviteName.trim() || undefined, note: inviteNote.trim() || undefined });
+                      }}
+                      disabled={inviteStudentMutation.isPending}
+                      className="bg-tsia-gold hover:bg-tsia-gold/90 text-white"
+                      data-testid="button-send-invite"
+                    >
+                      {inviteStudentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1.5" /> : <Mail className="w-4 h-4 mr-1.5" />}
+                      Send Personal Invitation
+                    </Button>
+
+                    {/* Invitation history */}
+                    {personalInvitations.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Invitation History</p>
+                        <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                          {personalInvitations.map((inv: any) => (
+                            <div key={inv.id} className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs">
+                              <div className="min-w-0">
+                                <p className="font-medium text-slate-800 truncate">{inv.email}</p>
+                                {inv.name && <p className="text-slate-500">{inv.name}</p>}
+                                {inv.note && <p className="text-slate-400 italic truncate">{inv.note}</p>}
+                              </div>
+                              <span className={`ml-3 shrink-0 px-2 py-0.5 rounded-full text-[11px] font-semibold ${inv.used ? "bg-slate-200 text-slate-500" : "bg-tsia-gold/20 text-tsia-gold"}`}>
+                                {inv.used ? "Used" : "Pending"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 

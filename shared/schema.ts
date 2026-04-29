@@ -962,6 +962,24 @@ export const platformSettings = pgTable("platform_settings", {
 });
 export type PlatformSetting = typeof platformSettings.$inferSelect;
 
+// ─── PERSONAL ENROLLMENT INVITATIONS ─────────────────────────────────────────
+// Admin can invite a specific student by email to enroll even while the batch
+// is closed.  The batch's nextOpenAt countdown is untouched.
+export const personalInvitations = pgTable("personal_invitations", {
+  id:               serial("id").primaryKey(),
+  email:            text("email").notNull(),
+  name:             text("name"),
+  note:             text("note"),
+  used:             boolean("used").notNull().default(false),
+  usedAt:           timestamp("used_at"),
+  usedByUserId:     integer("used_by_user_id"),
+  createdByAdminId: integer("created_by_admin_id"),
+  createdAt:        timestamp("created_at").defaultNow().notNull(),
+});
+export type PersonalInvitation = typeof personalInvitations.$inferSelect;
+export const insertPersonalInvitationSchema = createInsertSchema(personalInvitations).omit({ id: true, createdAt: true });
+export type InsertPersonalInvitation = z.infer<typeof insertPersonalInvitationSchema>;
+
 // Default plan prices & tier payouts — used as fallback if DB record absent
 export const DEFAULT_PLAN_PRICES = {
   plan_1yr_base: 35,

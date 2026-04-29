@@ -888,15 +888,23 @@ export async function registerRoutes(
       let batch = await storage.getCurrentBatch();
 
       if (batch && batch.status === "closed") {
-        // Batch is full — tell user when next batch opens (without revealing batch size)
-        const reopens = batch.nextOpenAt
-          ? new Date(batch.nextOpenAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-          : "soon";
-        return res.status(409).json({
-          code: "BATCH_CLOSED",
-          message: `The current enrollment batch is complete. The next batch opens on ${reopens}. You can still access all other platform features while you wait.`,
-          nextOpenAt: batch.nextOpenAt,
-        });
+        // Check if this student has a personal invitation from the admin
+        const personalInvite = await storage.getPersonalInvitationByEmail(user.email);
+        if (!personalInvite) {
+          // No personal invitation — show the closed batch countdown
+          const reopens = batch.nextOpenAt
+            ? new Date(batch.nextOpenAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+            : "soon";
+          return res.status(409).json({
+            code: "BATCH_CLOSED",
+            message: `The current enrollment batch is complete. The next batch opens on ${reopens}. You can still access all other platform features while you wait.`,
+            nextOpenAt: batch.nextOpenAt,
+          });
+        }
+        // Has a personal invite — allow enrollment and consume the invite
+        await storage.usePersonalInvitation(user.email, userId);
+        // Increment enrollment count on the closed batch without reopening it
+        batch = (await storage.incrementBatchEnrollment(batch.id, BATCH_MAX)).batch;
       }
 
       if (!batch) {
@@ -4112,6 +4120,36 @@ export async function registerRoutes(
       if (!slots || slots < 1 || slots > 500) return res.status(400).json({ message: "slots must be between 1 and 500" });
       const result = await storage.openBatchSlots(slots);
       res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Personal enrollment invitation ────────────────────────────────
+  app.post("/api/admin/invite-student", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const { email, name, note } = req.body;
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        return res.status(400).json({ message: "Valid email address required" });
+      const inv = await storage.createPersonalInvitation({ email, name, note, createdByAdminId: adminId });
+      res.json({ success: true, invitation: inv });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/admin/personal-invitations", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const invitations = await storage.listPersonalInvitations();
+      res.json(invitations);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

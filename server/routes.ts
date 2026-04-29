@@ -5855,44 +5855,15 @@ export async function registerRoutes(
       const deposit = await storage.updateWalletDeposit(parseInt(req.params.id), { status: "completed" });
       const gross = parseFloat(deposit.amountUsd);
 
-      // ── Fee policy: first-time deposit always pays full fees (75/20/5 split).
-      // For AFFILIATES only: every subsequent deposit is credited 100% — no reserve
-      // or pool deduction. Students always pay fees on every deposit.
+      // ── Fee policy: standard 75/20/5 split for ALL deposits, ALL roles ──────
+      // 20% → Reserve Fund | 5% → Affiliate Pool | 75% → user wallet
       const depositUser = await storage.getUser(deposit.userId);
       const isAffiliate = depositUser?.role === "affiliate";
+      const isFirstDeposit = true; // kept for notification copy compatibility
 
-      let reserveCut: number, affiliateCut: number, userCredit: number, isFirstDeposit = true;
-
-      if (isAffiliate) {
-        // Count completed deposits for this user excluding the current one
-        const [prevRow] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(walletDeposits)
-          .where(and(
-            eq(walletDeposits.userId, deposit.userId),
-            eq(walletDeposits.status, "completed"),
-            ne(walletDeposits.id, deposit.id),
-          ));
-        const prevCompleted = Number(prevRow?.count ?? 0);
-        isFirstDeposit = prevCompleted === 0;
-
-        if (isFirstDeposit) {
-          // First time: standard 75/20/5 split
-          reserveCut   = parseFloat((gross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
-          affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
-          userCredit   = parseFloat((gross - reserveCut - affiliateCut).toFixed(2));
-        } else {
-          // Subsequent deposits: no reserve cut, but 5% pool still deducted
-          reserveCut   = 0;
-          affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
-          userCredit   = parseFloat((gross - affiliateCut).toFixed(2));
-        }
-      } else {
-        // Students: always standard 75/20/5 split
-        reserveCut   = parseFloat((gross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
-        affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
-        userCredit   = parseFloat((gross - reserveCut - affiliateCut).toFixed(2));
-      }
+      const reserveCut   = parseFloat((gross * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
+      const affiliateCut = parseFloat((gross * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
+      const userCredit   = parseFloat((gross - reserveCut - affiliateCut).toFixed(2));
 
       // Credit user wallet
       const wallet = await storage.getOrCreateWallet(deposit.userId);
@@ -5938,9 +5909,7 @@ export async function registerRoutes(
         if (!referralResult.credited) console.log(`[REFERRAL] No admin-confirmed deposit commission credited for already-active user ${deposit.userId}`);
       }
       // Record transaction
-      const txDescription = (isAffiliate && !isFirstDeposit)
-        ? `Deposit confirmed — $${gross.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} pool (no reserve fee on top-up)`
-        : `Deposit confirmed — $${gross.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve, $${affiliateCut.toFixed(2)} pool`;
+      const txDescription = `Deposit confirmed — $${gross.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve (20%), $${affiliateCut.toFixed(2)} pool (5%)`;
       await storage.createTransaction({
         userId: deposit.userId,
         type: "deposit",
@@ -5967,9 +5936,7 @@ export async function registerRoutes(
             userId: deposit.userId,
           }).catch((err: any) => console.error("[EMAIL] Admin confirmed deposit email failed:", err?.message ?? err));
         }
-        const notifMessage = (isAffiliate && !isFirstDeposit)
-          ? `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (95%) credited to your TSIA SwiftWallet — no reserve fee on top-up deposits. $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`
-          : `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (75%) credited to your TSIA SwiftWallet. $${reserveCut.toFixed(2)} (20%) to Reserve Fund, $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`;
+        const notifMessage = `$${gross.toFixed(2)} deposit confirmed. $${userCredit.toFixed(2)} (75%) credited to your TSIA SwiftWallet. $${reserveCut.toFixed(2)} (20%) to Reserve Fund, $${affiliateCut.toFixed(2)} (5%) to Affiliate Pool. New balance: $${newBalance}.`;
         const walletNotif = await storage.createNotification({
           userId: deposit.userId,
           type: "wallet_credit",

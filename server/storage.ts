@@ -780,11 +780,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addToReserveFund(amount: string): Promise<void> {
-    await db.update(tradeReserveFund).set({
-      totalBalance: sql`total_balance + ${amount}::decimal`,
-      totalDeposited: sql`total_deposited + ${amount}::decimal`,
-      updatedAt: new Date(),
-    });
+    // Singleton table — try UPDATE first; if table is empty, INSERT the initial row
+    const result = await db.execute(sql`
+      UPDATE trade_reserve_fund
+      SET total_balance   = total_balance   + ${amount}::decimal,
+          total_deposited = total_deposited + ${amount}::decimal,
+          updated_at      = NOW()
+    `);
+    if ((result.rowCount ?? 0) === 0) {
+      await db.execute(sql`
+        INSERT INTO trade_reserve_fund (total_balance, total_deposited, updated_at)
+        VALUES (${amount}::decimal, ${amount}::decimal, NOW())
+      `);
+    }
   }
 
   async recordAffiliateTradeShare(tradeTransactionId: number | null, poolAmount: string, affiliateCount: number, perAffiliate: string, sourceType = "trade"): Promise<void> {

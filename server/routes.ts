@@ -2450,14 +2450,15 @@ export async function registerRoutes(
         const netNgn = netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT; // ₦1,280/$
         const transferRef = `TSIA-TWD-${userId}-${Date.now()}`;
         const secretKey = process.env.SQUAD_SECRET_KEY;
+        const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
         let squadSuccess = false, squadMsg = "";
         try {
-          const squadRes = await fetch("https://api.squadco.com/payout/initiate", {
+          const squadRes = await fetch(`${squadBase}/payout/initiate`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
               transaction_reference: transferRef,
-              amount: Math.round(netNgn),
+              amount: Math.round(netNgn) * 100,
               bank_code: bankCode,
               account_number: accountNumber,
               account_name: accountName,
@@ -2467,8 +2468,9 @@ export async function registerRoutes(
             signal: AbortSignal.timeout(15000),
           });
           const squadData = await squadRes.json() as any;
+          console.log(`[SQUAD] trade payout/initiate → HTTP ${squadRes.status} | success=${squadData.success} | msg="${squadData.message}"`);
           squadSuccess = !!squadData.success;
-          if (!squadSuccess) squadMsg = squadData.message ?? "Squad transfer failed";
+          if (!squadSuccess) squadMsg = squadData.message || squadData.error?.message || `Gateway error (HTTP ${squadRes.status})`;
         } catch (fetchErr: any) { squadMsg = fetchErr.message ?? "Network error"; }
         if (!squadSuccess) {
           return res.status(502).json({ message: `Bank transfer failed: ${squadMsg}. Please try again or contact support.` });
@@ -5085,10 +5087,11 @@ export async function registerRoutes(
     // Serve from memory cache (1 hour TTL)
     if (cachedBankList && Date.now() - bankListCachedAt < 3600_000) return res.json(cachedBankList);
     const secretKey = process.env.SQUAD_SECRET_KEY;
+    const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
 
     // Primary: Squad
     try {
-      const r = await fetch("https://api.squadco.com/bank/list", {
+      const r = await fetch(`${squadBase}/bank/list`, {
         headers: { "Authorization": `Bearer ${secretKey}` },
         signal: AbortSignal.timeout(8000),
       });
@@ -5142,6 +5145,7 @@ export async function registerRoutes(
     if (cached) return res.json({ accountName: cached, accountNumber, fromCache: true });
 
     const secretKey = process.env.SQUAD_SECRET_KEY;
+    const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
     // Helper to extract account name from Squad response
     const extractName = (data: any): string =>
       data?.data?.account_name ?? data?.data?.AccountName ?? data?.account_name ?? data?.AccountName ?? "";
@@ -5151,7 +5155,7 @@ export async function registerRoutes(
       let accountName = "";
       let lastMsg = "";
       try {
-        const r = await fetch("https://api.squadco.com/bank/account/lookup", {
+        const r = await fetch(`${squadBase}/bank/account/lookup`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
@@ -5171,7 +5175,7 @@ export async function registerRoutes(
       if (!accountName) {
         try {
           const qs = new URLSearchParams({ bank_code: bankCode, account_number: accountNumber }).toString();
-          const r2 = await fetch(`https://api.squadco.com/payout/fetchBank?${qs}`, {
+          const r2 = await fetch(`${squadBase}/payout/fetchBank?${qs}`, {
             headers: { "Authorization": `Bearer ${secretKey}` },
             signal: AbortSignal.timeout(12000),
           });
@@ -5487,8 +5491,9 @@ export async function registerRoutes(
       } else {
         // ── Squad payout (default) ─────────────────────────────────────
         const secretKey = process.env.SQUAD_SECRET_KEY;
+        const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
         try {
-          const squadRes = await fetch("https://api.squadco.com/payout/initiate", {
+          const squadRes = await fetch(`${squadBase}/payout/initiate`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -5503,8 +5508,11 @@ export async function registerRoutes(
             signal: AbortSignal.timeout(15000),
           });
           const squadData = await squadRes.json() as any;
+          console.log(`[SQUAD] payout/initiate → HTTP ${squadRes.status} | success=${squadData.success} | msg="${squadData.message}"`);
           transferSuccess = !!squadData.success;
-          if (!transferSuccess) transferMsg = squadData.message ?? "Transfer failed";
+          if (!transferSuccess) {
+            transferMsg = squadData.message || squadData.error?.message || `Gateway error (HTTP ${squadRes.status})`;
+          }
         } catch (e: any) { transferMsg = e.message ?? "Network error"; }
       }
 

@@ -617,7 +617,7 @@ export async function sendBotEarningsEmail(to: string, firstName: string, earnin
   const subject = `🤖 AI Bot Earnings — $${earning} credited to your Trade Wallet`;
   const html = baseTemplate(`
     <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🤖 Bot Session Complete</h2>
-    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your AI Trading Bot has finished its 12-hour session.</p>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, your Itera Trading BOT has finished its 12-hour session.</p>
     <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>

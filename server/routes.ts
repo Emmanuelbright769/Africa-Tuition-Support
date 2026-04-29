@@ -2677,7 +2677,7 @@ export async function registerRoutes(
           userId,
           type: "trade",
           title: "Bot Session — Market Loss",
-          message: `Day ${currentCycleDay}/120: Your trading bot (${elapsedHours}h) posted a market loss of $${lossAmount.toFixed(4)} (-${ratePercent}%).`,
+          message: `Day ${currentCycleDay}/120: Your Itera Trading BOT (${elapsedHours}h) posted a market loss of $${lossAmount.toFixed(4)} (-${ratePercent}%).`,
           data: { loss: lossAmount, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance, cycleDay: currentCycleDay },
           isRead: false,
         });
@@ -6484,7 +6484,7 @@ export async function registerRoutes(
             userId,
             type: "bot_reminder",
             title: "30-Minute Bot Reminder",
-            message: "It's nearly 1:00 PM GMT! Come back in 30 minutes to activate your AI Trading Bot and start today's trading session.",
+            message: "It's nearly 1:00 PM GMT! Come back in 30 minutes to activate your Itera Trading BOT and start today's trading session.",
             data: { ukHour, ukMinute },
             isRead: false,
           });
@@ -6497,7 +6497,7 @@ export async function registerRoutes(
             userId,
             type: "bot_reminder",
             title: "Bot Activation Window Open",
-            message: "It's 1:00 PM GMT! Your AI Trading Bot activation window is now open. Go to Trade Market → activate your bot to start today's 2% trades.",
+            message: "It's 1:00 PM GMT! Your Itera Trading BOT activation window is now open. Go to Trade Market → activate your bot to start today's 2% trades.",
             data: { ukHour, ukMinute },
             isRead: false,
           });

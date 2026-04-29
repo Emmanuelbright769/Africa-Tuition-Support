@@ -586,7 +586,7 @@ export default function AffiliateDashboard() {
       setBotActivatedAt(serverTs);
       try { localStorage.setItem("tsia_bot_activated_at", String(serverTs)); } catch {}
       queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
-      toast({ title: "Trading Bot Activated", description: "The AI trading bot is now live. It runs for up to 12 hours and reflects real market conditions — some sessions may result in a loss.", className: "border-green-500" });
+      toast({ title: "Itera Trading BOT Activated", description: "The Itera Trading BOT is now live. It runs for up to 12 hours and reflects real market conditions — some sessions may result in a loss.", className: "border-green-500" });
     } catch {
       toast({ title: "Activation Failed", description: "Network error — please try again.", variant: "destructive" });
     }
@@ -635,7 +635,7 @@ export default function AffiliateDashboard() {
       // 30-min pre-1PM reminder (weekdays only)
       if (ukD >= 1 && ukD <= 5 && ukH === 12 && ukMinute === 30 && !botActive) {
         if (Notification.permission === "granted") {
-          new Notification("TSIA Trade Market", { body: "30 minutes until 1:00 PM — Time to activate your Trading Bot!", icon: "/favicon.ico" });
+          new Notification("TSIA Trade Market", { body: "30 minutes until 1:00 PM — Time to activate your Itera Trading BOT!", icon: "/favicon.ico" });
         }
         toast({ title: "Bot Reminder", description: "It's 12:30 PM — the activation window opens in 30 minutes at 1:00 PM GMT and stays open for 12 hours!", className: "border-amber-500" });
       }
@@ -1308,7 +1308,7 @@ export default function AffiliateDashboard() {
                                 <Bot className="w-5 h-5 text-white" />
                               </div>
                               <div>
-                                <p className="font-bold text-lg leading-tight">AI Trading Bot</p>
+                                <p className="font-bold text-lg leading-tight">Itera Trading BOT</p>
                                 <p className="text-xs opacity-80">Mon–Fri · Opens 1:00 PM GMT · 12-hour session · Auto-off at 1:00 AM</p>
                               </div>
                             </div>
@@ -1389,7 +1389,7 @@ export default function AffiliateDashboard() {
                               </div>
                               <div>
                                 <p className="text-xs font-semibold text-red-600 dark:text-red-400">Broker required</p>
-                                <p className="text-xs text-muted-foreground">Select a broker above before activating the AI trading bot.</p>
+                                <p className="text-xs text-muted-foreground">Select a broker above before activating the Itera Trading BOT.</p>
                               </div>
                             </div>
                           ) : tradeBalance < TRADE_MARKET.MIN_DEPOSIT ? (
@@ -1756,7 +1756,7 @@ export default function AffiliateDashboard() {
                   {!selectedBroker && !botActive && (
                     <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
                       <AlertCircle className="w-3 h-3 shrink-0" />
-                      Select a broker before you can activate the AI trading bot.
+                      Select a broker before you can activate the Itera Trading BOT.
                     </p>
                   )}
                   {botActive && selectedBroker && (

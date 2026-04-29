@@ -276,10 +276,10 @@ export default function TermsAndConditions() {
                 <p>The TSIA trade market connects users to third-party licensed brokers (Binance, Exness, OctaFX, Bybit, XM Group, eToro, and IQ Option). Trading activities involve significant financial risk. <strong>Past performance does not guarantee future results.</strong> You may lose some or all of your invested capital.</p>
               </Clause>
               <Clause num="8.2" title="AI Bot Target ROI">
-                <p>TSIA's AI trading bot targets a 2% daily return with an overall 100% ROI target. This is a target, not a guarantee. Market conditions can result in lower or negative returns on individual sessions.</p>
+                <p>TSIA's Itera Trading BOT targets a 2% daily return with an overall 100% ROI target. This is a target, not a guarantee. Market conditions can result in lower or negative returns on individual sessions.</p>
               </Clause>
               <Clause num="8.3" title="Bot Window">
-                <p>The trading bot is active from <strong>1:00 PM GMT to 1:00 AM GMT</strong> on standard working days. You must manually activate your bot session within this window. Sessions started outside this window will not generate returns.</p>
+                <p>The Itera Trading BOT is active from <strong>1:00 PM GMT to 1:00 AM GMT</strong> on standard working days. You must manually activate your bot session within this window. Sessions started outside this window will not generate returns.</p>
               </Clause>
               <Clause num="8.4" title="Deposit Allocation">
                 <p>Every trade deposit is allocated as follows: 75% to your active trade wallet, 20% to TSIA's strategic reserve fund, and 5% to the affiliate pool. These allocations are non-negotiable and applied automatically.</p>

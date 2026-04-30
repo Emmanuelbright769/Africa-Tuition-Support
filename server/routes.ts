@@ -4985,17 +4985,57 @@ export async function registerRoutes(
       if (event === "charge.success" && data?.status === "success") {
         const ref = data.reference as string;
         if (!ref) { res.sendStatus(200); return; }
+
         const { Pool } = await import("pg");
         const pool = new Pool({ connectionString: process.env.DATABASE_URL });
         const row = await pool.query("SELECT * FROM wallet_deposits WHERE tx_hash=$1 LIMIT 1", [ref]);
         await pool.end();
         const dep = row.rows[0];
-        if (dep && dep.status !== "completed") {
-          const gross = parseFloat(dep.amount_usd);
-          await creditWalletWithSplit(dep.user_id, gross, "korapay", ref, { id: dep.id, amountUsd: dep.amount_usd, status: dep.status });
+
+        if (dep) {
+          // ── Normal path: deposit record found ──────────────────────────────
+          if (dep.status !== "completed") {
+            const gross = parseFloat(dep.amount_usd);
+            console.log(`[KORAPAY WEBHOOK] Crediting user ${dep.user_id} $${gross} for ref ${ref}`);
+            await creditWalletWithSplit(dep.user_id, gross, "korapay", ref, { id: dep.id, amountUsd: dep.amount_usd, status: dep.status });
+          } else {
+            console.log(`[KORAPAY WEBHOOK] Ref ${ref} already completed — skipping`);
+          }
+        } else {
+          // ── Fallback: no deposit record — extract userId from metadata or reference ──
+          // Reference format: TSIA-KORA-{userId}-{timestamp}
+          const metaUserId = data.metadata?.userId;
+          const metaAmountUsd = data.metadata?.amountUsd;
+          let fallbackUserId: number | null = null;
+          if (metaUserId && !isNaN(parseInt(metaUserId))) {
+            fallbackUserId = parseInt(metaUserId);
+          } else if (ref.startsWith("TSIA-KORA-")) {
+            const parts = ref.split("-"); // ["TSIA","KORA","{userId}","{ts}"]
+            if (parts.length >= 3 && !isNaN(parseInt(parts[2]))) {
+              fallbackUserId = parseInt(parts[2]);
+            }
+          }
+          if (fallbackUserId) {
+            // Amount: prefer metadata, fall back to Korapay's reported NGN amount
+            // data.amount is in NGN kobo (smallest unit), so divide by 100 for NGN, then by 1480 for USD
+            const grossFromKora = data.amount ? parseFloat((data.amount / 100 / 1480).toFixed(2)) : 0;
+            const gross = metaAmountUsd ? parseFloat(metaAmountUsd) : grossFromKora;
+            if (gross > 0) {
+              console.log(`[KORAPAY WEBHOOK] No deposit record found for ref ${ref} — crediting user ${fallbackUserId} $${gross} via fallback`);
+              const newDep = await storage.createWalletDeposit({ userId: fallbackUserId, amountUsd: gross.toFixed(2), txHash: ref, walletType: "korapay", status: "pending" });
+              await creditWalletWithSplit(fallbackUserId, gross, "korapay", ref, { id: newDep.id, amountUsd: gross.toFixed(2), status: "pending" });
+            } else {
+              console.warn(`[KORAPAY WEBHOOK] Ref ${ref} — could not determine amount, skipping`);
+            }
+          } else {
+            console.warn(`[KORAPAY WEBHOOK] Ref ${ref} — no deposit record and could not extract userId, skipping`);
+          }
         }
       }
-    } catch { /* webhook errors must not crash the server */ }
+    } catch (e: any) {
+      console.error("[KORAPAY WEBHOOK] Error:", e?.message ?? e);
+      // webhook errors must not crash the server
+    }
     res.sendStatus(200);
   });
 
@@ -5893,6 +5933,43 @@ export async function registerRoutes(
       const bills = await storage.getBillPaymentsByUser(userId);
       setCached(cacheKey, bills, 300_000);
       res.json(bills);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Admin: Manually credit a wallet (apply full 75/20/5 split) ─────────────
+  // Used when a Korapay/Squad payment arrived but wasn't auto-credited (e.g. user not in system, webhook missed, etc.)
+  app.post("/api/admin/manual-deposit-credit", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const { userId, amountUsd, reference, note } = req.body;
+      const targetId = parseInt(userId);
+      const gross = parseFloat(amountUsd);
+      if (isNaN(targetId) || targetId <= 0) return res.status(400).json({ message: "Valid userId is required" });
+      if (isNaN(gross) || gross <= 0) return res.status(400).json({ message: "Valid amountUsd is required" });
+
+      const targetUser = await storage.getUser(targetId);
+      if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+      // Check if reference already credited
+      const txRef = reference?.trim() || `ADMIN-MANUAL-${targetId}-${Date.now()}`;
+      const existingDeps = await storage.getWalletDepositsByUser(targetId);
+      const alreadyDone = existingDeps.find((d: any) => d.txHash === txRef && d.status === "completed");
+      if (alreadyDone) return res.status(409).json({ message: "This reference has already been credited. Re-crediting is blocked to prevent duplicates." });
+
+      // Create or find the deposit record
+      let dep = existingDeps.find((d: any) => d.txHash === txRef);
+      if (!dep) {
+        dep = await storage.createWalletDeposit({ userId: targetId, amountUsd: gross.toFixed(2), txHash: txRef, walletType: "manual", status: "pending" });
+      }
+
+      await creditWalletWithSplit(targetId, gross, note ? `manual (${note})` : "manual", txRef, { id: dep.id, amountUsd: gross.toFixed(2), status: dep.status });
+
+      console.log(`[ADMIN MANUAL CREDIT] Admin ${admin.email} credited user ${targetId} (${targetUser.email}) $${gross} — ref: ${txRef}`);
+      res.json({ success: true, message: `$${gross.toFixed(2)} credited to ${targetUser.firstName} ${targetUser.lastName}'s wallet (75% after split)`, grossAmount: gross.toFixed(2), creditedAmount: (gross * 0.75).toFixed(2) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

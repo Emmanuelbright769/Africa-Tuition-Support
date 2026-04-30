@@ -142,6 +142,11 @@ export default function AdminDashboard() {
   const [deleteUserDialog, setDeleteUserDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [setReferrerDialog, setSetReferrerDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [referrerCode, setReferrerCode] = useState("");
+  const [manualCreditOpen, setManualCreditOpen] = useState(false);
+  const [mcUserId, setMcUserId]       = useState("");
+  const [mcAmount, setMcAmount]       = useState("");
+  const [mcReference, setMcReference] = useState("");
+  const [mcNote, setMcNote]           = useState("");
   // Withdrawal review state
   const [vFilter, setVFilter] = useState<"all" | "pending" | "verified" | "rejected">("all");
   const [wdFilter, setWdFilter] = useState<"all" | "pending" | "approved" | "declined" | "refunded">("all");
@@ -301,6 +306,22 @@ export default function AdminDashboard() {
       setEditBalanceNote("");
       toast({ title: "Wallet Updated ✓", description: "User wallet balance has been updated." });
     },
+  });
+
+  const manualCreditMutation = useMutation({
+    mutationFn: async (data: { userId: string; amountUsd: string; reference: string; note: string }) => {
+      const res = await apiRequest("POST", "/api/admin/manual-deposit-credit", data);
+      if (!res.ok) { const err = await res.json(); throw new Error(err.message); }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
+      setManualCreditOpen(false);
+      setMcUserId(""); setMcAmount(""); setMcReference(""); setMcNote("");
+      toast({ title: "Payment Credited ✓", description: data.message });
+    },
+    onError: (e: any) => toast({ title: "Credit Failed", description: e.message, variant: "destructive" }),
   });
 
   const creditAffiliateMutation = useMutation({
@@ -1039,7 +1060,20 @@ export default function AdminDashboard() {
 
             {/* ═══════════════════════════════ ALL USERS ═══════════════════════════════ */}
             {activeTab === "users" && (
-              <motion.div key="users" variants={slide} initial="hidden" animate="visible" exit="exit">
+              <motion.div key="users" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+                {/* Manual Payment Credit Tool */}
+                <Card className="border border-amber-200 bg-amber-50/60 dark:bg-amber-900/10">
+                  <CardContent className="flex items-center justify-between p-4">
+                    <div>
+                      <p className="font-semibold text-sm text-amber-800 dark:text-amber-200">Manual Payment Credit</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">Use when a Korapay/Squad payment was received but not credited to a user's wallet automatically.</p>
+                    </div>
+                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 ml-4" onClick={() => setManualCreditOpen(true)} data-testid="btn-open-manual-credit">
+                      Credit Wallet
+                    </Button>
+                  </CardContent>
+                </Card>
+
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
                     <CardTitle className="text-base">All Platform Users</CardTitle>
@@ -2994,6 +3028,56 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => { setEditBalanceDialog({ open: false, user: null }); setEditBalanceAmount(""); setEditBalanceNote(""); }}>Cancel</Button>
             <Button className="bg-blue-600 hover:bg-blue-700" disabled={!editBalanceAmount || editBalanceMutation.isPending} onClick={() => editBalanceMutation.mutate({ id: editBalanceDialog.user?.id, balance: editBalanceAmount, note: editBalanceNote })} data-testid="button-confirm-edit-balance">
               {editBalanceMutation.isPending ? "Updating..." : <><Edit className="w-4 h-4 mr-2" /> Set Balance</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manual Payment Credit dialog */}
+      <Dialog open={manualCreditOpen} onOpenChange={open => { if (!open) { setManualCreditOpen(false); setMcUserId(""); setMcAmount(""); setMcReference(""); setMcNote(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manual Payment Credit</DialogTitle>
+            <DialogDescription>Credit a user's wallet for a Korapay/Squad payment that wasn't automatically applied. The 75/20/5 split is applied — user receives 75% of the gross amount.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+              <strong>User ID</strong> — find it in the All Users table above (e.g. <code>26</code> for Ekong Friday). <strong>Gross amount</strong> is the full USD equivalent of what was paid.
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-sm">User ID <span className="text-red-400">*</span></Label>
+                <Input type="number" min="1" placeholder="e.g. 26" className="h-10 bg-muted/30" value={mcUserId} onChange={e => setMcUserId(e.target.value)} data-testid="input-mc-userid" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-sm">Gross Amount (USD) <span className="text-red-400">*</span></Label>
+                <Input type="number" min="0.01" step="0.01" placeholder="e.g. 10.00" className="h-10 bg-muted/30" value={mcAmount} onChange={e => setMcAmount(e.target.value)} data-testid="input-mc-amount" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="font-semibold text-sm">Payment Reference (optional)</Label>
+              <Input placeholder="e.g. TSIA-KORA-26-1234567890 or from Korapay dashboard" className="h-10 bg-muted/30 font-mono text-sm" value={mcReference} onChange={e => setMcReference(e.target.value)} data-testid="input-mc-reference" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="font-semibold text-sm">Note (optional)</Label>
+              <Input placeholder="e.g. Korapay payment confirmed by admin" className="h-10 bg-muted/30" value={mcNote} onChange={e => setMcNote(e.target.value)} data-testid="input-mc-note" />
+            </div>
+            {mcAmount && parseFloat(mcAmount) > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 space-y-0.5">
+                <p>Gross: <strong>${parseFloat(mcAmount).toFixed(2)}</strong> → User receives: <strong>${(parseFloat(mcAmount) * 0.75).toFixed(2)}</strong> (75%)</p>
+                <p>Reserve fund: ${(parseFloat(mcAmount) * 0.20).toFixed(2)} | Affiliate pool: ${(parseFloat(mcAmount) * 0.05).toFixed(2)}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setManualCreditOpen(false); setMcUserId(""); setMcAmount(""); setMcReference(""); setMcNote(""); }}>Cancel</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={!mcUserId || !mcAmount || manualCreditMutation.isPending}
+              onClick={() => manualCreditMutation.mutate({ userId: mcUserId, amountUsd: mcAmount, reference: mcReference, note: mcNote })}
+              data-testid="btn-confirm-manual-credit"
+            >
+              {manualCreditMutation.isPending ? "Crediting..." : "Credit Wallet"}
             </Button>
           </DialogFooter>
         </DialogContent>

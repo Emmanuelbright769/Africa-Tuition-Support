@@ -178,7 +178,7 @@ export default function FinancialHub() {
   const [view, setView]       = useState<View>("home");
   const [amount, setAmount]   = useState("0");
   const [note, setNote]       = useState("");
-  const [activeTab, setActiveTab] = useState<"transfers" | "bills">("transfers");
+  const [activeTab, setActiveTab] = useState<"transfers" | "bank-transfers" | "bills">("transfers");
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
 
   // ── Universal transaction receipt dialog ──────────────────────────────────
@@ -395,7 +395,6 @@ export default function FinancialHub() {
             { label: "Amount",      value: `-$${r.amount}`,                            red: true },
             { label: "Fee",         value: "$0.00 — Free",                             green: true },
             ...(r.note ? [{ label: "Narration", value: `"${r.note}"` }] : []),
-            { label: "New Balance", value: `$${r.newBalance}`,                         bold: true, green: true },
           ] as ReceiptRow[],
           referenceRow: r.txRef,
           onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
@@ -649,12 +648,67 @@ export default function FinancialHub() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-sm">History</h3>
           <div className="flex bg-muted/40 rounded-xl p-0.5 text-xs">
-            <button onClick={() => setActiveTab("transfers")} className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Transfers</button>
-            <button onClick={() => setActiveTab("bills")}     className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bills"     ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bills</button>
+            <button onClick={() => setActiveTab("transfers")}      className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "transfers"      ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Transfers</button>
+            <button onClick={() => setActiveTab("bank-transfers")} className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bank-transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bank</button>
+            <button onClick={() => setActiveTab("bills")}          className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bills"          ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bills</button>
           </div>
         </div>
         <div className="space-y-2">
-          {activeTab === "transfers" ? (
+          {activeTab === "bank-transfers" ? (
+            (() => {
+              const bankTxs = (bills as BillRecord[]).filter(b => b.service === "bank_transfer");
+              if (bankTxs.length === 0) return <EmptyState icon={Building2} msg="No bank transfers yet" />;
+              return bankTxs.slice(0, 8).map(b => {
+                const btStatus: "success" | "pending" | "processing" =
+                  b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
+                const btDate = new Date(b.createdAt).toLocaleString("en-GB", {
+                  day: "2-digit", month: "short", year: "numeric",
+                  hour: "2-digit", minute: "2-digit", second: "2-digit",
+                });
+                let btDetails: any = {};
+                try { btDetails = JSON.parse(b.reference); } catch { btDetails = { txRef: b.reference }; }
+                const openBtReceipt = () => showReceipt({
+                  status: btStatus,
+                  title: "Bank Transfer",
+                  amount: `₦${Number(btDetails.netAmountNgn ?? 0).toLocaleString()}`,
+                  amountLabel: `$${parseFloat(b.amount).toFixed(2)}`,
+                  timestamp: btDate,
+                  referenceRow: btDetails.txRef || b.reference,
+                  rows: [
+                    { label: "Reference",    value: btDetails.txRef || b.reference, mono: true },
+                    { label: "Recipient",    value: btDetails.accountName || "—" },
+                    { label: "Account No",   value: btDetails.accountNumber || "—", mono: true },
+                    { label: "Bank",         value: btDetails.bankName || "—" },
+                    { label: "Amount (NGN)", value: `₦${Number(btDetails.netAmountNgn ?? 0).toLocaleString()}`, bold: true, green: true },
+                    { label: "Amount (USD)", value: `$${parseFloat(b.amount).toFixed(2)}` },
+                    { label: "Date",         value: btDate },
+                    { label: "Status",       value: btStatus === "success" ? "Completed" : btStatus === "pending" ? "Pending Approval" : "Processing",
+                      green: btStatus === "success", gold: btStatus === "processing", red: btStatus === "pending" },
+                  ],
+                });
+                return (
+                  <button key={b.id} onClick={openBtReceipt}
+                    className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
+                    data-testid={`row-bank-transfer-${b.id}`}>
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                      <Building2 className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm">{btDetails.accountName || "Bank Transfer"}</p>
+                      <p className="text-xs text-muted-foreground truncate">{btDetails.bankName || btDetails.txRef || b.reference}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
+                      <p className={`text-[10px] font-semibold ${btStatus === "success" ? "text-tsia-green" : btStatus === "pending" ? "text-amber-500" : "text-blue-500"}`}>
+                        {btStatus === "success" ? "Sent" : btStatus === "pending" ? "Pending" : "Processing"}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+                  </button>
+                );
+              });
+            })()
+          ) : activeTab === "transfers" ? (
             (transfers as TransferRecord[]).length === 0
               ? <EmptyState icon={Send} msg="No transfers yet" />
               : (transfers as TransferRecord[]).slice(0, 8).map(t => {
@@ -702,51 +756,52 @@ export default function FinancialHub() {
                   );
                 })
           ) : (
-            (bills as BillRecord[]).length === 0
-              ? <EmptyState icon={Receipt} msg="No bill payments yet" />
-              : (bills as BillRecord[]).slice(0, 8).map(b => {
-                  const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
-                  const isBankTransfer = b.service === "bank_transfer";
-                  const billStatus: "success" | "pending" | "processing" =
-                    b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
-                  const billDate = new Date(b.createdAt).toLocaleString("en-GB", {
-                    day: "2-digit", month: "short", year: "numeric",
-                    hour: "2-digit", minute: "2-digit", second: "2-digit",
-                  });
-                  const openBillReceipt = () => showReceipt({
-                    status: billStatus,
-                    title: isBankTransfer ? "Bank Transfer" : `${svc.label} Payment`,
-                    amount: `$${parseFloat(b.amount).toFixed(2)}`,
-                    timestamp: billDate,
-                    referenceRow: b.reference,
-                    rows: [
-                      { label: "Reference",  value: b.reference, mono: true },
-                      { label: "Service",    value: isBankTransfer ? "Bank Transfer" : svc.label },
-                      { label: "Amount",     value: `$${parseFloat(b.amount).toFixed(2)}`, bold: true },
-                      { label: "Date",       value: billDate },
-                      { label: "Status",     value: billStatus === "success" ? "Completed" : billStatus === "pending" ? "Pending" : "Processing",
-                        green: billStatus === "success", gold: billStatus === "processing", red: billStatus === "pending" },
-                    ],
-                  });
-                  return (
-                    <button key={b.id} onClick={openBillReceipt}
-                      className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
-                      data-testid={`row-bill-${b.id}`}>
-                      <div className={`w-10 h-10 rounded-xl ${isBankTransfer ? "bg-blue-100 dark:bg-blue-900/30" : `bg-gradient-to-br ${svc.color}`} flex items-center justify-center`}>
-                        {isBankTransfer ? <Building2 className="w-5 h-5 text-blue-600" /> : <svc.icon className="w-5 h-5 text-white" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm capitalize">{isBankTransfer ? "Bank Transfer" : svc.label}</p>
-                        <p className="text-xs text-muted-foreground truncate">{b.reference}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
-                        <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
-                    </button>
-                  );
-                })
+            (() => {
+              const billItems = (bills as BillRecord[]).filter(b => b.service !== "bank_transfer");
+              if (billItems.length === 0) return <EmptyState icon={Receipt} msg="No bill payments yet" />;
+              return billItems.slice(0, 8).map(b => {
+                const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
+                const billStatus: "success" | "pending" | "processing" =
+                  b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
+                const billDate = new Date(b.createdAt).toLocaleString("en-GB", {
+                  day: "2-digit", month: "short", year: "numeric",
+                  hour: "2-digit", minute: "2-digit", second: "2-digit",
+                });
+                const openBillReceipt = () => showReceipt({
+                  status: billStatus,
+                  title: `${svc.label} Payment`,
+                  amount: `$${parseFloat(b.amount).toFixed(2)}`,
+                  timestamp: billDate,
+                  referenceRow: b.reference,
+                  rows: [
+                    { label: "Reference", value: b.reference, mono: true },
+                    { label: "Service",   value: svc.label },
+                    { label: "Amount",    value: `$${parseFloat(b.amount).toFixed(2)}`, bold: true },
+                    { label: "Date",      value: billDate },
+                    { label: "Status",    value: billStatus === "success" ? "Completed" : billStatus === "pending" ? "Pending" : "Processing",
+                      green: billStatus === "success", gold: billStatus === "processing", red: billStatus === "pending" },
+                  ],
+                });
+                return (
+                  <button key={b.id} onClick={openBillReceipt}
+                    className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
+                    data-testid={`row-bill-${b.id}`}>
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}>
+                      <svc.icon className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm capitalize">{svc.label}</p>
+                      <p className="text-xs text-muted-foreground truncate">{b.reference}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+                  </button>
+                );
+              });
+            })()
           )}
         </div>
       </div>

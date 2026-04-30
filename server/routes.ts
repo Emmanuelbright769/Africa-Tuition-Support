@@ -5266,28 +5266,7 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     // Serve from memory cache (1 hour TTL)
     if (cachedBankList && Date.now() - bankListCachedAt < 3600_000) return res.json(cachedBankList);
-    const secretKey = process.env.SQUAD_SECRET_KEY;
-    const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
-
-    // Primary: Squad
-    try {
-      const r = await fetch(`${squadBase}/bank/list`, {
-        headers: { "Authorization": `Bearer ${secretKey}` },
-        signal: AbortSignal.timeout(8000),
-      });
-      const data = await r.json() as any;
-      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-        const banks = data.data
-          .map((b: any) => ({ code: String(b.bank_code || b.code || ""), name: String(b.bank_name || b.name || ""), gateway: "squad" }))
-          .filter((b: any) => b.code && b.name)
-          .sort((a: any, z: any) => a.name.localeCompare(z.name));
-        cachedBankList = banks;
-        bankListCachedAt = Date.now();
-        return res.json(banks);
-      }
-    } catch (_) {}
-
-    // Fallback: Korapay bank list (comprehensive, NIP-coded)
+    // Primary: Korapay bank list (comprehensive, NIP-coded)
     try {
       const koraKey = process.env.KORAPAY_SECRET_KEY;
       if (koraKey) {
@@ -5324,73 +5303,30 @@ export async function registerRoutes(
     const cached = bankResolveCache.get(cacheKey);
     if (cached) return res.json({ accountName: cached, accountNumber, fromCache: true });
 
-    const secretKey = process.env.SQUAD_SECRET_KEY;
-    const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
-    // Helper to extract account name from Squad response
-    const extractName = (data: any): string =>
-      data?.data?.account_name ?? data?.data?.AccountName ?? data?.account_name ?? data?.AccountName ?? "";
+    const koraKey = process.env.KORAPAY_SECRET_KEY;
 
     try {
-      // Primary endpoint: POST /bank/account/lookup
       let accountName = "";
       let lastMsg = "";
-      try {
-        const r = await fetch(`${squadBase}/bank/account/lookup`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
-          signal: AbortSignal.timeout(12000),
-        });
-        const data = await r.json() as any;
-        console.log(`[SQUAD] resolve-bank POST lookup → HTTP ${r.status} | success=${data.success} | name="${extractName(data)}" | msg="${data.message}"`);
-        if (data.success || r.ok) {
-          accountName = extractName(data);
-        }
-        if (!accountName) lastMsg = data.message || "";
-      } catch (e1: any) {
-        console.warn("[SQUAD] resolve-bank POST failed:", e1.message);
-      }
 
-      // Fallback endpoint: GET /payout/fetchBank
-      if (!accountName) {
+      // Primary: Korapay /misc/banks/resolve
+      if (koraKey) {
         try {
-          const qs = new URLSearchParams({ bank_code: bankCode, account_number: accountNumber }).toString();
-          const r2 = await fetch(`${squadBase}/payout/fetchBank?${qs}`, {
-            headers: { "Authorization": `Bearer ${secretKey}` },
+          const rk = await fetch(`${KORA_BASE}/misc/banks/resolve`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ bank: bankCode, account: accountNumber }),
             signal: AbortSignal.timeout(12000),
           });
-          const data2 = await r2.json() as any;
-          console.log(`[SQUAD] resolve-bank GET fetchBank → HTTP ${r2.status} | success=${data2.success} | name="${extractName(data2)}" | msg="${data2.message}"`);
-          if (data2.success || r2.ok) {
-            accountName = extractName(data2);
-          }
-          if (!accountName) lastMsg = data2.message || lastMsg;
-        } catch (e2: any) {
-          console.warn("[SQUAD] resolve-bank GET fallback failed:", e2.message);
-        }
-      }
-
-      // Fallback: Korapay /misc/banks/resolve (uses same NIP bank codes)
-      if (!accountName) {
-        try {
-          const koraKey = process.env.KORAPAY_SECRET_KEY;
-          if (koraKey) {
-            const rk = await fetch(`${KORA_BASE}/misc/banks/resolve`, {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ bank: bankCode, account: accountNumber }),
-              signal: AbortSignal.timeout(12000),
-            });
-            const dk = await rk.json() as any;
-            console.log(`[KORAPAY] resolve-bank → HTTP ${rk.status} | status=${dk.status} | name="${dk.data?.account_name ?? ""}" | msg="${dk.message}"`);
-            if (dk.status && dk.data?.account_name) {
-              accountName = dk.data.account_name;
-            } else {
-              lastMsg = dk.message || lastMsg;
-            }
+          const dk = await rk.json() as any;
+          console.log(`[KORAPAY] resolve-bank → HTTP ${rk.status} | status=${dk.status} | name="${dk.data?.account_name ?? ""}" | msg="${dk.message}"`);
+          if (dk.status && dk.data?.account_name) {
+            accountName = dk.data.account_name;
+          } else {
+            lastMsg = dk.message || "";
           }
         } catch (ek: any) {
-          console.warn("[KORAPAY] resolve-bank fallback failed:", ek.message);
+          console.warn("[KORAPAY] resolve-bank failed:", ek.message);
         }
       }
 
@@ -5656,7 +5592,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
-  // ── POST /api/fintech/airtime — Squad VAS airtime purchase ──────────────────
+  // ── POST /api/fintech/airtime — Korapay VAS airtime purchase ─────────────────
   app.post("/api/fintech/airtime", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -5675,22 +5611,23 @@ export async function registerRoutes(
       const NETWORK_MAP: Record<string, string> = { mtn: "MTN", airtel: "AIRTEL", glo: "GLO", "9mobile": "9MOBILE", etisalat: "9MOBILE" };
       const networkCode = NETWORK_MAP[network.toLowerCase()] || network.toUpperCase();
 
-      const secretKey = process.env.SQUAD_SECRET_KEY;
-      let squadSuccess = false, squadMsg = "";
+      const koraKey = process.env.KORAPAY_SECRET_KEY;
+      if (!koraKey) return res.status(500).json({ message: "Payment gateway not configured. Contact support." });
+      let koraSuccess = false, koraMsg = "";
       try {
-        const r = await fetch("https://api.squadco.com/vending/purchase/airtime", {
+        const r = await fetch(`${KORA_BASE}/bills`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ phone_number: phone, network_operator: networkCode, amount: amountNgn, transaction_reference: txRef }),
+          headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "mobile_airtime", customer_identifier: phone, amount: amountNgn, reference: txRef, telco: networkCode }),
           signal: AbortSignal.timeout(20000),
         });
         const d = await r.json() as any;
-        squadSuccess = !!d.success;
-        if (!squadSuccess) squadMsg = d.message ?? "Airtime purchase failed";
-      } catch (e: any) { squadMsg = e.message ?? "Network error"; }
+        koraSuccess = !!d.status;
+        if (!koraSuccess) koraMsg = d.message ?? "Airtime purchase failed";
+      } catch (e: any) { koraMsg = e.message ?? "Network error"; }
 
-      if (!squadSuccess) {
-        return res.status(502).json({ message: `Airtime purchase failed: ${squadMsg}. Please try again.` });
+      if (!koraSuccess) {
+        return res.status(502).json({ message: `Airtime purchase failed: ${koraMsg}. Please try again.` });
       }
 
       const ref = `${networkCode} | ${phone} | ₦${amountNgn.toLocaleString()} | Ref: ${txRef}`;
@@ -5717,7 +5654,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
-  // ── POST /api/fintech/data — Squad VAS data bundle purchase ─────────────────
+  // ── POST /api/fintech/data — Korapay VAS data bundle purchase ───────────────
   app.post("/api/fintech/data", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -5736,22 +5673,23 @@ export async function registerRoutes(
       const NETWORK_MAP: Record<string, string> = { mtn: "MTN", airtel: "AIRTEL", glo: "GLO", "9mobile": "9MOBILE", etisalat: "9MOBILE" };
       const networkCode = NETWORK_MAP[network.toLowerCase()] || network.toUpperCase();
 
-      const secretKey = process.env.SQUAD_SECRET_KEY;
-      let squadSuccess = false, squadMsg = "";
+      const koraKey = process.env.KORAPAY_SECRET_KEY;
+      if (!koraKey) return res.status(500).json({ message: "Payment gateway not configured. Contact support." });
+      let koraSuccess = false, koraMsg = "";
       try {
-        const r = await fetch("https://api.squadco.com/vending/purchase/data", {
+        const r = await fetch(`${KORA_BASE}/bills`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ phone_number: phone, network_operator: networkCode, amount: amountNgn, transaction_reference: txRef }),
+          headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "mobile_data", customer_identifier: phone, amount: amountNgn, reference: txRef, telco: networkCode }),
           signal: AbortSignal.timeout(20000),
         });
         const d = await r.json() as any;
-        squadSuccess = !!d.success;
-        if (!squadSuccess) squadMsg = d.message ?? "Data purchase failed";
-      } catch (e: any) { squadMsg = e.message ?? "Network error"; }
+        koraSuccess = !!d.status;
+        if (!koraSuccess) koraMsg = d.message ?? "Data purchase failed";
+      } catch (e: any) { koraMsg = e.message ?? "Network error"; }
 
-      if (!squadSuccess) {
-        return res.status(502).json({ message: `Data purchase failed: ${squadMsg}. Please try again.` });
+      if (!koraSuccess) {
+        return res.status(502).json({ message: `Data purchase failed: ${koraMsg}. Please try again.` });
       }
 
       const planInfo = planLabel ? `${planLabel}${planValidity ? ` (${planValidity})` : ""}` : `₦${amountNgn.toLocaleString()} data`;
@@ -5780,7 +5718,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
-  // ── POST /api/fintech/electricity — Squad VAS electricity payment ────────────
+  // ── POST /api/fintech/electricity — Korapay VAS electricity payment ──────────
   app.post("/api/fintech/electricity", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -5799,26 +5737,29 @@ export async function registerRoutes(
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
       const txRef = `TSIA-ELEC-${userId}-${Date.now()}`;
 
-      const secretKey = process.env.SQUAD_SECRET_KEY;
-      let squadSuccess = false, squadMsg = "", token = "";
+      const koraKey = process.env.KORAPAY_SECRET_KEY;
+      if (!koraKey) return res.status(500).json({ message: "Payment gateway not configured. Contact support." });
+      let koraSuccess = false, koraMsg = "", token = "";
       try {
-        const r = await fetch("https://api.squadco.com/vending/purchase/electricity", {
+        const r = await fetch(`${KORA_BASE}/bills`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+          headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            disco_code: discoCode, meter_type: meterType, meter_number: meterNumber,
-            amount: amountNgn, phone_number: phone || "08000000000", transaction_reference: txRef,
+            type: "electricity", customer_identifier: meterNumber,
+            amount: amountNgn, reference: txRef,
+            disco_code: discoCode, meter_type: meterType,
+            ...(phone ? { phone } : {}),
           }),
           signal: AbortSignal.timeout(25000),
         });
         const d = await r.json() as any;
-        squadSuccess = !!d.success;
-        token = d.data?.token ?? d.data?.meter_token ?? "";
-        if (!squadSuccess) squadMsg = d.message ?? "Electricity payment failed";
-      } catch (e: any) { squadMsg = e.message ?? "Network error"; }
+        koraSuccess = !!d.status;
+        token = d.data?.token ?? d.data?.meter_token ?? d.data?.vending_token ?? "";
+        if (!koraSuccess) koraMsg = d.message ?? "Electricity payment failed";
+      } catch (e: any) { koraMsg = e.message ?? "Network error"; }
 
-      if (!squadSuccess) {
-        return res.status(502).json({ message: `Electricity payment failed: ${squadMsg}. Please try again.` });
+      if (!koraSuccess) {
+        return res.status(502).json({ message: `Electricity payment failed: ${koraMsg}. Please try again.` });
       }
 
       const noteRef = token ? `Token: ${token} | Ref: ${txRef}` : `Ref: ${txRef}`;
@@ -6215,31 +6156,8 @@ export async function registerRoutes(
         } catch (e: any) { transferMsg = e.message ?? "Network error"; return false; }
       };
 
-      if (gateway === "korapay") {
-        transferSuccess = await tryKorapay();
-      } else {
-        // Try Squad first
-        const secretKey = process.env.SQUAD_SECRET_KEY;
-        const isLive = !!(secretKey && secretKey.startsWith("sk_"));
-        const squadBase = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
-        try {
-          const squadRes = await fetch(`${squadBase}/payout/initiate`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ transaction_reference: txRef, amount: Math.round(Number(netAmountNgn) * 100), bank_code: bankCode, account_number: accountNumber, account_name: accountName, currency_id: "NGN", narration: narration || `TSIA Bank Transfer | Ref: ${txRef}` }),
-            signal: AbortSignal.timeout(15000),
-          });
-          const squadData = await squadRes.json() as any;
-          transferSuccess = !!squadData.success;
-          if (!transferSuccess) transferMsg = squadData.message || `Squad error (HTTP ${squadRes.status})`;
-        } catch (e: any) { transferMsg = e.message ?? "Network error"; }
-
-        // If Squad failed for any reason, fall back to Korapay automatically
-        if (!transferSuccess) {
-          console.log(`[BANK-TRANSFER] Squad failed (${transferMsg}), trying Korapay fallback…`);
-          transferSuccess = await tryKorapay();
-        }
-      }
+      // All bank transfers now go via Korapay
+      transferSuccess = await tryKorapay();
 
       if (!transferSuccess) {
         return res.status(502).json({ message: `Bank transfer failed: ${transferMsg}. Funds remain held — reject to refund.` });

@@ -175,19 +175,25 @@ export function TransactionReceipt({
   };
 
   // ── Build PDF from captured image ──────────────────────────────────────────
-  const buildPdf = async (): Promise<{ pdf: jsPDF; filename: string }> => {
+  const buildPdf = async (): Promise<{ pdfBlob: Blob; filename: string }> => {
     const dataUrl = await captureImage();
     const img = new Image();
     img.src = dataUrl;
-    await new Promise<void>(r => { img.onload = () => r(); });
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Image load failed"));
+      // Timeout safety
+      setTimeout(() => resolve(), 3000);
+    });
     // Receipt width ≈ 320px logical; scale to A4-like size in pt (1px = 0.75pt at 96dpi)
-    const pxW = img.naturalWidth / 3; // we captured at pixelRatio 3
+    const pxW = img.naturalWidth / 3; // captured at pixelRatio 3
     const pxH = img.naturalHeight / 3;
     const ptW = pxW * 0.75;
     const ptH = pxH * 0.75;
     const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: [ptW, ptH] });
     pdf.addImage(dataUrl, "PNG", 0, 0, ptW, ptH);
-    return { pdf, filename: `TSIA-Receipt-${Date.now()}.pdf` };
+    const pdfBlob = pdf.output("blob");
+    return { pdfBlob, filename: `TSIA-Receipt-${Date.now()}.pdf` };
   };
 
   // ── Save as PDF ────────────────────────────────────────────────────────────
@@ -195,8 +201,16 @@ export function TransactionReceipt({
     if (busy) return;
     setBusy("save-pdf");
     try {
-      const { pdf, filename } = await buildPdf();
-      pdf.save(filename);
+      const { pdfBlob, filename } = await buildPdf();
+      const url = URL.createObjectURL(pdfBlob);
+      // Use window.open so it works on mobile (link.click doesn't reliably work)
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 
@@ -205,22 +219,28 @@ export function TransactionReceipt({
     if (busy) return;
     setBusy("share-pdf");
     try {
-      const { pdf, filename } = await buildPdf();
-      const pdfBlob = pdf.output("blob");
-      if (navigator.canShare && navigator.share) {
-        const file = new File([pdfBlob], filename, { type: "application/pdf" });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: "TSIA Transaction Receipt" });
-          return;
-        }
+      const { pdfBlob, filename } = await buildPdf();
+      const file = new File([pdfBlob], filename, { type: "application/pdf" });
+
+      // Try native share with PDF file
+      if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: "TSIA Transaction Receipt" });
+        return;
       }
-      // Fallback: download
+
+      // Fallback: open PDF in new tab — user can save/share from there
       const url = URL.createObjectURL(pdfBlob);
-      const link = document.createElement("a");
-      link.download = filename;
-      link.href = url;
-      link.click();
-      URL.revokeObjectURL(url);
+      const tab = window.open(url, "_blank");
+      if (!tab) {
+        // If popup blocked, trigger download instead
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 

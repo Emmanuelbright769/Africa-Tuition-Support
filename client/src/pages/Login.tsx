@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight, ArrowLeft, Lock, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight, ArrowLeft, Lock, ShieldCheck, Eye, EyeOff, MonitorSmartphone } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +41,7 @@ const ROLE_META = {
 
 export default function Login() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const [step, setStep] = useState<Step>(0);
   const [loading, setLoading] = useState(false);
   const [loginRole, setLoginRole] = useState<"student" | "affiliate" | "">("");
@@ -56,6 +57,8 @@ export default function Login() {
   const { toast } = useToast();
 
   const isAdminMode = email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const reason = new URLSearchParams(search).get("reason");
+  const [displaced, setDisplaced] = useState(reason === "displaced");
 
   useEffect(() => {
     if (isAdminMode && step === 1) {
@@ -179,6 +182,19 @@ export default function Login() {
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8 flex justify-center">
         <Link href="/"><Logo variant="badge" height={64} /></Link>
       </motion.div>
+
+      {displaced && (
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0 mb-4">
+          <div className="flex items-start gap-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl px-4 py-3">
+            <MonitorSmartphone className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">Signed out — another device logged in</p>
+              <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">Your account was signed in on another device, so you were automatically signed out here. Sign in again to continue.</p>
+            </div>
+            <button className="ml-auto text-orange-400 hover:text-orange-600 shrink-0" onClick={() => setDisplaced(false)}>✕</button>
+          </div>
+        </motion.div>
+      )}
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative px-4 sm:px-0">
         <AnimatePresence mode="wait">

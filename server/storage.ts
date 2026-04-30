@@ -63,6 +63,7 @@ export interface IStorage {
   getAllStudents(): Promise<User[]>;
   updateUserAffiliateCode(userId: number, code: string): Promise<void>;
   updateUserCountry(userId: number, country: string): Promise<void>;
+  updateUserActiveSession(userId: number, sessionId: string | null): Promise<void>;
   updateUserPassword(userId: number, passwordHash: string): Promise<void>;
   updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; phone?: string }): Promise<void>;
   setWalletFundDeadline(userId: number, deadline: Date | null): Promise<void>;
@@ -465,6 +466,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserCountry(userId: number, country: string): Promise<void> {
     await db.update(users).set({ country }).where(eq(users.id, userId));
+  }
+
+  async updateUserActiveSession(userId: number, sessionId: string | null): Promise<void> {
+    await db.update(users).set({ activeSessionId: sessionId }).where(eq(users.id, userId));
   }
 
   async updateUserPassword(userId: number, passwordHash: string): Promise<void> {

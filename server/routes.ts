@@ -236,8 +236,10 @@ export async function registerRoutes(
         isNewUser = parseFloat(wallet.balance) === 0;
       } catch { /* non-critical */ }
 
-      req.session.save((err) => {
+      req.session.save(async (err) => {
         if (err) return res.status(500).json({ message: "Session save failed" });
+        // Single-session enforcement: record this session as the only valid one
+        await storage.updateUserActiveSession(user.id, req.session.id).catch(() => {});
         res.json({
           id: user.id, firstName: user.firstName, lastName: user.lastName,
           email: user.email, role: user.role, phone: user.phone, country: user.country,
@@ -254,10 +256,19 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ message: "User not found" });
+
+    // Single-session enforcement: if another device logged in, this session is stale
+    if (user.activeSessionId && user.activeSessionId !== req.session.id) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ message: "SESSION_DISPLACED", reason: "Your account has been signed in on another device. You have been signed out." });
+    }
+
     res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode, walletFundDeadline: user.walletFundDeadline ?? null });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (userId) await storage.updateUserActiveSession(userId, null).catch(() => {});
     req.session.destroy(() => {});
     res.json({ ok: true });
   });
@@ -306,8 +317,9 @@ export async function registerRoutes(
         return res.status(404).json({ error: `No ${targetRole} account found for this email. Please sign up for a ${targetRole} account first.` });
       }
       (req.session as any).userId = targetUser.id;
-      req.session.save((err) => {
+      req.session.save(async (err) => {
         if (err) return res.status(500).json({ error: "Session save failed" });
+        await storage.updateUserActiveSession(targetUser.id, req.session.id).catch(() => {});
         res.json({
           id: targetUser.id, firstName: targetUser.firstName, lastName: targetUser.lastName,
           email: targetUser.email, role: targetUser.role, affiliateCode: targetUser.affiliateCode,
@@ -345,8 +357,9 @@ export async function registerRoutes(
       if (admin.password !== password) return res.status(401).json({ message: "Incorrect password" });
 
       (req.session as any).userId = admin.id;
-      req.session.save((err) => {
+      req.session.save(async (err) => {
         if (err) return res.status(500).json({ message: "Session save failed" });
+        await storage.updateUserActiveSession(admin.id, req.session.id).catch(() => {});
         res.json({ id: admin.id, firstName: admin.firstName, lastName: admin.lastName, email: admin.email, role: admin.role, affiliateCode: admin.affiliateCode });
       });
     } catch (e: any) {
@@ -379,8 +392,9 @@ export async function registerRoutes(
       if (!hasPasswordSet(user.password)) return res.status(401).json({ message: "This account uses OTP login. Please sign in with a one-time code." });
       if (!verifyPassword(password, user.password)) return res.status(401).json({ message: "Incorrect password. Try again or use OTP login." });
       (req.session as any).userId = user.id;
-      req.session.save((err) => {
+      req.session.save(async (err) => {
         if (err) return res.status(500).json({ message: "Session error" });
+        await storage.updateUserActiveSession(user.id, req.session.id).catch(() => {});
         res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode });
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

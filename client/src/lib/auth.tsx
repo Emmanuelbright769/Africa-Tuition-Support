@@ -57,7 +57,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: async () => {
       try {
         const res = await fetch("/api/auth/me", { credentials: "include" });
-        if (res.status === 401) return null;
+        if (res.status === 401) {
+          // Check if this is a session displacement (another device logged in)
+          try {
+            const body = await res.json();
+            if (body?.message === "SESSION_DISPLACED") {
+              clearSessionCache();
+              window.location.href = "/login?reason=displaced";
+              return null;
+            }
+          } catch {}
+          return null;
+        }
         if (!res.ok) return null;
         return res.json();
       } catch {

@@ -5549,6 +5549,10 @@ export async function registerRoutes(
     await storage.createTransaction({ userId, type: "bill", amount: (-amountUsd).toFixed(2), fee: "0.00", paymentMethod: "wallet", description });
     const notif = await storage.createNotification({ userId, type: "wallet_credit", title: notifTitle, message: notifMessage, data: notifData, isRead: false });
     pushToUser(userId, "notification", notif);
+    // Bust server-side caches so the client sees updated data immediately
+    invalidateCacheKey(`wallet:${userId}`);
+    invalidateCacheKey(`transactions:${userId}`);
+    invalidateCacheKey(`wallet_bills:${userId}`);
     return await storage.getOrCreateWallet(userId);
   }
 
@@ -5608,8 +5612,13 @@ export async function registerRoutes(
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Queued ✓", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
 
+      // Bust server-side caches so client sees updated balance and history immediately
+      invalidateCacheKey(`wallet:${userId}`);
+      invalidateCacheKey(`transactions:${userId}`);
+      invalidateCacheKey(`wallet_bills:${userId}`);
+
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway, pending: true });
+      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway: "korapay", pending: true });
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
@@ -6198,6 +6207,7 @@ export async function registerRoutes(
       const msg = `Your bank transfer of ₦${Number(netAmountNgn).toLocaleString()} to ${accountName} (${accountNumber}) has been approved and sent. Ref: ${txRef}`;
       const notif = await storage.createNotification({ userId: bill.userId, type: "wallet_credit", title: "Bank Transfer Approved ✓", message: msg, data: { billId: id, ref: txRef }, isRead: false });
       pushToUser(bill.userId, "notification", notif);
+      invalidateCacheKey(`wallet_bills:${bill.userId}`);
       res.json({ success: true, message: "Transfer approved and sent successfully." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -6230,6 +6240,9 @@ export async function registerRoutes(
       const msg = `Your bank transfer request ($${refundAmt.toFixed(2)}) has been rejected. $${refundAmt.toFixed(2)} has been refunded to your wallet. Reason: ${reason}`;
       const notif = await storage.createNotification({ userId: bill.userId, type: "wallet_credit", title: "Bank Transfer Rejected", message: msg, data: { billId: id }, isRead: false });
       pushToUser(bill.userId, "notification", notif);
+      invalidateCacheKey(`wallet:${bill.userId}`);
+      invalidateCacheKey(`transactions:${bill.userId}`);
+      invalidateCacheKey(`wallet_bills:${bill.userId}`);
       res.json({ success: true, message: "Transfer rejected and funds refunded to user." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

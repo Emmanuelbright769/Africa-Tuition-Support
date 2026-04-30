@@ -217,7 +217,7 @@ export default function FinancialHub() {
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [resolveWarning, setResolveWarning] = useState(false);
-  const [bankGateway, setBankGateway]   = useState<"squad" | "korapay">("squad");
+  const [bankGateway, setBankGateway]   = useState<"squad" | "korapay">("korapay");
 
   // ── Send-to-TSIA state ────────────────────────────────────────────────────
   const [tsiaEmail, setTsiaEmail]         = useState("");
@@ -347,7 +347,7 @@ export default function FinancialHub() {
           { label: "Beneficiary",    value: resolvedName || acctNumber },
           { label: "Account No",     value: acctNumber },
           { label: "Bank",           value: selectedBank?.name || "—" },
-          { label: "Gateway",        value: (data.gateway ?? "squad").toUpperCase() },
+          { label: "Gateway",        value: (data.gateway ?? "korapay").toUpperCase() },
           { label: "Tx Type",        value: "Bank Transfer" },
           { label: "Amount",         value: `$${amt.toFixed(2)}` },
           { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                red: true },

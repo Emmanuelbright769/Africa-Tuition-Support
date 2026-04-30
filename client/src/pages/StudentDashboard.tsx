@@ -237,7 +237,7 @@ export default function StudentDashboard() {
     const due = new Date(user.walletFundDeadline).getTime();
     const update = () => {
       const diff = due - Date.now();
-      if (diff <= 0) { setDeadlineCountdown("EXPIRED — account may be removed soon"); return; }
+      if (diff <= 0) { setDeadlineCountdown("EXPIRED — enrollment reset in progress"); return; }
       const h = Math.floor(diff / 3600000);
       const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, "0");
       const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
@@ -608,7 +608,7 @@ export default function StudentDashboard() {
                     <div className="flex-1">
                       <p className="font-bold text-white mb-0.5 text-base">Action Required — Fund Your Wallet Within 72 Hours!</p>
                       <p className="text-sm text-red-100 leading-relaxed">
-                        Your WAEC validation has been completed. You must fund your TSIA SwiftWallet with at least <strong>$5</strong> within <strong>72 hours</strong> of completing WAEC verification, or your account and all records will be permanently deleted.
+                        Your WAEC validation has been completed. You must fund your TSIA SwiftWallet with at least <strong>$5</strong> within <strong>72 hours</strong>, or your enrollment will be reset and you will need to restart the full onboarding process (including re-payment of the portal fee) to continue.
                         <br />
                         <span className="font-mono font-bold text-yellow-300 text-base mt-1 block">Time remaining: {deadlineCountdown}</span>
                       </p>

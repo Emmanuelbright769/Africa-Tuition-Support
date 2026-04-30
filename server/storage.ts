@@ -67,6 +67,7 @@ export interface IStorage {
   updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; phone?: string }): Promise<void>;
   setWalletFundDeadline(userId: number, deadline: Date | null): Promise<void>;
   getStudentsPastFundDeadline(): Promise<User[]>;
+  resetStudentEnrollment(userId: number): Promise<void>;
   getReferralsByCode(affiliateCode: string): Promise<User[]>;
   getUserByAffiliateCode(affiliateCode: string): Promise<User | undefined>;
 
@@ -493,6 +494,14 @@ export class DatabaseStorage implements IStorage {
         sql`${users.walletFundDeadline} < ${now}`,
       )
     );
+  }
+
+  async resetStudentEnrollment(userId: number): Promise<void> {
+    // Delete ONLY the verification/enrollment record — account and wallet are preserved.
+    // The student must redo onboarding (NIN → WAEC → portal fee) when they return.
+    await db.delete(verifications).where(eq(verifications.userId, userId));
+    // Clear the deadline so they won't be re-triggered
+    await db.update(users).set({ walletFundDeadline: null } as any).where(eq(users.id, userId));
   }
 
   async getReferralsByCode(affiliateCode: string): Promise<User[]> {

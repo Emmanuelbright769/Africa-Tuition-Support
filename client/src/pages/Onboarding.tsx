@@ -604,7 +604,7 @@ export default function Onboarding() {
                           After completing your WAEC validation (the next step), you will have exactly <strong>72 hours</strong> to fund your TSIA SwiftWallet with a minimum of <strong>$5</strong>.
                         </p>
                         <p className="text-sm text-red-700 dark:text-red-300 mt-2 leading-relaxed">
-                          <strong>Failure to fund your wallet within this window will result in the permanent deletion of your account and all associated records.</strong> If deleted, you will need to re-register and pay all fees again to return.
+                          <strong>Failure to fund your wallet within this window will reset your enrollment.</strong> Your account will remain, but your WAEC and NIN verification records will be cleared and you will need to restart the onboarding process — including re-payment of the portal fee — when you return.
                         </p>
                         <p className="text-xs text-red-600 dark:text-red-400 mt-2 font-semibold">By proceeding, you acknowledge this requirement.</p>
                       </div>

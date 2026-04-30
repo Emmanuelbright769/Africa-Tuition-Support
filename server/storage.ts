@@ -65,6 +65,8 @@ export interface IStorage {
   updateUserCountry(userId: number, country: string): Promise<void>;
   updateUserPassword(userId: number, passwordHash: string): Promise<void>;
   updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; phone?: string }): Promise<void>;
+  setWalletFundDeadline(userId: number, deadline: Date | null): Promise<void>;
+  getStudentsPastFundDeadline(): Promise<User[]>;
   getReferralsByCode(affiliateCode: string): Promise<User[]>;
   getUserByAffiliateCode(affiliateCode: string): Promise<User | undefined>;
 
@@ -476,6 +478,21 @@ export class DatabaseStorage implements IStorage {
     if (Object.keys(fields).length > 0) {
       await db.update(users).set(fields as any).where(eq(users.id, userId));
     }
+  }
+
+  async setWalletFundDeadline(userId: number, deadline: Date | null): Promise<void> {
+    await db.update(users).set({ walletFundDeadline: deadline } as any).where(eq(users.id, userId));
+  }
+
+  async getStudentsPastFundDeadline(): Promise<User[]> {
+    const now = new Date();
+    return db.select().from(users).where(
+      and(
+        eq(users.role, "student"),
+        sql`${users.walletFundDeadline} IS NOT NULL`,
+        sql`${users.walletFundDeadline} < ${now}`,
+      )
+    );
   }
 
   async getReferralsByCode(affiliateCode: string): Promise<User[]> {
@@ -1820,6 +1837,8 @@ export class DatabaseStorage implements IStorage {
       .set({ activated: true, activatedAt: new Date() })
       .where(and(eq(wallets.userId, userId), eq(wallets.activated, false)))
       .returning();
+    // Clear fund deadline — user has funded their wallet
+    await db.update(users).set({ walletFundDeadline: null } as any).where(eq(users.id, userId));
     if (!wallet) {
       const [existing] = await db.select().from(wallets).where(eq(wallets.userId, userId));
       return existing;

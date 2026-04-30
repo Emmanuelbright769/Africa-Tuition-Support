@@ -16,6 +16,7 @@ type AuthUser = {
   country?: string;
   affiliateCode?: string;
   isNewUser?: boolean;
+  walletFundDeadline?: string | null;
 };
 
 type AuthContextType = {

@@ -101,6 +101,7 @@ export default function StudentDashboard() {
   const [batchCountdown, setBatchCountdown] = useState("");
   const [commitmentCountdown, setCommitmentCountdown] = useState("");
   const [planCountdown, setPlanCountdown] = useState("");
+  const [deadlineCountdown, setDeadlineCountdown] = useState<string | null>(null);
 
   const walletActivated = walletData?.activated === true;
 
@@ -229,6 +230,23 @@ export default function StudentDashboard() {
     const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
   }, [(verification as any)?.commitmentStartDate]);
+
+  // Live countdown for 72h wallet fund deadline
+  useEffect(() => {
+    if (!user?.walletFundDeadline || walletActivated) { setDeadlineCountdown(null); return; }
+    const due = new Date(user.walletFundDeadline).getTime();
+    const update = () => {
+      const diff = due - Date.now();
+      if (diff <= 0) { setDeadlineCountdown("EXPIRED — account may be removed soon"); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, "0");
+      const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
+      setDeadlineCountdown(`${h}h ${m}m ${s}s`);
+    };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [user?.walletFundDeadline, walletActivated]);
 
   // Live countdown for 365-day active sponsorship plan
   useEffect(() => {
@@ -576,6 +594,30 @@ export default function StudentDashboard() {
                     )}
                   </div>
                 </motion.div>
+
+                {/* 72h wallet fund deadline countdown banner — urgent */}
+                {!walletActivated && deadlineCountdown && (
+                  <motion.div
+                    variants={itemVariants}
+                    data-testid="banner-fund-deadline"
+                    className="bg-red-600 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 shadow-lg shadow-red-500/30"
+                  >
+                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+                      <Clock className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-white mb-0.5 text-base">Action Required — Fund Your Wallet Within 72 Hours!</p>
+                      <p className="text-sm text-red-100 leading-relaxed">
+                        Your WAEC validation has been completed. You must fund your TSIA SwiftWallet with at least <strong>$5</strong> within <strong>72 hours</strong> of completing WAEC verification, or your account and all records will be permanently deleted.
+                        <br />
+                        <span className="font-mono font-bold text-yellow-300 text-base mt-1 block">Time remaining: {deadlineCountdown}</span>
+                      </p>
+                    </div>
+                    <Button size="sm" className="bg-white text-red-700 hover:bg-red-50 font-bold shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-deadline-fund-wallet">
+                      Fund Now
+                    </Button>
+                  </motion.div>
+                )}
 
                 {/* Wallet gate banner — shown below greeting when wallet not yet activated */}
                 {!walletActivated && (

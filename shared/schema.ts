@@ -24,6 +24,7 @@ export const users = pgTable("users", {
   role: roleEnum("role").notNull().default("student"),
   affiliateCode: text("affiliate_code").unique(),
   referredBy: text("referred_by"),
+  walletFundDeadline: timestamp("wallet_fund_deadline"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   emailRoleUnique: uniqueIndex("users_email_role_unique").on(table.email, table.role),

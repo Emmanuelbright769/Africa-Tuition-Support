@@ -157,6 +157,49 @@ async function seedAdmin() {
   }
 }
 
+async function startWalletFundPurgeJob() {
+  const INTERVAL_MS = 30 * 60 * 1000; // check every 30 minutes
+  const runPurge = async () => {
+    try {
+      const expired = await storage.getStudentsPastFundDeadline();
+      for (const student of expired) {
+        // Double-check wallet is still not activated
+        const wallet = await storage.getOrCreateWallet(student.id);
+        if (wallet.activated) {
+          // Wallet is activated — clear the deadline and skip
+          await storage.setWalletFundDeadline(student.id, null);
+          continue;
+        }
+        try {
+          // Send notice email before deletion
+          await sendEmail(
+            student.email,
+            "Your TSIA Account Has Been Removed",
+            `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
+              <h2 style="color:#dc2626">Account Removed — Wallet Not Funded</h2>
+              <p style="color:#374151">Hi ${student.firstName},</p>
+              <p style="color:#6b7280">Your TSIA student account has been removed because your SwiftWallet was not funded within the required 72-hour window after completing your WAEC validation.</p>
+              <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#991b1b">
+                <strong>Your registration details have been deleted from the system.</strong><br/>
+                If you wish to re-apply, you will need to complete the full registration process again, including payment of the portal fee.
+              </div>
+              <p style="font-size:13px;color:#6b7280">We only admit committed students who are ready to participate. You are welcome to re-apply at any time at <a href="https://tsiforafrica.com/signup">tsiforafrica.com/signup</a>.</p>
+              <p style="font-size:13px;color:#6b7280">— The TSIA Team</p>
+            </div>`
+          );
+        } catch { /* non-critical */ }
+        await storage.deleteUserById(student.id);
+        console.log(`[PURGE] Deleted unfunded student ${student.id} (${student.email}) — deadline passed`);
+      }
+    } catch (e) {
+      console.error("[PURGE] Error in wallet fund purge job:", e);
+    }
+  };
+  await runPurge(); // run once at startup to catch any missed purges
+  setInterval(runPurge, INTERVAL_MS);
+  console.log("[PURGE] Wallet fund purge job started — checking every 30 minutes");
+}
+
 async function startAutoRefundJob() {
   const INTERVAL_MS = 60 * 60 * 1000; // check every 60 minutes (reduced from 15 min to cut compute costs)
   setInterval(async () => {
@@ -214,6 +257,7 @@ async function startAutoRefundJob() {
   await registerRoutes(httpServer, app);
   await seedAdmin();
   startAutoRefundJob();
+  startWalletFundPurgeJob();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

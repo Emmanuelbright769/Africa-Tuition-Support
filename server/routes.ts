@@ -254,7 +254,7 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ message: "User not found" });
-    res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode });
+    res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode, walletFundDeadline: user.walletFundDeadline ?? null });
   });
 
   app.post("/api/auth/logout", (req, res) => {
@@ -775,12 +775,17 @@ export async function registerRoutes(
         ...(sponsorshipReason ? { sponsorshipReason } : {}),
       });
 
+      // Set 72-hour wallet funding deadline — if wallet not activated by then, account is purged
+      const deadline = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      await storage.setWalletFundDeadline(userId, deadline);
+
       // Return success regardless of age — disqualification is invisible to user
       res.json({
         ...verification,
         calculatedPercentage: percentage,
         payoutRange: payoutInfo,
         waecValidation: waecApiResponse,
+        walletFundDeadline: deadline.toISOString(),
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });

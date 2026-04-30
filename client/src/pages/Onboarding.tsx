@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ShieldAlert, CreditCard, Lock, FileText, CheckCircle2, Loader2,
   PartyPopper, XCircle, Wallet, ArrowRight, Share2, TrendingUp,
-  Gift, Tag, ChevronDown, ChevronUp, AlertTriangle, BadgeCheck
+  Gift, Tag, ChevronDown, ChevronUp, AlertTriangle, BadgeCheck, Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -592,6 +592,25 @@ export default function Onboarding() {
                 </div>
 
                 <div className="p-8 space-y-6">
+                  {/* 72h wallet fund deadline disclaimer */}
+                  <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-400 dark:border-red-700 rounded-2xl p-5" data-testid="notice-72h-deadline">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 bg-red-100 dark:bg-red-800/50 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                        <Clock className="w-5 h-5 text-red-600 dark:text-red-400" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-red-800 dark:text-red-200 text-base mb-1">Important: 72-Hour Wallet Funding Requirement</p>
+                        <p className="text-sm text-red-700 dark:text-red-300 leading-relaxed">
+                          After completing your WAEC validation (the next step), you will have exactly <strong>72 hours</strong> to fund your TSIA SwiftWallet with a minimum of <strong>$5</strong>.
+                        </p>
+                        <p className="text-sm text-red-700 dark:text-red-300 mt-2 leading-relaxed">
+                          <strong>Failure to fund your wallet within this window will result in the permanent deletion of your account and all associated records.</strong> If deleted, you will need to re-register and pay all fees again to return.
+                        </p>
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-2 font-semibold">By proceeding, you acknowledge this requirement.</p>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Fee breakdown card */}
                   <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-6 shadow-lg">
                     <div className="space-y-3 mb-4">

@@ -5575,7 +5575,7 @@ export async function registerRoutes(
     return { blocked: false };
   }
 
-  // ── POST /api/fintech/bank-transfer — Queue for admin approval ───────────────
+  // ── POST /api/fintech/bank-transfer — Direct Korapay disburse (no admin queue) ─
   app.post("/api/fintech/bank-transfer", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -5583,7 +5583,7 @@ export async function registerRoutes(
       const _wb1 = isWeekendBlock();
       if (_wb1.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb1.until} (Nigeria time).`, weekendBlock: true });
 
-      const { bankCode, bankName, accountNumber, accountName, amount, narration, gateway = "squad" } = req.body;
+      const { bankCode, bankName, accountNumber, accountName, amount, narration } = req.body;
       if (!bankCode || !accountNumber || !accountName || !amount) {
         return res.status(400).json({ message: "bankCode, accountNumber, accountName, and amount are required" });
       }
@@ -5594,31 +5594,87 @@ export async function registerRoutes(
       const balance = parseFloat(wallet.balance);
       if (balance < transferAmount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
 
-      const vatAmount = parseFloat((transferAmount * 0.075).toFixed(2));
+      const vatAmount   = parseFloat((transferAmount * 0.075).toFixed(2));
       const netAmountUsd = parseFloat((transferAmount - vatAmount).toFixed(2));
       const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
       const txRef = `TSIA-FT-${userId}-${Date.now()}`;
 
-      // Deduct from wallet immediately — funds held until admin approves
+      // ── Call Korapay disburse BEFORE touching the wallet ──────────────────────
+      const koraKey = process.env.KORAPAY_SECRET_KEY;
+      if (!koraKey) return res.status(500).json({ message: "Payment gateway not configured. Contact support." });
+
+      let koraSuccess = false, koraMsg = "";
+      try {
+        const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reference: txRef,
+            destination: {
+              type: "bank_account",
+              amount: netAmountNgn,
+              currency: "NGN",
+              bank_account: { bank: bankCode, account: accountNumber },
+              customer: { name: accountName, email: "transfers@tsiforafrica.com" },
+            },
+            description: narration || `TSIA Bank Transfer to ${accountName} | Ref: ${txRef}`,
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+        const kData = await kRes.json() as any;
+        console.log(`[KORAPAY DISBURSE] ref=${txRef} | HTTP ${kRes.status} | status=${kData.status} | msg="${kData.message}"`);
+        if (kData.status) {
+          koraSuccess = true;
+        } else {
+          koraMsg = kData.message ?? "Transfer declined by gateway";
+        }
+      } catch (e: any) {
+        koraMsg = e.message ?? "Network error reaching payment gateway";
+      }
+
+      if (!koraSuccess) {
+        return res.status(502).json({ message: `Bank transfer failed: ${koraMsg}. Your wallet has not been debited.` });
+      }
+
+      // ── Korapay confirmed — now debit wallet and record ────────────────────────
       await storage.updateWalletBalance(userId, (balance - transferAmount).toFixed(2));
 
-      // Save transfer details as JSON reference — admin will use these to execute
-      const transferDetails = JSON.stringify({ bankCode, bankName, accountNumber, accountName, narration, gateway, netAmountNgn, vatAmount, txRef });
-      const bill = await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: transferDetails, status: "pending" });
+      const transferDetails = JSON.stringify({ bankCode, bankName, accountNumber, accountName, narration, netAmountNgn, vatAmount, txRef });
+      const bill = await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: transferDetails, status: "completed" });
 
-      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: `bank_transfer_${gateway}`, description: `Bank transfer queued — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) | Pending admin approval | Ref: ${txRef}` });
+      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer_korapay", description: `Bank transfer sent — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) | Ref: ${txRef}` });
 
-      const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) is queued for admin approval. Ref: ${txRef}`;
-      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Queued ✓", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
+      const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) has been sent successfully. Ref: ${txRef}`;
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Sent ✓", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
 
-      // Bust server-side caches so client sees updated balance and history immediately
       invalidateCacheKey(`wallet:${userId}`);
       invalidateCacheKey(`transactions:${userId}`);
       invalidateCacheKey(`wallet_bills:${userId}`);
 
+      // Send receipt email in background
+      storage.getUser(userId).then(u => {
+        if (!u) return;
+        sendTransactionReceiptEmail(u.email, u.firstName, {
+          title: "Bank Transfer Sent",
+          status: "success",
+          amount: `₦${netAmountNgn.toLocaleString()}`,
+          amountLabel: `$${transferAmount.toFixed(2)}`,
+          reference: txRef,
+          rows: [
+            { label: "Recipient",       value: accountName },
+            { label: "Account Number",  value: accountNumber, mono: true },
+            { label: "Bank",            value: bankName || bankCode },
+            { label: "Amount (NGN)",    value: `₦${netAmountNgn.toLocaleString()}`, color: "green" },
+            { label: "Amount (USD)",    value: `$${transferAmount.toFixed(2)}` },
+            { label: "VAT (7.5%)",      value: `$${vatAmount.toFixed(2)}` },
+            ...(narration ? [{ label: "Narration", value: narration }] : []),
+          ],
+        }).catch(() => {});
+      }).catch(() => {});
+
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway: "korapay", pending: true });
+      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway: "korapay" });
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 

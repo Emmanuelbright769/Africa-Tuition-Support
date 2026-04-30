@@ -339,7 +339,7 @@ export default function FinancialHub() {
       setView("home"); resetSend();
       showReceipt({
         title: "Bank Transfer",
-        status: "processing",
+        status: "success",
         amount: `$${amt.toFixed(2)}`,
         rows: [
           { label: "Reference",      value: data.reference,                     mono: true },
@@ -347,16 +347,15 @@ export default function FinancialHub() {
           { label: "Beneficiary",    value: resolvedName || acctNumber },
           { label: "Account No",     value: acctNumber },
           { label: "Bank",           value: selectedBank?.name || "—" },
-          { label: "Gateway",        value: (data.gateway ?? "korapay").toUpperCase() },
-          { label: "Tx Type",        value: "Bank Transfer" },
+          { label: "Gateway",        value: "KORAPAY" },
           { label: "Amount",         value: `$${amt.toFixed(2)}` },
           { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                red: true },
-          { label: "You Receive",    value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
+          { label: "Beneficiary Receives", value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
           { label: "Narration",      value: note || "None" },
-          { label: "Status",         value: "Pending Admin Approval", bold: true },
+          { label: "Status",         value: "Sent Successfully ✓",              green: true, bold: true },
         ] as ReceiptRow[],
         referenceRow: data.reference,
-        footerNote: "Your funds have been debited. A TSIA admin will approve and execute the transfer within 24 hours. Contact support if delayed.",
+        footerNote: "Transfer processed instantly via Korapay. The recipient should receive funds within minutes.",
         onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
         newTxLabel: "New Transfer",
       });

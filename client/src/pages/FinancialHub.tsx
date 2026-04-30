@@ -546,9 +546,14 @@ export default function FinancialHub() {
       </div>
 
       {/* Greeting — only on home */}
-      <div>
-        <h2 className="text-2xl font-bold">Hello, {user?.firstName} 👋</h2>
-        <p className="text-muted-foreground text-sm">Send money, pay bills &amp; manage transfers</p>
+      <div className="bg-gradient-to-r from-tsia-green/10 via-tsia-green/5 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-5 py-4 flex items-center gap-4">
+        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-tsia-green to-tsia-gold flex items-center justify-center shrink-0 shadow-md shadow-tsia-green/20">
+          <span className="text-white font-black text-base">{(user?.firstName?.[0] ?? "U").toUpperCase()}</span>
+        </div>
+        <div>
+          <h2 className="text-xl font-bold leading-tight">Hello, {user?.firstName} 👋</h2>
+          <p className="text-muted-foreground text-xs mt-0.5">Send money, pay bills &amp; manage transfers</p>
+        </div>
       </div>
 
       {/* Balance Card */}

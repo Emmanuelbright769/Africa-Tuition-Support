@@ -181,7 +181,7 @@ export default function WalletSection() {
   const cryptoDepositMutation = useMutation({
     mutationFn: async () => {
       const amount = parseFloat(cryptoAmount);
-      if (!amount || amount < 6) throw new Error("Crypto deposit must be $6 or above");
+      if (!amount || amount <= 5) throw new Error("Crypto deposit must be above $5");
       if (!cryptoTxHash.trim()) throw new Error("Transaction hash is required");
       const res = await apiRequest("POST", "/api/wallet/deposit", {
         amountUsd: amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,

@@ -331,7 +331,7 @@ export default function WalletPage() {
   const cryptoDepositMutation = useMutation({
     mutationFn: async () => {
       const amount = parseFloat(cryptoAmount);
-      if (!amount || amount < 6) throw new Error("Crypto deposit must be $6 or above");
+      if (!amount || amount <= 5) throw new Error("Crypto deposit must be above $5");
       if (!cryptoTxHash.trim()) throw new Error("Transaction hash is required");
       const res = await apiRequest("POST", "/api/wallet/deposit", {
         amountUsd: amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,
@@ -817,13 +817,13 @@ export default function WalletPage() {
                       </div>
                       <div>
                         <Label htmlFor="fund-amount">Amount (USD)</Label>
-                        <Input id="fund-amount" type="number" min={6} step={0.01} placeholder="Min $6.00"
+                        <Input id="fund-amount" type="number" min={5.01} step={0.01} placeholder="Above $5.00"
                           value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                           className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
-                        {parseFloat(fundAmount) > 0 && parseFloat(fundAmount) < 6 && (
-                          <p className="text-xs text-red-500 mt-1 font-medium">Minimum deposit is $6.00</p>
+                        {parseFloat(fundAmount) > 0 && parseFloat(fundAmount) <= 5 && (
+                          <p className="text-xs text-red-500 mt-1 font-medium">Amount must be above $5.00</p>
                         )}
-                        {parseFloat(fundAmount) >= 6 && (
+                        {parseFloat(fundAmount) > 5 && (
                           <p className="text-xs text-muted-foreground mt-1">
                             ≈ ₦{(parseFloat(fundAmount) * 1480).toLocaleString()} NGN &nbsp;·&nbsp; {formatAmount(parseFloat(fundAmount))} {rateLabel()}
                           </p>
@@ -859,13 +859,13 @@ export default function WalletPage() {
                       </div>
                       <div>
                         <Label htmlFor="korapay-fund-amount">Amount (USD)</Label>
-                        <Input id="korapay-fund-amount" type="number" min={6} step={0.01} placeholder="Min $6.00"
+                        <Input id="korapay-fund-amount" type="number" min={5.01} step={0.01} placeholder="Above $5.00"
                           value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                           className="mt-1 text-lg font-bold" data-testid="input-korapay-fund-amount" />
-                        {parseFloat(fundAmount) > 0 && parseFloat(fundAmount) < 6 && (
-                          <p className="text-xs text-red-500 mt-1 font-medium">Minimum deposit is $6.00</p>
+                        {parseFloat(fundAmount) > 0 && parseFloat(fundAmount) <= 5 && (
+                          <p className="text-xs text-red-500 mt-1 font-medium">Amount must be above $5.00</p>
                         )}
-                        {parseFloat(fundAmount) >= 6 && (
+                        {parseFloat(fundAmount) > 5 && (
                           <p className="text-xs text-muted-foreground mt-1">
                             ≈ ₦{(parseFloat(fundAmount) * 1480).toLocaleString()} NGN &nbsp;·&nbsp; {formatAmount(parseFloat(fundAmount))} {rateLabel()}
                           </p>

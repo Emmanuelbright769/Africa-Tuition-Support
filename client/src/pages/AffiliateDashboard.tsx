@@ -465,9 +465,15 @@ export default function AffiliateDashboard() {
     });
   };
 
-  // Broker selection (persisted)
+  // Broker selection (persisted).
+  // Also read tsia_bot_broker_id — saved when bot is activated — as fallback so
+  // the correct broker shows even if the main key was cleared (e.g. different browser session).
   const [selectedBrokerId, setSelectedBrokerId] = useState<string>(() => {
-    try { return localStorage.getItem("tsia_selected_broker_id") || ""; } catch { return ""; }
+    try {
+      return localStorage.getItem("tsia_selected_broker_id")
+        || localStorage.getItem("tsia_bot_broker_id")
+        || "";
+    } catch { return ""; }
   });
   const selectedBroker = TRADE_BROKERS.find(b => b.id === selectedBrokerId) ?? null;
   const handleBrokerChange = (id: string) => {
@@ -521,7 +527,7 @@ export default function AffiliateDashboard() {
         // Confirmed server success — clear session
         setBotActivatedAt(null);
         botPendingToastRef.current = false;
-        try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
+        try { localStorage.removeItem("tsia_bot_activated_at"); localStorage.removeItem("tsia_bot_broker_id"); } catch {}
         const data = await r.json();
         queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trade/transactions"] });
@@ -552,7 +558,7 @@ export default function AffiliateDashboard() {
         if (status >= 400 && status < 500) {
           setBotActivatedAt(null);
           botPendingToastRef.current = false;
-          try { localStorage.removeItem("tsia_bot_activated_at"); } catch {}
+          try { localStorage.removeItem("tsia_bot_activated_at"); localStorage.removeItem("tsia_bot_broker_id"); } catch {}
           // Silently clear — no toast needed for stale/invalid sessions
         } else if (isAutoOff && !botPendingToastRef.current) {
           // Only show this notification once — session will keep retrying silently
@@ -584,7 +590,11 @@ export default function AffiliateDashboard() {
       // Use the server-confirmed timestamp so client & DB are in sync
       const serverTs = data.botActivatedAt ? new Date(data.botActivatedAt).getTime() : Date.now();
       setBotActivatedAt(serverTs);
-      try { localStorage.setItem("tsia_bot_activated_at", String(serverTs)); } catch {}
+      try {
+        localStorage.setItem("tsia_bot_activated_at", String(serverTs));
+        // Also persist broker so it survives localStorage clears / cross-browser access
+        if (selectedBrokerId) localStorage.setItem("tsia_bot_broker_id", selectedBrokerId);
+      } catch {}
       queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
       toast({ title: "Itera Trading BOT Activated", description: "The Itera Trading BOT is now live. It runs for up to 12 hours and reflects real market conditions — some sessions may result in a loss.", className: "border-green-500" });
     } catch {
@@ -1360,8 +1370,18 @@ export default function AffiliateDashboard() {
                                 <p className="text-xs text-muted-foreground">Your 120-day trading cycle has ended. All funds are now available. Top up to start a new cycle.</p>
                               </div>
                             </div>
+                          ) : botActive ? (
+                            // Bot is running — show this regardless of broker state
+                            <>
+                              <div className="flex-1">
+                                <p className="text-xs text-muted-foreground">Bot activated · auto-deactivates at <strong>{new Date((botActivatedAt ?? 0) + 12 * 3600000).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}</strong> GMT{selectedBroker ? ` · ${selectedBroker.name}` : ""}</p>
+                              </div>
+                              <Button size="sm" variant="outline" onClick={deactivateBot} data-testid="button-bot-deactivate" className="border-red-300 text-red-600 hover:bg-red-50">
+                                <Power className="w-3.5 h-3.5 mr-1" /> Turn Off
+                              </Button>
+                            </>
                           ) : !selectedBroker ? (
-                            // No broker selected — block the bot
+                            // No broker selected — block the bot (only shown when bot is NOT active)
                             <div className="flex-1 flex items-center gap-3">
                               <div className="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
                                 <AlertCircle className="w-4 h-4 text-red-500" />
@@ -1382,15 +1402,6 @@ export default function AffiliateDashboard() {
                                 <p className="text-xs text-muted-foreground">Deposit at least <strong className="text-foreground">${TRADE_MARKET.MIN_DEPOSIT}</strong> into your Trade Wallet to activate the bot. Go to <strong>Deposit</strong> below.</p>
                               </div>
                             </div>
-                          ) : botActive ? (
-                            <>
-                              <div className="flex-1">
-                                <p className="text-xs text-muted-foreground">Bot activated · auto-deactivates at <strong>{new Date((botActivatedAt ?? 0) + 12 * 3600000).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}</strong> GMT</p>
-                              </div>
-                              <Button size="sm" variant="outline" onClick={deactivateBot} data-testid="button-bot-deactivate" className="border-red-300 text-red-600 hover:bg-red-50">
-                                <Power className="w-3.5 h-3.5 mr-1" /> Turn Off
-                              </Button>
-                            </>
                           ) : (
                             <>
                               <div className="flex-1">
@@ -1713,6 +1724,10 @@ export default function AffiliateDashboard() {
                       <Badge className="bg-tsia-green/10 text-tsia-green border-tsia-green/30">
                         <CheckCircle2 className="w-3 h-3 mr-1" /> {selectedBroker.name}
                       </Badge>
+                    ) : botActive ? (
+                      <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-900/20">
+                        Session active
+                      </Badge>
                     ) : (
                       <Badge variant="outline" className="text-red-500 border-red-300 bg-red-50 dark:bg-red-900/20">
                         No broker selected
@@ -1738,10 +1753,12 @@ export default function AffiliateDashboard() {
                       Select a broker before you can activate the Itera Trading BOT.
                     </p>
                   )}
-                  {botActive && selectedBroker && (
+                  {botActive && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
                       <Lock className="w-3 h-3 shrink-0" />
-                      Broker locked to <strong>{selectedBroker.name}</strong> for the duration of this session.
+                      {selectedBroker
+                        ? <>Broker locked to <strong>{selectedBroker.name}</strong> for the duration of this session.</>
+                        : "Broker selection locked during an active trading session."}
                     </p>
                   )}
                 </motion.div>

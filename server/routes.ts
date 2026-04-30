@@ -5258,7 +5258,7 @@ export async function registerRoutes(
     { code: "000026", name: "Taj Bank" }, { code: "000031", name: "PalmPay" },
     { code: "000014", name: "OPay (OPay Digital)" }, { code: "000019", name: "Flutterwave" },
   ];
-  let cachedBankList: { code: string; name: string }[] | null = null;
+  let cachedBankList: { code: string; name: string; gateway: string }[] | null = null;
   let bankListCachedAt = 0;
 
   app.get("/api/wallet/banks", async (req, res) => {
@@ -5278,7 +5278,7 @@ export async function registerRoutes(
       const data = await r.json() as any;
       if (data.success && Array.isArray(data.data) && data.data.length > 0) {
         const banks = data.data
-          .map((b: any) => ({ code: String(b.bank_code || b.code || ""), name: String(b.bank_name || b.name || "") }))
+          .map((b: any) => ({ code: String(b.bank_code || b.code || ""), name: String(b.bank_name || b.name || ""), gateway: "squad" }))
           .filter((b: any) => b.code && b.name)
           .sort((a: any, z: any) => a.name.localeCompare(z.name));
         cachedBankList = banks;
@@ -5298,7 +5298,7 @@ export async function registerRoutes(
         const dk = await rk.json() as any;
         if (dk.status && Array.isArray(dk.data) && dk.data.length > 0) {
           const banks = dk.data
-            .map((b: any) => ({ code: String(b.nibss_bank_code || b.bank_code || b.code || ""), name: String(b.name || "") }))
+            .map((b: any) => ({ code: String(b.nibss_bank_code || b.bank_code || b.code || ""), name: String(b.name || ""), gateway: "korapay" }))
             .filter((b: any) => b.code && b.name)
             .sort((a: any, z: any) => a.name.localeCompare(z.name));
           cachedBankList = banks;
@@ -6191,35 +6191,54 @@ export async function registerRoutes(
       const { bankCode, bankName, accountNumber, accountName, narration, gateway = "squad", netAmountNgn, vatAmount, txRef } = details;
 
       let transferSuccess = false, transferMsg = "";
+      let usedGateway = gateway;
 
-      if (gateway === "korapay") {
+      // ── Helper: try Korapay disburse ────────────────────────────────────────
+      const tryKorapay = async (): Promise<boolean> => {
         const koraKey = process.env.KORAPAY_SECRET_KEY;
-        if (!koraKey) return res.status(500).json({ message: "Korapay not configured" });
+        if (!koraKey) { transferMsg = "Korapay not configured"; return false; }
         try {
           const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ reference: txRef, destination: { type: "bank_account", amount: netAmountNgn, currency: "NGN", bank_account: { bank: bankCode, account: accountNumber }, customer: { name: accountName, email: "noreply@tsia.com" } }, description: narration || `TSIA Bank Transfer | Ref: ${txRef}` }),
+            body: JSON.stringify({
+              reference: `${txRef}-K`,
+              destination: { type: "bank_account", amount: netAmountNgn, currency: "NGN", bank_account: { bank: bankCode, account: accountNumber }, customer: { name: accountName, email: "noreply@tsia.com" } },
+              description: narration || `TSIA Bank Transfer | Ref: ${txRef}`,
+            }),
             signal: AbortSignal.timeout(20000),
           });
           const kData = await kRes.json() as any;
-          transferSuccess = !!kData.status;
-          if (!transferSuccess) transferMsg = kData.message ?? "Korapay transfer failed";
-        } catch (e: any) { transferMsg = e.message ?? "Network error"; }
+          if (kData.status) { usedGateway = "korapay"; return true; }
+          transferMsg = kData.message ?? "Korapay transfer failed";
+          return false;
+        } catch (e: any) { transferMsg = e.message ?? "Network error"; return false; }
+      };
+
+      if (gateway === "korapay") {
+        transferSuccess = await tryKorapay();
       } else {
+        // Try Squad first
         const secretKey = process.env.SQUAD_SECRET_KEY;
-        const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+        const isLive = !!(secretKey && secretKey.startsWith("sk_"));
+        const squadBase = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
         try {
           const squadRes = await fetch(`${squadBase}/payout/initiate`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ transaction_reference: txRef, amount: netAmountNgn * 100, bank_code: bankCode, account_number: accountNumber, account_name: accountName, currency_id: "NGN", narration: narration || `TSIA Bank Transfer | Ref: ${txRef}` }),
+            body: JSON.stringify({ transaction_reference: txRef, amount: Math.round(Number(netAmountNgn) * 100), bank_code: bankCode, account_number: accountNumber, account_name: accountName, currency_id: "NGN", narration: narration || `TSIA Bank Transfer | Ref: ${txRef}` }),
             signal: AbortSignal.timeout(15000),
           });
           const squadData = await squadRes.json() as any;
           transferSuccess = !!squadData.success;
-          if (!transferSuccess) transferMsg = squadData.message || `Gateway error (HTTP ${squadRes.status})`;
+          if (!transferSuccess) transferMsg = squadData.message || `Squad error (HTTP ${squadRes.status})`;
         } catch (e: any) { transferMsg = e.message ?? "Network error"; }
+
+        // If Squad failed for any reason, fall back to Korapay automatically
+        if (!transferSuccess) {
+          console.log(`[BANK-TRANSFER] Squad failed (${transferMsg}), trying Korapay fallback…`);
+          transferSuccess = await tryKorapay();
+        }
       }
 
       if (!transferSuccess) {

@@ -42,7 +42,7 @@ type ReceiptData = { txRef: string; txDate: string; amount: string; senderName: 
 type WalletData = { id: number; userId: number; balance: string };
 type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
-type Bank = { code: string; name: string };
+type Bank = { code: string; name: string; gateway?: "squad" | "korapay" };
 
 // ─── Services ──────────────────────────────────────────────────────────────────
 const SERVICES = [
@@ -802,7 +802,7 @@ export default function FinancialHub() {
                     </div>
                     <div className="max-h-52 overflow-y-auto">
                       {filteredBanks.map(b => (
-                        <button key={b.code} onClick={() => { setSelectedBank(b); setBankDropOpen(false); setBankSearch(""); setAcctNumber(""); setResolvedName(null); }}
+                        <button key={b.code} onClick={() => { setSelectedBank(b); setBankDropOpen(false); setBankSearch(""); setAcctNumber(""); setResolvedName(null); if (b.gateway) setBankGateway(b.gateway); }}
                           className="w-full text-left px-4 py-3 text-sm hover:bg-muted/50 transition-colors font-medium">{b.name}</button>
                       ))}
                     </div>

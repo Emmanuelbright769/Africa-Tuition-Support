@@ -136,7 +136,7 @@ export default function WalletPage() {
   const [cwOtpLoading, setCwOtpLoading]   = useState(false);
 
   // ── History ─────────────────────────────────────────────────────────────
-  const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "bills" | "withdrawals">("ledger");
+  const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "bills">("ledger");
 
   // ── KYC state ───────────────────────────────────────────────────────────
   const [kycBvn, setKycBvn]                   = useState("");
@@ -340,9 +340,10 @@ export default function WalletPage() {
       if (!res.ok) throw new Error(d.message);
       return d;
     },
-    onSuccess: () => {
-      toast({ title: "Crypto deposit submitted ✓", description: "Your deposit is pending confirmation by TSIA (within 30 minutes).", className: "border-tsia-green" });
-      refetchDeposits(); setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20"); setFundOpen(false);
+    onSuccess: (d: any) => {
+      const credited = d.userCredit ? ` $${parseFloat(d.userCredit).toFixed(2)} has been credited instantly.` : "";
+      toast({ title: "Deposit Confirmed ✓", description: `Your wallet has been credited instantly.${credited}`, className: "border-tsia-green" });
+      refetchWallet(); refetchDeposits(); setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20"); setFundOpen(false);
     },
     onError: (e: any) => toast({ title: "Submission failed", description: e.message, variant: "destructive" }),
   });
@@ -729,37 +730,11 @@ export default function WalletPage() {
                       {currency && currency.code !== "USD" && <span className="ml-1.5 text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency.code}</span>}
                     </p>
                   )}
-                  <p className="text-white/50 text-xs mb-1">Available balance · Crypto: 1% fee · Bank: Coming Soon</p>
-                  <p className="text-white/40 text-[10px] mb-1">Minimum $2 must remain in wallet at all times</p>
-                  {withdrawalWindow && !withdrawalWindow.open && (
-                    <p className="text-amber-300/70 text-[10px] mb-4 flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> {withdrawalWindow.message}
-                    </p>
-                  )}
-                  {withdrawalWindow?.open && (
-                    <p className="text-green-300/60 text-[10px] mb-4">✓ {withdrawalWindow.message}</p>
-                  )}
-                  {!withdrawalWindow && <p className="mb-4" />}
-                  <div className="grid grid-cols-2 gap-3">
-                    <Button onClick={() => openFund("squad")} className="h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl" data-testid="btn-fund-wallet">
-                      <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
-                    </Button>
-                    <Button onClick={() => {
-                      if (withdrawalWindow && !withdrawalWindow.open) {
-                        toast({ title: "Withdrawals Locked 🔒", description: withdrawalWindow.message, variant: "destructive" });
-                        return;
-                      }
-                      if (!walletKycDone && needsKyc) { toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification to unlock withdrawals.", variant: "destructive" }); return; }
-                      setWithdrawChoiceOpen(true);
-                    }} variant="outline"
-                      className={`h-12 rounded-2xl font-bold transition-all ${withdrawalWindow && !withdrawalWindow.open ? "border-white/20 text-white/40 cursor-not-allowed" : "border-white/40 text-white hover:bg-white/10"}`}
-                      data-testid="btn-withdraw">
-                      {withdrawalWindow && !withdrawalWindow.open
-                        ? <><Lock className="w-4 h-4 mr-2" /> Locked</>
-                        : <><ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw</>
-                      }
-                    </Button>
-                  </div>
+                  <p className="text-white/50 text-xs mb-1">Available balance · Use Fintech to send money to a bank account</p>
+                  <p className="text-white/40 text-[10px] mb-5">Fund your wallet to access all platform services</p>
+                  <Button onClick={() => openFund("squad")} className="w-full h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl" data-testid="btn-fund-wallet">
+                    <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
+                  </Button>
                 </div>
               </div>
             </div>
@@ -997,7 +972,7 @@ export default function WalletPage() {
                         <Input id="crypto-txhash" placeholder="Paste your transaction hash here"
                           value={cryptoTxHash} onChange={e => setCryptoTxHash(e.target.value)}
                           className="mt-1 font-mono text-sm" data-testid="input-crypto-txhash" />
-                        <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange/wallet after sending. Your wallet will be credited within 30 minutes after admin confirmation.</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange/wallet after sending. Your wallet will be credited instantly after submission.</p>
                       </div>
 
                       <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">
@@ -1022,10 +997,10 @@ export default function WalletPage() {
           <motion.div initial="hidden" animate="visible" variants={fade}>
             <h3 className="font-bold text-sm mb-3">Transaction History</h3>
             <div className="flex bg-muted/40 rounded-2xl p-1 text-xs mb-4 overflow-x-auto gap-0.5">
-              {(["ledger", "deposits", "withdrawals", "bills"] as const).map(tab => (
+              {(["ledger", "deposits", "bills"] as const).map(tab => (
                 <button key={tab} onClick={() => setHistoryTab(tab)}
                   className={`flex-1 py-2 rounded-xl font-semibold capitalize transition-all whitespace-nowrap px-2 ${historyTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
-                  {tab === "ledger" ? "All" : tab === "deposits" ? "Deposits" : tab === "withdrawals" ? "Withdrawals" : "Bills"}
+                  {tab === "ledger" ? "All" : tab === "deposits" ? "Deposits" : "Bills"}
                 </button>
               ))}
             </div>
@@ -1102,36 +1077,6 @@ export default function WalletPage() {
                 </div>
               )))}
 
-              {historyTab === "withdrawals" && (withdrawals.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  <ArrowUpRight className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No withdrawals yet</p>
-                </div>
-              ) : withdrawals.map((w: any) => {
-                const isCrypto = w.type === "crypto";
-                const addrShort = w.address ? `${w.address.slice(0, 6)}...${w.address.slice(-4)}` : "";
-                const destination = isCrypto
-                  ? `${w.network ?? ""}${addrShort ? " · " + addrShort : ""}`
-                  : w.accountName ? `${w.accountName} (${w.accountNumber}) at ${w.bankName}` : w.bankName ?? "";
-                return (
-                  <div key={w.id} className="flex items-center justify-between bg-card rounded-2xl px-4 py-3 border" data-testid={`row-withdrawal-${w.id}`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isCrypto ? "bg-amber-50 dark:bg-amber-900/20" : "bg-blue-50 dark:bg-blue-900/20"}`}>
-                        {isCrypto ? <Coins className="w-4 h-4 text-amber-500" /> : <Banknote className="w-4 h-4 text-blue-500" />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-sm">{isCrypto ? "Crypto Withdrawal" : "Bank Withdrawal"}</p>
-                        <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">{destination}</p>
-                        <p className="text-[10px] text-muted-foreground">{new Date(w.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0 ml-2">
-                      <p className="font-bold text-sm text-red-500">−${parseFloat(w.amount).toFixed(2)}</p>
-                      {statusBadge(w.status)}
-                    </div>
-                  </div>
-                );
-              }))}
 
               {historyTab === "bills" && (bills.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">

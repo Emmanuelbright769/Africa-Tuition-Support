@@ -1101,23 +1101,6 @@ export default function AffiliateDashboard() {
         <AnimatePresence mode="wait">
           <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
-            {/* ── WALLET GATE ── */}
-            {!walletActivated && activeSection !== "overview" && activeSection !== "referrals" && activeSection !== "location" && activeSection !== "movies" && (
-              <motion.div variants={itemVariants} className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-                <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
-                  <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />
-                </div>
-                <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
-                <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  Fund your TSIA SwiftWallet with above <strong>$5</strong> to unlock trade markets, referral commissions, e-commerce, loans, and all platform services.
-                </p>
-                <Button size="lg" className="bg-primary text-primary-foreground font-bold px-8" onClick={() => setLocation("/wallet")} data-testid="button-wallet-gate-activate-affiliate">
-                  <Wallet className="w-4 h-4 mr-2" />
-                  Fund & Activate Wallet
-                </Button>
-                <p className="text-xs text-muted-foreground mt-4">Deposit above $5 · Activates immediately on confirmation</p>
-              </motion.div>
-            )}
 
             {/* ── OVERVIEW ── */}
             {activeSection === "overview" && (
@@ -1136,21 +1119,6 @@ export default function AffiliateDashboard() {
                   </div>
                 </motion.div>
 
-                {/* Wallet gate banner — shown below greeting when wallet not yet activated */}
-                {!walletActivated && (
-                  <motion.div variants={itemVariants} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <div className="w-10 h-10 bg-amber-100 dark:bg-amber-800/50 rounded-full flex items-center justify-center shrink-0">
-                      <Wallet className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with above <strong>$5</strong> to access all platform services.</p>
-                    </div>
-                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate-affiliate">
-                      Fund Wallet
-                    </Button>
-                  </motion.div>
-                )}
 
                 {/* Stats */}
                 <div className="grid sm:grid-cols-3 gap-5">
@@ -1268,7 +1236,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── TRADE MARKET ── */}
-            {activeSection === "trade" && walletActivated && (
+            {activeSection === "trade" && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">
@@ -1863,10 +1831,10 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── WALLET ── */}
-            {activeSection === "wallet" && walletActivated && <WalletSection />}
+            {activeSection === "wallet" && <WalletSection />}
 
             {/* ── QCE ── */}
-            {activeSection === "qce" && walletActivated && <QCESection />}
+            {activeSection === "qce" && <QCESection />}
 
             {/* ── TRUST FUND ── */}
             {activeSection === "trust_fund" && (
@@ -2173,14 +2141,14 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── E-COMMERCE ── */}
-            {activeSection === "ecommerce" && walletActivated && (
+            {activeSection === "ecommerce" && (
               <motion.div variants={itemVariants}>
                 <EcommerceSection initialOpenChatId={openChatId} />
               </motion.div>
             )}
 
             {/* ── EMERGENCY RESPONSE ── */}
-            {activeSection === "emergency_response" && walletActivated && (
+            {activeSection === "emergency_response" && (
               <motion.div variants={itemVariants} className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
@@ -2240,7 +2208,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── COMMUNITY FORUM ── */}
-            {activeSection === "forum" && walletActivated && (
+            {activeSection === "forum" && (
               <motion.div variants={itemVariants}>
                 <ForumSection userSection="affiliate" />
               </motion.div>
@@ -2269,7 +2237,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── STRATEGIC RESERVE FUND ── */}
-            {activeSection === "reserve_fund" && walletActivated && (
+            {activeSection === "reserve_fund" && (
               <motion.div variants={itemVariants}>
                 <div className="mb-5">
                   <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -2282,14 +2250,14 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── FINTECH HUB ── */}
-            {activeSection === "fintech" && walletActivated && (
+            {activeSection === "fintech" && (
               <motion.div variants={itemVariants}>
                 <FinancialHub />
               </motion.div>
             )}
 
             {/* ── LOAN ── */}
-            {activeSection === "loan" && walletActivated && (
+            {activeSection === "loan" && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Business loan</h2>
@@ -2478,7 +2446,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── TENANCY ── */}
-            {activeSection === "tenancy" && walletActivated && (
+            {activeSection === "tenancy" && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Landlord Tenancy Gateway</h2>

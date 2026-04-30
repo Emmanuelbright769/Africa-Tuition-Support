@@ -333,8 +333,10 @@ export default function FinancialHub() {
           { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                red: true },
           { label: "You Receive",    value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
           { label: "Narration",      value: note || "None" },
+          { label: "Status",         value: "Pending Admin Approval", bold: true },
         ] as ReceiptRow[],
         referenceRow: data.reference,
+        footerNote: "Your funds have been debited. A TSIA admin will approve and execute the transfer within 24 hours. Contact support if delayed.",
         onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
         newTxLabel: "New Transfer",
       });

@@ -99,6 +99,7 @@ const NAV = [
   { id: "ecommerce",     icon: ShoppingBag,    label: "TS-Mart Online Stores" },
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
   { id: "deposits",      icon: Coins,          label: "Deposits" },
+  { id: "bank_transfers", icon: Banknote,     label: "Bank Transfers", badgeKey: "pendingBankTransfers" },
   { id: "withdrawals",  icon: Banknote,       label: "Bank W/D",      badgeKey: "pendingWithdrawals" },
   { id: "crypto_withdrawals", icon: Coins,    label: "Crypto W/D",    badgeKey: "pendingCryptoWd" },
   { id: "reserve",      icon: ShieldCheck,    label: "Str. Reserve" },
@@ -171,6 +172,7 @@ export default function AdminDashboard() {
   const { data: ecommerceStats }           = useQuery({ queryKey: ["/api/admin/ecommerce-stats"], enabled: activeTab === "ecommerce" });
   const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade", refetchInterval: 30_000, staleTime: 15_000 });
   const { data: allDeposits = [] }         = useQuery({ queryKey: ["/api/admin/wallet-deposits"], enabled: activeTab === "deposits" });
+  const { data: pendingBankTransfers = [], refetch: refetchBankTransfers } = useQuery<any[]>({ queryKey: ["/api/admin/pending-bank-transfers"], enabled: activeTab === "bank_transfers", refetchInterval: 30_000 });
   const { data: allMessages = [] }         = useQuery({ queryKey: ["/api/admin/messages"], enabled: activeTab === "messages" });
   const { data: reserveFundData }          = useQuery({ queryKey: ["/api/reserve-fund/live"], enabled: activeTab === "reserve" });
   const { data: reserveProfitData }        = useQuery({ queryKey: ["/api/reserve-fund/commission-profits"], enabled: activeTab === "reserve" });
@@ -517,6 +519,30 @@ export default function AdminDashboard() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const approveBankTransferMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/admin/pending-bank-transfer/${id}/approve`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-bank-transfers"] });
+      toast({ title: "Transfer Approved ✓", description: "Bank transfer sent successfully." });
+    },
+    onError: (e: any) => toast({ title: "Approval Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const rejectBankTransferMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      const res = await apiRequest("POST", `/api/admin/pending-bank-transfer/${id}/reject`, { reason });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-bank-transfers"] });
+      toast({ title: "Transfer Rejected", description: "Funds refunded to user's wallet." });
+    },
+    onError: (e: any) => toast({ title: "Rejection Failed", description: e.message, variant: "destructive" }),
+  });
+
   // ─── Auth guard ────────────────────────────────────────────────────────────
   const timerRef = useRef<any>(null);
   useEffect(() => {
@@ -581,6 +607,7 @@ export default function AdminDashboard() {
     pendingLoans: (allLoans as any[]).filter((l: any) => l.status === "pending").length,
     pendingWithdrawals: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && w.type === "bank").length,
     pendingCryptoWd: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && w.type === "crypto").length,
+    pendingBankTransfers: (pendingBankTransfers as any[]).length,
   };
 
   // ─── Sidebar nav ───────────────────────────────────────────────────────────
@@ -1536,6 +1563,69 @@ export default function AdminDashboard() {
                             </TableCell>
                           </TableRow>
                         ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════ PENDING BANK TRANSFERS ══════════════════════ */}
+            {activeTab === "bank_transfers" && (
+              <motion.div key="bank_transfers" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Banknote className="w-4 h-4 text-tsia-green" /> Pending Bank Transfers
+                    </CardTitle>
+                    <CardDescription>Fintech bank transfer requests awaiting your approval. Approve to send funds via Squad, or reject to refund the user.</CardDescription>
+                  </CardHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Recipient</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Bank</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount (NGN)</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Date</TableHead>
+                          <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(pendingBankTransfers as any[]).length === 0 ? (
+                          <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-500">No pending bank transfers.</TableCell></TableRow>
+                        ) : (pendingBankTransfers as any[]).map((t: any) => {
+                          let details: any = {};
+                          try { details = JSON.parse(t.reference); } catch { /* ok */ }
+                          return (
+                            <TableRow key={t.id} className="hover:bg-slate-50/50">
+                              <TableCell className="px-6">
+                                <div className="font-medium text-sm text-slate-900">{t.userName}</div>
+                                <div className="text-xs text-slate-500">{t.userEmail}</div>
+                              </TableCell>
+                              <TableCell className="font-bold text-sm">{fmtUSD(t.amount)}</TableCell>
+                              <TableCell>
+                                <div className="font-medium text-sm">{details.accountName || "—"}</div>
+                                <div className="text-xs text-slate-500 font-mono">{details.accountNumber || "—"}</div>
+                              </TableCell>
+                              <TableCell className="text-sm">{details.bankName || details.bankCode || "—"}</TableCell>
+                              <TableCell className="font-semibold text-sm text-tsia-green">₦{(details.netAmountNgn || 0).toLocaleString()}</TableCell>
+                              <TableCell className="text-xs text-slate-500">{fmtDate(t.createdAt)}</TableCell>
+                              <TableCell className="text-right px-6">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" disabled={approveBankTransferMutation.isPending} onClick={() => { if (window.confirm(`Approve bank transfer of ₦${(details.netAmountNgn||0).toLocaleString()} to ${details.accountName}? This will call Squad API and send the funds.`)) approveBankTransferMutation.mutate(t.id); }} data-testid={`button-approve-bt-${t.id}`}>
+                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Approve & Send
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="h-7 text-xs border-red-400 text-red-600 hover:bg-red-50" disabled={rejectBankTransferMutation.isPending} onClick={() => { const reason = window.prompt("Reason for rejection (shown to user):", "Transfer could not be completed."); if (reason !== null) rejectBankTransferMutation.mutate({ id: t.id, reason }); }} data-testid={`button-reject-bt-${t.id}`}>
+                                    <XCircle className="w-3 h-3 mr-1" /> Reject & Refund
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>

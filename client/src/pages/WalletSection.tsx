@@ -109,7 +109,7 @@ export default function WalletSection() {
   const [cwOtpLoading, setCwOtpLoading]   = useState(false);
 
   // ── History tab ────────────────────────────────────────────────────────
-  const [historyTab, setHistoryTab] = useState<"deposits" | "bills" | "withdrawals">("deposits");
+  const [historyTab, setHistoryTab] = useState<"deposits" | "bills">("deposits");
 
   // ── Wallet KYC state ───────────────────────────────────────────────────
   const [kycBvn, setKycBvn] = useState("");
@@ -191,7 +191,7 @@ export default function WalletSection() {
       return d;
     },
     onSuccess: () => {
-      toast({ title: "Crypto deposit submitted ✓", description: "Your deposit is pending confirmation by TSIA (within 30 minutes).", className: "border-tsia-green" });
+      toast({ title: "Deposit Confirmed ✓", description: "Your wallet has been credited instantly.", className: "border-tsia-green" });
       refetchDeposits();
       setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20");
       setFundOpen(false);
@@ -510,45 +510,21 @@ export default function WalletSection() {
                   )}
                 </p>
               )}
-              <p className="text-white/50 text-xs mb-1">Available balance · 7.5% VAT on bank withdrawals · 1% fee on USDT crypto</p>
-              <p className="text-white/40 text-[10px] mb-5">Minimum $2 must remain in wallet at all times for seamless operations</p>
+              <p className="text-white/50 text-xs mb-1">Available balance · Use Fintech to send money to a bank account</p>
+              <p className="text-white/40 text-[10px] mb-5">Fund your wallet to access all platform services</p>
 
-              <div className="space-y-2">
-                <Button
-                  onClick={() => {
-                    if (!walletKycDone && needsKyc) {
-                      toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification above to unlock funding.", variant: "destructive" }); return;
-                    }
-                    setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); setFundOpen(true);
-                  }}
-                  className="w-full h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl"
-                  data-testid="btn-fund-wallet"
-                >
-                  <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (isWeekendLondon) {
-                      toast({ title: "Withdrawals Locked on Weekends", description: "SwiftWallet withdrawals are available Monday–Friday only. Please try again on Monday.", variant: "destructive" }); return;
-                    }
-                    if (!walletKycDone && needsKyc) {
-                      toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification above to unlock withdrawals.", variant: "destructive" }); return;
-                    }
-                    setWithdrawChoiceOpen(true);
-                  }}
-                  variant="outline"
-                  disabled={isWeekendLondon}
-                  className="w-full h-12 border-white/40 text-white hover:bg-white/10 rounded-2xl font-bold disabled:opacity-60 disabled:cursor-not-allowed"
-                  data-testid="btn-withdraw"
-                  title={isWeekendLondon ? "Withdrawals are only available Monday–Friday" : "Withdraw funds"}
-                >
-                  {isWeekendLondon ? <Lock className="w-4 h-4 mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />}
-                  {isWeekendLondon ? "Locked (Mon–Fri only)" : "Withdraw"}
-                </Button>
-                {isWeekendLondon && (
-                  <p className="text-white/50 text-[10px] text-center -mt-1">🔒 Withdrawals resume Monday</p>
-                )}
-              </div>
+              <Button
+                onClick={() => {
+                  if (!walletKycDone && needsKyc) {
+                    toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification above to unlock funding.", variant: "destructive" }); return;
+                  }
+                  setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); setFundOpen(true);
+                }}
+                className="w-full h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl"
+                data-testid="btn-fund-wallet"
+              >
+                <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
+              </Button>
             </div>
           </div>
         </div>
@@ -588,10 +564,10 @@ export default function WalletSection() {
       <motion.div variants={itemVariants}>
         <h3 className="font-bold text-sm mb-3">Transaction History</h3>
         <div className="flex bg-muted/40 rounded-2xl p-1 text-xs mb-4 overflow-x-auto gap-0.5">
-          {(["deposits","bills","withdrawals"] as const).map(tab => (
+          {(["deposits","bills"] as const).map(tab => (
             <button key={tab} onClick={() => setHistoryTab(tab)}
               className={`flex-1 py-2 rounded-xl font-semibold capitalize transition-all whitespace-nowrap px-2 ${historyTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
-              {tab === "deposits" ? "Deposits" : tab === "bills" ? "Bills" : "Withdrawals"}
+              {tab === "deposits" ? "Deposits" : "Bills"}
             </button>
           ))}
         </div>
@@ -643,35 +619,6 @@ export default function WalletSection() {
               ))
           )}
 
-          {historyTab === "withdrawals" && (
-            withdrawals.length === 0
-              ? <Empty icon={ArrowUpRight} msg="No withdrawals yet" />
-              : withdrawals.slice(0, 15).map((w: any) => {
-                  const isCrypto = w.type === "crypto_withdrawal";
-                  // Extract network+address from description for crypto withdrawals
-                  const networkMatch = isCrypto ? w.description?.match(/\(([^)]+?)\)/) : null;
-                  const networkLabel = networkMatch ? networkMatch[1] : "";
-                  const addrMatch = isCrypto ? w.description?.match(/to ([^\s|]+)/) : null;
-                  const addrShort = addrMatch ? addrMatch[1] : "";
-                  return (
-                    <div key={w.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3" data-testid={`row-withdrawal-${w.id}`}>
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isCrypto ? "bg-amber-50 dark:bg-amber-900/20" : "bg-blue-50 dark:bg-blue-900/20"}`}>
-                        {isCrypto ? <Coins className="w-5 h-5 text-amber-500" /> : <Banknote className="w-5 h-5 text-blue-500" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm">{isCrypto ? "Crypto Withdrawal" : "Bank Withdrawal"}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {isCrypto ? `${networkLabel} · ${addrShort}` : w.description?.split(" to ")[1]?.split(" —")[0] || ""}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-sm text-red-500">−${Math.abs(parseFloat(w.amount)).toFixed(2)}</p>
-                        <p className="text-[10px] text-muted-foreground/70">{new Date(w.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
-                      </div>
-                    </div>
-                  );
-                })
-          )}
         </div>
       </motion.div>
 
@@ -826,7 +773,7 @@ export default function WalletSection() {
                   <Input id="crypto-txhash" placeholder="Paste your transaction hash here"
                     value={cryptoTxHash} onChange={e => setCryptoTxHash(e.target.value)}
                     className="mt-1 font-mono text-xs" data-testid="input-crypto-txhash" />
-                  <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange/wallet after sending. Your wallet will be credited within 30 minutes after admin confirmation.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange/wallet after sending. Your wallet will be credited instantly after submission.</p>
                 </div>
 
                 <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">

@@ -201,8 +201,10 @@ export interface IStorage {
   getWalletTransfersByUser(userId: number): Promise<(WalletTransfer & { recipientName?: string; senderName?: string })[]>;
 
   // Fintech: Bill Payments
-  createBillPayment(data: { userId: number; service: string; amount: number; reference: string }): Promise<BillPayment>;
+  createBillPayment(data: { userId: number; service: string; amount: number; reference: string; status?: string }): Promise<BillPayment>;
   getBillPaymentsByUser(userId: number): Promise<BillPayment[]>;
+  getPendingBankTransfers(): Promise<(BillPayment & { userName?: string; userEmail?: string })[]>;
+  updateBillPaymentStatus(id: number, status: string): Promise<BillPayment>;
 
   // Tour Africa Bookings
   createTourBooking(data: InsertTourBooking): Promise<TourBooking>;
@@ -1356,13 +1358,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Fintech: Bill Payments ──────────────────────────────────────────────
-  async createBillPayment(data: { userId: number; service: string; amount: number; reference: string }): Promise<BillPayment> {
+  async createBillPayment(data: { userId: number; service: string; amount: number; reference: string; status?: string }): Promise<BillPayment> {
     const [payment] = await db.insert(billPayments).values({
       userId: data.userId,
       service: data.service,
       amount: data.amount.toFixed(2),
       reference: data.reference,
-      status: "completed",
+      status: data.status ?? "completed",
     }).returning();
     return payment;
   }
@@ -1372,6 +1374,27 @@ export class DatabaseStorage implements IStorage {
       .where(eq(billPayments.userId, userId))
       .orderBy(desc(billPayments.createdAt))
       .limit(50);
+  }
+
+  async getPendingBankTransfers(): Promise<(BillPayment & { userName?: string; userEmail?: string })[]> {
+    const rows = await db
+      .select({
+        id: billPayments.id, userId: billPayments.userId, service: billPayments.service,
+        amount: billPayments.amount, reference: billPayments.reference,
+        status: billPayments.status, createdAt: billPayments.createdAt,
+        userName: sql<string>`(${users.firstName} || ' ' || ${users.lastName})`,
+        userEmail: users.email,
+      })
+      .from(billPayments)
+      .leftJoin(users, eq(billPayments.userId, users.id))
+      .where(and(eq(billPayments.service, "bank_transfer"), eq(billPayments.status, "pending")))
+      .orderBy(desc(billPayments.createdAt));
+    return rows as any[];
+  }
+
+  async updateBillPaymentStatus(id: number, status: string): Promise<BillPayment> {
+    const [updated] = await db.update(billPayments).set({ status }).where(eq(billPayments.id, id)).returning();
+    return updated;
   }
 
   // ─── Tour Africa Bookings ─────────────────────────────────────────────────

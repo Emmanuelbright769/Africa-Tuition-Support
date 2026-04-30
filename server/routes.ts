@@ -483,9 +483,6 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateWallet(userId);
-      if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before starting verification." });
-      }
 
       const { idType = "nin", idNumber, lastName } = req.body;
       if (!idNumber || !idType) return res.status(400).json({ message: "ID type and number are required." });
@@ -530,9 +527,6 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const wallet = await storage.getOrCreateWallet(userId);
-    if (!wallet.activated) {
-      return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before starting verification." });
-    }
     const nin = req.body.nin || req.body.idNumber;
     if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) return res.status(400).json({ message: "NIN must be exactly 11 digits." });
     const result = await ninverifyLookup("nin", { nin });
@@ -546,9 +540,6 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateWallet(userId);
-      if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before continuing verification." });
-      }
 
       // Support both old { nin } and new { idType, idNumber } shapes
       const idType   = req.body.idType || "nin";
@@ -573,9 +564,6 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateWallet(userId);
-      if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before submitting your application." });
-      }
 
       let verification = await storage.getVerificationByUser(userId);
       if (!verification) return res.status(400).json({ message: "Start verification first" });
@@ -1187,9 +1175,6 @@ export async function registerRoutes(
       }
 
       const wallet = await storage.getOrCreateWallet(userId);
-      if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your wallet before withdrawing" });
-      }
       const withdrawAmount = parseFloat(amount);
       const MIN_BALANCE = 2;
       if (!withdrawAmount || withdrawAmount <= 0 || withdrawAmount > parseFloat(wallet.balance)) {
@@ -1324,9 +1309,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "A valid USDT wallet address is required" });
       }
       const wallet = await storage.getOrCreateWallet(userId);
-      if (!wallet.activated) {
-        return res.status(403).json({ message: "Your wallet must be activated (above $5 funded) before withdrawing." });
-      }
       const withdrawAmt = parseFloat(amount);
       const currentBalance = parseFloat(wallet.balance);
       const MIN_BALANCE = 2;
@@ -5027,23 +5009,62 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const { amountUsd, txHash, walletType } = req.body;
     const amount = parseFloat(amountUsd);
-    if (!amount || amount < ECOMMERCE.MIN_DEPOSIT) return res.status(400).json({ message: `Minimum deposit is $${ECOMMERCE.MIN_DEPOSIT}` });
+    if (!amount || amount < ECOMMERCE.MIN_DEPOSIT) return res.status(400).json({ message: `Minimum deposit is above $${ECOMMERCE.MIN_DEPOSIT}` });
     if (!txHash || txHash.trim().length < 10) return res.status(400).json({ message: "Valid transaction hash is required" });
     try {
-      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "pending" });
-      // Notify admin immediately — deposit awaits confirmation
+      // Create deposit record as completed immediately
+      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "completed" });
+
+      // ── 75/20/5 split — applied instantly ────────────────────────────────
+      const reserveCut   = parseFloat((amount * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
+      const affiliateCut = parseFloat((amount * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
+      const userCredit   = parseFloat((amount - reserveCut - affiliateCut).toFixed(2));
+
+      const wallet = await storage.getOrCreateWallet(userId);
+      const newBalance = (parseFloat(wallet.balance) + userCredit).toFixed(2);
+      await storage.updateWalletBalance(userId, newBalance);
+
+      if (reserveCut > 0) await storage.addToReserveFund(reserveCut.toFixed(6));
+      if (affiliateCut > 0) {
+        try {
+          const affiliateCount = await storage.getAffiliateCount();
+          const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
+          await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+        } catch { /* non-critical */ }
+      }
+
+      // Auto-activate wallet if first time reaching $5
+      if (!wallet.activated && parseFloat(newBalance) >= 5) {
+        try {
+          await storage.activateWallet(userId);
+          await creditReferrerCommissionOnce(userId, amount, "personal wallet activation");
+          const depUser = await storage.getUser(userId);
+          if (depUser?.referredBy) {
+            const referrer = await storage.getUserByAffiliateCode(depUser.referredBy);
+            if (referrer) {
+              const refNotif = await storage.createNotification({ userId: referrer.id, type: "referral_activated", title: "Referral Activated 🎉", message: `${depUser.firstName} ${depUser.lastName.charAt(0)}. (one of your referrals) has activated their TSIA wallet. Your referral commission is now active!`, data: { referredUserId: depUser.id }, isRead: false });
+              pushToUser(referrer.id, "notification", refNotif);
+            }
+          }
+        } catch { /* non-critical */ }
+      } else if (wallet.activated) {
+        await creditReferrerCommissionOnce(userId, amount, "personal wallet deposit").catch(() => {});
+      }
+
+      // Record transaction
+      await storage.createTransaction({ userId, type: "deposit", amount: userCredit.toFixed(2), fee: (reserveCut + affiliateCut).toFixed(2), paymentMethod: `crypto_${walletType || "trc20"}`, description: `Crypto deposit — $${amount.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve (20%), $${affiliateCut.toFixed(2)} pool (5%) | Tx: ${txHash.trim()}` });
+
+      // Notify user
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Deposit Confirmed ✓", message: `$${userCredit.toFixed(2)} has been instantly credited to your TSIA SwiftWallet (75% of $${amount.toFixed(2)}).`, data: { depositId: deposit.id }, isRead: false });
+      pushToUser(userId, "notification", notif);
+
+      // Notify admin (FYI — no action needed)
       const depositUser = await storage.getUser(userId);
       if (depositUser) {
-        sendAdminDepositEmail({
-          name: `${depositUser.firstName} ${depositUser.lastName}`,
-          email: depositUser.email,
-          amount: amount.toFixed(2),
-          txHash: txHash.trim(),
-          walletType: walletType || "trc20",
-          userId,
-        }).catch(() => {});
+        sendAdminDepositEmail({ name: `${depositUser.firstName} ${depositUser.lastName}`, email: depositUser.email, amount: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", userId }).catch(() => {});
       }
-      res.json({ deposit, message: "Deposit submitted. Your wallet will be credited after confirmation (within 30 minutes)." });
+
+      res.json({ deposit, message: `$${userCredit.toFixed(2)} has been instantly credited to your wallet!`, userCredit: userCredit.toFixed(2) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -5436,7 +5457,7 @@ export async function registerRoutes(
     return await storage.getOrCreateWallet(userId);
   }
 
-  // ── POST /api/fintech/bank-transfer — Squad payout to Nigerian bank ──────────
+  // ── POST /api/fintech/bank-transfer — Queue for admin approval ───────────────
   app.post("/api/fintech/bank-transfer", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -5453,103 +5474,26 @@ export async function registerRoutes(
       const balance = parseFloat(wallet.balance);
       if (balance < transferAmount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
 
-      const vatAmount = transferAmount * 0.075;
-      const netAmountUsd = transferAmount - vatAmount;
+      const vatAmount = parseFloat((transferAmount * 0.075).toFixed(2));
+      const netAmountUsd = parseFloat((transferAmount - vatAmount).toFixed(2));
       const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
       const txRef = `TSIA-FT-${userId}-${Date.now()}`;
 
-      let transferSuccess = false, transferMsg = "";
-
-      if (gateway === "korapay") {
-        // ── Korapay payout ─────────────────────────────────────────────
-        const koraKey = process.env.KORAPAY_SECRET_KEY;
-        if (!koraKey) return res.status(500).json({ message: "Korapay not configured" });
-        try {
-          const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reference: txRef,
-              destination: {
-                type: "bank_account",
-                amount: netAmountNgn,
-                currency: "NGN",
-                bank_account: { bank: bankCode, account: accountNumber },
-                customer: { name: accountName, email: "noreply@tsia.com" },
-              },
-              description: narration || `TSIA Bank Transfer | Ref: ${txRef}`,
-            }),
-            signal: AbortSignal.timeout(20000),
-          });
-          const kData = await kRes.json() as any;
-          transferSuccess = !!kData.status;
-          if (!transferSuccess) {
-            const isIpBlock = kData.error === "not_authorized" || (kData.message ?? "").toLowerCase().includes("whitelist");
-            transferMsg = isIpBlock ? "Korapay requires IP whitelisting for payouts. Please use Squad gateway instead." : (kData.message ?? "Korapay transfer failed");
-          }
-        } catch (e: any) { transferMsg = e.message ?? "Network error"; }
-      } else {
-        // ── Squad payout (default) ─────────────────────────────────────
-        const secretKey = process.env.SQUAD_SECRET_KEY;
-        const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
-        try {
-          const squadRes = await fetch(`${squadBase}/payout/initiate`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              transaction_reference: txRef,
-              amount: netAmountNgn * 100,
-              bank_code: bankCode,
-              account_number: accountNumber,
-              account_name: accountName,
-              currency_id: "NGN",
-              narration: narration || `TSIA Bank Transfer | Ref: ${txRef}`,
-            }),
-            signal: AbortSignal.timeout(15000),
-          });
-          const squadData = await squadRes.json() as any;
-          console.log(`[SQUAD] payout/initiate → HTTP ${squadRes.status} | success=${squadData.success} | msg="${squadData.message}"`);
-          transferSuccess = !!squadData.success;
-          if (!transferSuccess) {
-            transferMsg = squadData.message || squadData.error?.message || `Gateway error (HTTP ${squadRes.status})`;
-          }
-        } catch (e: any) { transferMsg = e.message ?? "Network error"; }
-      }
-
-      if (!transferSuccess) {
-        return res.status(502).json({ message: `Bank transfer failed: ${transferMsg}. Please try again or contact support.` });
-      }
-
-      // Deduct + record
+      // Deduct from wallet immediately — funds held until admin approves
       await storage.updateWalletBalance(userId, (balance - transferAmount).toFixed(2));
-      const billRef = `${accountName} | ${accountNumber} | ${bankName || bankCode} | Ref: ${txRef}`;
-      await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: billRef });
-      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: `bank_transfer_${gateway}`, description: `Bank transfer ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) via ${gateway.toUpperCase()} — 7.5% VAT: $${vatAmount.toFixed(2)} | Ref: ${txRef}` });
-      const msg = `₦${netAmountNgn.toLocaleString()} sent to ${accountName} (${accountNumber}). Processing within 24h. Ref: ${txRef}`;
-      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Initiated ✓", message: msg, data: { ref: txRef }, isRead: false });
+
+      // Save transfer details as JSON reference — admin will use these to execute
+      const transferDetails = JSON.stringify({ bankCode, bankName, accountNumber, accountName, narration, gateway, netAmountNgn, vatAmount, txRef });
+      const bill = await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: transferDetails, status: "pending" });
+
+      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: `bank_transfer_${gateway}`, description: `Bank transfer queued — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) | Pending admin approval | Ref: ${txRef}` });
+
+      const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) is queued for admin approval. Ref: ${txRef}`;
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Queued ✓", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
+
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway });
-      // Fire-and-forget receipt email
-      storage.getUser(userId).then(u => {
-        if (!u) return;
-        sendTransactionReceiptEmail(u.email, u.firstName, {
-          title: "Bank Transfer",
-          status: "processing",
-          amount: `₦${netAmountNgn.toLocaleString()}`,
-          amountLabel: `$${transferAmount.toFixed(2)} requested`,
-          reference: txRef,
-          rows: [
-            { label: "To", value: `${accountName} — ${accountNumber}` },
-            { label: "Bank", value: bankName || bankCode },
-            { label: "Amount (USD)", value: `$${transferAmount.toFixed(2)}` },
-            { label: "VAT (7.5%)", value: `-$${vatAmount.toFixed(2)}`, color: "red" },
-            { label: "You Send (NGN)", value: `₦${netAmountNgn.toLocaleString()}`, color: "green" },
-            { label: "Gateway", value: (gateway as string).toUpperCase() },
-          ],
-          footerNote: "Funds are processed within 30 minutes to 24 hours.",
-        }).catch(() => {});
-      }).catch(() => {});
+      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway, pending: true });
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
@@ -6019,6 +5963,110 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "Deposit not found" });
       await storage.deleteWalletDeposit(parseInt(req.params.id));
       res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── ADMIN: PENDING BANK TRANSFERS ──────────────────────────────────────────
+  app.get("/api/admin/pending-bank-transfers", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (user?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const transfers = await storage.getPendingBankTransfers();
+      res.json(transfers);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/admin/pending-bank-transfer/:id/approve", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const adminUser = await storage.getUser(userId);
+    if (adminUser?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const id = parseInt(req.params.id);
+      const [bill] = await db.select().from(billPayments).where(eq(billPayments.id, id));
+      if (!bill) return res.status(404).json({ message: "Transfer not found" });
+      if (bill.status !== "pending") return res.status(400).json({ message: `Cannot approve a ${bill.status} transfer` });
+
+      let details: any = {};
+      try { details = JSON.parse(bill.reference); } catch { return res.status(400).json({ message: "Invalid transfer data" }); }
+
+      const { bankCode, bankName, accountNumber, accountName, narration, gateway = "squad", netAmountNgn, vatAmount, txRef } = details;
+
+      let transferSuccess = false, transferMsg = "";
+
+      if (gateway === "korapay") {
+        const koraKey = process.env.KORAPAY_SECRET_KEY;
+        if (!koraKey) return res.status(500).json({ message: "Korapay not configured" });
+        try {
+          const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ reference: txRef, destination: { type: "bank_account", amount: netAmountNgn, currency: "NGN", bank_account: { bank: bankCode, account: accountNumber }, customer: { name: accountName, email: "noreply@tsia.com" } }, description: narration || `TSIA Bank Transfer | Ref: ${txRef}` }),
+            signal: AbortSignal.timeout(20000),
+          });
+          const kData = await kRes.json() as any;
+          transferSuccess = !!kData.status;
+          if (!transferSuccess) transferMsg = kData.message ?? "Korapay transfer failed";
+        } catch (e: any) { transferMsg = e.message ?? "Network error"; }
+      } else {
+        const secretKey = process.env.SQUAD_SECRET_KEY;
+        const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+        try {
+          const squadRes = await fetch(`${squadBase}/payout/initiate`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ transaction_reference: txRef, amount: netAmountNgn * 100, bank_code: bankCode, account_number: accountNumber, account_name: accountName, currency_id: "NGN", narration: narration || `TSIA Bank Transfer | Ref: ${txRef}` }),
+            signal: AbortSignal.timeout(15000),
+          });
+          const squadData = await squadRes.json() as any;
+          transferSuccess = !!squadData.success;
+          if (!transferSuccess) transferMsg = squadData.message || `Gateway error (HTTP ${squadRes.status})`;
+        } catch (e: any) { transferMsg = e.message ?? "Network error"; }
+      }
+
+      if (!transferSuccess) {
+        return res.status(502).json({ message: `Bank transfer failed: ${transferMsg}. Funds remain held — reject to refund.` });
+      }
+
+      await storage.updateBillPaymentStatus(id, "completed");
+      const msg = `Your bank transfer of ₦${Number(netAmountNgn).toLocaleString()} to ${accountName} (${accountNumber}) has been approved and sent. Ref: ${txRef}`;
+      const notif = await storage.createNotification({ userId: bill.userId, type: "wallet_credit", title: "Bank Transfer Approved ✓", message: msg, data: { billId: id, ref: txRef }, isRead: false });
+      pushToUser(bill.userId, "notification", notif);
+      res.json({ success: true, message: "Transfer approved and sent successfully." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/admin/pending-bank-transfer/:id/reject", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const adminUser = await storage.getUser(userId);
+    if (adminUser?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const id = parseInt(req.params.id);
+      const [bill] = await db.select().from(billPayments).where(eq(billPayments.id, id));
+      if (!bill) return res.status(404).json({ message: "Transfer not found" });
+      if (bill.status !== "pending") return res.status(400).json({ message: `Cannot reject a ${bill.status} transfer` });
+
+      const { reason = "Rejected by admin" } = req.body;
+      const refundAmt = parseFloat(bill.amount);
+
+      // Refund user wallet
+      const refWallet = await storage.getOrCreateWallet(bill.userId);
+      const newBal = (parseFloat(refWallet.balance) + refundAmt).toFixed(2);
+      await storage.updateWalletBalance(bill.userId, newBal);
+      await storage.updateBillPaymentStatus(id, "rejected");
+
+      let details: any = {};
+      try { details = JSON.parse(bill.reference); } catch { /* ok */ }
+      const txRef = details.txRef || `bill-${id}`;
+
+      await storage.createTransaction({ userId: bill.userId, type: "refund", amount: refundAmt.toFixed(2), fee: "0.00", paymentMethod: "admin_refund", description: `Bank transfer rejected — $${refundAmt.toFixed(2)} refunded to wallet. Reason: ${reason} | Ref: ${txRef}` });
+      const msg = `Your bank transfer request ($${refundAmt.toFixed(2)}) has been rejected. $${refundAmt.toFixed(2)} has been refunded to your wallet. Reason: ${reason}`;
+      const notif = await storage.createNotification({ userId: bill.userId, type: "wallet_credit", title: "Bank Transfer Rejected", message: msg, data: { billId: id }, isRead: false });
+      pushToUser(bill.userId, "notification", notif);
+      res.json({ success: true, message: "Transfer rejected and funds refunded to user." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

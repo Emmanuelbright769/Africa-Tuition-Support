@@ -24,6 +24,7 @@ import TourAfrica from "@/pages/TourAfrica";
 import TenancyPage from "@/pages/TenancyPage";
 import TermsAndConditions from "@/pages/TermsAndConditions";
 import WalletPage from "@/pages/WalletPage";
+import UserProfile from "@/pages/UserProfile";
 import { AiAssistant } from "@/components/AiAssistant";
 
 class ErrorBoundary extends Component<
@@ -82,6 +83,7 @@ function Router() {
       <Route path="/tenancy" component={TenancyPage} />
       <Route path="/terms" component={TermsAndConditions} />
       <Route path="/wallet" component={WalletPage} />
+      <Route path="/profile" component={UserProfile} />
       <Route component={NotFound} />
     </Switch>
   );

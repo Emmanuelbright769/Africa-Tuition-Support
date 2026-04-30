@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Wallet, Clock, Trophy, CreditCard, CheckCircle2, AlertCircle, ArrowUpRight,
-  LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X,
+  LogOut, Sun, Moon, Monitor, Hourglass, Eye, EyeOff, Banknote, Menu, X, UserCircle2,
   LayoutDashboard, Star, History, ChevronRight, ChevronDown, Car, Globe, Loader2,
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
   ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Info, KeyRound,
@@ -317,6 +317,9 @@ export default function StudentDashboard() {
             <span className="text-sm font-medium hidden sm:block text-muted-foreground">Hi, {user.firstName}</span>
             <DashboardSwitcher />
             <NotificationBell />
+            <Button variant="ghost" size="icon" onClick={() => setLocation("/profile")} title="My Profile" data-testid="button-profile">
+              <UserCircle2 className="w-5 h-5" />
+            </Button>
             <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-logout">
               <LogOut className="w-4 h-4 sm:mr-1" /><span className="hidden sm:inline">Logout</span>
             </Button>
@@ -411,7 +414,11 @@ export default function StudentDashboard() {
                   );
                 })()}
               </nav>
-              <div className="p-4 border-t">
+              <div className="p-4 border-t space-y-2">
+                <Button variant="outline" className="w-full" onClick={() => { setLocation("/profile"); setMenuOpen(false); }}
+                  data-testid="button-menu-profile">
+                  <UserCircle2 className="w-4 h-4 mr-2" /> My Profile
+                </Button>
                 <Button variant="outline" className="w-full" onClick={handleLogout}>
                   <LogOut className="w-4 h-4 mr-2" /> Logout
                 </Button>

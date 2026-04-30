@@ -10,7 +10,7 @@ import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   KeyRound, GraduationCap, Briefcase, Sparkles, ChevronRight, ArrowLeft,
-  CheckCircle2, Wallet, Zap, Info
+  CheckCircle2, Wallet, Zap, Info, Lock, Eye, EyeOff, ShieldCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
@@ -79,6 +79,10 @@ export default function Signup() {
   const [diasporaCountry, setDiasporaCountry] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "", referralCode: "" });
+  const [wantsPassword, setWantsPassword] = useState(false);
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupPasswordConfirm, setSignupPasswordConfirm] = useState("");
+  const [showSignupPass, setShowSignupPass] = useState(false);
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
@@ -122,9 +126,24 @@ export default function Signup() {
       toast({ title: "Country required", description: "Please specify the country you currently live in.", variant: "destructive" });
       return;
     }
+    if (wantsPassword) {
+      if (signupPassword.length < 8) {
+        toast({ title: "Password too short", description: "Password must be at least 8 characters.", variant: "destructive" });
+        return;
+      }
+      if (signupPassword !== signupPasswordConfirm) {
+        toast({ title: "Password mismatch", description: "Passwords do not match.", variant: "destructive" });
+        return;
+      }
+    }
     setLoading(true);
     try {
-      const result = await requestOtp({ ...formData, country: getCountry(), role: roleChoice });
+      const result = await requestOtp({
+        ...formData,
+        country: getCountry(),
+        role: roleChoice,
+        ...(wantsPassword && signupPassword ? { password: signupPassword } : {}),
+      });
       if (!result.otpSent) throw new Error(result as any);
       setStep(2);
       toast({ title: "OTP Sent", description: "Check your email for the 6-digit verification code." });
@@ -179,7 +198,7 @@ export default function Signup() {
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans overflow-hidden">
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8 flex justify-center">
-        <Link href="/"><a className="cursor-pointer"><Logo variant="badge" height={64} /></a></Link>
+        <Link href="/"><Logo variant="badge" height={64} /></Link>
       </motion.div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
@@ -308,6 +327,57 @@ export default function Signup() {
                         <Label htmlFor="referral">Referral Code (Optional)</Label>
                         <Input id="referral" placeholder="e.g. TSIA-JOH0001" className="h-11 bg-muted/30" value={formData.referralCode} onChange={e => setFormData({ ...formData, referralCode: e.target.value })} data-testid="input-referral" />
                       </div>
+                      {/* ── Optional Password Setup ── */}
+                      <div className="rounded-xl border bg-muted/20 overflow-hidden">
+                        <button type="button" onClick={() => setWantsPassword(v => !v)} data-testid="button-toggle-password"
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors text-left">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${wantsPassword ? "bg-primary/15 text-primary" : "bg-muted/60 text-muted-foreground"}`}>
+                            <Lock className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground leading-tight">Set a password (optional)</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">You can always sign in with an OTP code instead</p>
+                          </div>
+                          <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${wantsPassword ? "rotate-90" : ""}`} />
+                        </button>
+                        <AnimatePresence>
+                          {wantsPassword && (
+                            <motion.div key="pw-fields" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                              <div className="px-4 pb-4 space-y-3 border-t">
+                                <p className="text-xs text-muted-foreground pt-3">Choose a password for quicker sign-in. Min. 8 characters.</p>
+                                <div className="space-y-1.5">
+                                  <Label htmlFor="signup-password">Password</Label>
+                                  <div className="relative">
+                                    <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                                    <Input id="signup-password" type={showSignupPass ? "text" : "password"} value={signupPassword}
+                                      onChange={e => setSignupPassword(e.target.value)} placeholder="At least 8 characters"
+                                      className="h-10 pl-9 pr-9 bg-background" data-testid="input-signup-password" />
+                                    <button type="button" tabIndex={-1} onClick={() => setShowSignupPass(v => !v)}
+                                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                                      {showSignupPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label htmlFor="signup-password-confirm">Confirm Password</Label>
+                                  <div className="relative">
+                                    <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                                    <Input id="signup-password-confirm" type="password" value={signupPasswordConfirm}
+                                      onChange={e => setSignupPasswordConfirm(e.target.value)} placeholder="Repeat password"
+                                      className="h-10 pl-9 bg-background" data-testid="input-signup-password-confirm" />
+                                  </div>
+                                </div>
+                                {signupPassword.length > 0 && signupPassword === signupPasswordConfirm && (
+                                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-1.5 text-xs text-tsia-green font-medium">
+                                    <ShieldCheck className="w-3.5 h-3.5" /> Passwords match
+                                  </motion.p>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
                       <TermsCheckbox
                         checked={termsAccepted}
                         onCheckedChange={setTermsAccepted}

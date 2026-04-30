@@ -176,7 +176,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans overflow-hidden">
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8 flex justify-center">
-        <Link href="/"><a className="cursor-pointer"><Logo variant="badge" height={64} /></a></Link>
+        <Link href="/"><Logo variant="badge" height={64} /></Link>
       </motion.div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative px-4 sm:px-0">

@@ -22,7 +22,7 @@ import {
   Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
   Eye, EyeOff, Bell, Power, Timer, CreditCard, PiggyBank,
   HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Lock,
-  Film, MapPin
+  Film, MapPin, UserCircle2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -994,6 +994,9 @@ export default function AffiliateDashboard() {
             </div>
             <DashboardSwitcher />
             <NotificationBell />
+            <Button variant="ghost" size="icon" onClick={() => setLocation("/profile")} title="My Profile" data-testid="button-aff-profile">
+              <UserCircle2 className="w-5 h-5" />
+            </Button>
             <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-aff-logout">
               <LogOut className="w-4 h-4 sm:mr-1" /><span className="hidden sm:inline">Logout</span>
             </Button>
@@ -1088,7 +1091,11 @@ export default function AffiliateDashboard() {
                   );
                 })()}
               </nav>
-              <div className="p-4 border-t">
+              <div className="p-4 border-t space-y-2">
+                <Button variant="outline" className="w-full" onClick={() => { setLocation("/profile"); setMenuOpen(false); }}
+                  data-testid="button-aff-menu-profile">
+                  <UserCircle2 className="w-4 h-4 mr-2" /> My Profile
+                </Button>
                 <Button variant="outline" className="w-full" onClick={handleLogout}><LogOut className="w-4 h-4 mr-2" /> Logout</Button>
               </div>
             </motion.aside>

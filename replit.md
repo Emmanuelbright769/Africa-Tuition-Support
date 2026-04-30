@@ -109,7 +109,8 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - `tenancy_payments` - Monthly tenancy payment records
 
 ## API Routes (all prefixed /api)
-- Auth: `/auth/request-otp`, `/auth/verify-otp`, `/auth/me`, `/auth/logout`, `/auth/login` (admin legacy)
+- Auth: `/auth/request-otp`, `/auth/verify-otp`, `/auth/me`, `/auth/logout`, `/auth/login` (admin legacy), `/auth/login-password`, `/auth/check-auth-mode`, `/auth/request-password-otp`, `/auth/set-password`
+- User: `GET /user/profile`, `PATCH /user/profile`
 - Upload: `/upload` (POST multipart), `/uploads` (GET)
 - Verification: `/verification/identity`, `/verification/waec-validate`, `/verification/biometric`, `/verification/pay-fee`, `/verification/academic`, `/verification/status`
 - Wallet: `/wallet`, `/wallet/withdraw`
@@ -124,8 +125,9 @@ Full-stack education fintech platform that manages student sponsorship funding a
 
 ## Pages
 - `/` - Landing page (carousel, how-it-works, affiliate section, sponsorship plans, tenancy section, MSc coming soon, about preview, contact preview)
-- `/signup` - Student signup (OTP)
-- `/login` - OTP login (routes to correct dashboard by role)
+- `/signup` - Signup with role picker; optional password setup during registration
+- `/login` - Login with role selector; OTP tab (default) or Password tab per role; admin mode auto-detected
+- `/profile` - User profile page (edit name/phone, set/change password via OTP verification)
 - `/onboarding` - 2-step student verification flow
 - `/dashboard` - Student dashboard (wallet, plan selection, transactions, onboarding button)
 - `/affiliate-signup` - Affiliate signup (separate from student)

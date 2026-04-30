@@ -3777,6 +3777,12 @@ export async function registerRoutes(
       if (!wd) return res.status(404).json({ message: "Withdrawal request not found" });
       if (wd.status === "refunded") return res.status(400).json({ message: "This request has already been refunded" });
       if (wd.status === "approved") return res.status(400).json({ message: "Cannot refund an approved withdrawal" });
+      // Mark as refunded FIRST — prevents double-credit if subsequent steps fail
+      await storage.updateWithdrawalRequest(wdId, {
+        status: "refunded",
+        adminNote: adminNote || wd.adminNote || "",
+        processedAt: new Date(),
+      });
       // Credit wallet
       const wallet = await storage.getOrCreateWallet(wd.userId);
       const refundAmt = parseFloat(wd.amount);
@@ -3787,12 +3793,7 @@ export async function registerRoutes(
         amount: refundAmt.toFixed(2),
         fee: "0",
         paymentMethod: wd.type === "bank" ? "bank_transfer" : "crypto",
-        description: `Withdrawal refund — ${adminNote ?? "refunded by admin"}`,
-      });
-      await storage.updateWithdrawalRequest(wdId, {
-        status: "refunded",
-        adminNote: adminNote ?? wd.adminNote ?? "",
-        processedAt: new Date(),
+        description: `Withdrawal refund — ${adminNote || "refunded by admin"}`,
       });
       const user = await storage.getUser(wd.userId);
       const notif = await storage.createNotification({

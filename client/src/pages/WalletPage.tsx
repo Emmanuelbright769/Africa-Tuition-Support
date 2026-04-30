@@ -340,10 +340,9 @@ export default function WalletPage() {
       if (!res.ok) throw new Error(d.message);
       return d;
     },
-    onSuccess: (d: any) => {
-      const credited = d.userCredit ? ` $${parseFloat(d.userCredit).toFixed(2)} has been credited instantly.` : "";
-      toast({ title: "Deposit Confirmed ✓", description: `Your wallet has been credited instantly.${credited}`, className: "border-tsia-green" });
-      refetchWallet(); refetchDeposits(); setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20"); setFundOpen(false);
+    onSuccess: () => {
+      toast({ title: "Deposit Submitted ✓", description: "Your crypto deposit is pending admin confirmation. You'll be notified once it's approved (usually within 30 minutes).", className: "border-tsia-green" });
+      refetchDeposits(); setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20"); setFundOpen(false);
     },
     onError: (e: any) => toast({ title: "Submission failed", description: e.message, variant: "destructive" }),
   });
@@ -972,7 +971,7 @@ export default function WalletPage() {
                         <Input id="crypto-txhash" placeholder="Paste your transaction hash here"
                           value={cryptoTxHash} onChange={e => setCryptoTxHash(e.target.value)}
                           className="mt-1 font-mono text-sm" data-testid="input-crypto-txhash" />
-                        <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange/wallet after sending. Your wallet will be credited instantly after submission.</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange/wallet after sending. Your wallet will be credited within 30 minutes after admin confirmation.</p>
                       </div>
 
                       <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">

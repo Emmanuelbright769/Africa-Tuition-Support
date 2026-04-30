@@ -5003,7 +5003,6 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Legacy crypto deposit (kept for admin history)
   app.post("/api/wallet/deposit", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -5012,59 +5011,20 @@ export async function registerRoutes(
     if (!amount || amount < ECOMMERCE.MIN_DEPOSIT) return res.status(400).json({ message: `Minimum deposit is above $${ECOMMERCE.MIN_DEPOSIT}` });
     if (!txHash || txHash.trim().length < 10) return res.status(400).json({ message: "Valid transaction hash is required" });
     try {
-      // Create deposit record as completed immediately
-      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "completed" });
+      // Save as pending — admin must confirm before wallet is credited
+      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "pending" });
 
-      // ── 75/20/5 split — applied instantly ────────────────────────────────
-      const reserveCut   = parseFloat((amount * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
-      const affiliateCut = parseFloat((amount * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
-      const userCredit   = parseFloat((amount - reserveCut - affiliateCut).toFixed(2));
-
-      const wallet = await storage.getOrCreateWallet(userId);
-      const newBalance = (parseFloat(wallet.balance) + userCredit).toFixed(2);
-      await storage.updateWalletBalance(userId, newBalance);
-
-      if (reserveCut > 0) await storage.addToReserveFund(reserveCut.toFixed(6));
-      if (affiliateCut > 0) {
-        try {
-          const affiliateCount = await storage.getAffiliateCount();
-          const perAffiliate = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
-          await storage.recordAffiliateTradeShare(deposit.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
-        } catch { /* non-critical */ }
-      }
-
-      // Auto-activate wallet if first time reaching $5
-      if (!wallet.activated && parseFloat(newBalance) >= 5) {
-        try {
-          await storage.activateWallet(userId);
-          await creditReferrerCommissionOnce(userId, amount, "personal wallet activation");
-          const depUser = await storage.getUser(userId);
-          if (depUser?.referredBy) {
-            const referrer = await storage.getUserByAffiliateCode(depUser.referredBy);
-            if (referrer) {
-              const refNotif = await storage.createNotification({ userId: referrer.id, type: "referral_activated", title: "Referral Activated 🎉", message: `${depUser.firstName} ${depUser.lastName.charAt(0)}. (one of your referrals) has activated their TSIA wallet. Your referral commission is now active!`, data: { referredUserId: depUser.id }, isRead: false });
-              pushToUser(referrer.id, "notification", refNotif);
-            }
-          }
-        } catch { /* non-critical */ }
-      } else if (wallet.activated) {
-        await creditReferrerCommissionOnce(userId, amount, "personal wallet deposit").catch(() => {});
-      }
-
-      // Record transaction
-      await storage.createTransaction({ userId, type: "deposit", amount: userCredit.toFixed(2), fee: (reserveCut + affiliateCut).toFixed(2), paymentMethod: `crypto_${walletType || "trc20"}`, description: `Crypto deposit — $${amount.toFixed(2)} gross | $${userCredit.toFixed(2)} credited (75%), $${reserveCut.toFixed(2)} reserve (20%), $${affiliateCut.toFixed(2)} pool (5%) | Tx: ${txHash.trim()}` });
-
-      // Notify user
-      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Deposit Confirmed ✓", message: `$${userCredit.toFixed(2)} has been instantly credited to your TSIA SwiftWallet (75% of $${amount.toFixed(2)}).`, data: { depositId: deposit.id }, isRead: false });
+      // Notify user that their deposit is under review
+      const notif = await storage.createNotification({ userId, type: "deposit", title: "Deposit Received — Under Review", message: `Your crypto deposit of $${amount.toFixed(2)} has been submitted and is awaiting admin confirmation. You will be notified once it is approved.`, data: { depositId: deposit.id }, isRead: false });
       pushToUser(userId, "notification", notif);
 
-      // Notify admin (FYI — no action needed)
+      // Alert admin to action this deposit
       const depositUser = await storage.getUser(userId);
       if (depositUser) {
         sendAdminDepositEmail({ name: `${depositUser.firstName} ${depositUser.lastName}`, email: depositUser.email, amount: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", userId }).catch(() => {});
       }
 
-      res.json({ deposit, message: `$${userCredit.toFixed(2)} has been instantly credited to your wallet!`, userCredit: userCredit.toFixed(2) });
+      res.json({ deposit, message: `Your deposit of $${amount.toFixed(2)} has been submitted and is pending admin confirmation.` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

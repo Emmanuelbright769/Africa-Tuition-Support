@@ -5552,11 +5552,32 @@ export async function registerRoutes(
     return await storage.getOrCreateWallet(userId);
   }
 
+  // ── Weekend maintenance block (Fri 23:59 – Mon 08:00 WAT) ───────────────────
+  function isWeekendBlock(): { blocked: boolean; until?: string } {
+    const WAT_OFFSET = 1 * 60 * 60 * 1000; // UTC+1
+    const now = new Date(Date.now() + WAT_OFFSET);
+    const day  = now.getUTCDay();    // 0=Sun 1=Mon 2=Tue … 5=Fri 6=Sat
+    const hour = now.getUTCHours();
+    const min  = now.getUTCMinutes();
+
+    const isSaturday  = day === 6;
+    const isSunday    = day === 0;
+    const isFridayNight = day === 5 && (hour > 23 || (hour === 23 && min >= 59));
+    const isMondayEarly = day === 1 && hour < 8;
+
+    if (isSaturday || isSunday || isFridayNight || isMondayEarly) {
+      return { blocked: true, until: "Monday 8:00 AM" };
+    }
+    return { blocked: false };
+  }
+
   // ── POST /api/fintech/bank-transfer — Queue for admin approval ───────────────
   app.post("/api/fintech/bank-transfer", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const _wb1 = isWeekendBlock();
+      if (_wb1.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb1.until} (Nigeria time).`, weekendBlock: true });
 
       const { bankCode, bankName, accountNumber, accountName, amount, narration, gateway = "squad" } = req.body;
       if (!bankCode || !accountNumber || !accountName || !amount) {
@@ -5597,6 +5618,8 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const _wb2 = isWeekendBlock();
+      if (_wb2.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb2.until} (Nigeria time).`, weekendBlock: true });
       const { network, phone, amount } = req.body;
       if (!network || !phone || !amount) return res.status(400).json({ message: "network, phone, and amount required" });
       const amountUsd = parseFloat(amount);
@@ -5659,6 +5682,8 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const _wb3 = isWeekendBlock();
+      if (_wb3.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb3.until} (Nigeria time).`, weekendBlock: true });
       const { network, phone, amount, planLabel, planValidity } = req.body;
       if (!network || !phone || !amount) return res.status(400).json({ message: "network, phone, and amount required" });
       const amountUsd = parseFloat(amount);
@@ -5723,6 +5748,8 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const _wb4 = isWeekendBlock();
+      if (_wb4.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb4.until} (Nigeria time).`, weekendBlock: true });
       const { discoCode, meterType, meterNumber, amount, phone } = req.body;
       if (!discoCode || !meterType || !meterNumber || !amount) {
         return res.status(400).json({ message: "discoCode, meterType, meterNumber, and amount required" });
@@ -5797,6 +5824,8 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const _wb5 = isWeekendBlock();
+      if (_wb5.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb5.until} (Nigeria time).`, weekendBlock: true });
       const { platform, bettingUserId, amount } = req.body;
       if (!platform || !bettingUserId || !amount) return res.status(400).json({ message: "platform, bettingUserId, and amount required" });
       const amountUsd = parseFloat(amount);
@@ -5833,6 +5862,8 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const _wb6 = isWeekendBlock();
+      if (_wb6.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb6.until} (Nigeria time).`, weekendBlock: true });
       const { email, amount, note } = req.body;
       if (!email || !amount) return res.status(400).json({ message: "email and amount are required" });
       const amountUsd = parseFloat(amount);

@@ -10,8 +10,25 @@ import {
   ArrowUpRight, ArrowDownLeft, RefreshCw, Receipt, Wifi, Eye, EyeOff,
   ChevronRight, ArrowLeft, ArrowRight, Send, Bell, TrendingUp, TrendingDown,
   Loader2, CheckCircle2, X, Zap, Phone, Wallet, Gamepad2, Delete,
-  Copy, Search, ChevronDown, AlertCircle, Users, Building2
+  Copy, Search, ChevronDown, AlertCircle, Users, Building2, Clock
 } from "lucide-react";
+
+// ─── Weekend maintenance block helper (Fri 23:59 – Mon 08:00 WAT) ─────────────
+function checkWeekendBlock(): { blocked: boolean; resumeLabel: string } {
+  const WAT_OFFSET = 60 * 60 * 1000; // UTC+1
+  const now = new Date(Date.now() + WAT_OFFSET);
+  const day  = now.getUTCDay();
+  const hour = now.getUTCHours();
+  const min  = now.getUTCMinutes();
+  const isSat        = day === 6;
+  const isSun        = day === 0;
+  const isFriNight   = day === 5 && (hour > 23 || (hour === 23 && min >= 59));
+  const isMonEarly   = day === 1 && hour < 8;
+  return {
+    blocked: isSat || isSun || isFriNight || isMonEarly,
+    resumeLabel: "Monday 8:00 AM Nigeria time",
+  };
+}
 
 // ─── Local-currency payout map (fixed platform rates) ──────────────────────────
 const PAYOUT_CURRENCY: Record<string, { symbol: string; code: string; rate: number }> = {
@@ -259,6 +276,9 @@ export default function FinancialHub() {
   const balance  = parseFloat(wallet?.balance ?? "0");
   const totalIn  = (txHistory as any[]).filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
   const totalOut = Math.abs((txHistory as any[]).filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + parseFloat(t.amount), 0));
+
+  // ── Weekend block ─────────────────────────────────────────────────────────
+  const { blocked: weekendBlocked, resumeLabel } = checkWeekendBlock();
 
   const recentRecipients = Array.from(
     new Map((transfers as TransferRecord[]).map(t => [t.recipientId, t])).values()
@@ -544,6 +564,19 @@ export default function FinancialHub() {
         </p>
       </div>
 
+      {/* Weekend maintenance banner */}
+      {weekendBlocked && (
+        <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 rounded-2xl px-4 py-3.5" data-testid="banner-weekend-block">
+          <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Transactions paused for the weekend</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 leading-relaxed">
+              Swift Hub is unavailable Friday 11:59 PM – Monday 8:00 AM (Nigeria time) for scheduled maintenance. Services resume <span className="font-semibold">{resumeLabel}</span>.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Greeting — only on home */}
       <div className="bg-gradient-to-r from-tsia-green/10 via-tsia-green/5 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-5 py-4 flex items-center gap-4">
         <div className="w-11 h-11 rounded-full bg-gradient-to-br from-tsia-green to-tsia-gold flex items-center justify-center shrink-0 shadow-md shadow-tsia-green/20">
@@ -824,6 +857,16 @@ export default function FinancialHub() {
     <AnimatePresence mode="wait">
       <motion.div key="send" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }}>
         <BackHeader onBack={() => { setView("home"); resetSend(); }} title="Send Money" />
+
+        {weekendBlocked && (
+          <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 rounded-2xl px-4 py-3.5">
+            <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Transactions paused for the weekend</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 leading-relaxed">Services resume <span className="font-semibold">{resumeLabel}</span>. You can view your history in the meantime.</p>
+            </div>
+          </div>
+        )}
 
         {/* Mode tabs */}
         <div className="flex bg-muted/40 rounded-2xl p-1 mb-5">
@@ -1165,7 +1208,7 @@ export default function FinancialHub() {
         <div className="flex gap-3">
           <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-            disabled={sendBankMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+            disabled={sendBankMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance || weekendBlocked}
             onClick={() => sendBankMutation.mutate()} data-testid="btn-send-bank">
             {sendBankMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Send ${fmt(amount)} via {bankGateway === "korapay" ? "Korapay" : "Squad"}
@@ -1210,7 +1253,7 @@ export default function FinancialHub() {
         <div className="flex gap-3">
           <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-            disabled={requestTransferOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+            disabled={requestTransferOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance || weekendBlocked}
             onClick={() => requestTransferOtpMutation.mutate()} data-testid="btn-send-tsia">
             {requestTransferOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Continue — ${fmt(amount)}
@@ -1292,7 +1335,7 @@ export default function FinancialHub() {
           <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button
             className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-            disabled={sendTsiaMutation.isPending || otpCode.length !== 6}
+            disabled={sendTsiaMutation.isPending || otpCode.length !== 6 || weekendBlocked}
             onClick={() => sendTsiaMutation.mutate()}
             data-testid="btn-confirm-transfer-otp"
           >
@@ -1315,6 +1358,16 @@ export default function FinancialHub() {
       <motion.div key="request" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
         <BackHeader onBack={() => { setView("home"); setRequestEmail(""); setRequestNote(""); setAmount("0"); }} title="Request Money" sub="Notify a TSIA member to pay you" />
 
+        {weekendBlocked && (
+          <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 rounded-2xl px-4 py-3.5">
+            <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Transactions paused for the weekend</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 leading-relaxed">Services resume <span className="font-semibold">{resumeLabel}</span>.</p>
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Their Email Address</label>
           <input placeholder="member@tsia.com" value={requestEmail} onChange={e => setRequestEmail(e.target.value)}
@@ -1335,7 +1388,7 @@ export default function FinancialHub() {
 
         <Button className="w-full h-12 bg-violet-600 text-white font-bold rounded-2xl"
           onClick={() => requestMutation.mutate({ email: requestEmail, amount, reqNote: requestNote })}
-          disabled={!requestEmail.trim() || parseFloat(amount) <= 0 || requestMutation.isPending}
+          disabled={!requestEmail.trim() || parseFloat(amount) <= 0 || requestMutation.isPending || weekendBlocked}
           data-testid="btn-send-request">
           {requestMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Bell className="w-5 h-5 mr-2" />}
           Send Request for ${fmt(amount)}
@@ -1352,6 +1405,17 @@ export default function FinancialHub() {
     <AnimatePresence mode="wait">
       <motion.div key="pay-bill" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
         <BackHeader onBack={() => setView("home")} title="Pay a Bill" />
+
+        {weekendBlocked && (
+          <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 rounded-2xl px-4 py-3.5">
+            <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Bill payments paused for the weekend</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 leading-relaxed">Services resume <span className="font-semibold">{resumeLabel}</span>.</p>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           {SERVICES.map(svc => (
             <button key={svc.id} onClick={() => { setSelectedService(svc); setBillStep("details"); setView("service"); }}
@@ -1482,7 +1546,7 @@ export default function FinancialHub() {
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-amber-500 text-white font-bold rounded-2xl"
-                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance || weekendBlocked}
                 onClick={() => billMutation.mutate()} data-testid="btn-confirm-electricity">
                 {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Zap className="w-5 h-5 mr-2" />}
                 Pay ${fmt(amount)}
@@ -1570,7 +1634,7 @@ export default function FinancialHub() {
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-blue-600 text-white font-bold rounded-2xl"
-                disabled={billMutation.isPending || parseFloat(amount) > balance}
+                disabled={billMutation.isPending || parseFloat(amount) > balance || weekendBlocked}
                 onClick={() => billMutation.mutate()} data-testid="btn-confirm-data">
                 {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Wifi className="w-5 h-5 mr-2" />}
                 Buy Data ${fmt(amount)}
@@ -1634,7 +1698,7 @@ export default function FinancialHub() {
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance || weekendBlocked}
                 onClick={() => billMutation.mutate()} data-testid="btn-confirm-airtime">
                 {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Phone className="w-5 h-5 mr-2" />}
                 Buy ${fmt(amount)} Airtime
@@ -1698,7 +1762,7 @@ export default function FinancialHub() {
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-violet-600 text-white font-bold rounded-2xl"
-                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance || weekendBlocked}
                 onClick={() => billMutation.mutate()} data-testid="btn-confirm-betting">
                 {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Gamepad2 className="w-5 h-5 mr-2" />}
                 Fund ${fmt(amount)}

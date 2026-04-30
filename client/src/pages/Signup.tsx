@@ -468,7 +468,7 @@ export default function Signup() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              Your account is ready. To unlock all TSIA features — wallet transactions, QCE SwiftVault, loans, TS-Mart Online Stores and more — please <strong>fund your SwiftWallet with at least $5</strong>.
+              Your account is ready. To unlock all TSIA features — wallet transactions, QCE SwiftVault, loans, TS-Mart Online Stores and more — please <strong>fund your SwiftWallet with $6 or above</strong>.
             </DialogDescription>
           </DialogHeader>
 
@@ -478,7 +478,7 @@ export default function Signup() {
                 <Zap className="w-4 h-4 text-tsia-green" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Activate with above $5</p>
+                <p className="text-sm font-semibold text-foreground">Activate with $6 or above</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Head to your SwiftWallet to make your first deposit via USDT (TRC20 or BEP20).</p>
               </div>
             </div>

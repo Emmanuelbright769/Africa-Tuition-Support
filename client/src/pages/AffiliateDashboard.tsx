@@ -1119,6 +1119,29 @@ export default function AffiliateDashboard() {
           <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
 
+            {/* ── WALLET GATE: blocks all sections except overview when wallet not yet funded ── */}
+            {!walletActivated && activeSection !== "overview" && (
+              <motion.div variants={itemVariants} className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+                <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
+                  <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />
+                </div>
+                <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
+                <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
+                  To access this feature, you need to activate your TSIA SwiftWallet by funding it with <strong>$6 or above</strong>. This unlocks all platform services including the trade market, TS-Mart, QCE SwiftVault, and more.
+                </p>
+                <Button
+                  size="lg"
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-8"
+                  onClick={() => setLocation("/wallet")}
+                  data-testid="button-wallet-gate-activate-affiliate"
+                >
+                  <Wallet className="w-4 h-4 mr-2" />
+                  Fund &amp; Activate Wallet
+                </Button>
+                <p className="text-xs text-muted-foreground mt-4">Deposit $6 or above · Activates immediately on confirmation</p>
+              </motion.div>
+            )}
+
             {/* ── OVERVIEW ── */}
             {activeSection === "overview" && (
               <>
@@ -3204,7 +3227,7 @@ export default function AffiliateDashboard() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              To access the trade market, QCE SwiftVault, e-commerce, loans, and all other platform features, please <strong>fund your SwiftWallet with above $5</strong>.
+              To access the trade market, QCE SwiftVault, e-commerce, loans, and all other platform features, please <strong>fund your SwiftWallet with $6 or above</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -3213,7 +3236,7 @@ export default function AffiliateDashboard() {
                 <Zap className="w-4 h-4 text-tsia-green" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Activate with above $5</p>
+                <p className="text-sm font-semibold text-foreground">Activate with $6 or above</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Go to SwiftWallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
               </div>
             </div>

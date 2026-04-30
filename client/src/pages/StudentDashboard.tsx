@@ -463,7 +463,7 @@ export default function StudentDashboard() {
                 </div>
                 <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
                 <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  To access this feature, you need to activate your TSIA SwiftWallet by funding it above <strong>$5</strong>. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
+                  To access this feature, you need to activate your TSIA SwiftWallet by funding it with <strong>$6 or above</strong>. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
                 </p>
                 <Button
                   size="lg"
@@ -474,7 +474,7 @@ export default function StudentDashboard() {
                   <Wallet className="w-4 h-4 mr-2" />
                   Fund & Activate Wallet
                 </Button>
-                <p className="text-xs text-muted-foreground mt-4">Deposit above $5 · Activates immediately on confirmation</p>
+                <p className="text-xs text-muted-foreground mt-4">Deposit $6 or above · Activates immediately on confirmation</p>
               </motion.div>
             )}
 
@@ -608,7 +608,7 @@ export default function StudentDashboard() {
                     <div className="flex-1">
                       <p className="font-bold text-white mb-0.5 text-base">Action Required — Fund Your Wallet Within 72 Hours!</p>
                       <p className="text-sm text-red-100 leading-relaxed">
-                        Your WAEC validation has been completed. You must fund your TSIA SwiftWallet with at least <strong>$5</strong> within <strong>72 hours</strong>, or your enrollment will be reset and you will need to restart the full onboarding process (including re-payment of the portal fee) to continue.
+                        Your WAEC validation has been completed. You must fund your TSIA SwiftWallet with at least <strong>$6</strong> within <strong>72 hours</strong>, or your enrollment will be reset and you will need to restart the full onboarding process (including re-payment of the portal fee) to continue.
                         <br />
                         <span className="font-mono font-bold text-yellow-300 text-base mt-1 block">Time remaining: {deadlineCountdown}</span>
                       </p>
@@ -627,7 +627,7 @@ export default function StudentDashboard() {
                     </div>
                     <div className="flex-1">
                       <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with above <strong>$5</strong> to access all platform services.</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with <strong>$6 or above</strong> to access all platform services.</p>
                     </div>
                     <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate">
                       Fund Wallet
@@ -1430,7 +1430,7 @@ export default function StudentDashboard() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              To access QCE SwiftVault, loans, e-commerce, the trade market, and all other platform features, please <strong>fund your SwiftWallet with above $5</strong>.
+              To access QCE SwiftVault, loans, e-commerce, the trade market, and all other platform features, please <strong>fund your SwiftWallet with $6 or above</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -1439,7 +1439,7 @@ export default function StudentDashboard() {
                 <Zap className="w-4 h-4 text-tsia-green" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Activate with above $5</p>
+                <p className="text-sm font-semibold text-foreground">Activate with $6 or above</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Go to SwiftWallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
               </div>
             </div>

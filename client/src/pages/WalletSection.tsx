@@ -809,24 +809,6 @@ export default function WalletSection() {
 
             {/* Options */}
             <div className="flex-1 px-5 py-8 space-y-4">
-              {/* ── Bank Withdrawal — Coming Soon ── */}
-              <div
-                className="relative flex items-center gap-4 p-5 rounded-3xl bg-slate-100 dark:bg-slate-800/60 cursor-not-allowed select-none"
-                data-testid="btn-choose-bank-withdraw"
-              >
-                <span className="absolute top-3 right-3 text-[9px] font-black bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wide">
-                  Coming Soon
-                </span>
-                <div className="w-16 h-16 rounded-2xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                  <Banknote className="w-8 h-8 text-slate-400" />
-                </div>
-                <div className="flex-1 min-w-0 opacity-50">
-                  <p className="font-black text-lg text-foreground leading-tight mb-1">Bank Withdrawal</p>
-                  <p className="text-sm text-muted-foreground">NGN to Nigerian bank account</p>
-                </div>
-                <Lock className="w-5 h-5 text-slate-400 shrink-0 opacity-50" />
-              </div>
-
               {/* ── USDT Crypto — Fully Active ── */}
               <button
                 onClick={() => {

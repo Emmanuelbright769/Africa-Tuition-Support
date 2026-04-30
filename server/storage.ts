@@ -63,6 +63,8 @@ export interface IStorage {
   getAllStudents(): Promise<User[]>;
   updateUserAffiliateCode(userId: number, code: string): Promise<void>;
   updateUserCountry(userId: number, country: string): Promise<void>;
+  updateUserPassword(userId: number, passwordHash: string): Promise<void>;
+  updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; phone?: string }): Promise<void>;
   getReferralsByCode(affiliateCode: string): Promise<User[]>;
   getUserByAffiliateCode(affiliateCode: string): Promise<User | undefined>;
 
@@ -460,6 +462,20 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserCountry(userId: number, country: string): Promise<void> {
     await db.update(users).set({ country }).where(eq(users.id, userId));
+  }
+
+  async updateUserPassword(userId: number, passwordHash: string): Promise<void> {
+    await db.update(users).set({ password: passwordHash }).where(eq(users.id, userId));
+  }
+
+  async updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; phone?: string }): Promise<void> {
+    const fields: Record<string, string> = {};
+    if (updates.firstName) fields.firstName = updates.firstName;
+    if (updates.lastName) fields.lastName = updates.lastName;
+    if (updates.phone) fields.phone = updates.phone;
+    if (Object.keys(fields).length > 0) {
+      await db.update(users).set(fields as any).where(eq(users.id, userId));
+    }
   }
 
   async getReferralsByCode(affiliateCode: string): Promise<User[]> {

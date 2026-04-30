@@ -21,9 +21,11 @@ type AuthUser = {
 type AuthContextType = {
   user: AuthUser | null | undefined;
   isLoading: boolean;
-  requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string; loginRole?: string }) => Promise<{ otpSent?: boolean; hint?: string; isNewUser?: boolean; multipleRoles?: boolean; roles?: string[] }>;
+  requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string; loginRole?: string; password?: string }) => Promise<{ otpSent?: boolean; hint?: string; isNewUser?: boolean; multipleRoles?: boolean; roles?: string[] }>;
   verifyOtp: (email: string, code: string, loginRole?: string) => Promise<AuthUser>;
   adminLogin: (email: string, password: string) => Promise<AuthUser>;
+  loginWithPassword: (email: string, password: string, loginRole?: string) => Promise<AuthUser>;
+  checkAuthMode: (email: string, loginRole?: string) => Promise<{ exists: boolean; hasPassword: boolean; role?: string }>;
   logout: () => Promise<void>;
 };
 
@@ -105,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  const requestOtp = async (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string; loginRole?: string }) => {
+  const requestOtp = async (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string; loginRole?: string; password?: string }) => {
     const res = await apiRequest("POST", "/api/auth/request-otp", data);
     return res.json();
   };
@@ -128,11 +130,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const userData = await res.json();
     if (!res.ok) throw new Error(userData.message || "Login failed");
-    // Update auth cache exactly like verifyOtp does — this prevents the stale-null redirect
     queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "/api/auth/me" });
     queryClient.setQueryData(["/api/auth/me"], userData);
     stampActivity();
     return userData;
+  };
+
+  const loginWithPassword = async (email: string, password: string, loginRole?: string): Promise<AuthUser> => {
+    const res = await fetch("/api/auth/login-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, ...(loginRole ? { loginRole } : {}) }),
+      credentials: "include",
+    });
+    const userData = await res.json();
+    if (!res.ok) throw new Error(userData.message || "Login failed");
+    queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "/api/auth/me" });
+    queryClient.setQueryData(["/api/auth/me"], userData);
+    stampActivity();
+    return userData;
+  };
+
+  const checkAuthMode = async (email: string, loginRole?: string): Promise<{ exists: boolean; hasPassword: boolean; role?: string }> => {
+    const res = await fetch("/api/auth/check-auth-mode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, ...(loginRole ? { loginRole } : {}) }),
+      credentials: "include",
+    });
+    return res.json();
   };
 
   const logout = async () => {
@@ -143,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, requestOtp, verifyOtp, adminLogin, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, requestOtp, verifyOtp, adminLogin, loginWithPassword, checkAuthMode, logout }}>
       {children}
     </AuthContext.Provider>
   );

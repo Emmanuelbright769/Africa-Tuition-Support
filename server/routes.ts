@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { type Server } from "http";
+import { scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import { getCached, setCached, invalidateCacheKey, invalidateCachePrefix } from "./cache";
@@ -49,6 +50,28 @@ function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function hashPassword(plain: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(plain, salt, 64).toString("hex");
+  return `scrypt:${salt}:${hash}`;
+}
+
+function verifyPassword(plain: string, stored: string): boolean {
+  if (!stored || !stored.startsWith("scrypt:")) return false;
+  const parts = stored.split(":");
+  if (parts.length !== 3) return false;
+  const [, salt, hash] = parts;
+  try {
+    const hashBuf = Buffer.from(hash, "hex");
+    const derivedBuf = scryptSync(plain, salt, 64);
+    return timingSafeEqual(hashBuf, derivedBuf);
+  } catch { return false; }
+}
+
+function hasPasswordSet(storedPassword: string | null | undefined): boolean {
+  return !!storedPassword && storedPassword.startsWith("scrypt:");
+}
+
 
 export async function registerRoutes(
   httpServer: Server,
@@ -68,7 +91,7 @@ export async function registerRoutes(
 
   app.post("/api/auth/request-otp", async (req, res) => {
     try {
-      const { email, firstName, lastName, phone, country, referralCode, role, loginRole } = req.body;
+      const { email, firstName, lastName, phone, country, referralCode, role, loginRole, password: plainPassword } = req.body;
       if (!email) return res.status(400).json({ message: "Email is required" });
       const normalizedReferralCode = typeof referralCode === "string" ? referralCode.trim().toUpperCase() : "";
 
@@ -116,7 +139,9 @@ export async function registerRoutes(
         if (!u) {
           u = await storage.createUser({
             firstName, lastName, email, phone: phone || "",
-            password: "otp-only", country: country || "ng", role: targetRole,
+            password: plainPassword && typeof plainPassword === "string" && plainPassword.length >= 8
+              ? hashPassword(plainPassword) : "otp-only",
+            country: country || "ng", role: targetRole,
             referredBy: normalizedReferralCode || null,
           });
           const affCode = generateAffiliateCode(firstName, u.id);
@@ -327,6 +352,110 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  // ── Check auth mode: does this email/role have a password set? ─────────────
+  app.post("/api/auth/check-auth-mode", async (req, res) => {
+    try {
+      const { email, loginRole } = req.body;
+      if (!email) return res.status(400).json({ message: "Email required" });
+      const user = loginRole
+        ? await storage.getUserByEmailAndRole(email, loginRole)
+        : (await storage.getUsersByEmail(email))[0];
+      if (!user) return res.json({ exists: false, hasPassword: false });
+      return res.json({ exists: true, hasPassword: hasPasswordSet(user.password), role: user.role });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Password login (users who opted for password auth) ─────────────────────
+  app.post("/api/auth/login-password", async (req, res) => {
+    try {
+      const { email, password, loginRole } = req.body;
+      if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
+      const user = loginRole
+        ? await storage.getUserByEmailAndRole(email, loginRole)
+        : (await storage.getUsersByEmail(email))[0];
+      if (!user) return res.status(401).json({ message: "No account found with this email." });
+      if (!hasPasswordSet(user.password)) return res.status(401).json({ message: "This account uses OTP login. Please sign in with a one-time code." });
+      if (!verifyPassword(password, user.password)) return res.status(401).json({ message: "Incorrect password. Try again or use OTP login." });
+      (req.session as any).userId = user.id;
+      req.session.save((err) => {
+        if (err) return res.status(500).json({ message: "Session error" });
+        res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode });
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Request OTP for password change / set ──────────────────────────────────
+  app.post("/api/auth/request-password-otp", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const code = generateOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await storage.createOtp({ email: user.email, code, expiresAt, used: false });
+      console.log(`[OTP] Password change code for ${user.email}: ${code}`);
+      sendOtpEmail(user.email, code, false).catch(() => {});
+      res.json({ message: "OTP sent to your email", otpSent: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Set / change password (requires valid OTP) ─────────────────────────────
+  app.post("/api/auth/set-password", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { otpCode, newPassword } = req.body;
+      if (!otpCode || !newPassword) return res.status(400).json({ message: "OTP and new password are required" });
+      if (newPassword.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const otp = await storage.getValidOtp(user.email, otpCode.trim());
+      if (!otp) return res.status(401).json({ message: "Invalid or expired OTP code" });
+      await storage.markOtpUsed(otp.id);
+      await storage.updateUserPassword(userId, hashPassword(newPassword));
+      res.json({ message: "Password updated successfully" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── User profile ────────────────────────────────────────────────────────────
+  app.get("/api/user/profile", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      res.json({
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        country: user.country,
+        role: user.role,
+        affiliateCode: user.affiliateCode,
+        hasPassword: hasPasswordSet(user.password),
+        authMode: hasPasswordSet(user.password) ? "password" : "otp",
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/user/profile", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { firstName, lastName, phone } = req.body;
+      const updates: Record<string, string> = {};
+      if (firstName?.trim()) updates.firstName = firstName.trim();
+      if (lastName?.trim()) updates.lastName = lastName.trim();
+      if (phone?.trim()) updates.phone = phone.trim();
+      if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Nothing to update" });
+      await storage.updateUserProfile(userId, updates);
+      const updated = await storage.getUser(userId);
+      res.json({ message: "Profile updated", user: updated });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   app.post("/api/upload", upload.single("file"), async (req, res) => {

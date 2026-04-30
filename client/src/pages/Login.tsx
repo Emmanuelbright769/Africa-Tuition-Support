@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight, ArrowLeft, Lock, ShieldCheck } from "lucide-react";
+import { Mail, KeyRound, GraduationCap, Briefcase, ChevronRight, ArrowLeft, Lock, ShieldCheck, Eye, EyeOff } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 
-// step 0 = pick role  ·  step 1 = enter email (+ password if admin)  ·  step 2 = enter OTP
 type Step = 0 | 1 | 2;
+type LoginMode = "otp" | "password";
 
 const ADMIN_EMAIL = "admin@tsiforafrica.com";
 
@@ -45,29 +45,29 @@ export default function Login() {
   const [loginRole, setLoginRole] = useState<"student" | "affiliate" | "">("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginMode, setLoginMode] = useState<LoginMode>("otp");
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const passwordRef = useRef<HTMLInputElement | null>(null);
-  const { requestOtp, verifyOtp, adminLogin } = useAuth();
+  const emailRef = useRef<HTMLInputElement | null>(null);
+  const { requestOtp, verifyOtp, adminLogin, loginWithPassword } = useAuth();
   const { toast } = useToast();
 
-  // Detect if admin email is typed
   const isAdminMode = email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-  // Auto-focus password field when admin mode activates on step 1
   useEffect(() => {
     if (isAdminMode && step === 1) {
       setTimeout(() => passwordRef.current?.focus(), 80);
     }
   }, [isAdminMode, step]);
 
-  // ── Step 0 → 1: pick a role ────────────────────────────────────────────
   const handlePickRole = (role: "student" | "affiliate") => {
     setLoginRole(role);
     setStep(1);
+    setTimeout(() => emailRef.current?.focus(), 80);
   };
 
-  // ── Admin password login ────────────────────────────────────────────────
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!password) return;
@@ -82,20 +82,33 @@ export default function Login() {
     }
   };
 
-  // ── Step 1: request OTP (regular users) ───────────────────────────────
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginRole || !password) return;
+    setLoading(true);
+    try {
+      const user = await loginWithPassword(email.trim(), password, loginRole);
+      if (user.role === "affiliate") setLocation("/affiliate-dashboard");
+      else setLocation("/dashboard");
+    } catch (err: any) {
+      toast({ title: "Login Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginRole) return;
-    // Intercept admin email — use password flow instead
-    if (isAdminMode) { return handleAdminLogin(e); }
+    if (isAdminMode) return handleAdminLogin(e);
     setLoading(true);
     try {
-      const result = await requestOtp({ email, loginRole });
+      const result = await requestOtp({ email: email.trim(), loginRole });
       if (result.otpSent) {
         setStep(2);
         toast({ title: "OTP Sent", description: "Check your email for the 6-digit code." });
       } else {
-        toast({ title: "Error", description: result.error || "Could not send OTP.", variant: "destructive" });
+        toast({ title: "Error", description: (result as any).message || "Could not send OTP.", variant: "destructive" });
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -104,7 +117,6 @@ export default function Login() {
     }
   };
 
-  // ── OTP digit helpers ──────────────────────────────────────────────────
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) value = value.slice(-1);
     if (value && !/^\d$/.test(value)) return;
@@ -120,14 +132,13 @@ export default function Login() {
     }
   };
 
-  // ── Step 2: verify OTP ─────────────────────────────────────────────────
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = otpDigits.join("");
     if (code.length !== 6) return;
     setLoading(true);
     try {
-      const user = await verifyOtp(email, code, loginRole || undefined);
+      const user = await verifyOtp(email.trim(), code, loginRole || undefined);
       if (user.role === "admin") setLocation("/admin");
       else if (user.role === "affiliate") setLocation("/affiliate-dashboard");
       else setLocation("/dashboard");
@@ -141,7 +152,7 @@ export default function Login() {
   const handleResend = async () => {
     setLoading(true);
     try {
-      const result = await requestOtp({ email, loginRole: loginRole || undefined });
+      await requestOtp({ email: email.trim(), loginRole: loginRole || undefined });
       setOtpDigits(["", "", "", "", "", ""]);
       toast({ title: "OTP Resent", description: "A new code has been sent to your email." });
     } catch (err: any) {
@@ -152,18 +163,12 @@ export default function Login() {
   };
 
   const resetToRole = () => {
-    setStep(0);
-    setLoginRole("");
-    setEmail("");
-    setPassword("");
-    setOtpDigits(["", "", "", "", "", ""]);
-    setDevOtp(null);
+    setStep(0); setLoginRole(""); setEmail(""); setPassword("");
+    setOtpDigits(["", "", "", "", "", ""]); setLoginMode("otp");
   };
 
   const resetToEmail = () => {
-    setStep(1);
-    setOtpDigits(["", "", "", "", "", ""]);
-    setDevOtp(null);
+    setStep(1); setOtpDigits(["", "", "", "", "", ""]);
   };
 
   const roleMeta = loginRole ? ROLE_META[loginRole] : null;
@@ -171,9 +176,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans overflow-hidden">
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="sm:mx-auto sm:w-full sm:max-w-md mb-8 flex justify-center">
-        <Link href="/">
-          <a className="cursor-pointer"><Logo variant="badge" height={64} /></a>
-        </Link>
+        <Link href="/"><a className="cursor-pointer"><Logo variant="badge" height={64} /></a></Link>
       </motion.div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative px-4 sm:px-0">
@@ -182,7 +185,7 @@ export default function Login() {
             <Card className="shadow-xl border-0 overflow-hidden relative">
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-tsia-green to-tsia-gold" />
 
-              {/* ── Step 0: Role selector ────────────────────────────── */}
+              {/* ── Step 0: Role selector ── */}
               {step === 0 && (
                 <>
                   <CardHeader className="space-y-2 pt-8 pb-4">
@@ -224,10 +227,10 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── Step 1: Enter email ─────────────────────────────── */}
+              {/* ── Step 1: Email + Login method ── */}
               {step === 1 && roleMeta && (
                 <>
-                  <CardHeader className="space-y-2 pt-8">
+                  <CardHeader className="space-y-2 pt-8 pb-4">
                     <div className="flex justify-center mb-2">
                       {isAdminMode ? (
                         <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-slate-900 text-white">
@@ -241,90 +244,133 @@ export default function Login() {
                       )}
                     </div>
                     <CardTitle className="text-2xl text-center font-bold">
-                      {isAdminMode ? "Admin Sign In" : "Enter your email"}
+                      {isAdminMode ? "Admin Sign In" : "Sign In"}
                     </CardTitle>
-                    <CardDescription className="text-center text-base">
-                      {isAdminMode ? "Enter your administrator password to continue" : "We'll send a one-time code to sign you in"}
-                    </CardDescription>
+                    {!isAdminMode && (
+                      <CardDescription className="text-center text-sm">
+                        Sign in with your email — use OTP or password
+                      </CardDescription>
+                    )}
                   </CardHeader>
 
                   <CardContent className="pb-8">
-                    <form onSubmit={handleRequestOtp} className="space-y-5">
-                      {/* Email field */}
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email address</Label>
-                        <div className="relative">
-                          <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                          <Input
-                            id="email"
-                            type="email"
-                            placeholder="you@example.com"
-                            required
-                            autoComplete="email"
-                            className="h-12 pl-10 bg-muted/30"
-                            value={email}
-                            onChange={e => { setEmail(e.target.value); setPassword(""); }}
-                            data-testid="input-login-email"
-                          />
-                        </div>
+                    {/* Login method tabs — only for non-admin */}
+                    {!isAdminMode && (
+                      <div className="flex rounded-xl bg-muted/50 p-1 mb-5 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setLoginMode("otp")}
+                          data-testid="button-mode-otp"
+                          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${loginMode === "otp" ? "bg-white dark:bg-slate-800 shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                        >
+                          <KeyRound className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />OTP Code
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLoginMode("password")}
+                          data-testid="button-mode-password"
+                          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${loginMode === "password" ? "bg-white dark:bg-slate-800 shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                        >
+                          <Lock className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Password
+                        </button>
                       </div>
+                    )}
 
-                      {/* Password field — slides in only for admin email */}
-                      <AnimatePresence>
-                        {isAdminMode && (
-                          <motion.div
-                            key="admin-password"
-                            initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                            animate={{ opacity: 1, height: "auto", marginTop: 20 }}
-                            exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                            transition={{ duration: 0.25, ease: "easeOut" }}
-                            className="overflow-hidden"
-                          >
-                            <div className="space-y-2">
-                              <Label htmlFor="admin-password">Administrator Password</Label>
-                              <div className="relative">
-                                <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                                <Input
-                                  id="admin-password"
-                                  ref={passwordRef}
-                                  type="password"
-                                  placeholder="Enter admin password"
-                                  required
-                                  autoComplete="current-password"
-                                  className="h-12 pl-10 bg-muted/30"
-                                  value={password}
-                                  onChange={e => setPassword(e.target.value)}
-                                  data-testid="input-admin-password"
-                                />
+                    {/* OTP mode form */}
+                    {(loginMode === "otp" || isAdminMode) && (
+                      <form onSubmit={handleRequestOtp} className="space-y-5">
+                        <div className="space-y-2">
+                          <Label htmlFor="email">Email address</Label>
+                          <div className="relative">
+                            <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              id="email" ref={emailRef} type="email" placeholder="you@example.com" required
+                              autoComplete="email" className="h-12 pl-10 bg-muted/30"
+                              value={email} onChange={e => { setEmail(e.target.value); setPassword(""); }}
+                              data-testid="input-login-email"
+                            />
+                          </div>
+                        </div>
+
+                        <AnimatePresence>
+                          {isAdminMode && (
+                            <motion.div key="admin-password" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25 }}>
+                              <div className="space-y-2">
+                                <Label htmlFor="admin-password">Administrator Password</Label>
+                                <div className="relative">
+                                  <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                                  <Input id="admin-password" ref={passwordRef} type="password" placeholder="Enter admin password"
+                                    required autoComplete="current-password" className="h-12 pl-10 bg-muted/30"
+                                    value={password} onChange={e => setPassword(e.target.value)} data-testid="input-admin-password"
+                                  />
+                                </div>
                               </div>
-                            </div>
-                            <p className="text-[11px] text-muted-foreground mt-2 text-center flex items-center justify-center gap-1">
-                              <ShieldCheck className="w-3 h-3" /> Secure admin access — no OTP required
-                            </p>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                              <p className="text-[11px] text-muted-foreground mt-2 text-center flex items-center justify-center gap-1">
+                                <ShieldCheck className="w-3 h-3" /> Secure admin access — no OTP required
+                              </p>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
 
-                      <Button
-                        type="submit"
-                        className={`w-full h-12 text-base font-semibold shadow-md ${isAdminMode ? "bg-slate-900 hover:bg-slate-800 text-white" : "bg-primary hover:bg-primary/90"}`}
-                        disabled={loading || (isAdminMode && !password)}
-                        data-testid={isAdminMode ? "button-admin-login" : "button-request-otp"}
-                      >
-                        {loading
-                          ? (isAdminMode ? "Signing in..." : "Sending code...")
-                          : (isAdminMode ? "Sign In as Admin" : "Send Login Code")}
-                      </Button>
+                        <Button type="submit"
+                          className={`w-full h-12 text-base font-semibold shadow-md ${isAdminMode ? "bg-slate-900 hover:bg-slate-800 text-white" : "bg-primary hover:bg-primary/90"}`}
+                          disabled={loading || (isAdminMode && !password)} data-testid={isAdminMode ? "button-admin-login" : "button-request-otp"}
+                        >
+                          {loading ? (isAdminMode ? "Signing in..." : "Sending code...") : (isAdminMode ? "Sign In as Admin" : "Send Login Code")}
+                        </Button>
 
-                      <button
-                        type="button"
-                        onClick={resetToRole}
-                        className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                        data-testid="button-back-to-role"
-                      >
-                        <ArrowLeft className="w-4 h-4" /> Choose a different account type
-                      </button>
-                    </form>
+                        <button type="button" onClick={resetToRole}
+                          className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                          data-testid="button-back-to-role"
+                        >
+                          <ArrowLeft className="w-4 h-4" /> Choose a different account type
+                        </button>
+                      </form>
+                    )}
+
+                    {/* Password mode form */}
+                    {loginMode === "password" && !isAdminMode && (
+                      <form onSubmit={handlePasswordLogin} className="space-y-5">
+                        <div className="space-y-2">
+                          <Label htmlFor="email-pw">Email address</Label>
+                          <div className="relative">
+                            <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <Input id="email-pw" type="email" placeholder="you@example.com" required
+                              autoComplete="email" className="h-12 pl-10 bg-muted/30"
+                              value={email} onChange={e => setEmail(e.target.value)} data-testid="input-login-email-pw"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="user-password">Password</Label>
+                          <div className="relative">
+                            <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <Input id="user-password" ref={passwordRef} type={showPassword ? "text" : "password"}
+                              placeholder="Enter your password" required autoComplete="current-password"
+                              className="h-12 pl-10 pr-10 bg-muted/30" value={password}
+                              onChange={e => setPassword(e.target.value)} data-testid="input-user-password"
+                            />
+                            <button type="button" tabIndex={-1} onClick={() => setShowPassword(v => !v)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground -mt-2">
+                          Don't have a password?{" "}
+                          <button type="button" onClick={() => setLoginMode("otp")} className="text-primary underline">Sign in with OTP instead</button>
+                          {" "}or set one from your profile after logging in.
+                        </p>
+                        <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md"
+                          disabled={loading || !password} data-testid="button-password-login">
+                          {loading ? "Signing in..." : "Sign In"}
+                        </Button>
+                        <button type="button" onClick={resetToRole}
+                          className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                          <ArrowLeft className="w-4 h-4" /> Choose a different account type
+                        </button>
+                      </form>
+                    )}
                   </CardContent>
 
                   <CardFooter className="flex justify-center border-t py-6 bg-muted/30">
@@ -336,7 +382,7 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── Step 2: Enter OTP (regular users only) ──────────── */}
+              {/* ── Step 2: Enter OTP ── */}
               {step === 2 && roleMeta && (
                 <>
                   <CardHeader className="space-y-2 pt-8">
@@ -358,12 +404,9 @@ export default function Login() {
                         </div>
                         <div className="flex justify-center gap-3 mb-6">
                           {otpDigits.map((digit, i) => (
-                            <Input
-                              key={i}
-                              ref={el => { inputRefs.current[i] = el; }}
+                            <Input key={i} ref={el => { inputRefs.current[i] = el; }}
                               className="w-12 h-14 text-center text-xl font-bold bg-muted/30 focus:bg-background transition-colors"
-                              maxLength={1}
-                              value={digit}
+                              maxLength={1} value={digit}
                               onChange={e => handleOtpChange(i, e.target.value)}
                               onKeyDown={e => handleOtpKeyDown(i, e)}
                               data-testid={`input-otp-${i}`}
@@ -371,28 +414,15 @@ export default function Login() {
                           ))}
                         </div>
                       </div>
-                      <Button
-                        type="submit"
-                        className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md"
-                        disabled={loading || otpDigits.join("").length !== 6}
-                        data-testid="button-verify-otp"
-                      >
-                        {loading ? "Verifying..." : "Verify & Access Portal"}
+                      <Button type="submit" className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md"
+                        disabled={loading || otpDigits.join("").length !== 6} data-testid="button-verify-otp">
+                        {loading ? "Verifying..." : "Verify & Sign In"}
                       </Button>
                       <div className="flex items-center justify-between text-sm">
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={resetToEmail}
-                        >
+                        <button type="button" className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors" onClick={resetToEmail}>
                           <ArrowLeft className="w-3.5 h-3.5" /> Change email
                         </button>
-                        <button
-                          type="button"
-                          className="text-primary font-medium hover:underline"
-                          onClick={handleResend}
-                          disabled={loading}
-                        >
+                        <button type="button" className="text-primary font-medium hover:underline" onClick={handleResend} disabled={loading}>
                           Resend code
                         </button>
                       </div>

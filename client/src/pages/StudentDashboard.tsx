@@ -482,7 +482,7 @@ export default function StudentDashboard() {
                             data-testid="button-go-onboarding"
                           >
                             {walletActivated ? <ArrowUpRight className="w-4 h-4 mr-2" /> : <Wallet className="w-4 h-4 mr-2" />}
-                            {walletActivated ? "Swift-Apply" : "Activate Wallet First"}
+                            {walletActivated ? "Swift-Apply" : "Complete Verification"}
                           </Button>
                         )}
                         <Button

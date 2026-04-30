@@ -206,17 +206,24 @@ async function startAutoRefundJob() {
     try {
       const stale = await storage.getPendingWithdrawalsOlderThan24h();
       for (const wd of stale) {
-        // Refund balance
-        const wallet = await storage.getOrCreateWallet(wd.userId);
         const refundAmt = parseFloat(wd.amount as string);
-        const newBalance = (parseFloat(wallet.balance as string) + refundAmt).toFixed(2);
-        await storage.updateWalletBalance(wd.userId, newBalance);
-        await storage.createTransaction({
-          userId: wd.userId, type: "refund",
-          amount: refundAmt.toFixed(2), fee: "0",
-          paymentMethod: wd.type === "bank" ? "bank_transfer" : "crypto",
-          description: "Auto-refund: withdrawal not processed within 24 hours",
-        });
+        const isTradeWd = (wd.type as string) === "trade_bank";
+
+        // Credit the correct balance — trade_bank refunds go back to trade balance
+        if (isTradeWd) {
+          await storage.updateTradeBalance(wd.userId, refundAmt.toFixed(6));
+        } else {
+          const wallet = await storage.getOrCreateWallet(wd.userId);
+          const newBalance = (parseFloat(wallet.balance as string) + refundAmt).toFixed(2);
+          await storage.updateWalletBalance(wd.userId, newBalance);
+          await storage.createTransaction({
+            userId: wd.userId, type: "refund",
+            amount: refundAmt.toFixed(2), fee: "0",
+            paymentMethod: wd.type === "bank" ? "bank_transfer" : "crypto",
+            description: "Auto-refund: withdrawal not processed within 24 hours",
+          });
+        }
+
         await storage.updateWithdrawalRequest(wd.id, {
           status: "refunded",
           adminNote: "Auto-refunded after 24h timeout",
@@ -226,7 +233,9 @@ async function startAutoRefundJob() {
         const notif = await storage.createNotification({
           userId: wd.userId, type: "wallet_credit",
           title: "Withdrawal Auto-Refunded",
-          message: `Your withdrawal of $${refundAmt.toFixed(2)} was not processed within 24 hours and has been returned to your TSIA wallet.`,
+          message: isTradeWd
+            ? `Your trade bank withdrawal of $${refundAmt.toFixed(2)} was not processed within 24 hours and has been returned to your Trade Market balance.`
+            : `Your withdrawal of $${refundAmt.toFixed(2)} was not processed within 24 hours and has been returned to your TSIA wallet.`,
           data: { withdrawalId: wd.id }, isRead: false,
         });
         try {
@@ -237,13 +246,13 @@ async function startAutoRefundJob() {
               <h2 style="color:#92400e">Withdrawal Auto-Refunded</h2>
               <p style="color:#6b7280">Hi ${user!.firstName}, your withdrawal request was not processed within 24 hours.</p>
               <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#92400e">
-                <strong>$${refundAmt.toFixed(2)}</strong> has been returned to your TSIA wallet.
+                <strong>$${refundAmt.toFixed(2)}</strong> has been returned to your ${isTradeWd ? "Trade Market balance" : "TSIA wallet"}.
               </div>
               <p style="font-size:13px;color:#6b7280">You can submit a new withdrawal request at any time. Please contact support if you need assistance.</p>
             </div>`
           );
         } catch {}
-        console.log(`[AUTO-REFUND] Refunded withdrawal #${wd.id} ($${refundAmt}) for user ${wd.userId}`);
+        console.log(`[AUTO-REFUND] Refunded withdrawal #${wd.id} ($${refundAmt}) for user ${wd.userId} [${wd.type}]`);
       }
     } catch (e) {
       console.error("[AUTO-REFUND] Error:", e);

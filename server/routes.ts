@@ -2561,46 +2561,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Insufficient balance. Available: $${wdWithdrawable.toFixed(2)}` });
       }
 
-      // ── For bank withdrawals: call Squad payout API ───────────────────────
-      if (withdrawalType === "withdraw_bank") {
-        const netNgn = netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT; // ₦1,280/$
-        const transferRef = `TSIA-TWD-${userId}-${Date.now()}`;
-        const secretKey = process.env.SQUAD_SECRET_KEY;
-        const squadBase = (secretKey && secretKey.startsWith("sk_")) ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
-        let squadSuccess = false, squadMsg = "";
-        try {
-          const squadRes = await fetch(`${squadBase}/payout/initiate`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              transaction_reference: transferRef,
-              amount: Math.round(netNgn) * 100,
-              bank_code: bankCode,
-              account_number: accountNumber,
-              account_name: accountName,
-              currency_id: "NGN",
-              narration: `TSIA Trade Withdrawal | Ref: ${transferRef}`,
-            }),
-            signal: AbortSignal.timeout(15000),
-          });
-          const squadData = await squadRes.json() as any;
-          console.log(`[SQUAD] trade payout/initiate → HTTP ${squadRes.status} | success=${squadData.success} | msg="${squadData.message}"`);
-          squadSuccess = !!squadData.success;
-          if (!squadSuccess) squadMsg = squadData.message || squadData.error?.message || `Gateway error (HTTP ${squadRes.status})`;
-        } catch (fetchErr: any) { squadMsg = fetchErr.message ?? "Network error"; }
-        if (!squadSuccess) {
-          return res.status(502).json({ message: `Bank transfer failed: ${squadMsg}. Please try again or contact support.` });
-        }
-      }
-
       const txType = withdrawalType === "withdraw_bank" ? "withdraw_bank" : "withdraw_exchange";
+      const txStatus = withdrawalType === "withdraw_bank" ? "pending" : "completed";
       const tx = await storage.createTradeTransaction({
         userId, type: txType, walletType: walletType || null,
         amountUsd: amount.toFixed(6), feeUsd: fee.toFixed(6),
         reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
-        netAmount: netPayout.toFixed(6), txHash: null, status: "completed",
+        netAmount: netPayout.toFixed(6), txHash: null, status: txStatus,
         note: withdrawalType === "withdraw_bank"
-          ? `Bank withdrawal ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} → ${accountName} (${accountNumber}) — 8% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool`
+          ? `Bank withdrawal ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} → ${accountName} (${accountNumber}) — 8% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool | Pending admin approval`
           : `Exchange withdrawal — 5% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool`,
       });
 
@@ -2609,13 +2578,48 @@ export async function registerRoutes(
       const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
       await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
 
+      // ── For bank withdrawals: create a pending withdrawal request for admin approval ──
+      if (withdrawalType === "withdraw_bank") {
+        await storage.createWithdrawalRequest({
+          userId,
+          type: "trade_bank" as any,
+          amount: amount.toFixed(2),
+          fee: fee.toFixed(2),
+          netAmount: netPayout.toFixed(2),
+          bankName: `[TRADE MARKET]`,
+          bankCode: bankCode ?? "",
+          accountNumber,
+          accountName,
+        });
+        const tradeUser = await storage.getUser(userId);
+        if (tradeUser) {
+          sendAdminWithdrawalEmail({
+            name: `${tradeUser.firstName} ${tradeUser.lastName}`,
+            email: tradeUser.email,
+            amount: amount.toFixed(2),
+            method: "bank",
+            bankName: `[TRADE MARKET] (accountName: ${accountName})`,
+            accountNumber,
+            accountName,
+            userId,
+          }).catch(() => {});
+        }
+      }
+
       const updatedWallet = await storage.getOrCreateTradeWallet(userId);
-      const wdNotif = await storage.createNotification({ userId, type: "wallet_credit", title: "Trade Withdrawal Initiated ✓", message: withdrawalType === "withdraw_bank" ? `₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} is being sent to ${accountName}. Processing within 24h.` : `$${netPayout.toFixed(2)} withdrawal to exchange wallet initiated.`, data: {}, isRead: false });
+      const wdNotif = await storage.createNotification({
+        userId, type: "wallet_credit",
+        title: withdrawalType === "withdraw_bank" ? "Trade Withdrawal Submitted ✓" : "Trade Withdrawal Initiated ✓",
+        message: withdrawalType === "withdraw_bank"
+          ? `Your trade bank withdrawal of ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} to ${accountName} is pending admin approval. You will receive funds within 24 hours.`
+          : `$${netPayout.toFixed(2)} withdrawal to exchange wallet initiated.`,
+        data: {}, isRead: false,
+      });
       pushToUser(userId, "notification", wdNotif);
       res.json({
         transaction: tx, newBalance: updatedWallet.tradeBalance,
         breakdown: { requested: amount, fee, feeRate: `${(feeRate * 100).toFixed(0)}%`, affiliatePool: affiliateCut, netPayout },
-        message: "Withdrawal processed.",
+        message: withdrawalType === "withdraw_bank" ? "Withdrawal submitted for admin approval." : "Withdrawal processed.",
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3788,23 +3792,29 @@ export async function registerRoutes(
         adminNote: adminNote || wd.adminNote || "",
         processedAt: new Date(),
       });
-      // Credit wallet
-      const wallet = await storage.getOrCreateWallet(wd.userId);
       const refundAmt = parseFloat(wd.amount);
-      const refundedBalance = (parseFloat(wallet.balance) + refundAmt).toFixed(2);
-      await storage.updateWalletBalance(wd.userId, refundedBalance);
-      await storage.createTransaction({
-        userId: wd.userId, type: "refund",
-        amount: refundAmt.toFixed(2),
-        fee: "0",
-        paymentMethod: wd.type === "bank" ? "bank_transfer" : "crypto",
-        description: `Withdrawal refund — ${adminNote || "refunded by admin"}`,
-      });
+      // Credit the correct wallet — trade_bank refunds go back to trade balance
+      if ((wd.type as string) === "trade_bank") {
+        await storage.updateTradeBalance(wd.userId, refundAmt.toFixed(6));
+      } else {
+        const wallet = await storage.getOrCreateWallet(wd.userId);
+        const refundedBalance = (parseFloat(wallet.balance) + refundAmt).toFixed(2);
+        await storage.updateWalletBalance(wd.userId, refundedBalance);
+        await storage.createTransaction({
+          userId: wd.userId, type: "refund",
+          amount: refundAmt.toFixed(2),
+          fee: "0",
+          paymentMethod: wd.type === "bank" ? "bank_transfer" : "crypto",
+          description: `Withdrawal refund — ${adminNote || "refunded by admin"}`,
+        });
+      }
       const user = await storage.getUser(wd.userId);
       const notif = await storage.createNotification({
         userId: wd.userId, type: "wallet_credit",
         title: "Withdrawal Refunded ✓",
-        message: `$${refundAmt.toFixed(2)} has been refunded to your TSIA wallet.`,
+        message: (wd.type as string) === "trade_bank"
+          ? `$${refundAmt.toFixed(2)} has been refunded to your Trade Market balance.`
+          : `$${refundAmt.toFixed(2)} has been refunded to your TSIA wallet.`,
         data: { withdrawalId: wdId }, isRead: false,
       });
       pushToUser(wd.userId, "notification", notif);

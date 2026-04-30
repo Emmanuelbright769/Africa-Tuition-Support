@@ -921,7 +921,7 @@ export type SponsorshipBatch = typeof sponsorshipBatches.$inferSelect;
 export const withdrawalRequests = pgTable("withdrawal_requests", {
   id:            integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId:        integer("user_id").notNull().references(() => users.id),
-  type:          text("type", { enum: ["bank", "crypto"] }).notNull(),
+  type:          text("type", { enum: ["bank", "crypto", "trade_bank"] }).notNull(),
   amount:        decimal("amount",     { precision: 14, scale: 2 }).notNull(),
   fee:           decimal("fee",        { precision: 14, scale: 2 }).notNull().default("0"),
   netAmount:     decimal("net_amount", { precision: 14, scale: 2 }).notNull(),

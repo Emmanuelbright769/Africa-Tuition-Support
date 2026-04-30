@@ -605,7 +605,7 @@ export default function AdminDashboard() {
     pendingVerifications: (pendingVerifications as any[]).length,
     pendingDisbursements: (pendingDisbursements as any[]).length,
     pendingLoans: (allLoans as any[]).filter((l: any) => l.status === "pending").length,
-    pendingWithdrawals: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && w.type === "bank").length,
+    pendingWithdrawals: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && (w.type === "bank" || w.type === "trade_bank")).length,
     pendingCryptoWd: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && w.type === "crypto").length,
     pendingBankTransfers: (pendingBankTransfers as any[]).length,
   };
@@ -1639,9 +1639,9 @@ export default function AdminDashboard() {
                 {/* Summary bar */}
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { label: "Total Bank", value: (allWithdrawals as any[]).filter((w: any) => w.type === "bank").length, color: "text-slate-700" },
-                    { label: "Pending", value: (allWithdrawals as any[]).filter((w: any) => w.type === "bank" && w.status === "pending").length, color: "text-amber-600" },
-                    { label: "Approved", value: (allWithdrawals as any[]).filter((w: any) => w.type === "bank" && w.status === "approved").length, color: "text-tsia-green" },
+                    { label: "Total Bank", value: (allWithdrawals as any[]).filter((w: any) => w.type === "bank" || w.type === "trade_bank").length, color: "text-slate-700" },
+                    { label: "Pending", value: (allWithdrawals as any[]).filter((w: any) => (w.type === "bank" || w.type === "trade_bank") && w.status === "pending").length, color: "text-amber-600" },
+                    { label: "Approved", value: (allWithdrawals as any[]).filter((w: any) => (w.type === "bank" || w.type === "trade_bank") && w.status === "approved").length, color: "text-tsia-green" },
                   ].map(s => (
                     <Card key={s.label} className="p-3 text-center">
                       <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
@@ -1652,7 +1652,7 @@ export default function AdminDashboard() {
 
                 {/* Filter + Cards */}
                 {(() => {
-                  const filtered = (allWithdrawals as any[]).filter((w: any) => w.type === "bank" && (wdFilter === "all" || w.status === wdFilter));
+                  const filtered = (allWithdrawals as any[]).filter((w: any) => (w.type === "bank" || w.type === "trade_bank") && (wdFilter === "all" || w.status === wdFilter));
                   function copyToClipboard(text: string, key: string) {
                     navigator.clipboard.writeText(text).then(() => {
                       setWdCopied(key);
@@ -1685,7 +1685,10 @@ export default function AdminDashboard() {
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-bold text-sm">{wd.user?.firstName} {wd.user?.lastName}</span>
-                                    <Badge variant="outline" className="text-[10px]">{wd.type === "bank" ? "Bank NGN" : "USDT Crypto"}</Badge>
+                                    <Badge variant="outline" className="text-[10px]">{wd.type === "bank" ? "Bank NGN" : wd.type === "trade_bank" ? "Trade Market" : "USDT Crypto"}</Badge>
+                                    {wd.type === "trade_bank" && (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">TRADE</span>
+                                    )}
                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${wd.status === "pending" ? "bg-amber-100 text-amber-700" : wd.status === "approved" ? "bg-green-100 text-green-700" : wd.status === "declined" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"}`}>
                                       {wd.status}
                                     </span>
@@ -1707,13 +1710,18 @@ export default function AdminDashboard() {
 
                               <WithdrawalWalletBalance balance={wd.user?.walletBalance} />
 
-                              {/* Bank details */}
-                              {wd.type === "bank" && (
-                                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-sm space-y-1">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground text-xs">Bank</span>
-                                    <span className="font-semibold text-xs">{wd.bankName}</span>
-                                  </div>
+                              {/* Bank details (regular bank + trade_bank) */}
+                              {(wd.type === "bank" || wd.type === "trade_bank") && (
+                                <div className={`rounded-xl p-3 text-sm space-y-1 ${wd.type === "trade_bank" ? "bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700" : "bg-slate-50 dark:bg-slate-800/50"}`}>
+                                  {wd.type === "trade_bank" && (
+                                    <p className="text-[10px] font-bold text-purple-700 uppercase tracking-wide mb-1">Source: Trade Market Balance</p>
+                                  )}
+                                  {wd.bankName && wd.bankName !== "[TRADE MARKET]" && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-muted-foreground text-xs">Bank</span>
+                                      <span className="font-semibold text-xs">{wd.bankName}</span>
+                                    </div>
+                                  )}
                                   <div className="flex items-center justify-between">
                                     <span className="text-muted-foreground text-xs">Account Number</span>
                                     <div className="flex items-center gap-1.5">
@@ -1736,7 +1744,7 @@ export default function AdminDashboard() {
                                     <span className="font-black text-tsia-green text-sm">₦{Math.round(parseFloat(wd.netAmount) * 1280).toLocaleString()}</span>
                                   </div>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground text-xs">VAT</span>
+                                    <span className="text-muted-foreground text-xs">{wd.type === "trade_bank" ? "Fee (8%)" : "VAT"}</span>
                                     <span className="text-red-500 text-xs">−${parseFloat(wd.fee).toFixed(2)}</span>
                                   </div>
                                 </div>

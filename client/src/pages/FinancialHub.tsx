@@ -659,8 +659,33 @@ export default function FinancialHub() {
               ? <EmptyState icon={Send} msg="No transfers yet" />
               : (transfers as TransferRecord[]).slice(0, 8).map(t => {
                   const isOut = t.senderId === user?.id;
+                  const txStatus: "success" | "pending" | "processing" =
+                    t.status === "completed" ? "success" : t.status === "pending" ? "pending" : "processing";
+                  const txDate = new Date(t.createdAt).toLocaleString("en-GB", {
+                    day: "2-digit", month: "short", year: "numeric",
+                    hour: "2-digit", minute: "2-digit", second: "2-digit",
+                  });
+                  const openTransferReceipt = () => showReceipt({
+                    status: txStatus,
+                    title: isOut ? "Money Sent" : "Money Received",
+                    amount: `$${parseFloat(t.amount).toFixed(2)}`,
+                    timestamp: txDate,
+                    referenceRow: `TSIA-TX-${t.id}`,
+                    rows: [
+                      { label: "Reference",  value: `TSIA-TX-${t.id}`, mono: true },
+                      { label: "Sender",     value: isOut ? `${user?.firstName} ${user?.lastName} (You)` : (t.senderName || "TSIA Member") },
+                      { label: "Recipient",  value: isOut ? (t.recipientName || "TSIA Member") : `${user?.firstName} ${user?.lastName} (You)` },
+                      { label: "Amount",     value: `$${parseFloat(t.amount).toFixed(2)}`, bold: true },
+                      { label: "Note",       value: t.note || "None" },
+                      { label: "Date",       value: txDate },
+                      { label: "Status",     value: txStatus === "success" ? "Completed" : txStatus === "pending" ? "Pending" : "Processing",
+                        green: txStatus === "success", gold: txStatus === "processing", red: txStatus === "pending" },
+                    ],
+                  });
                   return (
-                    <div key={t.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
+                    <button key={t.id} onClick={openTransferReceipt}
+                      className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
+                      data-testid={`row-transfer-${t.id}`}>
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOut ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
                         {isOut ? <ArrowUpRight className="w-5 h-5 text-red-500" /> : <ArrowDownLeft className="w-5 h-5 text-tsia-green" />}
                       </div>
@@ -672,7 +697,8 @@ export default function FinancialHub() {
                         <p className={`font-bold text-sm ${isOut ? "text-red-500" : "text-tsia-green"}`}>{isOut ? "−" : "+"}${parseFloat(t.amount).toFixed(2)}</p>
                         <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                       </div>
-                    </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+                    </button>
                   );
                 })
           ) : (
@@ -681,8 +707,31 @@ export default function FinancialHub() {
               : (bills as BillRecord[]).slice(0, 8).map(b => {
                   const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
                   const isBankTransfer = b.service === "bank_transfer";
+                  const billStatus: "success" | "pending" | "processing" =
+                    b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
+                  const billDate = new Date(b.createdAt).toLocaleString("en-GB", {
+                    day: "2-digit", month: "short", year: "numeric",
+                    hour: "2-digit", minute: "2-digit", second: "2-digit",
+                  });
+                  const openBillReceipt = () => showReceipt({
+                    status: billStatus,
+                    title: isBankTransfer ? "Bank Transfer" : `${svc.label} Payment`,
+                    amount: `$${parseFloat(b.amount).toFixed(2)}`,
+                    timestamp: billDate,
+                    referenceRow: b.reference,
+                    rows: [
+                      { label: "Reference",  value: b.reference, mono: true },
+                      { label: "Service",    value: isBankTransfer ? "Bank Transfer" : svc.label },
+                      { label: "Amount",     value: `$${parseFloat(b.amount).toFixed(2)}`, bold: true },
+                      { label: "Date",       value: billDate },
+                      { label: "Status",     value: billStatus === "success" ? "Completed" : billStatus === "pending" ? "Pending" : "Processing",
+                        green: billStatus === "success", gold: billStatus === "processing", red: billStatus === "pending" },
+                    ],
+                  });
                   return (
-                    <div key={b.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
+                    <button key={b.id} onClick={openBillReceipt}
+                      className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
+                      data-testid={`row-bill-${b.id}`}>
                       <div className={`w-10 h-10 rounded-xl ${isBankTransfer ? "bg-blue-100 dark:bg-blue-900/30" : `bg-gradient-to-br ${svc.color}`} flex items-center justify-center`}>
                         {isBankTransfer ? <Building2 className="w-5 h-5 text-blue-600" /> : <svc.icon className="w-5 h-5 text-white" />}
                       </div>
@@ -694,7 +743,8 @@ export default function FinancialHub() {
                         <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
                         <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                       </div>
-                    </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+                    </button>
                   );
                 })
           )}

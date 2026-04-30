@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
+import { parseApiError } from "@/lib/queryClient";
 
 type Step = 0 | 1 | 2;
 type LoginMode = "otp" | "password";
@@ -76,7 +77,7 @@ export default function Login() {
       const user = await adminLogin(email.trim(), password);
       if (user.role === "admin") setLocation("/admin");
     } catch (err: any) {
-      toast({ title: "Login Failed", description: err.message || "Incorrect password.", variant: "destructive" });
+      toast({ title: "Login Failed", description: parseApiError(err), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -91,7 +92,7 @@ export default function Login() {
       if (user.role === "affiliate") setLocation("/affiliate-dashboard");
       else setLocation("/dashboard");
     } catch (err: any) {
-      toast({ title: "Login Failed", description: err.message, variant: "destructive" });
+      toast({ title: "Login Failed", description: parseApiError(err), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -111,7 +112,7 @@ export default function Login() {
         toast({ title: "Error", description: (result as any).message || "Could not send OTP.", variant: "destructive" });
       }
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error", description: parseApiError(err), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -143,7 +144,7 @@ export default function Login() {
       else if (user.role === "affiliate") setLocation("/affiliate-dashboard");
       else setLocation("/dashboard");
     } catch (err: any) {
-      toast({ title: "Invalid Code", description: err.message, variant: "destructive" });
+      toast({ title: "Invalid Code", description: parseApiError(err), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -156,7 +157,7 @@ export default function Login() {
       setOtpDigits(["", "", "", "", "", ""]);
       toast({ title: "OTP Resent", description: "A new code has been sent to your email." });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error", description: parseApiError(err), variant: "destructive" });
     } finally {
       setLoading(false);
     }

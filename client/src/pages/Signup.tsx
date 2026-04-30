@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
+import { parseApiError } from "@/lib/queryClient";
 
 const AFRICAN_COUNTRIES = [
   { value: "ng", label: "Nigeria" },
@@ -148,7 +149,7 @@ export default function Signup() {
       setStep(2);
       toast({ title: "OTP Sent", description: "Check your email for the 6-digit verification code." });
     } catch (err: any) {
-      toast({ title: "Signup failed", description: err.message || "Could not create account", variant: "destructive" });
+      toast({ title: "Signup failed", description: parseApiError(err), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -187,7 +188,7 @@ export default function Signup() {
         setLocation(dest);
       }
     } catch (err: any) {
-      toast({ title: "Invalid Code", description: err.message, variant: "destructive" });
+      toast({ title: "Invalid Code", description: parseApiError(err), variant: "destructive" });
     } finally {
       setLoading(false);
     }

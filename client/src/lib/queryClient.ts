@@ -7,6 +7,26 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+/** Extract a human-readable message from API errors thrown by apiRequest. */
+export function parseApiError(err: unknown): string {
+  if (!err) return "An unknown error occurred. Please try again.";
+  const msg = (err as any)?.message ?? String(err);
+  if (!msg || msg === "Failed to fetch") {
+    return "Network error. Please check your connection and try again.";
+  }
+  // Server errors come back as "404: {\"message\":\"...\"}" — parse them
+  const colonIdx = msg.indexOf(": ");
+  if (colonIdx !== -1) {
+    const rest = msg.slice(colonIdx + 2).trim();
+    try {
+      const parsed = JSON.parse(rest);
+      if (parsed?.message) return parsed.message;
+    } catch {}
+    return rest;
+  }
+  return msg;
+}
+
 export async function apiRequest(
   method: string,
   url: string,

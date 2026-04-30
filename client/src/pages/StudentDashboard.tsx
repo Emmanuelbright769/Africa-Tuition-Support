@@ -1381,7 +1381,7 @@ export default function StudentDashboard() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              To access QCE SwiftVault, loans, e-commerce, the trade market, and all other platform features, please <strong>fund your SwiftWallet with at least $5</strong>.
+              To access QCE SwiftVault, loans, e-commerce, the trade market, and all other platform features, please <strong>fund your SwiftWallet with above $5</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">

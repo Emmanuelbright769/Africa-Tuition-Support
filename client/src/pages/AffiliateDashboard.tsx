@@ -1530,7 +1530,7 @@ export default function AffiliateDashboard() {
                         {botActive ? (
                           <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">🔒 Active session</p>
                         ) : withdrawableAmt > 0 && withdrawableAmt < 5 ? (
-                          <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Min $5 to unlock</p>
+                          <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Above $5 to unlock</p>
                         ) : null}
                       </div>
                     </div>
@@ -3212,7 +3212,7 @@ export default function AffiliateDashboard() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              To access the trade market, QCE SwiftVault, e-commerce, loans, and all other platform features, please <strong>fund your SwiftWallet with at least $5</strong>.
+              To access the trade market, QCE SwiftVault, e-commerce, loans, and all other platform features, please <strong>fund your SwiftWallet with above $5</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">

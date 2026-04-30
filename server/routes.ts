@@ -128,7 +128,7 @@ export async function registerRoutes(
               userId: u!.id,
               type: "wallet_activation",
               title: "Activate Your TSIA Wallet",
-              message: `Welcome to TSIA! To unlock all platform features — including QCE SwiftVault, loans, TS-Mart Online Stores and more — please fund your SwiftWallet with a minimum of $5. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your SwiftWallet section to make your first deposit.`,
+              message: `Welcome to TSIA! To unlock all platform features — including QCE SwiftVault, loans, TS-Mart Online Stores and more — please fund your SwiftWallet with above $5. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your SwiftWallet section to make your first deposit.`,
               data: { minActivation: QCE.MIN_ACTIVATION, minBalance: QCE.MIN_BALANCE },
               isRead: false,
             });
@@ -484,7 +484,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateWallet(userId);
       if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before starting verification." });
+        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before starting verification." });
       }
 
       const { idType = "nin", idNumber, lastName } = req.body;
@@ -531,7 +531,7 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const wallet = await storage.getOrCreateWallet(userId);
     if (!wallet.activated) {
-      return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before starting verification." });
+      return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before starting verification." });
     }
     const nin = req.body.nin || req.body.idNumber;
     if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) return res.status(400).json({ message: "NIN must be exactly 11 digits." });
@@ -547,7 +547,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateWallet(userId);
       if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before continuing verification." });
+        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before continuing verification." });
       }
 
       // Support both old { nin } and new { idType, idNumber } shapes
@@ -574,7 +574,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateWallet(userId);
       if (!wallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before submitting your application." });
+        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before submitting your application." });
       }
 
       let verification = await storage.getVerificationByUser(userId);
@@ -886,7 +886,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const feeWallet = await storage.getOrCreateWallet(userId);
       if (!feeWallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with at least $5 before paying the portal fee." });
+        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before paying the portal fee." });
       }
 
       let verification = await storage.getVerificationByUser(userId);
@@ -1082,7 +1082,7 @@ export async function registerRoutes(
     let wallet = await storage.getOrCreateWallet(userId);
     // Self-heal: activate wallets that already have >= $5 but were never activated
     // (can happen if balance was set before the activated column existed)
-    if (!wallet.activated && parseFloat(wallet.balance) >= 5) {
+    if (!wallet.activated && parseFloat(wallet.balance) > 5) {
       wallet = await storage.activateWallet(userId);
     }
     const balanceUsd = parseFloat(wallet.balance);
@@ -1325,7 +1325,7 @@ export async function registerRoutes(
       }
       const wallet = await storage.getOrCreateWallet(userId);
       if (!wallet.activated) {
-        return res.status(403).json({ message: "Your wallet must be activated (minimum $5 funded) before withdrawing." });
+        return res.status(403).json({ message: "Your wallet must be activated (above $5 funded) before withdrawing." });
       }
       const withdrawAmt = parseFloat(amount);
       const currentBalance = parseFloat(wallet.balance);
@@ -2400,7 +2400,7 @@ export async function registerRoutes(
       const personalWallet = await storage.getOrCreateWallet(userId);
       const newPersonalBal = (parseFloat(personalWallet.balance) + amount).toFixed(2);
       await storage.updateWalletBalance(userId, newPersonalBal);
-      if (!personalWallet.activated && parseFloat(newPersonalBal) >= 5) await storage.activateWallet(userId);
+      if (!personalWallet.activated && parseFloat(newPersonalBal) > 5) await storage.activateWallet(userId);
       await storage.createTransaction({ userId, type: "deposit", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "internal", description: `Transfer from Trade Wallet — $${amount.toFixed(2)}` });
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Trade Transfer Complete ✓", message: `$${amount.toFixed(2)} from your Trade Wallet has been credited to your SwiftWallet.`, data: {}, isRead: false });
       pushToUser(userId, "notification", notif);
@@ -3499,7 +3499,7 @@ export async function registerRoutes(
       const curWal = await storage.getOrCreateWallet(targetId);
       await storage.updateWalletBalance(targetId, newBal.toFixed(2));
       // Auto-activate wallet if balance reaches $5 minimum and fire referral commission once
-      if (!curWal.activated && newBal >= 5) {
+      if (!curWal.activated && newBal > 5) {
         await storage.activateWallet(targetId);
         const adminAdjustmentReferralResult = await creditReferrerCommissionOnce(targetId, newBal, "personal wallet activation");
         if (!adminAdjustmentReferralResult.credited) console.log(`[REFERRAL] No admin-adjusted wallet activation commission credited for user ${targetId}`);
@@ -3527,7 +3527,7 @@ export async function registerRoutes(
       const newBal = (parseFloat(wallet.balance) + credit).toFixed(2);
       await storage.updateWalletBalance(targetId, newBal);
       // Auto-activate wallet if balance now meets $5 minimum
-      if (!wallet.activated && parseFloat(newBal) >= 5) await storage.activateWallet(targetId);
+      if (!wallet.activated && parseFloat(newBal) > 5) await storage.activateWallet(targetId);
       await storage.createTransaction({ userId: targetId, type: "admin_credit", amount: credit.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin credit: ${note}` : "Admin credit" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Credited ✓", message: `$${credit.toFixed(2)} has been added to your wallet by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
       pushToUser(targetId, "notification", notif);
@@ -4594,7 +4594,7 @@ export async function registerRoutes(
       const sqPerAffiliate = sqAffiliateCount > 0 ? sqAffiliateCut / sqAffiliateCount : 0;
       await storage.recordAffiliateTradeShare(null, sqAffiliateCut.toFixed(6), sqAffiliateCount, sqPerAffiliate.toFixed(6), "personal_wallet_squad");
       // Activate wallet on first funding ≥ $5 and credit referral commission
-      if (!squadWallet.activated && parseFloat(newBalance) >= 5) {
+      if (!squadWallet.activated && parseFloat(newBalance) > 5) {
         try {
           await storage.activateWallet(userId);
           const activationReferralResult = await creditReferrerCommissionOnce(userId, gross, "personal wallet activation");
@@ -4671,7 +4671,7 @@ export async function registerRoutes(
             const wkAffCount = await storage.getAffiliateCount();
             const wkPerAff = wkAffCount > 0 ? wkAffiliateCut / wkAffCount : 0;
             await storage.recordAffiliateTradeShare(null, wkAffiliateCut.toFixed(6), wkAffCount, wkPerAff.toFixed(6), "personal_wallet_squad_webhook");
-            if (!wl.activated && parseFloat(newBal) >= 5) {
+            if (!wl.activated && parseFloat(newBal) > 5) {
               await storage.activateWallet(userId);
               const webhookReferralResult = await creditReferrerCommissionOnce(userId, wkGross, "personal wallet activation");
               if (!webhookReferralResult.credited) console.log(`[REFERRAL] No Squad webhook wallet activation commission credited for user ${userId}`);
@@ -4884,7 +4884,7 @@ export async function registerRoutes(
     const affCount = await storage.getAffiliateCount();
     const perAff = affCount > 0 ? affiliateCut / affCount : 0;
     await storage.recordAffiliateTradeShare(null, affiliateCut.toFixed(6), affCount, perAff.toFixed(6), `personal_wallet_${method}`);
-    if (!w.activated && parseFloat(newBal) >= 5) {
+    if (!w.activated && parseFloat(newBal) > 5) {
       try {
         await storage.activateWallet(userId);
         await creditReferrerCommissionOnce(userId, gross, "personal wallet activation");
@@ -4976,7 +4976,7 @@ export async function registerRoutes(
       const psPerAff = psAffCount > 0 ? psAffiliateCut / psAffCount : 0;
       await storage.recordAffiliateTradeShare(null, psAffiliateCut.toFixed(6), psAffCount, psPerAff.toFixed(6), "personal_wallet_paystack");
       // Activate wallet on first funding ≥ $5 and credit referral commission
-      if (!pstackWallet.activated && parseFloat(psNewBalance) >= 5) {
+      if (!pstackWallet.activated && parseFloat(psNewBalance) > 5) {
         try {
           await storage.activateWallet(userId);
           const paystackReferralResult = await creditReferrerCommissionOnce(userId, psGross, "personal wallet activation");

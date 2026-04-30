@@ -171,7 +171,7 @@ export default function QCESection() {
                 : <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] shrink-0">Not activated</Badge>}
             </div>
             <p className="text-xs text-muted-foreground">
-              {isActivated ? `Balance: $${qceBalance.toFixed(2)} · Eligibility: ${eligibilityPct.toFixed(1)}%` : "Activate with min $5 to start building credit eligibility"}
+              {isActivated ? `Balance: $${qceBalance.toFixed(2)} · Eligibility: ${eligibilityPct.toFixed(1)}%` : "Activate with above $5 to start building credit eligibility"}
             </p>
           </div>
           <div className="flex gap-2 mt-4">
@@ -300,7 +300,7 @@ export default function QCESection() {
 
             {!isActivated && (
               <Button onClick={() => setContributeOpen(true)} className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-activate-qce">
-                <Zap className="w-4 h-4 mr-2" /> Activate QCE SwiftVault — min $5
+                <Zap className="w-4 h-4 mr-2" /> Activate QCE SwiftVault — above $5
               </Button>
             )}
 

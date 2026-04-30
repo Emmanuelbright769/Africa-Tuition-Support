@@ -181,7 +181,7 @@ export default function WalletSection() {
   const cryptoDepositMutation = useMutation({
     mutationFn: async () => {
       const amount = parseFloat(cryptoAmount);
-      if (!amount || amount < 5) throw new Error("Crypto deposit must be above $5");
+      if (!amount || amount <= 5) throw new Error("Crypto deposit must be above $5");
       if (!cryptoTxHash.trim()) throw new Error("Transaction hash is required");
       const res = await apiRequest("POST", "/api/wallet/deposit", {
         amountUsd: amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,
@@ -812,7 +812,7 @@ export default function WalletSection() {
                 {/* Amount */}
                 <div>
                   <Label htmlFor="crypto-amount">Amount (USD)</Label>
-                  <Input id="crypto-amount" type="number" min={5} step={0.01} placeholder="Min $5.00"
+                  <Input id="crypto-amount" type="number" min={5.01} step={0.01} placeholder="Above $5.00"
                     value={cryptoAmount} onChange={e => setCryptoAmount(e.target.value)}
                     className="mt-1 text-lg font-bold" data-testid="input-crypto-amount" />
                   {parseFloat(cryptoAmount) > 0 && (
@@ -838,7 +838,7 @@ export default function WalletSection() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => setFundOpen(false)}>Cancel</Button>
                 <Button onClick={() => cryptoDepositMutation.mutate()}
-                  disabled={cryptoDepositMutation.isPending || !cryptoAmount || parseFloat(cryptoAmount) < 5 || !cryptoTxHash.trim()}
+                  disabled={cryptoDepositMutation.isPending || !cryptoAmount || parseFloat(cryptoAmount) <= 5 || !cryptoTxHash.trim()}
                   className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold" data-testid="btn-submit-crypto">
                   {cryptoDepositMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Coins className="w-4 h-4 mr-2" />}
                   Submit Deposit

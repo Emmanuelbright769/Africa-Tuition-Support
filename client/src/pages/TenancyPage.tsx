@@ -36,7 +36,7 @@ export default function TenancyPage() {
   const { mode, setMode } = useTheme();
   const { toast } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [tab, setTab] = useState<"browse" | "landlord" | "how" | "calculator">("browse");
+  const [tab, setTab] = useState<"landlord" | "how" | "calculator">("landlord");
   const [listOpen, setListOpen] = useState(false);
   const [applyProp, setApplyProp] = useState<any>(null);
 
@@ -114,10 +114,10 @@ export default function TenancyPage() {
             </div>
           </div>
           <div className="hidden md:flex items-center gap-2">
-            {["browse", "landlord", "how", "calculator"].map((t) => (
+            {["landlord", "how", "calculator"].map((t) => (
               <button key={t} onClick={() => setTab(t as any)}
                 className={`px-3 py-1.5 text-sm rounded-full font-medium transition-colors ${tab === t ? "bg-tsia-green text-white" : "text-muted-foreground hover:text-foreground"}`}>
-                {t === "browse" ? "Browse Properties" : t === "landlord" ? "List Property" : t === "how" ? "How It Works" : "Calculator"}
+                {t === "landlord" ? "List Property" : t === "how" ? "How It Works" : "Calculator"}
               </button>
             ))}
             <div className="flex items-center bg-muted rounded-full p-1 ml-2">
@@ -137,10 +137,10 @@ export default function TenancyPage() {
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
               className="md:hidden border-t border-border bg-background overflow-hidden">
               <div className="flex flex-col p-4 gap-2">
-                {["browse", "landlord", "how", "calculator"].map((t) => (
+                {["landlord", "how", "calculator"].map((t) => (
                   <button key={t} onClick={() => { setTab(t as any); setMenuOpen(false); }}
                     className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? "bg-tsia-green/10 text-tsia-green" : "hover:bg-muted"}`}>
-                    {t === "browse" ? "Browse Properties" : t === "landlord" ? "List Property" : t === "how" ? "How It Works" : "Calculator"}
+                    {t === "landlord" ? "List Property" : t === "how" ? "How It Works" : "Calculator"}
                   </button>
                 ))}
               </div>
@@ -161,8 +161,8 @@ export default function TenancyPage() {
               Landlords get a <strong>lump-sum payment upfront</strong>. Tenants pay in <strong>easy monthly installments</strong>. TSIA bridges the gap — no more massive annual rent demands.
             </p>
             <div className="flex flex-wrap justify-center gap-3 mt-6">
-              <Button className="bg-tsia-green hover:bg-tsia-green/90 text-white" onClick={() => setTab("browse")} data-testid="button-browse-properties">Browse Properties</Button>
-              <Button variant="outline" onClick={() => user ? setListOpen(true) : setLocation("/login")} data-testid="button-list-property">List Your Property</Button>
+              <Button className="bg-tsia-green hover:bg-tsia-green/90 text-white" onClick={() => user ? setListOpen(true) : setLocation("/login")} data-testid="button-list-property">List Your Property</Button>
+              <Button variant="outline" onClick={() => setTab("how")} data-testid="button-how-it-works">How It Works</Button>
             </div>
           </motion.div>
         </div>
@@ -170,110 +170,6 @@ export default function TenancyPage() {
 
       <div className="max-w-5xl mx-auto px-4 py-8">
         <motion.div variants={container} initial="hidden" animate="visible" key={tab} className="space-y-6">
-
-          {/* BROWSE TAB */}
-          {tab === "browse" && (
-            <>
-              <motion.div variants={item}>
-                <h2 className="text-xl font-bold mb-1">Available Properties</h2>
-                <p className="text-muted-foreground text-sm">All properties include TSIA-managed installment payments for tenants.</p>
-              </motion.div>
-
-              {properties.length === 0 ? (
-                <motion.div variants={item}>
-                  <Card className="border-dashed">
-                    <CardContent className="py-16 text-center">
-                      <Building2 className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
-                      <p className="font-semibold text-muted-foreground">No properties available yet</p>
-                      <p className="text-sm text-muted-foreground mt-1">Be the first to list your property or check back soon.</p>
-                      <Button className="mt-4 bg-tsia-green hover:bg-tsia-green/90 text-white" onClick={() => user ? setListOpen(true) : setLocation("/login")}>List Your Property</Button>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ) : (
-                <div className="grid md:grid-cols-2 gap-4">
-                  {properties.map((prop: any) => {
-                    const annual = parseFloat(prop.annualRentNgn);
-                    const deal = calculateTenancyDeal(annual, prop.leasePeriodYears, parseFloat(prop.discountRate), parseFloat(prop.tenantInterestRate));
-                    return (
-                      <motion.div key={prop.id} variants={item}>
-                        <Card className="hover:shadow-lg transition-shadow border-0 shadow-md overflow-hidden">
-                          <div className="h-2 bg-gradient-to-r from-tsia-green to-tsia-gold" />
-                          <CardContent className="p-5">
-                            <div className="flex items-start justify-between mb-3">
-                              <div>
-                                <h3 className="font-bold text-base leading-tight">{prop.propertyName}</h3>
-                                <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                                  <MapPin className="w-3 h-3" /> {prop.city}, {prop.state}
-                                </div>
-                              </div>
-                              <Badge variant="outline" className="text-tsia-green border-tsia-green/30 bg-tsia-green/5">{prop.propertyType}</Badge>
-                            </div>
-                            <div className="flex gap-3 text-xs text-muted-foreground mb-3">
-                              <span className="flex items-center gap-1"><Bed className="w-3 h-3" /> {prop.bedrooms} Bed</span>
-                              <span className="flex items-center gap-1"><Bath className="w-3 h-3" /> {prop.bathrooms} Bath</span>
-                              <span className="flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {prop.leasePeriodYears}yr lease</span>
-                            </div>
-                            {prop.description && <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{prop.description}</p>}
-                            <div className="bg-muted/50 rounded-xl p-3 space-y-1.5 text-sm mb-4">
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Annual Rent</span>
-                                <span className="font-semibold">{formatNgn(annual)}</span>
-                              </div>
-                              <div className="flex justify-between text-tsia-green">
-                                <span>Monthly Installment</span>
-                                <span className="font-bold">{formatNgn(deal.monthlyTenantPayment)}/mo</span>
-                              </div>
-                              <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>Total over {prop.leasePeriodYears} years (5% interest)</span>
-                                <span>{formatNgn(deal.totalTenantPayable)}</span>
-                              </div>
-                            </div>
-                            {prop.amenities?.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mb-3">
-                                {prop.amenities.slice(0, 4).map((a: string) => (
-                                  <span key={a} className="text-xs bg-muted px-2 py-0.5 rounded-full">{a}</span>
-                                ))}
-                                {prop.amenities.length > 4 && <span className="text-xs text-muted-foreground">+{prop.amenities.length - 4} more</span>}
-                              </div>
-                            )}
-                            <Button className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white" onClick={() => user ? setApplyProp(prop) : setLocation("/login")} data-testid={`button-apply-lease-${prop.id}`}>
-                              Apply for Lease
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* My Leases */}
-              {user && myLeases.length > 0 && (
-                <motion.div variants={item}>
-                  <h3 className="font-bold text-lg mb-3 mt-6">My Active Leases</h3>
-                  <div className="space-y-3">
-                    {myLeases.map((lease: any) => (
-                      <Card key={lease.id} className="border-0 shadow-sm">
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-semibold">{lease.property?.propertyName}</p>
-                              <p className="text-sm text-muted-foreground">{lease.property?.city}, {lease.property?.state}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-tsia-green font-bold">{formatNgn(parseFloat(lease.monthlyPaymentNgn))}/mo</p>
-                              <Badge variant="outline" className="text-xs">{lease.status}</Badge>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </>
-          )}
 
           {/* LANDLORD TAB */}
           {tab === "landlord" && (

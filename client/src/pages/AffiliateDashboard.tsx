@@ -449,6 +449,8 @@ export default function AffiliateDashboard() {
   const [bep20Input, setBep20Input]     = useState("");
   const [showTxHistory, setShowTxHistory] = useState(false);
   const [showTradeTxHistory, setShowTradeTxHistory] = useState(false);
+  const [tradeTxPage, setTradeTxPage] = useState(0);
+  const TRADE_TX_PAGE_SIZE = 10;
   const [showTrustCategories, setShowTrustCategories] = useState(false);
   const [fundTradeOpen, setFundTradeOpen] = useState(false);
   const [fundTradeAmt, setFundTradeAmt]   = useState("");
@@ -1818,8 +1820,13 @@ export default function AffiliateDashboard() {
                             className="overflow-hidden"
                           >
                             <CardContent className="p-0">
-                              <div className="divide-y divide-border max-h-[360px] overflow-y-auto">
-                                {(tradeTxs as any[]).slice().reverse().map((tx: any) => {
+                              {(() => {
+                                const sorted = (tradeTxs as any[]).slice().reverse();
+                                const totalTxPages = Math.ceil(sorted.length / TRADE_TX_PAGE_SIZE);
+                                const txPage = sorted.slice(tradeTxPage * TRADE_TX_PAGE_SIZE, (tradeTxPage + 1) * TRADE_TX_PAGE_SIZE);
+                                return (<>
+                              <div className="divide-y divide-border">
+                                {txPage.map((tx: any) => {
                                   const net = parseFloat(tx.netAmount ?? tx.amountUsd ?? "0");
                                   const isPositive = net >= 0;
                                   const typeLabel: Record<string, string> = {
@@ -1865,6 +1872,21 @@ export default function AffiliateDashboard() {
                                   );
                                 })}
                               </div>
+                              {totalTxPages > 1 && (
+                                <div className="flex items-center justify-between px-4 py-3 border-t">
+                                  <button onClick={() => setTradeTxPage(p => Math.max(0, p - 1))} disabled={tradeTxPage === 0}
+                                    className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                    ← Prev
+                                  </button>
+                                  <span className="text-xs text-muted-foreground">Page {tradeTxPage + 1} of {totalTxPages}</span>
+                                  <button onClick={() => setTradeTxPage(p => Math.min(totalTxPages - 1, p + 1))} disabled={tradeTxPage >= totalTxPages - 1}
+                                    className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                    Next →
+                                  </button>
+                                </div>
+                              )}
+                              </>);
+                              })()}
                             </CardContent>
                           </motion.div>
                         )}

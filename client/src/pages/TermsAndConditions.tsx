@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, Shield, AlertTriangle, Globe, Scale, Lock, CreditCard, Users, TrendingUp, ShoppingBag, Home, Plane, Handshake } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 
-const EFFECTIVE_DATE = "1 April 2026";
+const EFFECTIVE_DATE = "1 May 2026";
 const COMPANY = "SMAKEMGGOLD Ltd";
 const RC = "1359954";
 const CONTACT_EMAIL = "legal@tsia.org";
@@ -267,6 +267,15 @@ export default function TermsAndConditions() {
               </Clause>
               <Clause num="7.7" title="Minimum Withdrawal">
                 <p>The minimum withdrawal amount is $1.00. Any transaction that would result in a negative balance will be rejected by the system.</p>
+              </Clause>
+              <Clause num="7.8" title="Virtual US Mastercard">
+                <p>Eligible users may request a virtual US Mastercard issued by TSIA for online USD transactions. A one-time issuance fee of <strong>$5.00</strong> is charged to your TSIA SwiftWallet. The virtual card is for personal use only and must not be used for illegal transactions. TSIA is not liable for any losses arising from the use of the virtual card by unauthorised third parties. Virtual cards are non-transferable and non-refundable once issued.</p>
+              </Clause>
+              <Clause num="7.9" title="Netflix Streaming Access">
+                <p>TSIA offers access to Netflix streaming through a platform-managed subscription at a subsidised rate of <strong>$5.00/month</strong>, billed from your TSIA SwiftWallet. This service is provided for convenience and is subject to Netflix's own Terms of Service. TSIA cannot guarantee uninterrupted access to Netflix content, which may vary by region. Subscription fees are non-refundable once the monthly access period has commenced.</p>
+              </Clause>
+              <Clause num="7.10" title="Deposit Allocation (Wallet Deposits)">
+                <p>Funds deposited into your TSIA SwiftWallet are allocated as follows: <strong>75%</strong> to your active wallet balance, <strong>20%</strong> to TSIA's operational reserve, and <strong>5%</strong> to the affiliate rewards pool. Service charges (airtime, data, bills) are processed at face value with <strong>no additional platform fee</strong>. Bank withdrawals attract a 7.5% VAT as set out in clause 7.2.</p>
               </Clause>
             </Section>
 

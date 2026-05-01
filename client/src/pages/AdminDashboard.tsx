@@ -155,6 +155,10 @@ export default function AdminDashboard() {
   const [wdNote, setWdNote]               = useState("");
   const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "", silverMin: "", silverMax: "", goldMin: "", goldMax: "", platinumMin: "", platinumMax: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [tradeForm, setTradeForm] = useState({ feeExchangeWithdraw: "", feeBankWithdraw: "", reserveRate: "", affiliateShareRate: "", minDeposit: "", minWithdraw: "", coAffiliatePoolRate: "" });
+  const [tradeSaved, setTradeSaved] = useState(false);
+  const [tosEmailState, setTosEmailState] = useState<"idle" | "sending" | "done">("idle");
+  const [tosEmailResult, setTosEmailResult] = useState("");
   const [openSlotsInput, setOpenSlotsInput] = useState("1");
   const [inviteEmail, setInviteEmail]     = useState("");
   const [inviteName,  setInviteName]      = useState("");
@@ -185,6 +189,7 @@ export default function AdminDashboard() {
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 600_000 });
   const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
+  const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" });
   const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
@@ -405,6 +410,22 @@ export default function AdminDashboard() {
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
       toast({ title: "Plan Prices Updated ✓", description: "New prices are live for all students immediately." });
+    },
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+
+  const saveTradeSettingsMutation = useMutation({
+    mutationFn: async (form: typeof tradeForm) => {
+      const res = await apiRequest("PUT", "/api/admin/trade-settings", form);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: () => {
+      refetchTradeSettings();
+      setTradeSaved(true);
+      setTimeout(() => setTradeSaved(false), 3000);
+      toast({ title: "Trade Settings Updated ✓", description: "New rates are stored and will apply to future trades." });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
@@ -2697,6 +2718,143 @@ export default function AdminDashboard() {
                           </p>
                         </div>
                       ))}
+                    </CardContent>
+                  </Card>
+
+                  {/* ── Trade Market Rate Controls ──────────────────────── */}
+                  {(() => {
+                    const td = tradeSettingsData;
+                    const tf = {
+                      feeExchangeWithdraw: tradeForm.feeExchangeWithdraw || (td ? (td.feeExchangeWithdraw * 100).toFixed(2) : "5.00"),
+                      feeBankWithdraw:     tradeForm.feeBankWithdraw     || (td ? (td.feeBankWithdraw * 100).toFixed(2)     : "8.00"),
+                      reserveRate:         tradeForm.reserveRate         || (td ? (td.reserveRate * 100).toFixed(2)         : "20.00"),
+                      affiliateShareRate:  tradeForm.affiliateShareRate  || (td ? (td.affiliateShareRate * 100).toFixed(2)  : "5.00"),
+                      minDeposit:          tradeForm.minDeposit          || (td ? td.minDeposit.toString()                  : "10"),
+                      minWithdraw:         tradeForm.minWithdraw         || (td ? td.minWithdraw.toString()                 : "5"),
+                      coAffiliatePoolRate: tradeForm.coAffiliatePoolRate || (td ? (td.coAffiliatePoolRate != null ? (td.coAffiliatePoolRate * 100).toFixed(2) : "") : ""),
+                    };
+                    const setTf = (k: keyof typeof tradeForm, v: string) => setTradeForm(f => ({ ...tf, [k]: v }));
+                    const submitTrade = () => {
+                      const payload = {
+                        feeExchangeWithdraw: (parseFloat(tf.feeExchangeWithdraw) / 100).toString(),
+                        feeBankWithdraw:     (parseFloat(tf.feeBankWithdraw) / 100).toString(),
+                        reserveRate:         (parseFloat(tf.reserveRate) / 100).toString(),
+                        affiliateShareRate:  (parseFloat(tf.affiliateShareRate) / 100).toString(),
+                        minDeposit:          tf.minDeposit,
+                        minWithdraw:         tf.minWithdraw,
+                        coAffiliatePoolRate: tf.coAffiliatePoolRate ? (parseFloat(tf.coAffiliatePoolRate) / 100).toString() : "",
+                      };
+                      saveTradeSettingsMutation.mutate(payload as any);
+                    };
+                    return (
+                      <Card className="border-0 shadow-sm">
+                        <CardHeader className="border-b pb-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center"><TrendingUp className="w-5 h-5 text-blue-500" /></div>
+                            <div>
+                              <CardTitle className="text-base">Trade Market Rate Controls</CardTitle>
+                              <CardDescription>Set fee rates and limits for the TSIA trade market. Changes apply to new transactions.</CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-6 space-y-5">
+                          <div className="grid grid-cols-2 gap-4">
+                            {[
+                              { key: "feeExchangeWithdraw" as const, label: "Exchange Withdraw Fee", hint: "Fee on USDT→wallet" },
+                              { key: "feeBankWithdraw"     as const, label: "Bank Withdraw Fee",     hint: "Fee on trade→bank" },
+                              { key: "reserveRate"         as const, label: "Reserve Fund Rate",     hint: "% of deposits to reserve" },
+                              { key: "affiliateShareRate"  as const, label: "Affiliate Share Rate",  hint: "Affiliate cut per deposit" },
+                            ].map(({ key, label, hint }) => (
+                              <div key={key} className="space-y-1">
+                                <Label className="font-semibold text-sm">{label}</Label>
+                                <div className="relative">
+                                  <Input type="number" min="0" max="50" step="0.01" className="pr-8 h-10 bg-muted/30 font-semibold"
+                                    value={tf[key]} onChange={e => setTf(key, e.target.value)} data-testid={`input-trade-${key}`} />
+                                  <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">{hint}</p>
+                              </div>
+                            ))}
+                            {[
+                              { key: "minDeposit"  as const, label: "Min Trade Deposit ($)",  hint: "Minimum deposit amount" },
+                              { key: "minWithdraw" as const, label: "Min Trade Withdraw ($)", hint: "Minimum withdraw amount" },
+                            ].map(({ key, label, hint }) => (
+                              <div key={key} className="space-y-1">
+                                <Label className="font-semibold text-sm">{label}</Label>
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">$</span>
+                                  <Input type="number" min="1" step="1" className="pl-7 h-10 bg-muted/30 font-semibold"
+                                    value={tf[key]} onChange={e => setTf(key, e.target.value)} data-testid={`input-trade-${key}`} />
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">{hint}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="space-y-1 border-t pt-4">
+                            <Label className="font-semibold text-sm">Co-Affiliate Pool Rate Override (%)</Label>
+                            <div className="relative max-w-[200px]">
+                              <Input type="number" min="0" max="100" step="0.01" className="pr-8 h-10 bg-muted/30 font-semibold"
+                                placeholder="Auto (tiered)"
+                                value={tf.coAffiliatePoolRate} onChange={e => setTf("coAffiliatePoolRate", e.target.value)}
+                                data-testid="input-co-affiliate-pool-rate" />
+                              <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            </div>
+                            <p className="text-xs text-muted-foreground">Leave blank to use automatic tiered rate (20% → 15% → 10% → 5% by enrollment count).</p>
+                          </div>
+                          <Button className="w-full h-11 font-semibold bg-blue-600 hover:bg-blue-700" disabled={saveTradeSettingsMutation.isPending}
+                            onClick={submitTrade} data-testid="button-save-trade-settings">
+                            {saveTradeSettingsMutation.isPending
+                              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Saving…</>
+                              : tradeSaved ? <><CheckCircle2 className="w-4 h-4 mr-2" />Saved!</> : <><Save className="w-4 h-4 mr-2" />Save Trade Settings</>}
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+
+                  {/* ── Terms of Service — Email All Users ──────────────── */}
+                  <Card className="border-0 shadow-sm border-l-4 border-l-amber-400">
+                    <CardHeader className="border-b pb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center"><Mail className="w-5 h-5 text-amber-500" /></div>
+                        <div>
+                          <CardTitle className="text-base">Terms of Service — Notify All Users</CardTitle>
+                          <CardDescription>Send a ToS update email to every registered user via Brevo.</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        This will send an email to <strong>all registered students and affiliates</strong> notifying them of the updated Terms of Service. The email will include a link to the updated ToS page.
+                      </p>
+                      {tosEmailResult && (
+                        <div className={`text-sm px-4 py-3 rounded-xl font-semibold ${tosEmailResult.includes("failed") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-700"}`}>
+                          {tosEmailResult}
+                        </div>
+                      )}
+                      <Button
+                        className="w-full h-11 font-semibold bg-amber-500 hover:bg-amber-600 text-white"
+                        disabled={tosEmailState === "sending"}
+                        onClick={async () => {
+                          setTosEmailState("sending");
+                          setTosEmailResult("");
+                          try {
+                            const res = await apiRequest("POST", "/api/admin/email-tos-update");
+                            const d = await res.json();
+                            setTosEmailResult(d.message);
+                            setTosEmailState("done");
+                          } catch (e: any) {
+                            setTosEmailResult("Error: " + e.message);
+                            setTosEmailState("idle");
+                          }
+                        }}
+                        data-testid="button-email-tos-update">
+                        {tosEmailState === "sending"
+                          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Sending emails…</>
+                          : tosEmailState === "done"
+                            ? <><CheckCircle2 className="w-4 h-4 mr-2" />Emails Sent</>
+                            : <><Mail className="w-4 h-4 mr-2" />Send ToS Update to All Users</>}
+                      </Button>
                     </CardContent>
                   </Card>
 

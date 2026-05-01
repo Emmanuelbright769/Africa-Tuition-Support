@@ -838,9 +838,9 @@ export type InsertQceTransaction = z.infer<typeof insertQceTransactionSchema>;
 export type QceTransaction = typeof qceTransactions.$inferSelect;
 
 export function calculateQceEligibility(daysActive: number, balance: number): number {
-  if (balance < QCE.MIN_BALANCE || daysActive === 0) return 0;
-  const daysPct = Math.min(daysActive / QCE.PERIOD_DAYS, 1);
-  return Math.round(daysPct * QCE.MAX_ELIGIBILITY * 100) / 100;
+  if (balance < QCE.MIN_BALANCE) return 0;
+  // Instant 30% credit eligibility on first deposit — no waiting period
+  return QCE.MAX_ELIGIBILITY;
 }
 
 // ─── PRICE ALERTS & CATEGORY SUBSCRIPTIONS ───────────────────────────────────
@@ -998,6 +998,39 @@ export const DEFAULT_TIER_PAYOUTS = {
   tier_platinum_min: 225,
   tier_platinum_max: 230,
 } as const;
+
+// ─── VIRTUAL CARDS ────────────────────────────────────────────────────────────
+export const virtualCards = pgTable("virtual_cards", {
+  id:         integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:     integer("user_id").notNull().references(() => users.id),
+  cardNumber: text("card_number").notNull(),
+  cardHolder: text("card_holder").notNull(),
+  expiryMonth: text("expiry_month").notNull(),
+  expiryYear:  text("expiry_year").notNull(),
+  cvv:         text("cvv").notNull(),
+  status:      text("status").notNull().default("active"),
+  balance:     decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertVirtualCardSchema = createInsertSchema(virtualCards).omit({ id: true, createdAt: true });
+export type InsertVirtualCard = z.infer<typeof insertVirtualCardSchema>;
+export type VirtualCard = typeof virtualCards.$inferSelect;
+
+// ─── MOVIE SUBSCRIPTIONS ──────────────────────────────────────────────────────
+export const movieSubscriptions = pgTable("movie_subscriptions", {
+  id:         integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:     integer("user_id").notNull().references(() => users.id),
+  plan:       text("plan").notNull().default("netflix"),
+  status:     text("status").notNull().default("active"),
+  expiresAt:  timestamp("expires_at").notNull(),
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
+  renewedAt:  timestamp("renewed_at"),
+});
+
+export const insertMovieSubscriptionSchema = createInsertSchema(movieSubscriptions).omit({ id: true, createdAt: true });
+export type InsertMovieSubscription = z.infer<typeof insertMovieSubscriptionSchema>;
+export type MovieSubscription = typeof movieSubscriptions.$inferSelect;
 
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [

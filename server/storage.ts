@@ -14,6 +14,8 @@ import {
   sponsorCohorts, cohortCodes, sponsorshipBatches,
   withdrawalRequests, withdrawalOtps,
   personalInvitations, type PersonalInvitation,
+  virtualCards, type VirtualCard, type InsertVirtualCard,
+  movieSubscriptions, type MovieSubscription,
   platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
   type User, type InsertUser,
   type Verification, type InsertVerification,
@@ -272,6 +274,14 @@ export interface IStorage {
   setPlatformSetting(key: string, value: string): Promise<void>;
   getPlanPrices(): Promise<{ plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }>;
   getTierPayouts(): Promise<{ silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } }>;
+
+  // Virtual Cards
+  getVirtualCard(userId: number): Promise<VirtualCard | null>;
+  createVirtualCard(data: InsertVirtualCard): Promise<VirtualCard>;
+
+  // Movie Subscriptions
+  getMovieSubscription(userId: number): Promise<MovieSubscription | null>;
+  createOrRenewMovieSubscription(userId: number): Promise<MovieSubscription>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2001,6 +2011,41 @@ export class DatabaseStorage implements IStorage {
       gold:     { min: map["tier_gold_min"]     ?? DEFAULT_TIER_PAYOUTS.tier_gold_min,     max: map["tier_gold_max"]     ?? DEFAULT_TIER_PAYOUTS.tier_gold_max },
       platinum: { min: map["tier_platinum_min"] ?? DEFAULT_TIER_PAYOUTS.tier_platinum_min, max: map["tier_platinum_max"] ?? DEFAULT_TIER_PAYOUTS.tier_platinum_max },
     };
+  }
+
+  async getVirtualCard(userId: number): Promise<VirtualCard | null> {
+    const [card] = await db.select().from(virtualCards).where(eq(virtualCards.userId, userId)).limit(1);
+    return card ?? null;
+  }
+
+  async createVirtualCard(data: InsertVirtualCard): Promise<VirtualCard> {
+    const [card] = await db.insert(virtualCards).values(data).returning();
+    return card;
+  }
+
+  async getMovieSubscription(userId: number): Promise<MovieSubscription | null> {
+    const [sub] = await db.select().from(movieSubscriptions)
+      .where(and(eq(movieSubscriptions.userId, userId), eq(movieSubscriptions.status, "active")))
+      .orderBy(desc(movieSubscriptions.createdAt)).limit(1);
+    return sub ?? null;
+  }
+
+  async createOrRenewMovieSubscription(userId: number): Promise<MovieSubscription> {
+    const existing = await this.getMovieSubscription(userId);
+    const now = new Date();
+    const expiresAt = new Date(now);
+    expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+    if (existing) {
+      const newExpiry = new Date(existing.expiresAt);
+      newExpiry.setMonth(newExpiry.getMonth() + 1);
+      const [updated] = await db.update(movieSubscriptions)
+        .set({ expiresAt: newExpiry, renewedAt: now })
+        .where(eq(movieSubscriptions.id, existing.id)).returning();
+      return updated;
+    }
+    const [sub] = await db.insert(movieSubscriptions).values({ userId, plan: "netflix", status: "active", expiresAt }).returning();
+    return sub;
   }
 }
 

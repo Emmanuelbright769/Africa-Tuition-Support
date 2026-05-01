@@ -10,7 +10,8 @@ import {
   ArrowUpRight, ArrowDownLeft, RefreshCw, Receipt, Wifi, Eye, EyeOff,
   ChevronRight, ArrowLeft, ArrowRight, Send, Bell, TrendingUp, TrendingDown,
   Loader2, CheckCircle2, X, Zap, Phone, Wallet, Gamepad2, Delete,
-  Copy, Search, ChevronDown, AlertCircle, Users, Building2, Clock
+  Copy, Search, ChevronDown, AlertCircle, Users, Building2, Clock,
+  CreditCard, Shield, Lock
 } from "lucide-react";
 
 // ─── Weekend maintenance block helper (Fri 23:59 – Mon 08:00 WAT) ─────────────
@@ -272,6 +273,29 @@ export default function FinancialHub() {
   const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"] });
   const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
   const { data: banks = [] }     = useQuery<Bank[]>({ queryKey: ["/api/wallet/banks"] });
+  const { data: vcData, refetch: refetchCard } = useQuery<{ card: any | null }>({ queryKey: ["/api/fintech/virtual-card"] });
+
+  const [cardRevealed, setCardRevealed] = useState(false);
+  const [vcCopied, setVcCopied]         = useState<string | null>(null);
+
+  const copyToClipboard = (val: string, label: string) => {
+    navigator.clipboard.writeText(val.replace(/\s/g, "")).then(() => {
+      setVcCopied(label);
+      setTimeout(() => setVcCopied(null), 2000);
+    });
+  };
+
+  const purchaseCardMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/fintech/virtual-card/purchase").then(r => r.json()),
+    onSuccess: (data) => {
+      if (data.message) { toast({ title: "Error", description: data.message, variant: "destructive" }); return; }
+      refetchCard();
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      toast({ title: "💳 Virtual Card Issued!", description: "Your US Mastercard has been created." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const balance  = parseFloat(wallet?.balance ?? "0");
   const totalIn  = (txHistory as any[]).filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
@@ -673,6 +697,98 @@ export default function FinancialHub() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Virtual Card */}
+      <div>
+        <h3 className="font-bold text-sm mb-3">Virtual US Mastercard</h3>
+        {vcData?.card ? (
+          <div className="relative rounded-3xl overflow-hidden shadow-xl" style={{ background: "linear-gradient(135deg, #1a472a 0%, #2d6a4f 50%, #b8860b 100%)" }}>
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute top-4 right-4 w-32 h-32 rounded-full bg-white/20" />
+              <div className="absolute bottom-4 left-8 w-24 h-24 rounded-full bg-white/10" />
+            </div>
+            <div className="relative p-5">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                    <Shield className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="text-white/80 text-xs font-semibold tracking-wider">TSIA SwiftWallet</span>
+                </div>
+                <div className="text-right">
+                  <p className="text-white/60 text-[10px] uppercase tracking-widest">Virtual</p>
+                  <p className="text-white font-bold text-sm">MASTERCARD</p>
+                </div>
+              </div>
+              <div className="mb-4">
+                <p className="text-white/60 text-[10px] uppercase tracking-widest mb-1">Card Number</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-white font-mono text-base tracking-widest font-bold">
+                    {cardRevealed ? vcData.card.cardNumber : vcData.card.cardNumber.replace(/\d(?=.* \d{4}$)/g, "●").replace(/\d{4} \d{4} \d{4}/, "●●●● ●●●● ●●●●")}
+                  </p>
+                  <button onClick={() => copyToClipboard(vcData.card.cardNumber, "card")} className="text-white/60 hover:text-white transition-colors" data-testid="btn-copy-card-number">
+                    {vcCopied === "card" ? <CheckCircle2 className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-white/60 text-[10px] uppercase tracking-widest mb-0.5">Card Holder</p>
+                  <p className="text-white font-semibold text-sm">{vcData.card.cardHolder}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-white/60 text-[10px] uppercase tracking-widest mb-0.5">Expires</p>
+                  <p className="text-white font-semibold text-sm">{vcData.card.expiryMonth}/{vcData.card.expiryYear}</p>
+                </div>
+                <div>
+                  <p className="text-white/60 text-[10px] uppercase tracking-widest mb-0.5">CVV</p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-white font-mono font-semibold text-sm">{cardRevealed ? vcData.card.cvv : "●●●"}</p>
+                    {cardRevealed && (
+                      <button onClick={() => copyToClipboard(vcData.card.cvv, "cvv")} className="text-white/60 hover:text-white transition-colors" data-testid="btn-copy-cvv">
+                        {vcCopied === "cvv" ? <CheckCircle2 className="w-3 h-3 text-green-300" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="relative px-5 py-3 border-t border-white/10 flex items-center justify-between">
+              <div className="flex gap-1">
+                <div className="w-7 h-7 rounded-full bg-red-500 opacity-90" />
+                <div className="w-7 h-7 rounded-full bg-amber-400 opacity-90 -ml-3" />
+              </div>
+              <button onClick={() => setCardRevealed(p => !p)}
+                className="flex items-center gap-1.5 text-white/70 hover:text-white text-xs font-semibold transition-colors"
+                data-testid="btn-toggle-card-reveal">
+                {cardRevealed ? <><EyeOff className="w-3.5 h-3.5" /> Hide Details</> : <><Eye className="w-3.5 h-3.5" /> Reveal Details</>}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border-2 border-dashed border-muted-foreground/20 p-6 flex flex-col items-center gap-3 bg-card/50">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-forest-green/20 to-tsia-gold/20 flex items-center justify-center">
+              <CreditCard className="w-7 h-7 text-tsia-gold" />
+            </div>
+            <div className="text-center">
+              <p className="font-bold text-sm">Get a Virtual US Mastercard</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Use for online USD purchases & subscriptions worldwide</p>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Lock className="w-3 h-3" />
+              <span>One-time fee: <span className="font-bold text-tsia-gold">$5.00</span> from wallet balance</span>
+            </div>
+            <Button size="sm"
+              onClick={() => purchaseCardMutation.mutate()}
+              disabled={purchaseCardMutation.isPending || balance < 5}
+              className="bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl px-6"
+              data-testid="btn-purchase-virtual-card">
+              {purchaseCardMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing…</> : "Purchase Card — $5"}
+            </Button>
+            {balance < 5 && <p className="text-xs text-amber-500">Fund your wallet first (min $5)</p>}
+          </div>
+        )}
       </div>
 
       {/* History */}

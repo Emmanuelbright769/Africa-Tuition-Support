@@ -137,6 +137,10 @@ export default function WalletPage() {
 
   // ── History ─────────────────────────────────────────────────────────────
   const [historyTab, setHistoryTab] = useState<"ledger" | "deposits" | "bills">("ledger");
+  const [ledgerPage, setLedgerPage]     = useState(0);
+  const [depositsPage, setDepositsPage] = useState(0);
+  const [billsPage, setBillsPage]       = useState(0);
+  const PAGE_SIZE = 10;
 
   // ── KYC state ───────────────────────────────────────────────────────────
   const [kycBvn, setKycBvn]                   = useState("");
@@ -1005,12 +1009,17 @@ export default function WalletPage() {
             </div>
 
             <div className="space-y-2">
-              {historyTab === "ledger" && (txLedger.length === 0 ? (
+              {historyTab === "ledger" && (() => {
+                const sorted = [...txLedger].reverse();
+                const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+                const page = sorted.slice(ledgerPage * PAGE_SIZE, (ledgerPage + 1) * PAGE_SIZE);
+                return sorted.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <Receipt className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No transactions yet</p>
                 </div>
-              ) : [...txLedger].reverse().map(tx => {
+              ) : (<>
+              {page.map(tx => {
                 const amt = parseFloat(tx.amount);
                 const fee = parseFloat(tx.fee ?? "0");
                 const isCredit = amt > 0;
@@ -1052,14 +1061,33 @@ export default function WalletPage() {
                     </div>
                   </div>
                 );
-              }))}
+              })}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                  <button onClick={() => setLedgerPage(p => Math.max(0, p - 1))} disabled={ledgerPage === 0}
+                    className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <ArrowLeft className="w-3.5 h-3.5" /> Prev
+                  </button>
+                  <span className="text-xs text-muted-foreground">Page {ledgerPage + 1} of {totalPages}</span>
+                  <button onClick={() => setLedgerPage(p => Math.min(totalPages - 1, p + 1))} disabled={ledgerPage >= totalPages - 1}
+                    className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    Next <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+              </>);
+              })()}
 
-              {historyTab === "deposits" && (deposits.length === 0 ? (
+              {historyTab === "deposits" && (() => {
+                const totalPages = Math.ceil(deposits.length / PAGE_SIZE);
+                const page = deposits.slice(depositsPage * PAGE_SIZE, (depositsPage + 1) * PAGE_SIZE);
+                return deposits.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <Receipt className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No deposits yet</p>
                 </div>
-              ) : deposits.map(d => (
+              ) : (<>
+                {page.map(d => (
                 <div key={d.id} className="flex items-center justify-between bg-card rounded-2xl px-4 py-3 border">
                   <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${(d.walletType === "squad" || d.walletType === "paystack") ? "bg-blue-50 dark:bg-blue-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
@@ -1074,15 +1102,33 @@ export default function WalletPage() {
                   </div>
                   {statusBadge(d.status)}
                 </div>
-              )))}
+                ))}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button onClick={() => setDepositsPage(p => Math.max(0, p - 1))} disabled={depositsPage === 0}
+                      className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      <ArrowLeft className="w-3.5 h-3.5" /> Prev
+                    </button>
+                    <span className="text-xs text-muted-foreground">Page {depositsPage + 1} of {totalPages}</span>
+                    <button onClick={() => setDepositsPage(p => Math.min(totalPages - 1, p + 1))} disabled={depositsPage >= totalPages - 1}
+                      className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      Next <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </>);
+              })()}
 
-
-              {historyTab === "bills" && (bills.length === 0 ? (
+              {historyTab === "bills" && (() => {
+                const totalPages = Math.ceil(bills.length / PAGE_SIZE);
+                const page = bills.slice(billsPage * PAGE_SIZE, (billsPage + 1) * PAGE_SIZE);
+                return bills.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <Receipt className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No bill payments yet</p>
                 </div>
-              ) : bills.map(b => (
+              ) : (<>
+                {page.map(b => (
                 <div key={b.id} className="flex items-center justify-between bg-card rounded-2xl px-4 py-3 border">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
@@ -1095,7 +1141,22 @@ export default function WalletPage() {
                   </div>
                   {statusBadge(b.status)}
                 </div>
-              )))}
+                ))}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button onClick={() => setBillsPage(p => Math.max(0, p - 1))} disabled={billsPage === 0}
+                      className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      <ArrowLeft className="w-3.5 h-3.5" /> Prev
+                    </button>
+                    <span className="text-xs text-muted-foreground">Page {billsPage + 1} of {totalPages}</span>
+                    <button onClick={() => setBillsPage(p => Math.min(totalPages - 1, p + 1))} disabled={billsPage >= totalPages - 1}
+                      className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      Next <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </>);
+              })()}
             </div>
           </motion.div>
 

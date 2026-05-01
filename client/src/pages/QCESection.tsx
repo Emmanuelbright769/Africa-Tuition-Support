@@ -50,6 +50,63 @@ const V_CONNECT_VEHICLES = [
 
 const iv = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
+// ── QCE Credit Calculator ────────────────────────────────────────────────────
+function QceCreditCalculator({ qceBalance, eligibilityPct }: { qceBalance: number; eligibilityPct: number }) {
+  const [calcAmount, setCalcAmount] = useState("1000");
+  const [calcTerm, setCalcTerm] = useState(12);
+  const INTEREST_RATE = 0.15; // 15% per year
+
+  const maxCredit = parseFloat(((qceBalance * eligibilityPct) / 100).toFixed(2));
+  const requestedAmt = parseFloat(calcAmount) || 0;
+  const isOverLimit = requestedAmt > maxCredit;
+  const interestTotal = requestedAmt * INTEREST_RATE * (calcTerm / 12);
+  const totalRepay = requestedAmt + interestTotal;
+  const monthlyPayment = totalRepay / calcTerm;
+
+  return (
+    <Card className="shadow-sm border-0 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20">
+      <CardHeader className="pb-2 pt-4">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-purple-600" /> Credit Calculator
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pb-4 space-y-3">
+        <div className="bg-card rounded-xl p-3 flex justify-between items-center">
+          <span className="text-xs text-muted-foreground">Max Credit Limit (30% of balance)</span>
+          <span className="font-bold text-tsia-green text-sm">${maxCredit.toFixed(2)}</span>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Credit Amount ($)</Label>
+          <Input type="number" min="1" max={maxCredit} value={calcAmount}
+            onChange={e => setCalcAmount(e.target.value)} placeholder="Enter amount"
+            className={`h-9 text-sm ${isOverLimit ? "border-red-400" : ""}`} data-testid="input-qce-calc-amount" />
+          {isOverLimit && <p className="text-[10px] text-red-500">Exceeds your max credit limit of ${maxCredit.toFixed(2)}</p>}
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Repayment Term</Label>
+          <div className="flex gap-2 flex-wrap">
+            {[6, 12, 18, 24].map(m => (
+              <button key={m} onClick={() => setCalcTerm(m)} data-testid={`btn-calc-term-${m}`}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${calcTerm === m ? "bg-purple-600 text-white border-purple-600" : "bg-muted border-border hover:border-purple-400"}`}>
+                {m}mo
+              </button>
+            ))}
+          </div>
+        </div>
+        {requestedAmt > 0 && !isOverLimit && (
+          <div className="bg-card rounded-xl p-3 space-y-2 text-xs">
+            <div className="flex justify-between"><span className="text-muted-foreground">Credit Amount</span><span className="font-semibold">${requestedAmt.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Interest (15% p.a.)</span><span className="font-semibold">${interestTotal.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Total Repayable</span><span className="font-semibold">${totalRepay.toFixed(2)}</span></div>
+            <div className="flex justify-between border-t pt-2"><span className="font-semibold">Monthly Payment</span><span className="font-bold text-purple-600">${monthlyPayment.toFixed(2)}/mo</span></div>
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground">This is an indicative estimate only. Actual credit approval subject to review.</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function QCESection() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -58,6 +115,8 @@ export default function QCESection() {
 
   // ── Navigation ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<QceTab | null>(null);
+  const [qceTxPage, setQceTxPage] = useState(0);
+  const QCE_PAGE_SIZE = 10;
 
   // ── QCE SwiftVault state ───────────────────────────────────────────────
   const [contributeOpen, setContributeOpen] = useState(false);
@@ -167,7 +226,7 @@ export default function QCESection() {
                 </p>
               </div>
               {isActivated
-                ? <Badge className="bg-tsia-green/10 text-tsia-green border-0 text-[10px] shrink-0">Active · {daysActive}/{QCE.PERIOD_DAYS} days</Badge>
+                ? <Badge className="bg-tsia-green/10 text-tsia-green border-0 text-[10px] shrink-0">Active · 30% Eligible</Badge>
                 : <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] shrink-0">Not activated</Badge>}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -307,7 +366,7 @@ export default function QCESection() {
             {isActivated && (
               <>
                 {/* Stats */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <Card className="shadow-sm border-0">
                     <CardContent className="pt-4 pb-4 text-center">
                       <PiggyBank className="w-4 h-4 text-tsia-green mx-auto mb-1" />
@@ -315,35 +374,23 @@ export default function QCESection() {
                       <p className="text-[10px] text-muted-foreground">Balance</p>
                     </CardContent>
                   </Card>
-                  <Card className="shadow-sm border-0">
+                  <Card className="shadow-sm border-0 bg-tsia-green/5">
                     <CardContent className="pt-4 pb-4 text-center">
-                      <BarChart3 className="w-4 h-4 text-purple-500 mx-auto mb-1" />
-                      <p className="text-lg font-bold" data-testid="text-qce-eligibility">{eligibilityPct.toFixed(1)}%</p>
-                      <p className="text-[10px] text-muted-foreground">Eligibility</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="shadow-sm border-0">
-                    <CardContent className="pt-4 pb-4 text-center">
-                      <CalendarDays className="w-4 h-4 text-blue-500 mx-auto mb-1" />
-                      <p className="text-lg font-bold" data-testid="text-qce-days">{daysActive}<span className="text-sm font-normal text-muted-foreground">/{QCE.PERIOD_DAYS}</span></p>
-                      <p className="text-[10px] text-muted-foreground">Days active</p>
+                      <Zap className="w-4 h-4 text-tsia-green mx-auto mb-1" />
+                      <p className="text-lg font-bold text-tsia-green" data-testid="text-qce-eligibility">{eligibilityPct.toFixed(0)}%</p>
+                      <p className="text-[10px] text-muted-foreground">Credit Eligibility</p>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Progress */}
-                <Card className="shadow-sm border-0">
-                  <CardContent className="pt-4 pb-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium">90-Day Progress</span>
-                      <span className="font-bold text-tsia-green">{progressPct.toFixed(1)}%</span>
-                    </div>
-                    <Progress value={progressPct} className="h-2.5" data-testid="progress-qce" />
-                    {savings?.startDate && (
-                      <p className="text-xs text-muted-foreground">Started {format(new Date(savings.startDate), "dd MMM yyyy")}</p>
-                    )}
-                  </CardContent>
-                </Card>
+                {/* Instant eligibility notice */}
+                <div className="bg-tsia-green/10 border border-tsia-green/20 rounded-xl p-3 flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-tsia-green">Full 30% Credit Eligibility Activated</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Your first deposit instantly unlocked all credit services. No waiting period required.</p>
+                  </div>
+                </div>
 
                 {/* Actions */}
                 <div className="flex gap-3">
@@ -387,13 +434,19 @@ export default function QCESection() {
                   <p>Min <strong>${QCE.MIN_BALANCE}</strong> always retained. Withdrawals return to your SwiftWallet.</p>
                 </div>
 
+                {/* Credit Calculator */}
+                {creditPortalUnlocked && <QceCreditCalculator qceBalance={qceBalance} eligibilityPct={eligibilityPct} />}
+
                 {/* Transaction history */}
-                {transactions.length > 0 && (
+                {transactions.length > 0 && (() => {
+                  const totalQcePages = Math.ceil(transactions.length / QCE_PAGE_SIZE);
+                  const qcePage = transactions.slice(qceTxPage * QCE_PAGE_SIZE, (qceTxPage + 1) * QCE_PAGE_SIZE);
+                  return (
                   <Card className="shadow-sm border-0">
-                    <CardHeader className="pb-2 pt-4"><CardTitle className="text-sm flex items-center gap-2"><History className="w-4 h-4 text-muted-foreground" /> Recent Transactions</CardTitle></CardHeader>
+                    <CardHeader className="pb-2 pt-4"><CardTitle className="text-sm flex items-center gap-2"><History className="w-4 h-4 text-muted-foreground" /> Transactions</CardTitle></CardHeader>
                     <CardContent className="p-0">
                       <div className="divide-y divide-border/50">
-                        {transactions.slice(0, 10).map(tx => (
+                        {qcePage.map(tx => (
                           <div key={tx.id} className="flex items-center gap-3 px-5 py-3" data-testid={`row-qce-tx-${tx.id}`}>
                             <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${tx.type === "contribution" ? "bg-tsia-green/10" : "bg-red-100 dark:bg-red-900/20"}`}>
                               {tx.type === "contribution" ? <ArrowDownLeft className="w-3.5 h-3.5 text-tsia-green" /> : <ArrowUpRight className="w-3.5 h-3.5 text-red-500" />}
@@ -408,9 +461,23 @@ export default function QCESection() {
                           </div>
                         ))}
                       </div>
+                      {totalQcePages > 1 && (
+                        <div className="flex items-center justify-between px-5 py-3 border-t">
+                          <button onClick={() => setQceTxPage(p => Math.max(0, p - 1))} disabled={qceTxPage === 0}
+                            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                            ← Prev
+                          </button>
+                          <span className="text-xs text-muted-foreground">Page {qceTxPage + 1} of {totalQcePages}</span>
+                          <button onClick={() => setQceTxPage(p => Math.min(totalQcePages - 1, p + 1))} disabled={qceTxPage >= totalQcePages - 1}
+                            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                            Next →
+                          </button>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
-                )}
+                  );
+                })()}
               </>
             )}
           </motion.div>

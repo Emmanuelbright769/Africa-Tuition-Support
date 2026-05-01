@@ -3422,6 +3422,112 @@ export async function registerRoutes(
     }
   });
 
+  // ── Admin: get trade market settings ──────────────────────────────────────
+  app.get("/api/admin/trade-settings", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const keys = [
+        "trade_fee_exchange_withdraw", "trade_fee_bank_withdraw",
+        "trade_reserve_rate", "trade_affiliate_share_rate",
+        "trade_min_deposit", "trade_min_withdraw",
+        "co_affiliate_pool_rate_override",
+      ];
+      const all = await storage.getAllPlatformSettings();
+      const map = Object.fromEntries(all.map(r => [r.key, r.value]));
+      res.json({
+        feeExchangeWithdraw:   parseFloat(map["trade_fee_exchange_withdraw"]   ?? "0.05"),
+        feeBankWithdraw:       parseFloat(map["trade_fee_bank_withdraw"]        ?? "0.08"),
+        reserveRate:           parseFloat(map["trade_reserve_rate"]             ?? "0.20"),
+        affiliateShareRate:    parseFloat(map["trade_affiliate_share_rate"]     ?? "0.05"),
+        minDeposit:            parseFloat(map["trade_min_deposit"]              ?? "10"),
+        minWithdraw:           parseFloat(map["trade_min_withdraw"]             ?? "5"),
+        coAffiliatePoolRate:   map["co_affiliate_pool_rate_override"] != null ? parseFloat(map["co_affiliate_pool_rate_override"]) : null,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Admin: update trade market settings ──────────────────────────────────
+  app.put("/api/admin/trade-settings", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const { feeExchangeWithdraw, feeBankWithdraw, reserveRate, affiliateShareRate, minDeposit, minWithdraw, coAffiliatePoolRate } = req.body;
+      const updates = [
+        { key: "trade_fee_exchange_withdraw",  val: parseFloat(feeExchangeWithdraw),  min: 0, max: 0.5,  label: "Exchange withdraw fee" },
+        { key: "trade_fee_bank_withdraw",      val: parseFloat(feeBankWithdraw),      min: 0, max: 0.5,  label: "Bank withdraw fee" },
+        { key: "trade_reserve_rate",           val: parseFloat(reserveRate),          min: 0, max: 0.5,  label: "Reserve fund rate" },
+        { key: "trade_affiliate_share_rate",   val: parseFloat(affiliateShareRate),   min: 0, max: 0.5,  label: "Affiliate share rate" },
+        { key: "trade_min_deposit",            val: parseFloat(minDeposit),           min: 1, max: 10000, label: "Min trade deposit" },
+        { key: "trade_min_withdraw",           val: parseFloat(minWithdraw),          min: 1, max: 10000, label: "Min trade withdraw" },
+      ];
+      for (const u of updates) {
+        if (isNaN(u.val) || u.val < u.min || u.val > u.max) return res.status(400).json({ message: `Invalid value for ${u.label}` });
+        await storage.setPlatformSetting(u.key, u.val.toString());
+      }
+      if (coAffiliatePoolRate !== undefined && coAffiliatePoolRate !== null && coAffiliatePoolRate !== "") {
+        const r = parseFloat(coAffiliatePoolRate);
+        if (isNaN(r) || r < 0 || r > 1) return res.status(400).json({ message: "Invalid co-affiliate pool rate (0–100%)" });
+        await storage.setPlatformSetting("co_affiliate_pool_rate_override", r.toString());
+      } else {
+        await storage.setPlatformSetting("co_affiliate_pool_rate_override", "");
+      }
+      res.json({ message: "Trade settings updated successfully" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Admin: email all users on Terms of Service change ─────────────────────
+  app.post("/api/admin/email-tos-update", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const allUsers = await storage.getAllStudents();
+      const BREVO_API_KEY = process.env.BREVO_API_KEY;
+      if (!BREVO_API_KEY) return res.status(500).json({ message: "BREVO_API_KEY not configured" });
+
+      let sent = 0; let failed = 0;
+      for (const u of allUsers) {
+        if (!u.email) { failed++; continue; }
+        try {
+          await fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sender: { name: "TSIA for Africa", email: "no-reply@tsiforafrica.com" },
+              to: [{ email: u.email, name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email }],
+              subject: "Important: TSIA Terms of Service Update",
+              htmlContent: `
+                <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <div style="background:linear-gradient(135deg,#1a472a,#b8860b);padding:24px;border-radius:12px 12px 0 0;">
+                    <h1 style="color:#fff;margin:0;font-size:22px;">TSIA Terms of Service Update</h1>
+                  </div>
+                  <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px;">
+                    <p>Dear ${u.firstName ?? "Member"},</p>
+                    <p>We have updated our <strong>Terms of Service</strong>. Please review the updated terms at your earliest convenience.</p>
+                    <p>By continuing to use TSIA services, you agree to the updated Terms of Service.</p>
+                    <a href="https://tsiforafrica.com/terms" style="display:inline-block;background:#1a472a;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:12px;">
+                      View Updated Terms
+                    </a>
+                    <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
+                    <p style="font-size:12px;color:#6b7280;">SMAKEMGGOLD Ltd · UK RC: 1359954 · TSIA for Africa</p>
+                  </div>
+                </div>
+              `,
+            }),
+          });
+          sent++;
+        } catch { failed++; }
+      }
+      res.json({ message: `ToS email sent to ${sent} users. ${failed} failed.`, sent, failed });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/admin/stats", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -7187,9 +7293,9 @@ export async function registerRoutes(
           const qceNotif = await storage.createNotification({
             userId,
             type: "qce_update",
-            title: "QCE SwiftVault Activated!",
-            message: `Your Quick Credit Eligibility savings are now active with $${amount.toFixed(2)}. Keep contributing daily over 90 days to build up to 30% credit eligibility. Your Credit Portal is now unlocked.`,
-            data: { balance: savings.balance, daysActive: savings.daysActive },
+            title: "🎉 QCE SwiftVault Activated — 30% Credit Eligibility Unlocked!",
+            message: `Your QCE SwiftVault is now active with $${amount.toFixed(2)}. You have been instantly granted 30% credit eligibility. All credit services (V-Connect, Student Loans, Home Credit, Business Credit) are now fully accessible.`,
+            data: { balance: savings.balance, eligibility: 30, creditPortalUnlocked: true },
             isRead: false,
           });
           pushToUser(userId, "notification", qceNotif);
@@ -7246,6 +7352,136 @@ export async function registerRoutes(
     try {
       const savings = await storage.tickQceDays(userId);
       res.json({ savings });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── VIRTUAL CARDS ─────────────────────────────────────────────────────────
+  const VIRTUAL_CARD_FEE = 5;
+
+  function generateCardNumber(): string {
+    // Generate a 16-digit Mastercard-like number (starts with 5)
+    let num = "5" + Array.from({ length: 15 }, () => Math.floor(Math.random() * 10)).join("");
+    return num.replace(/(\d{4})/g, "$1 ").trim();
+  }
+  function generateCvv(): string { return String(Math.floor(100 + Math.random() * 900)); }
+  function generateExpiry(): { month: string; year: string } {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 3);
+    return { month: String(d.getMonth() + 1).padStart(2, "0"), year: String(d.getFullYear()).slice(-2) };
+  }
+
+  app.get("/api/fintech/virtual-card", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const card = await storage.getVirtualCard(userId);
+      res.json({ card });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/fintech/virtual-card/purchase", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const existing = await storage.getVirtualCard(userId);
+      if (existing) return res.status(400).json({ message: "You already have a virtual card." });
+
+      const wallet = await storage.getOrCreateWallet(userId);
+      if (parseFloat(wallet.balance) < VIRTUAL_CARD_FEE) {
+        return res.status(400).json({ message: `Insufficient balance. A virtual card costs $${VIRTUAL_CARD_FEE}.` });
+      }
+
+      const newBal = (parseFloat(wallet.balance) - VIRTUAL_CARD_FEE).toFixed(2);
+      await storage.updateWalletBalance(userId, newBal);
+
+      const user = await storage.getUser(userId);
+      const expiry = generateExpiry();
+      const card = await storage.createVirtualCard({
+        userId,
+        cardNumber: generateCardNumber(),
+        cardHolder: `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim().toUpperCase(),
+        expiryMonth: expiry.month,
+        expiryYear: expiry.year,
+        cvv: generateCvv(),
+        status: "active",
+        balance: "0.00",
+      });
+
+      await storage.createTransaction({
+        userId,
+        type: "bill",
+        amount: (-VIRTUAL_CARD_FEE).toFixed(2),
+        fee: "0.00",
+        paymentMethod: "wallet",
+        description: `Virtual US Mastercard issued — $${VIRTUAL_CARD_FEE} one-time fee`,
+      });
+
+      invalidateCacheKey(userId, "wallet");
+      invalidateCacheKey(userId, "transactions");
+
+      const notif = await storage.createNotification({
+        userId,
+        type: "system",
+        title: "💳 Virtual US Mastercard Issued!",
+        message: `Your virtual Mastercard has been created. Card: ${card.cardNumber}. Valid thru: ${card.expiryMonth}/${card.expiryYear}.`,
+        data: { cardId: card.id },
+        isRead: false,
+      });
+      pushToUser(userId, "notification", notif);
+
+      res.json({ card, walletBalance: newBal });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── MOVIE SUBSCRIPTIONS ───────────────────────────────────────────────────
+  const NETFLIX_MONTHLY_FEE = 5;
+
+  app.get("/api/movies/subscription", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const sub = await storage.getMovieSubscription(userId);
+      res.json({ subscription: sub });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/movies/subscribe", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const wallet = await storage.getOrCreateWallet(userId);
+      if (parseFloat(wallet.balance) < NETFLIX_MONTHLY_FEE) {
+        return res.status(400).json({ message: `Insufficient balance. Netflix access costs $${NETFLIX_MONTHLY_FEE}/month.` });
+      }
+
+      const newBal = (parseFloat(wallet.balance) - NETFLIX_MONTHLY_FEE).toFixed(2);
+      await storage.updateWalletBalance(userId, newBal);
+
+      const sub = await storage.createOrRenewMovieSubscription(userId);
+
+      await storage.createTransaction({
+        userId,
+        type: "bill",
+        amount: (-NETFLIX_MONTHLY_FEE).toFixed(2),
+        fee: "0.00",
+        paymentMethod: "wallet",
+        description: `Netflix access subscription — $${NETFLIX_MONTHLY_FEE}/month`,
+      });
+
+      invalidateCacheKey(userId, "wallet");
+      invalidateCacheKey(userId, "transactions");
+
+      const notif = await storage.createNotification({
+        userId,
+        type: "system",
+        title: "🎬 Netflix Access Activated!",
+        message: `Your Netflix access is active until ${new Date(sub.expiresAt).toLocaleDateString()}. Enjoy streaming!`,
+        data: { subId: sub.id },
+        isRead: false,
+      });
+      pushToUser(userId, "notification", notif);
+
+      res.json({ subscription: sub, walletBalance: newBal });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

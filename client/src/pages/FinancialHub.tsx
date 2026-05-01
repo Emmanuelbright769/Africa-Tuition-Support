@@ -4,6 +4,9 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "framer-motion";
 import { TransactionReceipt, type ReceiptRow } from "@/components/ui/TransactionReceipt";
 import {
@@ -278,6 +281,34 @@ export default function FinancialHub() {
   const [cardRevealed, setCardRevealed] = useState(false);
   const [vcCopied, setVcCopied]         = useState<string | null>(null);
 
+  // ── Virtual Card Wizard state ────────────────────────────────────────────
+  const [vcWizardOpen, setVcWizardOpen]     = useState(false);
+  const [vcWizardStep, setVcWizardStep]     = useState<1 | 2 | 3>(1);
+  const [vcName, setVcName]                 = useState("");
+  const [vcAddress, setVcAddress]           = useState("");
+  const [vcCity, setVcCity]                 = useState("");
+  const [vcRegion, setVcRegion]             = useState("");
+  const [vcZip, setVcZip]                   = useState("");
+  const [vcPin, setVcPin]                   = useState("");
+  const [vcPinConfirm, setVcPinConfirm]     = useState("");
+  const [vcPinErr, setVcPinErr]             = useState("");
+  const [vcPinVisible, setVcPinVisible]     = useState(false);
+
+  const openVcWizard = () => {
+    setVcWizardStep(1);
+    setVcName(""); setVcAddress(""); setVcCity(""); setVcRegion(""); setVcZip("");
+    setVcPin(""); setVcPinConfirm(""); setVcPinErr("");
+    setVcWizardOpen(true);
+  };
+  const vcStep1Valid = vcName.trim().length >= 3 && vcAddress.trim().length >= 5 && vcCity.trim().length >= 2;
+  const vcStep2Valid = vcPin.length === 4 && vcPinConfirm.length === 4;
+
+  const handleVcStep2Next = () => {
+    if (vcPin !== vcPinConfirm) { setVcPinErr("PINs do not match"); return; }
+    setVcPinErr("");
+    setVcWizardStep(3);
+  };
+
   const copyToClipboard = (val: string, label: string) => {
     navigator.clipboard.writeText(val.replace(/\s/g, "")).then(() => {
       setVcCopied(label);
@@ -286,13 +317,15 @@ export default function FinancialHub() {
   };
 
   const purchaseCardMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/fintech/virtual-card/purchase").then(r => r.json()),
+    mutationFn: (payload: { billingName: string; billingAddress: string; billingCity: string; billingRegion: string; billingZip: string; pin: string }) =>
+      apiRequest("POST", "/api/fintech/virtual-card/purchase", payload).then(r => r.json()),
     onSuccess: (data) => {
-      if (data.message) { toast({ title: "Error", description: data.message, variant: "destructive" }); return; }
+      if (data.message && !data.card) { toast({ title: "Error", description: data.message, variant: "destructive" }); return; }
+      setVcWizardOpen(false);
       refetchCard();
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      toast({ title: "💳 Virtual Card Issued!", description: "Your US Mastercard has been created." });
+      toast({ title: "💳 Virtual Card Issued!", description: "Your US Mastercard is ready to use." });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -767,7 +800,7 @@ export default function FinancialHub() {
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border-2 border-dashed border-muted-foreground/20 p-6 flex flex-col items-center gap-3 bg-card/50">
+          <div className="rounded-2xl border-2 border-dashed border-muted-foreground/20 p-6 flex flex-col items-center gap-4 bg-card/50">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-forest-green/20 to-tsia-gold/20 flex items-center justify-center">
               <CreditCard className="w-7 h-7 text-tsia-gold" />
             </div>
@@ -775,16 +808,24 @@ export default function FinancialHub() {
               <p className="font-bold text-sm">Get a Virtual US Mastercard</p>
               <p className="text-xs text-muted-foreground mt-0.5">Use for online USD purchases & subscriptions worldwide</p>
             </div>
+            <div className="grid grid-cols-2 gap-2 w-full text-xs text-muted-foreground">
+              {["Instant issuance", "Secure PIN protection", "Global acceptance", "Billing address set"].map(f => (
+                <div key={f} className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green shrink-0" />
+                  <span>{f}</span>
+                </div>
+              ))}
+            </div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Lock className="w-3 h-3" />
-              <span>One-time fee: <span className="font-bold text-tsia-gold">$5.00</span> from wallet balance</span>
+              <span>One-time setup fee: <span className="font-bold text-tsia-gold">$5.00</span> from wallet balance</span>
             </div>
             <Button size="sm"
-              onClick={() => purchaseCardMutation.mutate()}
-              disabled={purchaseCardMutation.isPending || balance < 5}
-              className="bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl px-6"
+              onClick={openVcWizard}
+              disabled={balance < 5}
+              className="bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl px-6 w-full"
               data-testid="btn-purchase-virtual-card">
-              {purchaseCardMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing…</> : "Purchase Card — $5"}
+              Set Up My Virtual Card
             </Button>
             {balance < 5 && <p className="text-xs text-amber-500">Fund your wallet first (min $5)</p>}
           </div>
@@ -962,6 +1003,170 @@ export default function FinancialHub() {
           {...txReceiptProps}
         />
       )}
+
+      {/* ── Virtual Card Setup Wizard ─────────────────────────────────────── */}
+      <Dialog open={vcWizardOpen} onOpenChange={open => { if (!purchaseCardMutation.isPending) setVcWizardOpen(open); }}>
+        <DialogContent className="max-w-sm mx-auto rounded-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-tsia-green/20 to-tsia-gold/20 flex items-center justify-center">
+                <CreditCard className="w-5 h-5 text-tsia-gold" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold">Virtual Card Setup</DialogTitle>
+                <p className="text-xs text-muted-foreground">Step {vcWizardStep} of 3</p>
+              </div>
+            </div>
+            {/* Progress bar */}
+            <div className="flex gap-1.5 mt-1">
+              {[1,2,3].map(s => (
+                <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${s <= vcWizardStep ? "bg-tsia-green" : "bg-muted"}`} />
+              ))}
+            </div>
+          </DialogHeader>
+
+          {/* Step 1 — Billing Details */}
+          {vcWizardStep === 1 && (
+            <div className="space-y-3 pt-1">
+              <p className="text-sm font-semibold text-foreground">Cardholder & Billing Address</p>
+              <p className="text-xs text-muted-foreground">This information will be printed on your virtual card and used for billing verification.</p>
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs font-semibold">Full Name (as on card)</Label>
+                  <Input
+                    value={vcName} onChange={e => setVcName(e.target.value)}
+                    placeholder="e.g. John A. Smith" className="mt-1 h-9 text-sm"
+                    data-testid="input-vc-name" />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold">Street Address</Label>
+                  <Input
+                    value={vcAddress} onChange={e => setVcAddress(e.target.value)}
+                    placeholder="e.g. 12 Baker Street" className="mt-1 h-9 text-sm"
+                    data-testid="input-vc-address" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs font-semibold">City</Label>
+                    <Input value={vcCity} onChange={e => setVcCity(e.target.value)} placeholder="Lagos" className="mt-1 h-9 text-sm" data-testid="input-vc-city" />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">State / Region</Label>
+                    <Input value={vcRegion} onChange={e => setVcRegion(e.target.value)} placeholder="Lagos State" className="mt-1 h-9 text-sm" data-testid="input-vc-region" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold">Postal / ZIP Code</Label>
+                  <Input
+                    value={vcZip} onChange={e => setVcZip(e.target.value.replace(/\D/g,"").slice(0,10))}
+                    placeholder="100001" className="mt-1 h-9 text-sm" data-testid="input-vc-zip" />
+                </div>
+              </div>
+              <Button
+                className="w-full bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl"
+                disabled={!vcStep1Valid}
+                onClick={() => setVcWizardStep(2)}
+                data-testid="btn-vc-next-step1">
+                Continue — Set PIN
+              </Button>
+            </div>
+          )}
+
+          {/* Step 2 — PIN Setup */}
+          {vcWizardStep === 2 && (
+            <div className="space-y-3 pt-1">
+              <p className="text-sm font-semibold text-foreground">Set Your Card PIN</p>
+              <p className="text-xs text-muted-foreground">Choose a secure 4-digit PIN. You'll use this to authorise transactions on your virtual card.</p>
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs font-semibold">4-Digit PIN</Label>
+                  <div className="relative mt-1">
+                    <Input
+                      type={vcPinVisible ? "text" : "password"}
+                      value={vcPin} onChange={e => setVcPin(e.target.value.replace(/\D/g,"").slice(0,4))}
+                      placeholder="••••" className="h-9 text-sm font-mono tracking-widest pr-10"
+                      data-testid="input-vc-pin" />
+                    <button type="button" onClick={() => setVcPinVisible(p => !p)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                      {vcPinVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold">Confirm PIN</Label>
+                  <Input
+                    type={vcPinVisible ? "text" : "password"}
+                    value={vcPinConfirm} onChange={e => setVcPinConfirm(e.target.value.replace(/\D/g,"").slice(0,4))}
+                    placeholder="••••" className="mt-1 h-9 text-sm font-mono tracking-widest"
+                    data-testid="input-vc-pin-confirm" />
+                </div>
+                {vcPinErr && <p className="text-xs text-red-500 font-medium">{vcPinErr}</p>}
+                <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 rounded-xl p-3">
+                  <Shield className="w-3.5 h-3.5 text-tsia-green shrink-0 mt-0.5" />
+                  <span>Your PIN is encrypted and never stored in plain text. Keep it secret — TSIA staff will never ask for it.</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 rounded-xl text-sm" onClick={() => setVcWizardStep(1)} data-testid="btn-vc-back-step2">
+                  <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back
+                </Button>
+                <Button
+                  className="flex-1 bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl text-sm"
+                  disabled={!vcStep2Valid}
+                  onClick={handleVcStep2Next}
+                  data-testid="btn-vc-next-step2">
+                  Review & Pay
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Confirm & Pay */}
+          {vcWizardStep === 3 && (
+            <div className="space-y-3 pt-1">
+              <p className="text-sm font-semibold text-foreground">Review & Activate</p>
+              <div className="rounded-xl border bg-muted/30 divide-y divide-border text-sm overflow-hidden">
+                <div className="flex justify-between px-3 py-2">
+                  <span className="text-muted-foreground text-xs">Name on card</span>
+                  <span className="font-semibold text-xs">{vcName}</span>
+                </div>
+                <div className="flex justify-between px-3 py-2">
+                  <span className="text-muted-foreground text-xs">Address</span>
+                  <span className="font-semibold text-xs text-right max-w-[55%]">{vcAddress}, {vcCity}{vcRegion ? `, ${vcRegion}` : ""}{vcZip ? ` ${vcZip}` : ""}</span>
+                </div>
+                <div className="flex justify-between px-3 py-2">
+                  <span className="text-muted-foreground text-xs">PIN</span>
+                  <span className="font-semibold text-xs font-mono">{"●".repeat(vcPin.length)}</span>
+                </div>
+                <div className="flex justify-between px-3 py-2">
+                  <span className="text-muted-foreground text-xs">Card Type</span>
+                  <span className="font-semibold text-xs">Virtual US Mastercard</span>
+                </div>
+                <div className="flex justify-between px-3 py-2 bg-tsia-green/5">
+                  <span className="text-muted-foreground text-xs font-semibold">Setup Fee</span>
+                  <span className="font-bold text-tsia-gold text-sm">$5.00</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground text-center">$5.00 will be deducted from your TSIA SwiftWallet balance (current: <span className="font-bold text-foreground">${balance.toFixed(2)}</span>)</p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 rounded-xl text-sm" onClick={() => setVcWizardStep(2)}
+                  disabled={purchaseCardMutation.isPending} data-testid="btn-vc-back-step3">
+                  <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back
+                </Button>
+                <Button
+                  className="flex-1 bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl text-sm"
+                  disabled={purchaseCardMutation.isPending || balance < 5}
+                  onClick={() => purchaseCardMutation.mutate({ billingName: vcName, billingAddress: vcAddress, billingCity: vcCity, billingRegion: vcRegion, billingZip: vcZip, pin: vcPin })}
+                  data-testid="btn-vc-confirm-pay">
+                  {purchaseCardMutation.isPending
+                    ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Activating…</>
+                    : <><CreditCard className="w-4 h-4 mr-1.5" />Pay $5 &amp; Activate</>}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

@@ -43,7 +43,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "qce",          label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
   { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
   { id: "tour_africa",  label: "Glide Africa",           icon: Car },
-  { id: "movies",             label: "Movies",            icon: Film },
+  { id: "movies",             label: "Movies & Streaming", icon: Film },
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
   { id: "plans",        label: "Swift-Pay Plans",        icon: Star },
   { id: "msc_plans",    label: "Swift Pay MSc plans",    icon: GraduationCap, badge: "Soon" },

@@ -1001,16 +1001,21 @@ export const DEFAULT_TIER_PAYOUTS = {
 
 // ─── VIRTUAL CARDS ────────────────────────────────────────────────────────────
 export const virtualCards = pgTable("virtual_cards", {
-  id:         integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  userId:     integer("user_id").notNull().references(() => users.id),
-  cardNumber: text("card_number").notNull(),
-  cardHolder: text("card_holder").notNull(),
-  expiryMonth: text("expiry_month").notNull(),
-  expiryYear:  text("expiry_year").notNull(),
-  cvv:         text("cvv").notNull(),
-  status:      text("status").notNull().default("active"),
-  balance:     decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
-  createdAt:  timestamp("created_at").defaultNow().notNull(),
+  id:             integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:         integer("user_id").notNull().references(() => users.id),
+  cardNumber:     text("card_number").notNull(),
+  cardHolder:     text("card_holder").notNull(),
+  expiryMonth:    text("expiry_month").notNull(),
+  expiryYear:     text("expiry_year").notNull(),
+  cvv:            text("cvv").notNull(),
+  status:         text("status").notNull().default("active"),
+  balance:        decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  billingAddress: text("billing_address"),
+  billingCity:    text("billing_city"),
+  billingRegion:  text("billing_region"),
+  billingZip:     text("billing_zip"),
+  pin:            text("pin"),
+  createdAt:      timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertVirtualCardSchema = createInsertSchema(virtualCards).omit({ id: true, createdAt: true });

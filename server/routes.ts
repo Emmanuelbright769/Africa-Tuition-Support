@@ -7394,18 +7394,25 @@ export async function registerRoutes(
       const newBal = (parseFloat(wallet.balance) - VIRTUAL_CARD_FEE).toFixed(2);
       await storage.updateWalletBalance(userId, newBal);
 
+      const { billingName, billingAddress, billingCity, billingRegion, billingZip, pin } = req.body;
       const user = await storage.getUser(userId);
       const expiry = generateExpiry();
+      const resolvedHolder = (billingName?.trim() || `${user?.firstName ?? ""} ${user?.lastName ?? ""}`).trim().toUpperCase();
       const card = await storage.createVirtualCard({
         userId,
         cardNumber: generateCardNumber(),
-        cardHolder: `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim().toUpperCase(),
+        cardHolder: resolvedHolder,
         expiryMonth: expiry.month,
         expiryYear: expiry.year,
         cvv: generateCvv(),
         status: "active",
         balance: "0.00",
-      });
+        billingAddress: billingAddress?.trim() || null,
+        billingCity: billingCity?.trim() || null,
+        billingRegion: billingRegion?.trim() || null,
+        billingZip: billingZip?.trim() || null,
+        pin: pin || null,
+      } as any);
 
       await storage.createTransaction({
         userId,

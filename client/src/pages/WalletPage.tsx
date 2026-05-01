@@ -1010,7 +1010,7 @@ export default function WalletPage() {
 
             <div className="space-y-2">
               {historyTab === "ledger" && (() => {
-                const sorted = [...txLedger].reverse();
+                const sorted = [...txLedger];
                 const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
                 const page = sorted.slice(ledgerPage * PAGE_SIZE, (ledgerPage + 1) * PAGE_SIZE);
                 return sorted.length === 0 ? (

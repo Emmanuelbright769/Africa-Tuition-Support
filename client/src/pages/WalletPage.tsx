@@ -27,7 +27,7 @@ import {
   Wallet, Eye, EyeOff, ArrowDownLeft, ArrowUpRight, Loader2,
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
   Smartphone, Banknote, Receipt, ExternalLink, RefreshCw, Copy, Coins,
-  MapPin, AlertTriangle, Lock, ArrowLeft, X, Camera, ScanFace, RotateCcw
+  MapPin, AlertTriangle, Lock, ArrowLeft, ArrowRight, X, Camera, ScanFace, RotateCcw
 } from "lucide-react";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 import { TermsCheckbox } from "@/components/ui/TermsCheckbox";

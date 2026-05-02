@@ -70,7 +70,7 @@ const itemVariants = {
 export default function WalletSection() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { formatAmount, rateLabel, currency, loading: currencyLoading } = useLocalCurrency();
+  const { formatAmount, formatAmountVAT, rateLabel, rateLabelVAT, currency, loading: currencyLoading } = useLocalCurrency();
 
   const hiddenKey = `tsia_balance_hidden_${user?.id ?? "guest"}`;
   const [hidden, setHidden] = useState(() => {
@@ -649,12 +649,20 @@ export default function WalletSection() {
                   {hidden ? <span className="tracking-[0.3em]">••••••</span> : `$${availableBalance.toFixed(2)}`}
                 </p>
                 {!hidden && (
-                  <p className="text-white/60 text-sm font-semibold mb-3">
-                    ≈ {currencyLoading ? <span className="opacity-50 text-xs">detecting…</span> : formatAmount(availableBalance)}
-                    {currency && currency.code !== "USD" && (
-                      <span className="ml-1.5 text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency.code}</span>
+                  <div className="mb-3 space-y-0.5">
+                    <p className="text-white/60 text-sm font-semibold">
+                      {currencyLoading
+                        ? <span className="opacity-50 text-xs">detecting…</span>
+                        : <>{formatAmount(availableBalance)} <span className="text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency?.code ?? "NGN"}</span></>}
+                    </p>
+                    {!currencyLoading && (currency?.code ?? "NGN") !== "USD" && (
+                      <p className="text-white/40 text-[11px] font-medium flex items-center gap-1.5" data-testid="text-vat-currency">
+                        <span className="text-white/30">≈</span>
+                        <span className="text-white/60 font-bold">{formatAmountVAT(availableBalance)}</span>
+                        <span className="bg-amber-400/20 text-amber-300 text-[9px] font-semibold px-1.5 py-0.5 rounded-full tracking-wide">incl. 7.5% VAT</span>
+                      </p>
                     )}
-                  </p>
+                  </div>
                 )}
 
                 {/* Balance breakdown row */}
@@ -776,12 +784,20 @@ export default function WalletSection() {
                   {hidden ? <span className="tracking-[0.3em]">••••••</span> : `$${totalAffiliate.toFixed(2)}`}
                 </p>
                 {!hidden && (
-                  <p className="text-white/60 text-sm font-semibold mb-3">
-                    ≈ {currencyLoading ? <span className="opacity-50 text-xs">detecting…</span> : formatAmount(totalAffiliate)}
-                    {currency && currency.code !== "USD" && (
-                      <span className="ml-1.5 text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency.code}</span>
+                  <div className="mb-3 space-y-0.5">
+                    <p className="text-white/60 text-sm font-semibold">
+                      {currencyLoading
+                        ? <span className="opacity-50 text-xs">detecting…</span>
+                        : <>{formatAmount(totalAffiliate)} <span className="text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency?.code ?? "NGN"}</span></>}
+                    </p>
+                    {!currencyLoading && (currency?.code ?? "NGN") !== "USD" && (
+                      <p className="text-white/40 text-[11px] font-medium flex items-center gap-1.5">
+                        <span className="text-white/30">≈</span>
+                        <span className="text-white/60 font-bold">{formatAmountVAT(totalAffiliate)}</span>
+                        <span className="bg-amber-400/20 text-amber-300 text-[9px] font-semibold px-1.5 py-0.5 rounded-full tracking-wide">incl. 7.5% VAT</span>
+                      </p>
                     )}
-                  </p>
+                  </div>
                 )}
 
                 {/* Trade + Referral breakdown */}
@@ -992,7 +1008,15 @@ export default function WalletSection() {
                     value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                     className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
                   {parseFloat(fundAmount) > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
+                    <div className="mt-1 space-y-0.5">
+                      <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
+                      {(currency?.code ?? "NGN") !== "USD" && (
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                          ≈ <span className="font-semibold">{formatAmountVAT(parseFloat(fundAmount))}</span>
+                          <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-[9px] font-semibold px-1.5 py-0.5 rounded-full">incl. 7.5% VAT</span>
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">
@@ -1030,7 +1054,15 @@ export default function WalletSection() {
                     value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                     className="mt-1 text-lg font-bold" data-testid="input-fund-amount-korapay" />
                   {parseFloat(fundAmount) > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
+                    <div className="mt-1 space-y-0.5">
+                      <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
+                      {(currency?.code ?? "NGN") !== "USD" && (
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                          ≈ <span className="font-semibold">{formatAmountVAT(parseFloat(fundAmount))}</span>
+                          <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-[9px] font-semibold px-1.5 py-0.5 rounded-full">incl. 7.5% VAT</span>
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="flex items-start gap-2 bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3">
@@ -1097,7 +1129,15 @@ export default function WalletSection() {
                     value={cryptoAmount} onChange={e => setCryptoAmount(e.target.value)}
                     className="mt-1 text-lg font-bold" data-testid="input-crypto-amount" />
                   {parseFloat(cryptoAmount) > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(cryptoAmount))} {rateLabel()}</p>
+                    <div className="mt-1 space-y-0.5">
+                      <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(cryptoAmount))} {rateLabel()}</p>
+                      {(currency?.code ?? "NGN") !== "USD" && (
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                          ≈ <span className="font-semibold">{formatAmountVAT(parseFloat(cryptoAmount))}</span>
+                          <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-[9px] font-semibold px-1.5 py-0.5 rounded-full">incl. 7.5% VAT</span>
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
 

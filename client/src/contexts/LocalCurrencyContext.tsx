@@ -94,26 +94,32 @@ export type LocalCurrency = {
   countryCode: string;
 };
 
+export const VAT_RATE = 0.075; // Nigeria 7.5% VAT on fintech transactions
+
 type LocalCurrencyContextType = {
   currency: LocalCurrency | null;
   loading: boolean;
   permissionDenied: boolean;
   requestPermission: () => void;
   formatAmount: (usd: number | string) => string;
+  formatAmountVAT: (usd: number | string) => string;
   rateLabel: () => string;
+  rateLabelVAT: () => string;
 };
+
+const NGN_RATE = 1480;
+const CACHE_KEY = "tsia_local_currency_v3";
 
 const LocalCurrencyContext = createContext<LocalCurrencyContextType>({
   currency: null,
   loading: false,
   permissionDenied: false,
   requestPermission: () => {},
-  formatAmount: (usd) => `$${parseFloat(String(usd)).toFixed(2)}`,
-  rateLabel: () => "",
+  formatAmount: (usd) => `₦${Math.round(parseFloat(String(usd)) * NGN_RATE).toLocaleString("en-NG")}`,
+  formatAmountVAT: (usd) => `₦${Math.round(parseFloat(String(usd)) * NGN_RATE * (1 + VAT_RATE)).toLocaleString("en-NG")}`,
+  rateLabel: () => `at ₦${NGN_RATE}/$1`,
+  rateLabelVAT: () => `at ₦${Math.round(NGN_RATE * (1 + VAT_RATE))}/$1 incl. 7.5% VAT`,
 });
-
-const NGN_RATE = 1480;
-const CACHE_KEY = "tsia_local_currency_v3";
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes — picks up location changes quickly
 
 interface CacheEntry {
@@ -235,6 +241,22 @@ export function LocalCurrencyProvider({ children }: { children: ReactNode }) {
     return `at ${currency.symbol}${rounded.toLocaleString()}/$1`;
   };
 
+  const formatAmountVAT = (usd: number | string): string => {
+    const amount = typeof usd === "string" ? parseFloat(usd) : usd;
+    if (isNaN(amount)) return currency ? `${currency.symbol}0` : "₦0";
+    const rate = currency ? currency.rate : NGN_RATE;
+    const sym = currency?.symbol ?? "₦";
+    const converted = amount * rate * (1 + VAT_RATE);
+    return `${sym}${Math.round(converted).toLocaleString()}`;
+  };
+
+  const rateLabelVAT = (): string => {
+    if (!currency) return `at ₦${Math.round(NGN_RATE * (1 + VAT_RATE)).toLocaleString()}/$1 incl. 7.5% VAT`;
+    if (currency.code === "USD") return "";
+    const rounded = Math.round(currency.rate * (1 + VAT_RATE));
+    return `at ${currency.symbol}${rounded.toLocaleString()}/$1 incl. 7.5% VAT`;
+  };
+
   return (
     <LocalCurrencyContext.Provider value={{
       currency,
@@ -242,7 +264,9 @@ export function LocalCurrencyProvider({ children }: { children: ReactNode }) {
       permissionDenied: false,
       requestPermission: detect,
       formatAmount,
+      formatAmountVAT,
       rateLabel,
+      rateLabelVAT,
     }}>
       {children}
     </LocalCurrencyContext.Provider>

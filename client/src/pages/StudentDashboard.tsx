@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import FinancialHub from "./FinancialHub";
+import MoviesSection from "@/components/MoviesSection";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
@@ -82,18 +83,6 @@ export default function StudentDashboard() {
   const { data: batchStatus } = useQuery<any>({ queryKey: ["/api/sponsorship/batch-status"] });
   const { data: planPrices }  = useQuery<{ plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }>({ queryKey: ["/api/platform/plan-prices"] });
   const { data: notifData }   = useQuery<any>({ queryKey: ["/api/notifications"], refetchInterval: 60000 });
-  const { data: movieSubData, refetch: refetchMovieSub } = useQuery<{ subscription: any | null }>({ queryKey: ["/api/movies/subscription"], enabled: activeSection === "movies" });
-
-  const subscribeMovieMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/movies/subscribe").then(r => r.json()),
-    onSuccess: (data) => {
-      if (data.message && !data.subscription) { toast({ title: "Error", description: data.message, variant: "destructive" }); return; }
-      refetchMovieSub();
-      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
-      toast({ title: "🎬 Netflix Access Activated!", description: "Enjoy 30 days of Netflix streaming." });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
 
   const tsmartNewCount = useMemo(() =>
     (notifData?.notifications ?? []).filter((n: any) => n.type === "new_arrival" && !n.isRead).length,
@@ -1124,74 +1113,8 @@ export default function StudentDashboard() {
 
             {/* ── MOVIES ── */}
             {activeSection === "movies" && (
-              <motion.div variants={itemVariants} className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
-                    <Film className="w-6 h-6 text-tsia-green" /> Movies &amp; Streaming
-                  </h2>
-                  <p className="text-muted-foreground text-sm">Access Netflix through your TSIA wallet — just $5/month.</p>
-                </div>
-                {movieSubData?.subscription && new Date(movieSubData.subscription.expiresAt) > new Date() ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-600" />
-                        <div>
-                          <p className="font-semibold text-sm text-green-800 dark:text-green-300">Netflix Active</p>
-                          <p className="text-xs text-green-600 dark:text-green-400">Expires: {new Date(movieSubData.subscription.expiresAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
-                        </div>
-                      </div>
-                      <Button size="sm" variant="outline" className="text-xs border-green-300"
-                        onClick={() => subscribeMovieMutation.mutate()} disabled={subscribeMovieMutation.isPending}
-                        data-testid="btn-renew-netflix">
-                        {subscribeMovieMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Renew ($5)"}
-                      </Button>
-                    </div>
-                    <div className="rounded-2xl overflow-hidden border shadow-sm bg-black" style={{ aspectRatio: "16/9" }}>
-                      <iframe
-                        src="https://www.netflix.com/browse"
-                        title="Netflix"
-                        className="w-full h-full border-0"
-                        allow="fullscreen"
-                        style={{ minHeight: 480 }}
-                      />
-                    </div>
-                    <p className="text-xs text-center text-muted-foreground">
-                      Netflix is embedded for convenience. You may need to sign in with your Netflix account.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-10 text-center space-y-5">
-                    <div className="w-24 h-24 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#141414,#e50914)" }}>
-                      <Film className="w-12 h-12 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold mb-2">Netflix via TSIA</h3>
-                      <p className="text-muted-foreground max-w-sm mx-auto text-sm leading-relaxed">
-                        Get full Netflix access through your TSIA wallet for just <span className="font-bold text-tsia-gold">$5/month</span>. No external subscription required.
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 w-full max-w-xs text-sm">
-                      {["Unlimited streaming", "All Netflix originals", "HD & 4K content", "Cancel anytime"].map(f => (
-                        <div key={f} className="flex items-center gap-2 text-left">
-                          <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0" />
-                          <span>{f}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <Button
-                      size="lg"
-                      onClick={() => subscribeMovieMutation.mutate()}
-                      disabled={subscribeMovieMutation.isPending}
-                      className="bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl px-8"
-                      data-testid="btn-subscribe-netflix">
-                      {subscribeMovieMutation.isPending
-                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing…</>
-                        : "Subscribe for $5/month"}
-                    </Button>
-                    <p className="text-xs text-muted-foreground">Charged from your TSIA SwiftWallet balance</p>
-                  </div>
-                )}
+              <motion.div variants={itemVariants}>
+                <MoviesSection />
               </motion.div>
             )}
 

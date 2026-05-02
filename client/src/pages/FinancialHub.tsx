@@ -89,7 +89,7 @@ const SERVICES = [
   { id: "electricity", label: "Electricity", icon: Zap,      color: "from-yellow-400 to-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20" },
   { id: "internet",    label: "Internet",    icon: Wifi,      color: "from-blue-400 to-indigo-500",   bg: "bg-blue-50 dark:bg-blue-900/20" },
   { id: "airtime",     label: "Airtime",     icon: Phone,     color: "from-emerald-400 to-teal-500",  bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-  { id: "betting",     label: "Betting",     icon: Gamepad2,  color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+  { id: "betting",     label: "Betting",     icon: Gamepad2,  color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20", comingSoon: true } as any,
 ];
 
 // ─── Nigerian Networks ────────────────────────────────────────────────────────
@@ -899,22 +899,33 @@ export default function FinancialHub() {
       <div>
         <h3 className="font-bold text-sm mb-3">Quick Services</h3>
         <div className="grid grid-cols-4 gap-3">
-          {SERVICES.map(svc => (
-            <button key={svc.id} onClick={() => { resetBill(); setSelectedService(svc); setView("service"); }}
-              className={`flex flex-col items-center gap-2 p-3 rounded-2xl ${svc.bg} hover:shadow-md transition-shadow`} data-testid={`btn-service-${svc.id}`}>
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}>
-                <svc.icon className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-[11px] font-semibold text-foreground">{svc.label}</span>
-            </button>
-          ))}
+          {SERVICES.map((svc: any) => {
+            const cs = !!svc.comingSoon;
+            return (
+              <button key={svc.id}
+                onClick={() => {
+                  if (cs) { toast({ title: `${svc.label} coming soon`, description: "We're integrating a licensed provider. Stay tuned." }); return; }
+                  resetBill(); setSelectedService(svc); setView("service");
+                }}
+                className={`relative flex flex-col items-center gap-2 p-3 rounded-2xl ${svc.bg} hover:shadow-md transition-shadow ${cs ? "opacity-60" : ""}`}
+                data-testid={`btn-service-${svc.id}`}>
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}>
+                  <svc.icon className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-[11px] font-semibold text-foreground">{svc.label}</span>
+                {cs && (
+                  <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[8px] font-bold uppercase tracking-wide shadow">Soon</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Virtual Card */}
       <div>
-        <h3 className="font-bold text-sm mb-3">Virtual US Mastercard</h3>
-        {vcData?.card ? (
+        <h3 className="font-bold text-sm mb-3">Virtual US Mastercard <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wide">Coming Soon</span></h3>
+        {false && vcData?.card ? (
           <div className="relative rounded-3xl overflow-hidden shadow-xl" style={{ background: "linear-gradient(135deg, #1a472a 0%, #2d6a4f 50%, #b8860b 100%)" }}>
             <div className="absolute inset-0 opacity-10">
               <div className="absolute top-4 right-4 w-32 h-32 rounded-full bg-white/20" />
@@ -979,34 +990,22 @@ export default function FinancialHub() {
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border-2 border-dashed border-muted-foreground/20 p-6 flex flex-col items-center gap-4 bg-card/50">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-forest-green/20 to-tsia-gold/20 flex items-center justify-center">
-              <CreditCard className="w-7 h-7 text-tsia-gold" />
+          <div className="rounded-2xl border-2 border-dashed border-amber-500/30 p-6 flex flex-col items-center gap-3 bg-amber-50/40 dark:bg-amber-900/10">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400/30 to-tsia-gold/30 flex items-center justify-center">
+              <CreditCard className="w-7 h-7 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="text-center">
-              <p className="font-bold text-sm">Get a Virtual US Mastercard</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Use for online USD purchases & subscriptions worldwide</p>
+              <p className="font-bold text-sm">Virtual US Mastercard — Coming Soon</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">We're integrating with a licensed card issuer (Bridgecard / Sudo) to bring you real, fundable virtual cards for online USD purchases worldwide. Stay tuned.</p>
             </div>
-            <div className="grid grid-cols-2 gap-2 w-full text-xs text-muted-foreground">
-              {["Instant issuance", "Secure PIN protection", "Global acceptance", "Billing address set"].map(f => (
+            <div className="grid grid-cols-2 gap-2 w-full text-xs text-muted-foreground max-w-xs">
+              {["Real issuer-backed", "Fund from wallet", "Global online use", "Freeze / unfreeze"].map(f => (
                 <div key={f} className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green shrink-0" />
+                  <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                   <span>{f}</span>
                 </div>
               ))}
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Lock className="w-3 h-3" />
-              <span>One-time setup fee: <span className="font-bold text-tsia-gold">$5.00</span> from wallet balance</span>
-            </div>
-            <Button size="sm"
-              onClick={openVcWizard}
-              disabled={balance < 5}
-              className="bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl px-6 w-full"
-              data-testid="btn-purchase-virtual-card">
-              Set Up My Virtual Card
-            </Button>
-            {balance < 5 && <p className="text-xs text-amber-500">Fund your wallet first (min $5)</p>}
           </div>
         )}
       </div>

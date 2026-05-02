@@ -665,7 +665,7 @@ export default function FinancialHub() {
           { label: "Beneficiary",    value: resolvedName || acctNumber },
           { label: "Account No",     value: acctNumber },
           { label: "Bank",           value: selectedBank?.name || "—" },
-          { label: "Gateway",        value: bankGateway === "squad" ? "Squad by GTco" : "Korapay" },
+          { label: "Gateway",        value: bankGateway === "squad" ? "Primary" : "Alternative" },
           { label: "Amount",         value: `$${amt.toFixed(2)}` },
           { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                red: true },
           { label: "Beneficiary Receives", value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
@@ -673,7 +673,7 @@ export default function FinancialHub() {
           { label: "Status",         value: "Sent Successfully ✓",              green: true, bold: true },
         ] as ReceiptRow[],
         referenceRow: data.reference,
-        footerNote: `Transfer processed instantly via ${bankGateway === "squad" ? "Squad by GTco" : "Korapay"}. The recipient should receive funds within minutes.`,
+        footerNote: `Transfer processed instantly. The recipient should receive funds within minutes.`,
         onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
         newTxLabel: "New Transfer",
       });
@@ -1554,13 +1554,13 @@ export default function FinancialHub() {
               <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">
                 <RefreshCcw className="w-4 h-4 text-tsia-green shrink-0 mt-0.5" />
                 <p className="text-xs text-tsia-green leading-relaxed">
-                  Today's rate: <strong>1 USD ≈ {formatAmount(1)}</strong> · powered by Squad by GTco
+                  Today's rate: <strong>1 USD ≈ {formatAmount(1)}</strong>
                 </p>
               </div>
             )}
             <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">
               <Shield className="w-4 h-4 text-tsia-green shrink-0 mt-0.5" />
-              <p className="text-xs text-tsia-green">Powered by <strong>Squad by GTco</strong> — secure inline checkout. Card, bank transfer, USSD &amp; mobile money supported.</p>
+              <p className="text-xs text-tsia-green">Secure inline checkout — card, bank transfer, USSD &amp; mobile money supported.</p>
             </div>
             <Button onClick={openSquadModal}
               disabled={squadLoading || !fundAmount || parseFloat(fundAmount) < 1}
@@ -1601,7 +1601,7 @@ export default function FinancialHub() {
             </div>
             <div className="flex items-start gap-2 bg-orange-50 dark:bg-orange-900/20 rounded-xl p-3">
               <Shield className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-orange-700 dark:text-orange-300">Powered by <strong>Korapay</strong> — opens in a new tab. Payment is auto-verified when complete.</p>
+              <p className="text-xs text-orange-700 dark:text-orange-300">Opens in a new tab. Payment is auto-verified when complete.</p>
             </div>
             {koraLoading && (
               <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3 flex items-center gap-3">
@@ -2045,8 +2045,8 @@ export default function FinancialHub() {
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payout Gateway</p>
           <div className="grid grid-cols-2 gap-2">
             {([
-              { id: "squad",   label: "Squad by GTco",  desc: "Instant bank payout", color: "border-tsia-green bg-tsia-green/5 text-tsia-green" },
-              { id: "korapay", label: "Korapay",         desc: "Alternative gateway",  color: "border-orange-400 bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400" },
+              { id: "squad",   label: "Primary",        desc: "Instant bank payout", color: "border-tsia-green bg-tsia-green/5 text-tsia-green" },
+              { id: "korapay", label: "Alternative",     desc: "Backup payout route",  color: "border-orange-400 bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400" },
             ] as const).map(g => (
               <button key={g.id} onClick={() => setBankGateway(g.id)}
                 className={`rounded-xl border-2 p-2.5 text-left transition-all ${bankGateway === g.id ? g.color : "border-border text-muted-foreground"}`}
@@ -2109,7 +2109,7 @@ export default function FinancialHub() {
           <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
             disabled={requestTransferOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-            onClick={() => { if (weekendBlocked) { toast({ title: "Network error", description: "Unable to process your transfer. Please try again later.", variant: "destructive" }); return; } requestTransferOtpMutation.mutate(); }} data-testid="btn-send-tsia">
+            onClick={() => { requestTransferOtpMutation.mutate(); }} data-testid="btn-send-tsia">
             {requestTransferOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Continue — ${fmt(amount)}
           </Button>
@@ -2191,7 +2191,7 @@ export default function FinancialHub() {
           <Button
             className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
             disabled={sendTsiaMutation.isPending || otpCode.length !== 6}
-            onClick={() => { if (weekendBlocked) { toast({ title: "Network error", description: "Unable to process your transfer. Please try again later.", variant: "destructive" }); return; } sendTsiaMutation.mutate(); }}
+            onClick={() => { sendTsiaMutation.mutate(); }}
             data-testid="btn-confirm-transfer-otp"
           >
             {sendTsiaMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
@@ -2397,10 +2397,6 @@ export default function FinancialHub() {
       <AnimatePresence mode="wait">
         <motion.div key="internet" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
           <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Data" sub={billStep === "details" ? "Select network & plan" : billStep === "success" ? "Purchase Complete" : "Confirm purchase"} />
-          <div className="flex items-center justify-center gap-1.5 -mt-3">
-            <Shield className="w-3 h-3 text-blue-600" />
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Powered by Squad VAS · Korapay fallback</span>
-          </div>
 
           {billStep === "details" ? (<>
             <div>
@@ -2490,10 +2486,6 @@ export default function FinancialHub() {
       <AnimatePresence mode="wait">
         <motion.div key="airtime" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
           <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Airtime" sub={billStep === "details" ? "Select network & phone" : billStep === "success" ? "Purchase Complete" : "Enter amount"} />
-          <div className="flex items-center justify-center gap-1.5 -mt-3">
-            <Shield className="w-3 h-3 text-tsia-green" />
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Powered by Squad VAS · Korapay fallback</span>
-          </div>
 
           {billStep === "details" ? (<>
             <div>

@@ -1021,7 +1021,7 @@ export default function WalletSection() {
                 </div>
                 <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">
                   <Shield className="w-4 h-4 text-tsia-green shrink-0 mt-0.5" />
-                  <p className="text-xs text-tsia-green">Powered by <strong>Squad by GTco</strong> — secure inline checkout. Card, bank transfer, USSD, and mobile money supported.</p>
+                  <p className="text-xs text-tsia-green">Secure inline checkout — card, bank transfer, USSD, and mobile money supported.</p>
                 </div>
               </div>
               <DialogFooter>
@@ -1067,7 +1067,7 @@ export default function WalletSection() {
                 </div>
                 <div className="flex items-start gap-2 bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3">
                   <Shield className="w-4 h-4 text-purple-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-purple-700 dark:text-purple-300">Powered by <strong>Korapay</strong> — opens in a new tab. Payment is auto-verified when complete.</p>
+                  <p className="text-xs text-purple-700 dark:text-purple-300">Opens in a new tab. Payment is auto-verified when complete.</p>
                 </div>
                 {koraLoading && (
                   <div className="bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-xl p-3 flex items-center gap-3">

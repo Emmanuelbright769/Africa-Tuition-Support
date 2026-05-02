@@ -836,7 +836,7 @@ export default function WalletPage() {
                       <div className="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
                         <Shield className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                         <p className="text-xs text-emerald-800 dark:text-emerald-200">
-                          Secured by <strong>Squad by GTco</strong> — pay with card, bank transfer, USSD or instant bank debit. No redirect needed.
+                          Secure inline checkout — pay with card, bank transfer, USSD or instant bank debit. No redirect needed.
                         </p>
                       </div>
                       <Button className="w-full h-12 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold"
@@ -1031,7 +1031,7 @@ export default function WalletPage() {
                   vat_deduction: "VAT",
                 };
                 const methodLabel: Record<string,string> = {
-                  squad: "Squad by GTco", paystack: "Card / Bank", wallet: "Wallet",
+                  squad: "Bank Card", paystack: "Card / Bank", wallet: "Wallet",
                   bank_transfer: "Bank Transfer", admin: "Admin", crypto: "Crypto",
                 };
                 return (
@@ -1096,7 +1096,7 @@ export default function WalletPage() {
                     <div>
                       <p className="font-semibold text-sm">${parseFloat(d.amountUsd).toFixed(2)}</p>
                       <p className="text-[10px] text-muted-foreground">
-                        {d.walletType === "squad" ? "Squad by GTco" : d.walletType === "paystack" ? "Card / Bank" : d.walletType?.toUpperCase()} · {new Date(d.createdAt).toLocaleDateString()}
+                        {d.walletType === "squad" ? "Bank Card" : d.walletType === "paystack" ? "Card / Bank" : d.walletType?.toUpperCase()} · {new Date(d.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
@@ -1189,10 +1189,10 @@ export default function WalletPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-black text-lg text-white leading-tight">Bank Withdrawal</p>
-                    <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Squad</span>
+                    <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>
                   </div>
                   <p className="text-sm text-white/60">NGN to Nigerian bank · 7.5% VAT</p>
-                  <p className="text-xs text-white/40 mt-0.5">Powered by Squad by GTco · 30 min – 24 h</p>
+                  <p className="text-xs text-white/40 mt-0.5">Settles in 30 min – 24 h</p>
                 </div>
                 <ArrowUpRight className="w-6 h-6 text-white/70 group-hover:text-white shrink-0 transition-colors" />
               </button>
@@ -1209,10 +1209,10 @@ export default function WalletPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-black text-lg text-white leading-tight">Bank Withdrawal</p>
-                    <span className="text-[9px] font-black bg-white/30 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">Korapay</span>
+                    <span className="text-[9px] font-black bg-white/30 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">Alt</span>
                   </div>
                   <p className="text-sm text-white/80">NGN to Nigerian bank · 7.5% VAT</p>
-                  <p className="text-xs text-white/60 mt-0.5">Powered by Korapay · 30 min – 24 h</p>
+                  <p className="text-xs text-white/60 mt-0.5">Settles in 30 min – 24 h</p>
                 </div>
                 <ArrowUpRight className="w-6 h-6 text-white/80 group-hover:text-white shrink-0 transition-colors" />
               </button>
@@ -1407,11 +1407,11 @@ export default function WalletPage() {
                 <div>
                   <h2 className="font-black text-xl leading-tight">Bank Withdrawal</h2>
                   <p className="text-white/70 text-xs mt-0.5">
-                    {bwGateway === "korapay" ? "via Korapay" : "via Squad by GTco"} · NGN · 7.5% VAT · 30min–24h
+                    {bwGateway === "korapay" ? "Alternative" : "Primary"} · NGN · 7.5% VAT · 30min–24h
                   </p>
                 </div>
                 <span className={`ml-auto text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-wide ${bwGateway === "korapay" ? "bg-white/20 text-white" : "bg-amber-400 text-amber-900"}`}>
-                  {bwGateway === "korapay" ? "Korapay" : "Squad"}
+                  {bwGateway === "korapay" ? "Alt" : "Primary"}
                 </span>
               </div>
             </div>
@@ -1503,8 +1503,8 @@ export default function WalletPage() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payout Gateway</p>
                 <div className="grid grid-cols-2 gap-2">
                   {([
-                    { id: "squad",   label: "Squad by GTco", desc: "Instant NGN payout" },
-                    { id: "korapay", label: "Korapay",        desc: "Alternative gateway" },
+                    { id: "squad",   label: "Primary",      desc: "Instant NGN payout" },
+                    { id: "korapay", label: "Alternative",  desc: "Backup payout route" },
                   ] as const).map(g => (
                     <button key={g.id} onClick={() => setBwGateway(g.id)}
                       className={`rounded-xl border-2 p-2.5 text-left transition-all ${bwGateway === g.id

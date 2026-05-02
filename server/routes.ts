@@ -5758,12 +5758,12 @@ export async function registerRoutes(
           const rs = await fetch(`${SQUAD_BASE}/payout/account/lookup`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
+            body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber, currency_id: "NGN" }),
             signal: AbortSignal.timeout(12000),
           });
           const ds = await rs.json() as any;
           console.log(`[SQUAD] resolve-bank → HTTP ${rs.status} | success=${ds.success} | name="${ds.data?.account_name ?? ""}" | msg="${ds.message}"`);
-          if (ds.success && ds.data?.account_name) {
+          if ((ds.success || ds.status === 200 || ds.status === "200") && ds.data?.account_name) {
             accountName = ds.data.account_name;
             usedGateway = "squad";
           } else if (!lastMsg) {
@@ -6127,8 +6127,6 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const _wb2 = isWeekendBlock();
-      if (_wb2.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb2.until} (Nigeria time).`, weekendBlock: true });
       const { network, phone, amount } = req.body;
       if (!network || !phone || !amount) return res.status(400).json({ message: "network, phone, and amount required" });
       const amountUsd = parseFloat(amount);
@@ -6202,8 +6200,6 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const _wb3 = isWeekendBlock();
-      if (_wb3.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb3.until} (Nigeria time).`, weekendBlock: true });
       const { network, phone, amount, planLabel, planValidity, planCode } = req.body;
       if (!network || !phone || !amount) return res.status(400).json({ message: "network, phone, and amount required" });
       const amountUsd = parseFloat(amount);
@@ -6280,8 +6276,6 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const _wb4 = isWeekendBlock();
-      if (_wb4.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb4.until} (Nigeria time).`, weekendBlock: true });
       const { discoCode, meterType, meterNumber, amount, phone } = req.body;
       if (!discoCode || !meterType || !meterNumber || !amount) {
         return res.status(400).json({ message: "discoCode, meterType, meterNumber, and amount required" });
@@ -6393,8 +6387,6 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const _wb5 = isWeekendBlock();
-      if (_wb5.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb5.until} (Nigeria time).`, weekendBlock: true });
       const { platform, bettingUserId, amount } = req.body;
       if (!platform || !bettingUserId || !amount) return res.status(400).json({ message: "platform, bettingUserId, and amount required" });
       const amountUsd = parseFloat(amount);
@@ -6431,8 +6423,6 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const _wb6 = isWeekendBlock();
-      if (_wb6.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb6.until} (Nigeria time).`, weekendBlock: true });
       const { email, amount, note } = req.body;
       if (!email || !amount) return res.status(400).json({ message: "email and amount are required" });
       const amountUsd = parseFloat(amount);

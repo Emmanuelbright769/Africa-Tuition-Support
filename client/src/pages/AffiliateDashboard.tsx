@@ -1093,7 +1093,7 @@ export default function AffiliateDashboard() {
       </AnimatePresence>
 
       {/* Main — overview stays below nav, services go full-screen */}
-      <main className={activeSection !== "overview" ? "fixed inset-0 z-30 bg-background flex flex-col" : "container mx-auto px-4 pt-8 pb-20 max-w-5xl"}>
+      <main className={activeSection !== "overview" ? "fixed inset-0 z-50 bg-background flex flex-col" : "container mx-auto px-4 pt-8 pb-20 max-w-5xl"}>
 
         {/* Compact top bar for service sections */}
         {activeSection !== "overview" && (

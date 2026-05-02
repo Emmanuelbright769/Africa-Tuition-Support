@@ -544,6 +544,7 @@ export default function AffiliateDashboard() {
   const { toast } = useToast();
 
   const [activeSection, setActiveSection] = useState<Section>("overview");
+  const navHistory = useRef<Section[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
   const [openChatId, setOpenChatId] = useState<number | null>(null);
@@ -1106,7 +1107,14 @@ export default function AffiliateDashboard() {
         .then(() => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }))
         .catch(() => {});
     }
+    navHistory.current.push(activeSection);
     setActiveSection(s); setMenuOpen(false);
+  };
+
+  const goBack = () => {
+    const prev = navHistory.current.pop();
+    setActiveSection(prev ?? "overview");
+    setMenuOpen(false);
   };
   const currentNav = NAV_ITEMS.find(n => n.id === activeSection) ?? NAV_ITEMS[0]!;
   const upgradeEliteAmtNum = Math.max(500, Math.min(10000, parseFloat(upgradeEliteAmt) || 500));
@@ -1229,7 +1237,7 @@ export default function AffiliateDashboard() {
         {activeSection !== "overview" && (
           <div className="flex items-center justify-between px-4 h-14 border-b bg-card shrink-0 shadow-sm">
             <div className="flex items-center gap-2">
-              <button onClick={() => setActiveSection("overview")}
+              <button onClick={goBack}
                 className="p-2 rounded-xl hover:bg-muted transition-colors" data-testid="btn-aff-service-back">
                 <ChevronRight className="w-4 h-4 rotate-180" />
               </button>

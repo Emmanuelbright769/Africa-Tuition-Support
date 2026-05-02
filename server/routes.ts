@@ -3149,7 +3149,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ─── ADMIN: All Co-Affiliates (Trust Funders) ───────────────────────────────
+  // ─── ADMIN: All Co-Affiliates (Trust Funders) — with real-time earnings ──────
   app.get("/api/admin/co-affiliates", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -3157,11 +3157,66 @@ export async function registerRoutes(
     if (user?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
       const all = await storage.getAllCoAffiliates();
+      // Get total affiliate pool (sum of all affiliate_trade_shares entries)
+      const poolResult = await db.execute(sql`
+        SELECT COALESCE(SUM(CAST(total_pool_amount AS numeric)), 0) AS total_pool
+        FROM affiliate_trade_shares
+      `);
+      const totalPool = parseFloat((poolResult.rows[0] as any)?.total_pool ?? "0");
+
+      // Get per-user total pool (for more granular breakdown if needed)
       const enriched = await Promise.all(all.map(async (ca) => {
         const u = await storage.getUser(ca.userId);
-        return { ...ca, userName: u ? `${u.firstName} ${u.lastName}` : "Unknown", userEmail: u?.email ?? "—" };
+        const sharePct = parseFloat(ca.sharePercentage ?? "0");
+        const withdrawn = parseFloat(ca.withdrawnAmount ?? "0");
+        const earnedAmount = parseFloat((totalPool * sharePct / 100).toFixed(6));
+        const availableAmount = parseFloat(Math.max(0, earnedAmount - withdrawn).toFixed(6));
+        return {
+          ...ca,
+          userName: u ? `${u.firstName} ${u.lastName}` : "Unknown",
+          userEmail: u?.email ?? "—",
+          totalPool,
+          earnedAmount,
+          availableAmount,
+        };
       }));
       res.json(enriched);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── ADMIN: Adjust co-affiliate profit (sharePercentage or withdrawnAmount) ─
+  app.patch("/api/admin/co-affiliate/:userId/adjust", async (req, res) => {
+    const adminId = (req.session as any)?.userId;
+    if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+    const admin = await storage.getUser(adminId);
+    if (admin?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const targetUserId = parseInt(req.params.userId);
+      const { sharePercentage, adjustWithdrawn } = req.body;
+      // adjustWithdrawn: negative = grant profits (reduce withdrawn so available increases), positive = deduct
+
+      const updates: Record<string, any> = {};
+      if (sharePercentage !== undefined && sharePercentage !== "") {
+        const pct = parseFloat(sharePercentage);
+        if (isNaN(pct) || pct < 0) return res.status(400).json({ message: "Invalid sharePercentage" });
+        updates.sharePercentage = pct.toFixed(10);
+      }
+      if (adjustWithdrawn !== undefined && adjustWithdrawn !== "") {
+        const adj = parseFloat(adjustWithdrawn);
+        if (isNaN(adj)) return res.status(400).json({ message: "Invalid adjustWithdrawn" });
+        // Positive adj = admin grants profit (SUBTRACT from withdrawnAmount so more is available)
+        // Negative adj = admin deducts profit (ADD to withdrawnAmount so less is available)
+        await db.execute(sql`
+          UPDATE co_affiliates
+          SET withdrawn_amount = GREATEST(0, CAST(withdrawn_amount AS numeric) - ${adj})
+          WHERE user_id = ${targetUserId}
+        `);
+      }
+      if (Object.keys(updates).length > 0) {
+        await db.update(coAffiliates).set(updates).where(eq(coAffiliates.userId, targetUserId));
+      }
+      const [updated] = await db.select().from(coAffiliates).where(eq(coAffiliates.userId, targetUserId));
+      res.json(updated);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

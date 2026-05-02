@@ -171,6 +171,9 @@ export default function AdminDashboard() {
   const [tradeAdjustNote, setTradeAdjustNote]   = useState("");
   const [sessionOverrideDialog, setSessionOverrideDialog] = useState<{ txId: number; userId: number; currentAmt: number } | null>(null);
   const [sessionOverrideAmt, setSessionOverrideAmt] = useState("");
+  const [tfAdjustDialog, setTfAdjustDialog] = useState<{ userId: number; name: string; earnedAmount: number; availableAmount: number; sharePercentage: string; withdrawnAmount: string } | null>(null);
+  const [tfAdjustSharePct, setTfAdjustSharePct] = useState("");
+  const [tfGrantAmount, setTfGrantAmount] = useState("");
 
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -193,7 +196,7 @@ export default function AdminDashboard() {
   const { data: allMessages = [] }         = useQuery({ queryKey: ["/api/admin/messages"], enabled: activeTab === "messages" });
   const { data: reserveFundData }          = useQuery({ queryKey: ["/api/reserve-fund/live"], enabled: activeTab === "reserve" });
   const { data: reserveProfitData }        = useQuery({ queryKey: ["/api/reserve-fund/commission-profits"], enabled: activeTab === "reserve" });
-  const { data: allTrustFunders = [] }     = useQuery({ queryKey: ["/api/admin/co-affiliates"], enabled: activeTab === "trustfunders" });
+  const { data: allTrustFunders = [] }     = useQuery({ queryKey: ["/api/admin/co-affiliates"], enabled: activeTab === "trustfunders", refetchInterval: 30_000, staleTime: 10_000 });
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 600_000 });
   const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
@@ -537,6 +540,19 @@ export default function AdminDashboard() {
       toast({ title: "Trust Funder Deleted", description: "Co-affiliate record removed." });
     },
     onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
+  });
+
+  const adjustTrustFunderMutation = useMutation({
+    mutationFn: async ({ userId, sharePercentage, adjustWithdrawn }: { userId: number; sharePercentage?: string; adjustWithdrawn?: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/co-affiliate/${userId}/adjust`, { sharePercentage, adjustWithdrawn });
+      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/co-affiliates"] });
+      setTfAdjustDialog(null); setTfAdjustSharePct(""); setTfGrantAmount("");
+      toast({ title: "Trust Funder Updated ✓", description: "Share percentage and/or profit balance adjusted." });
+    },
+    onError: (e: any) => toast({ title: "Adjustment failed", description: e.message, variant: "destructive" }),
   });
 
   const deleteMessageMutation = useMutation({
@@ -2402,11 +2418,35 @@ export default function AdminDashboard() {
 
             {/* ═══════════════════════════ TRUST FUNDERS ═══════════════════════════════ */}
             {activeTab === "trustfunders" && (
-              <motion.div key="trustfunders" variants={slide} initial="hidden" animate="visible" exit="exit">
+              <motion.div key="trustfunders" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
+
+                {/* ─── Pool summary bar ─────────────────────────────────────────── */}
+                {(allTrustFunders as any[]).length > 0 && (() => {
+                  const tf0 = (allTrustFunders as any[])[0];
+                  const totalPool = tf0?.totalPool ?? 0;
+                  const totalInvested = (allTrustFunders as any[]).reduce((s: number, t: any) => s + parseFloat(t.amountPaid ?? "0"), 0);
+                  const totalEarned   = (allTrustFunders as any[]).reduce((s: number, t: any) => s + (t.earnedAmount ?? 0), 0);
+                  const totalAvail    = (allTrustFunders as any[]).reduce((s: number, t: any) => s + (t.availableAmount ?? 0), 0);
+                  const totalWithdraw = (allTrustFunders as any[]).reduce((s: number, t: any) => s + parseFloat(t.withdrawnAmount ?? "0"), 0);
+                  return (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <StatCard title="Affiliate Pool (Total)" value={fmtUSD(totalPool)}    icon={Coins}    color="purple" sub="all-time trade pool" />
+                      <StatCard title="Total Invested"         value={fmtUSD(totalInvested)} icon={TrendingUp} color="blue" sub="across all trust funders" />
+                      <StatCard title="Total Earned"           value={fmtUSD(totalEarned)}   icon={BarChart2} color="tsia" sub="pool × share %" />
+                      <StatCard title="Available to Withdraw"  value={fmtUSD(totalAvail)}    icon={Wallet}    color="green" sub="earned − withdrawn" />
+                    </div>
+                  );
+                })()}
+
+                {/* ─── Trust Funders table ──────────────────────────────────────── */}
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
-                    <CardTitle className="text-base flex items-center gap-2"><Award className="w-4 h-4 text-amber-500" /> Trust Funders (Co-Affiliates)</CardTitle>
-                    <CardDescription>{(allTrustFunders as any[]).length} registered trust funders — investors backing the affiliate programme</CardDescription>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-base flex items-center gap-2"><Award className="w-4 h-4 text-amber-500" /> Trust Funders (Co-Affiliates)</CardTitle>
+                        <CardDescription>{(allTrustFunders as any[]).length} registered trust funders — investors backing the affiliate programme. Updates every 30s.</CardDescription>
+                      </div>
+                    </div>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
@@ -2416,6 +2456,9 @@ export default function AdminDashboard() {
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Tier</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Invested</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Share %</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Earned</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Available</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Withdrawn</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Joined</TableHead>
                           <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Actions</TableHead>
@@ -2423,11 +2466,14 @@ export default function AdminDashboard() {
                       </TableHeader>
                       <TableBody>
                         {(allTrustFunders as any[]).length === 0 ? (
-                          <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-500">No trust funders yet.</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={10} className="text-center py-10 text-slate-500">No trust funders yet.</TableCell></TableRow>
                         ) : (allTrustFunders as any[]).map((tf: any) => {
                           const tier = tf.investmentCategory >= 500 ? "Elite" : tf.investmentCategory >= 300 ? "Growth" : "Starter";
                           const tierColor = tier === "Elite" ? "bg-slate-800 text-white" : tier === "Growth" ? "bg-amber-100 text-amber-800 border-amber-200" : "bg-blue-50 text-blue-700 border-blue-200";
                           const isActive = tf.status === "active";
+                          const earned = tf.earnedAmount ?? 0;
+                          const available = tf.availableAmount ?? 0;
+                          const withdrawn = parseFloat(tf.withdrawnAmount ?? "0");
                           return (
                             <TableRow key={tf.id} className="hover:bg-slate-50/50">
                               <TableCell className="px-6">
@@ -2437,10 +2483,29 @@ export default function AdminDashboard() {
                               <TableCell><Badge variant="outline" className={`text-xs ${tierColor}`}>{tier}</Badge></TableCell>
                               <TableCell className="font-bold text-sm">{fmtUSD(tf.amountPaid)}</TableCell>
                               <TableCell className="text-sm font-mono">{parseFloat(tf.sharePercentage).toFixed(4)}%</TableCell>
+                              {/* Real-time earnings */}
+                              <TableCell>
+                                <p className="font-bold text-sm text-tsia-green">{fmtUSD(earned)}</p>
+                                <p className="text-[10px] text-muted-foreground">from pool</p>
+                              </TableCell>
+                              <TableCell>
+                                <p className={`font-bold text-sm ${available > 0 ? "text-blue-600" : "text-slate-400"}`}>{fmtUSD(available)}</p>
+                                <p className="text-[10px] text-muted-foreground">withdrawable</p>
+                              </TableCell>
+                              <TableCell className="text-sm text-slate-500 font-mono">{fmtUSD(withdrawn)}</TableCell>
                               <TableCell><StatusBadge status={tf.status} /></TableCell>
                               <TableCell className="text-xs text-slate-500">{fmtDate(tf.createdAt)}</TableCell>
                               <TableCell className="text-right px-6">
                                 <div className="flex items-center justify-end gap-1">
+                                  <Button size="sm" variant="outline" className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+                                    onClick={() => {
+                                      setTfAdjustDialog({ userId: tf.userId, name: tf.userName, earnedAmount: earned, availableAmount: available, sharePercentage: tf.sharePercentage, withdrawnAmount: tf.withdrawnAmount });
+                                      setTfAdjustSharePct(parseFloat(tf.sharePercentage).toFixed(4));
+                                      setTfGrantAmount("");
+                                    }}
+                                    data-testid={`button-adjust-trustfunder-${tf.id}`}>
+                                    <Edit className="w-3 h-3 mr-1" /> Adjust
+                                  </Button>
                                   <Button size="sm" variant="outline" className={`h-7 text-xs ${isActive ? "border-red-300 text-red-600 hover:bg-red-50" : "border-tsia-green/30 text-tsia-green hover:bg-tsia-green/5"}`}
                                     disabled={updateTrustFunderStatusMutation.isPending}
                                     onClick={() => updateTrustFunderStatusMutation.mutate({ userId: tf.userId, status: isActive ? "cancelled" : "active" })}
@@ -2462,6 +2527,64 @@ export default function AdminDashboard() {
                     </Table>
                   </div>
                 </Card>
+
+                {/* ─── Adjust Trust Funder Profit Dialog ───────────────────────── */}
+                <Dialog open={!!tfAdjustDialog} onOpenChange={o => !o && setTfAdjustDialog(null)}>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2"><Award className="w-4 h-4 text-amber-500" /> Adjust Profit — {tfAdjustDialog?.name}</DialogTitle>
+                      <DialogDescription>
+                        Current state: <strong className="text-tsia-green">{fmtUSD(tfAdjustDialog?.earnedAmount ?? 0)}</strong> earned |
+                        <strong className="text-blue-600"> {fmtUSD(tfAdjustDialog?.availableAmount ?? 0)}</strong> available |
+                        <strong className="text-slate-500"> {fmtUSD(parseFloat(tfAdjustDialog?.withdrawnAmount ?? "0"))}</strong> withdrawn
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div>
+                        <Label className="font-semibold">Share Percentage (%)</Label>
+                        <p className="text-xs text-muted-foreground mb-1">Changes how much of the affiliate pool this trust funder earns. Affects all past and future pool calculations.</p>
+                        <div className="relative">
+                          <Input type="number" min="0" max="100" step="0.0001" className="pr-8"
+                            value={tfAdjustSharePct} onChange={e => setTfAdjustSharePct(e.target.value)}
+                            placeholder="e.g. 0.0050" data-testid="input-tf-share-pct" />
+                          <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        </div>
+                      </div>
+                      <div className="border-t pt-4">
+                        <Label className="font-semibold">Grant / Deduct Profit (USD)</Label>
+                        <p className="text-xs text-muted-foreground mb-1">
+                          <strong>Positive</strong> = grant profit (increase available balance). <strong>Negative</strong> = deduct profit (decrease available balance). This adjusts the "withdrawn" ledger accordingly.
+                        </p>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+                          <Input type="number" step="0.01" className="pl-7"
+                            value={tfGrantAmount} onChange={e => setTfGrantAmount(e.target.value)}
+                            placeholder="e.g. 5.00 or -2.00" data-testid="input-tf-grant-amount" />
+                        </div>
+                        {tfGrantAmount && !isNaN(parseFloat(tfGrantAmount)) && (
+                          <p className={`text-xs mt-1 ${parseFloat(tfGrantAmount) >= 0 ? "text-tsia-green" : "text-red-500"}`}>
+                            {parseFloat(tfGrantAmount) >= 0
+                              ? `Will GRANT $${Math.abs(parseFloat(tfGrantAmount)).toFixed(2)} — available balance increases`
+                              : `Will DEDUCT $${Math.abs(parseFloat(tfGrantAmount)).toFixed(2)} — available balance decreases`}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setTfAdjustDialog(null)}>Cancel</Button>
+                      <Button className="bg-amber-500 hover:bg-amber-600 text-white"
+                        disabled={(!tfAdjustSharePct && !tfGrantAmount) || adjustTrustFunderMutation.isPending}
+                        onClick={() => tfAdjustDialog && adjustTrustFunderMutation.mutate({
+                          userId: tfAdjustDialog.userId,
+                          sharePercentage: tfAdjustSharePct || undefined,
+                          adjustWithdrawn: tfGrantAmount || undefined,
+                        })}
+                        data-testid="button-confirm-tf-adjust">
+                        {adjustTrustFunderMutation.isPending ? "Saving…" : "Apply Changes"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </motion.div>
             )}
 

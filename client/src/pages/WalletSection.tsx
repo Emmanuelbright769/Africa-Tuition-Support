@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, type ComponentProps } from "react";
+import { useState, useRef, useCallback, useEffect, type ComponentProps } from "react";
 import { TransactionReceipt, type ReceiptRow } from "@/components/ui/TransactionReceipt";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -26,7 +26,8 @@ import {
   Wallet, Eye, EyeOff, ArrowDownLeft, ArrowUpRight, Loader2,
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
   Smartphone, Banknote, Receipt, ExternalLink, RefreshCw, Copy, Coins,
-  MapPin, AlertTriangle, Lock, ChevronLeft, Camera, ScanFace, RotateCcw
+  MapPin, AlertTriangle, Lock, ChevronLeft, Camera, ScanFace, RotateCcw,
+  ChevronDown, BookOpen, TrendingUp, Users, Clock
 } from "lucide-react";
 
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -80,6 +81,28 @@ export default function WalletSection() {
     try { localStorage.setItem(hiddenKey, String(next)); } catch {}
     return next;
   });
+
+  // ── Wallet switcher ────────────────────────────────────────────────────
+  type WalletView = "student" | "affiliate";
+  const walletViewKey = `tsia_wallet_view_${user?.id ?? "guest"}`;
+  const [walletView, setWalletView] = useState<WalletView>(() => {
+    try { return (localStorage.getItem(walletViewKey) as WalletView) ?? "student"; } catch { return "student"; }
+  });
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const switchWallet = (w: WalletView) => {
+    setWalletView(w);
+    try { localStorage.setItem(walletViewKey, w); } catch {}
+    setSwitcherOpen(false);
+  };
+  useEffect(() => {
+    if (!switcherOpen) return;
+    const close = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-wallet-switcher]")) setSwitcherOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [switcherOpen]);
 
   // ── Fund dialog state ──────────────────────────────────────────────────
   const [fundOpen, setFundOpen]           = useState(false);
@@ -147,8 +170,22 @@ export default function WalletSection() {
   const { data: deposits = [], refetch: refetchDeposits } = useQuery<DepositRecord[]>({ queryKey: ["/api/wallet/deposits"] });
   const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
   const { data: withdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/wallet/withdrawals"] });
+  const { data: balances, refetch: refetchBalances } = useQuery<{
+    bookBalance: string; availableBalance: string; confirmedBalance: string;
+    minimumBalance: string; lockedBalance: string;
+    pendingAmount: string; pendingCount: number; failedCount: number;
+    tradeBalance: string; referralBalance: string; totalAffiliateBalance: string;
+  }>({ queryKey: ["/api/wallet/balances"], staleTime: 30_000 });
 
-  const balance = parseFloat(wallet?.balance ?? "0");
+  const balance         = parseFloat(wallet?.balance ?? "0");
+  const availableBalance = parseFloat(balances?.availableBalance ?? "0");
+  const bookBalance      = parseFloat(balances?.bookBalance ?? String(balance));
+  const pendingAmount    = parseFloat(balances?.pendingAmount ?? "0");
+  const pendingCount     = balances?.pendingCount ?? 0;
+  const lockedBalance    = parseFloat(balances?.lockedBalance ?? "0");
+  const tradeBalance     = parseFloat(balances?.tradeBalance ?? "0");
+  const referralBalance  = parseFloat(balances?.referralBalance ?? "0");
+  const totalAffiliate   = parseFloat(balances?.totalAffiliateBalance ?? "0");
 
   // ── Squad: load widget script ────────────────────────────────────────────
   const loadSquadScript = useCallback((): Promise<void> => {
@@ -193,7 +230,7 @@ export default function WalletSection() {
             const vd = await vRes.json();
             if (!vRes.ok) throw new Error(vd.message);
             toast({ title: "Wallet funded! 🎉", description: vd.message, className: "border-tsia-green" });
-            refetchWallet(); refetchDeposits();
+            refetchWallet(); refetchDeposits(); refetchBalances();
             queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
             setFundOpen(false); setFundAmount("");
           } catch (ve: any) {
@@ -232,7 +269,7 @@ export default function WalletSection() {
           if (vRes.ok) {
             clearInterval(poll);
             toast({ title: "Wallet funded! 🎉", description: vd.message, className: "border-tsia-green" });
-            refetchWallet(); refetchDeposits();
+            refetchWallet(); refetchDeposits(); refetchBalances();
             queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
             setFundOpen(false); setFundAmount(""); setKoraLoading(false);
           }
@@ -545,54 +582,242 @@ export default function WalletSection() {
       {/* Balance card */}
       <motion.div variants={itemVariants}>
         <div className="relative rounded-3xl overflow-hidden">
-          <div className="bg-gradient-to-br from-[#1a5c38] via-[#1e6b42] to-[#0e3d25] p-7 pr-6">
-            <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full bg-white/5" />
-            <div className="absolute top-4 right-16 w-24 h-24 rounded-full bg-white/5" />
-            <div className="absolute -bottom-8 left-28 w-32 h-32 rounded-full bg-white/5" />
+          {/* Student wallet card */}
+          {walletView === "student" && (
+            <div className="bg-gradient-to-br from-[#1a5c38] via-[#1e6b42] to-[#0e3d25] p-6 pr-6">
+              <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full bg-white/5" />
+              <div className="absolute top-4 right-16 w-24 h-24 rounded-full bg-white/5" />
+              <div className="absolute -bottom-8 left-28 w-32 h-32 rounded-full bg-white/5" />
 
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-white/60 text-[11px] font-semibold uppercase tracking-widest">TSIA SwiftWallet</p>
-                <div className="flex items-center gap-2">
-                  <button onClick={toggleHidden} className="text-white/60 hover:text-white transition-colors p-1" data-testid="btn-toggle-balance">
-                    {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                  <button onClick={() => refetchWallet()} className="text-white/60 hover:text-white transition-colors p-1">
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
+              <div className="relative z-10">
+                {/* Row 1: wallet switcher + actions */}
+                <div className="flex items-center justify-between mb-3">
+                  {/* Wallet switcher dropdown */}
+                  <div className="relative" data-wallet-switcher>
+                    <button
+                      onClick={() => setSwitcherOpen(p => !p)}
+                      className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-1.5 transition-colors"
+                      data-testid="btn-wallet-switcher"
+                    >
+                      <Wallet className="w-3.5 h-3.5 text-white/80" />
+                      <span className="text-white/90 text-[11px] font-semibold uppercase tracking-wider">Student Wallet</span>
+                      <ChevronDown className="w-3 h-3 text-white/60" />
+                    </button>
+                    {switcherOpen && (
+                      <div className="absolute top-full left-0 mt-1.5 bg-card border border-border rounded-2xl shadow-xl z-50 min-w-[180px] overflow-hidden">
+                        <button onClick={() => switchWallet("student")}
+                          className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-muted/50 transition-colors text-left"
+                          data-testid="btn-switch-student">
+                          <div className="w-7 h-7 rounded-xl bg-tsia-green/10 flex items-center justify-center">
+                            <Wallet className="w-3.5 h-3.5 text-tsia-green" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold">Student Wallet</p>
+                            <p className="text-[10px] text-muted-foreground">SwiftWallet · Fintech</p>
+                          </div>
+                          {walletView === "student" && <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green ml-auto" />}
+                        </button>
+                        <div className="h-px bg-border mx-3" />
+                        <button onClick={() => switchWallet("affiliate")}
+                          className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-muted/50 transition-colors text-left"
+                          data-testid="btn-switch-affiliate">
+                          <div className="w-7 h-7 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                            <TrendingUp className="w-3.5 h-3.5 text-amber-500" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold">Affiliate Wallet</p>
+                            <p className="text-[10px] text-muted-foreground">Trade · Referral</p>
+                          </div>
+                          {walletView === "affiliate" && <CheckCircle2 className="w-3.5 h-3.5 text-amber-500 ml-auto" />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={toggleHidden} className="text-white/60 hover:text-white transition-colors p-1" data-testid="btn-toggle-balance">
+                      {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => { refetchWallet(); refetchBalances(); }} className="text-white/60 hover:text-white transition-colors p-1">
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <p className="text-white/50 text-xs mb-3">{user?.email}</p>
-
-              <p className="text-5xl font-black text-white tracking-tight mb-1" data-testid="text-wallet-balance">
-                {hidden ? <span className="tracking-[0.3em]">••••••</span> : `$${balance.toFixed(2)}`}
-              </p>
-              {!hidden && (
-                <p className="text-white/60 text-sm font-semibold mb-1">
-                  ≈ {currencyLoading ? <span className="opacity-50 text-xs">detecting…</span> : formatAmount(balance)}
-                  {currency && currency.code !== "USD" && (
-                    <span className="ml-1.5 text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency.code}</span>
-                  )}
+                {/* Available balance — main display */}
+                <p className="text-white/50 text-[10px] font-semibold uppercase tracking-widest mb-0.5">Available Balance</p>
+                <p className="text-5xl font-black text-white tracking-tight mb-1" data-testid="text-wallet-balance">
+                  {hidden ? <span className="tracking-[0.3em]">••••••</span> : `$${availableBalance.toFixed(2)}`}
                 </p>
-              )}
-              <p className="text-white/50 text-xs mb-1">Available balance · Use Fintech to send money to a bank account</p>
-              <p className="text-white/40 text-[10px] mb-5">Fund your wallet to access all platform services</p>
+                {!hidden && (
+                  <p className="text-white/60 text-sm font-semibold mb-3">
+                    ≈ {currencyLoading ? <span className="opacity-50 text-xs">detecting…</span> : formatAmount(availableBalance)}
+                    {currency && currency.code !== "USD" && (
+                      <span className="ml-1.5 text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency.code}</span>
+                    )}
+                  </p>
+                )}
 
-              <Button
-                onClick={() => {
-                  if (!walletKycDone && needsKyc) {
-                    toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification above to unlock funding.", variant: "destructive" }); return;
-                  }
-                  setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); setFundOpen(true);
-                }}
-                className="w-full h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl"
-                data-testid="btn-fund-wallet"
-              >
-                <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
-              </Button>
+                {/* Balance breakdown row */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="bg-white/10 rounded-xl p-2.5 text-center">
+                    <div className="flex items-center justify-center gap-1 mb-0.5">
+                      <BookOpen className="w-3 h-3 text-white/60" />
+                      <span className="text-[9px] text-white/50 uppercase tracking-wider font-semibold">Book</span>
+                    </div>
+                    <p className="text-white text-xs font-bold" data-testid="text-book-balance">
+                      {hidden ? "••••" : `$${bookBalance.toFixed(2)}`}
+                    </p>
+                  </div>
+                  <div className={`rounded-xl p-2.5 text-center ${pendingCount > 0 ? "bg-amber-500/20" : "bg-white/10"}`}>
+                    <div className="flex items-center justify-center gap-1 mb-0.5">
+                      <Clock className="w-3 h-3 text-white/60" />
+                      <span className="text-[9px] text-white/50 uppercase tracking-wider font-semibold">Pending</span>
+                    </div>
+                    <p className={`text-xs font-bold ${pendingCount > 0 ? "text-amber-300" : "text-white"}`} data-testid="text-pending-balance">
+                      {hidden ? "••••" : `$${pendingAmount.toFixed(2)}`}
+                      {pendingCount > 0 && <span className="ml-1 text-[9px]">({pendingCount})</span>}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 rounded-xl p-2.5 text-center">
+                    <div className="flex items-center justify-center gap-1 mb-0.5">
+                      <Lock className="w-3 h-3 text-white/60" />
+                      <span className="text-[9px] text-white/50 uppercase tracking-wider font-semibold">Reserved</span>
+                    </div>
+                    <p className="text-white text-xs font-bold" data-testid="text-locked-balance">
+                      {hidden ? "••••" : `$${lockedBalance.toFixed(2)}`}
+                    </p>
+                  </div>
+                </div>
+
+                {pendingCount > 0 && (
+                  <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-400/20 rounded-xl px-3 py-2 mb-3">
+                    <Clock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <p className="text-amber-200 text-[11px]">{pendingCount} deposit{pendingCount > 1 ? "s" : ""} pending admin approval · <span className="font-bold">${pendingAmount.toFixed(2)}</span> in ledger</p>
+                  </div>
+                )}
+
+                <Button
+                  onClick={() => {
+                    if (!walletKycDone && needsKyc) {
+                      toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification above to unlock funding.", variant: "destructive" }); return;
+                    }
+                    setFundAmount(""); setFundOpen(true);
+                  }}
+                  className="w-full h-11 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl"
+                  data-testid="btn-fund-wallet"
+                >
+                  <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Affiliate wallet card */}
+          {walletView === "affiliate" && (
+            <div className="bg-gradient-to-br from-[#78350f] via-[#92400e] to-[#451a03] p-6 pr-6">
+              <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full bg-white/5" />
+              <div className="absolute top-4 right-16 w-24 h-24 rounded-full bg-white/5" />
+              <div className="absolute -bottom-8 left-28 w-32 h-32 rounded-full bg-white/5" />
+
+              <div className="relative z-10">
+                {/* Row 1: wallet switcher + actions */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="relative" data-wallet-switcher>
+                    <button
+                      onClick={() => setSwitcherOpen(p => !p)}
+                      className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-1.5 transition-colors"
+                      data-testid="btn-wallet-switcher-aff"
+                    >
+                      <TrendingUp className="w-3.5 h-3.5 text-white/80" />
+                      <span className="text-white/90 text-[11px] font-semibold uppercase tracking-wider">Affiliate Wallet</span>
+                      <ChevronDown className="w-3 h-3 text-white/60" />
+                    </button>
+                    {switcherOpen && (
+                      <div className="absolute top-full left-0 mt-1.5 bg-card border border-border rounded-2xl shadow-xl z-50 min-w-[180px] overflow-hidden">
+                        <button onClick={() => switchWallet("student")}
+                          className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-muted/50 transition-colors text-left"
+                          data-testid="btn-switch-student-aff">
+                          <div className="w-7 h-7 rounded-xl bg-tsia-green/10 flex items-center justify-center">
+                            <Wallet className="w-3.5 h-3.5 text-tsia-green" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold">Student Wallet</p>
+                            <p className="text-[10px] text-muted-foreground">SwiftWallet · Fintech</p>
+                          </div>
+                        </button>
+                        <div className="h-px bg-border mx-3" />
+                        <button onClick={() => switchWallet("affiliate")}
+                          className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-muted/50 transition-colors text-left"
+                          data-testid="btn-switch-affiliate-aff">
+                          <div className="w-7 h-7 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                            <TrendingUp className="w-3.5 h-3.5 text-amber-500" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold">Affiliate Wallet</p>
+                            <p className="text-[10px] text-muted-foreground">Trade · Referral</p>
+                          </div>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-amber-500 ml-auto" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={toggleHidden} className="text-white/60 hover:text-white transition-colors p-1">
+                      {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => refetchBalances()} className="text-white/60 hover:text-white transition-colors p-1">
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-white/50 text-[10px] font-semibold uppercase tracking-widest mb-0.5">Total Affiliate Balance</p>
+                <p className="text-5xl font-black text-white tracking-tight mb-1" data-testid="text-affiliate-balance">
+                  {hidden ? <span className="tracking-[0.3em]">••••••</span> : `$${totalAffiliate.toFixed(2)}`}
+                </p>
+                {!hidden && (
+                  <p className="text-white/60 text-sm font-semibold mb-3">
+                    ≈ {currencyLoading ? <span className="opacity-50 text-xs">detecting…</span> : formatAmount(totalAffiliate)}
+                    {currency && currency.code !== "USD" && (
+                      <span className="ml-1.5 text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency.code}</span>
+                    )}
+                  </p>
+                )}
+
+                {/* Trade + Referral breakdown */}
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <TrendingUp className="w-3.5 h-3.5 text-amber-300" />
+                      <span className="text-[10px] text-white/50 font-semibold uppercase">Trade Balance</span>
+                    </div>
+                    <p className="text-white text-sm font-bold" data-testid="text-trade-balance">
+                      {hidden ? "••••" : `$${tradeBalance.toFixed(2)}`}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Users className="w-3.5 h-3.5 text-amber-300" />
+                      <span className="text-[10px] text-white/50 font-semibold uppercase">Referral</span>
+                    </div>
+                    <p className="text-white text-sm font-bold" data-testid="text-referral-balance">
+                      {hidden ? "••••" : `$${referralBalance.toFixed(2)}`}
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-white/40 text-[10px] mb-4">Manage your trade and referral earnings in the Trade Market section</p>
+
+                <Button
+                  onClick={() => switchWallet("student")}
+                  className="w-full h-11 bg-white text-amber-800 font-bold hover:bg-white/90 rounded-2xl"
+                  data-testid="btn-switch-to-student"
+                >
+                  <Wallet className="w-4 h-4 mr-2" /> Switch to Student Wallet
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </motion.div>
 

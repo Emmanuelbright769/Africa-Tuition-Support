@@ -1228,6 +1228,53 @@ export async function registerRoutes(
     res.json(result);
   });
 
+  // ── GET /api/wallet/balances — book balance, available balance, pending, trade ──
+  app.get("/api/wallet/balances", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const MIN_BALANCE = 2;
+
+      // Main wallet
+      const wallet = await storage.getOrCreateWallet(userId);
+      const confirmedBalance = parseFloat(wallet.balance);
+
+      // Pending crypto deposits (submitted but awaiting admin approval)
+      const allDeposits = await storage.getUserWalletDeposits(userId);
+      const pendingDeposits = allDeposits.filter((d: any) => d.status === "pending");
+      const pendingAmount = pendingDeposits.reduce((sum: number, d: any) => sum + parseFloat(d.amountUsd), 0);
+      const failedDeposits = allDeposits.filter((d: any) => d.status === "rejected");
+
+      // Book balance = confirmed + all pending credits still in flight
+      const bookBalance = confirmedBalance + pendingAmount;
+
+      // Available balance = confirmed balance − minimum reserve (cannot go negative)
+      const availableBalance = Math.max(0, confirmedBalance - MIN_BALANCE);
+
+      // Trade / Affiliate wallet
+      const tradeWallet = await storage.getOrCreateTradeWallet(userId);
+      const tradeBalance = parseFloat(tradeWallet.tradeBalance);
+      const referralBalance = parseFloat(tradeWallet.referralCommissionBalance);
+      const totalAffiliateBalance = tradeBalance + referralBalance;
+
+      res.json({
+        bookBalance: bookBalance.toFixed(2),
+        availableBalance: availableBalance.toFixed(2),
+        confirmedBalance: confirmedBalance.toFixed(2),
+        minimumBalance: MIN_BALANCE.toFixed(2),
+        lockedBalance: (confirmedBalance >= MIN_BALANCE ? MIN_BALANCE : confirmedBalance).toFixed(2),
+        pendingAmount: pendingAmount.toFixed(2),
+        pendingCount: pendingDeposits.length,
+        failedCount: failedDeposits.length,
+        tradeBalance: tradeBalance.toFixed(2),
+        referralBalance: referralBalance.toFixed(2),
+        totalAffiliateBalance: totalAffiliateBalance.toFixed(2),
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message ?? "Failed to fetch balances" });
+    }
+  });
+
   // ── Nigerian bank account lookup via Squad ───────────────────────────────
   app.post("/api/bank/lookup", async (req, res) => {
     try {

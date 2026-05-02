@@ -257,7 +257,7 @@ export default function TermsAndConditions() {
                 <p>Withdrawals from the trade wallet to an exchange account attract a 5% fee plus 5% of the amount contributed to the Affiliate Pool. Bank withdrawals from the trade wallet attract an 8% fee plus 5% Affiliate Pool contribution.</p>
               </Clause>
               <Clause num="7.4" title="Funding Methods">
-                <p>You may fund your wallet via Paystack using a debit/credit card (Visa/Mastercard), bank transfer, or USSD/mobile. TSIA does not store your card details; all payment data is handled by Paystack under their own terms and privacy policy.</p>
+                <p>You may fund your wallet via Squad by GTco using a debit/credit card (Visa/Mastercard), bank transfer, USSD/mobile, or alternatively via Korapay. TSIA does not store your card details; all payment data is handled by the respective payment processor under their own terms and privacy policy.</p>
               </Clause>
               <Clause num="7.5" title="Crypto Deposits">
                 <p>Cryptocurrency (USDT) deposits are accepted via TRC20 (TRON) and BEP20 (Binance Smart Chain) networks. Once sent, crypto transactions are irreversible. Ensure network compatibility before sending. TSIA is not responsible for losses from incorrect network selection or amounts sent below the minimum.</p>
@@ -412,7 +412,7 @@ export default function TermsAndConditions() {
                 <p>We process your data under the following legal bases: performance of a contract (to provide the Platform services); legal obligation (KYC/AML compliance); and legitimate interests (fraud prevention, platform security).</p>
               </Clause>
               <Clause num="15.3" title="Data Sharing">
-                <p>Your data is never sold to third parties. It is shared only with: (a) KYC/identity verification providers (NIMC, WAEC API); (b) payment processors (Paystack); (c) regulatory authorities when legally required. All third parties are contractually bound to data protection standards.</p>
+                <p>Your data is never sold to third parties. It is shared only with: (a) KYC/identity verification providers (NIMC, WAEC API); (b) payment processors (Squad by GTco, Korapay); (c) regulatory authorities when legally required. All third parties are contractually bound to data protection standards.</p>
               </Clause>
               <Clause num="15.4" title="Biometric Data">
                 <p>Facial biometric data is used solely for liveness detection and identity matching during the verification process. It is not stored longer than necessary and is not used for marketing or sold to any third party.</p>

@@ -895,7 +895,7 @@ export default function WalletSection() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm capitalize">
-                        {d.walletType === "paystack" ? "Card/Bank" : d.walletType?.toUpperCase()} Deposit
+                        {d.walletType === "squad" ? "Squad (Card/Bank)" : d.walletType === "paystack" ? "Card/Bank" : d.walletType === "korapay" ? "Korapay" : d.walletType?.toUpperCase()} Deposit
                       </p>
                       <p className="text-xs text-muted-foreground font-mono truncate">{d.txHash}</p>
                     </div>

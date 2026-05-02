@@ -1283,17 +1283,21 @@ export async function registerRoutes(
       const { bank_code, account_number } = req.body;
       if (!bank_code || !account_number) return res.status(400).json({ message: "bank_code and account_number required" });
       const secretKey = process.env.SQUAD_SECRET_KEY;
-      const r = await fetch("https://api.squadco.com/bank/account/lookup", {
+      if (!secretKey) return res.status(500).json({ message: "Payment gateway not configured" });
+      // FIX: correct Squad account-lookup endpoint (api-d domain, /payout/account/lookup path)
+      const isLive = secretKey.startsWith("sk_");
+      const lookupBase = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+      const r = await fetch(`${lookupBase}/payout/account/lookup`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ bank_code, account_number }),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(12000),
       });
       const data = await r.json() as any;
       if (data.success) {
         res.json({ success: true, accountName: data.data?.account_name ?? data.data?.AccountName });
       } else {
-        res.status(400).json({ message: data.message ?? "Account lookup failed — check details" });
+        res.status(400).json({ message: data.message ?? "Account lookup failed — check bank code and account number" });
       }
     } catch (e: any) { res.status(500).json({ message: e.message ?? "Bank lookup error" }); }
   });
@@ -5145,11 +5149,28 @@ export async function registerRoutes(
 
   // ── Squad webhook (async payment notification) ────────────────────────────
   app.post("/api/webhook/squad", async (req, res) => {
-    // Squad sends: { Event: "charge_completed", data: { transaction_ref, transaction_status, transaction_amount, ... } }
+    // Squad sends: { Event: "charge_successful", TransactionRef: "...", Body: { transaction_ref, transaction_status, ... } }
+    // Also validates x-squad-encrypted-body header (HMAC-SHA512 of body using secret key)
     try {
-      const { Event, data } = req.body;
-      if (Event === "charge_completed" && data?.transaction_status === "Success") {
-        const ref = data.transaction_ref as string;
+      // ── Signature validation (security: prevent spoofed webhooks) ─────────
+      const squadSecret = process.env.SQUAD_SECRET_KEY ?? "";
+      const encryptedBodyHeader = req.headers["x-squad-encrypted-body"] as string | undefined;
+      if (encryptedBodyHeader) {
+        const { createHmac } = await import("crypto");
+        const computed = createHmac("sha512", squadSecret)
+          .update(JSON.stringify(req.body))
+          .digest("hex");
+        if (computed !== encryptedBodyHeader) {
+          console.error("[WEBHOOK/Squad] Signature mismatch — ignoring request");
+          return res.sendStatus(200); // Return 200 to stop Squad retrying; just don't process
+        }
+      }
+      // ── Squad webhook structure: { Event, TransactionRef, Body } ─────────
+      // FIX: Squad sends "charge_successful" (docs confirm) not "charge_completed"
+      const { Event, TransactionRef, Body } = req.body;
+      const ref = (TransactionRef ?? Body?.transaction_ref ?? (req.body as any).data?.transaction_ref) as string;
+      const txStatus = Body?.transaction_status ?? (req.body as any).data?.transaction_status;
+      if ((Event === "charge_successful" || Event === "charge_completed") && txStatus === "Success" && ref) {
         // Find the pending deposit by txHash
         const allDeposits = await (storage as any).db?.query?.walletDeposits?.findFirst?.({ where: (t: any, { eq }: any) => eq(t.txHash, ref) });
         if (allDeposits && allDeposits.status !== "completed") {
@@ -6592,7 +6613,53 @@ export async function registerRoutes(
       let transferSuccess = false, transferMsg = "";
       let usedGateway = gateway;
 
-      // ── Helper: try Korapay disburse ────────────────────────────────────────
+      // ── Helper: try Squad payout (primary gateway) ──────────────────────────
+      const trySquad = async (): Promise<boolean> => {
+        const squadKey = process.env.SQUAD_SECRET_KEY;
+        if (!squadKey) { transferMsg = "Squad not configured"; return false; }
+        try {
+          const isLiveKey = squadKey.startsWith("sk_");
+          const squadBase = isLiveKey ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+          // Squad requires transaction_reference to be prefixed with merchant ID
+          const merchantId = process.env.SQUAD_MERCHANT_ID ?? "TSIA";
+          const squadRef = `${merchantId}_${txRef}`.slice(0, 50);
+          const amountKobo = Math.round(Number(netAmountNgn) * 100); // NGN → kobo
+          const sRes = await fetch(`${squadBase}/payout/transfer`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transaction_reference: squadRef,
+              amount: String(amountKobo),
+              bank_code: bankCode,
+              account_number: accountNumber,
+              account_name: accountName,
+              currency_id: "NGN",
+              remark: narration || `TSIA Payout | ${txRef}`,
+            }),
+            signal: AbortSignal.timeout(25000),
+          });
+          const sData = await sRes.json() as any;
+          if (sData.success) { usedGateway = "squad"; return true; }
+          // 424 = Gateway timeout — re-query to check actual status
+          if (sRes.status === 424) {
+            console.warn(`[PAYOUT/Squad] 424 Timeout for ${squadRef} — re-querying…`);
+            try {
+              const reqRes = await fetch(`${squadBase}/payout/requery`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ transaction_reference: squadRef }),
+                signal: AbortSignal.timeout(15000),
+              });
+              const reqData = await reqRes.json() as any;
+              if (reqData.success) { usedGateway = "squad"; return true; }
+            } catch { /* requery failed, fall through */ }
+          }
+          transferMsg = sData.message ?? "Squad transfer failed";
+          return false;
+        } catch (e: any) { transferMsg = e.message ?? "Squad network error"; return false; }
+      };
+
+      // ── Helper: try Korapay disburse (fallback) ─────────────────────────────
       const tryKorapay = async (): Promise<boolean> => {
         const koraKey = process.env.KORAPAY_SECRET_KEY;
         if (!koraKey) { transferMsg = "Korapay not configured"; return false; }
@@ -6614,8 +6681,12 @@ export async function registerRoutes(
         } catch (e: any) { transferMsg = e.message ?? "Network error"; return false; }
       };
 
-      // All bank transfers now go via Korapay
-      transferSuccess = await tryKorapay();
+      // Squad first, Korapay as automatic fallback
+      transferSuccess = await trySquad();
+      if (!transferSuccess) {
+        console.warn(`[PAYOUT] Squad failed (${transferMsg}) — trying Korapay fallback`);
+        transferSuccess = await tryKorapay();
+      }
 
       if (!transferSuccess) {
         return res.status(502).json({ message: `Bank transfer failed: ${transferMsg}. Funds remain held — reject to refund.` });

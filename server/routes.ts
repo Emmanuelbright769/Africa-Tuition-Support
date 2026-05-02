@@ -5723,10 +5723,12 @@ export async function registerRoutes(
     if (cached) return res.json({ accountName: cached, accountNumber, fromCache: true });
 
     const koraKey = process.env.KORAPAY_SECRET_KEY;
+    const squadKey = process.env.SQUAD_SECRET_KEY;
 
     try {
       let accountName = "";
       let lastMsg = "";
+      let usedGateway = "";
 
       // Primary: Korapay /misc/banks/resolve
       if (koraKey) {
@@ -5741,6 +5743,7 @@ export async function registerRoutes(
           console.log(`[KORAPAY] resolve-bank → HTTP ${rk.status} | status=${dk.status} | name="${dk.data?.account_name ?? ""}" | msg="${dk.message}"`);
           if (dk.status && dk.data?.account_name) {
             accountName = dk.data.account_name;
+            usedGateway = "korapay";
           } else {
             lastMsg = dk.message || "";
           }
@@ -5749,9 +5752,31 @@ export async function registerRoutes(
         }
       }
 
+      // Fallback: Squad /payout/account/lookup (covers OPay, Kuda, Moniepoint, PalmPay, etc.)
+      if (!accountName && squadKey) {
+        try {
+          const rs = await fetch(`${SQUAD_BASE}/payout/account/lookup`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber }),
+            signal: AbortSignal.timeout(12000),
+          });
+          const ds = await rs.json() as any;
+          console.log(`[SQUAD] resolve-bank → HTTP ${rs.status} | success=${ds.success} | name="${ds.data?.account_name ?? ""}" | msg="${ds.message}"`);
+          if (ds.success && ds.data?.account_name) {
+            accountName = ds.data.account_name;
+            usedGateway = "squad";
+          } else if (!lastMsg) {
+            lastMsg = ds.message || "";
+          }
+        } catch (es: any) {
+          console.warn("[SQUAD] resolve-bank failed:", es.message);
+        }
+      }
+
       if (accountName) {
         bankResolveCache.set(cacheKey, accountName);
-        return res.json({ accountName, accountNumber });
+        return res.json({ accountName, accountNumber, gateway: usedGateway });
       }
 
       const msg = lastMsg.toLowerCase();

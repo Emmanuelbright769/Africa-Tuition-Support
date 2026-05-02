@@ -2297,6 +2297,10 @@ export default function FinancialHub() {
       <AnimatePresence mode="wait">
         <motion.div key="internet" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
           <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Data" sub={billStep === "details" ? "Select network & plan" : billStep === "success" ? "Purchase Complete" : "Confirm purchase"} />
+          <div className="flex items-center justify-center gap-1.5 -mt-3">
+            <Shield className="w-3 h-3 text-blue-600" />
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Powered by Squad VAS · Korapay fallback</span>
+          </div>
 
           {billStep === "details" ? (<>
             <div>
@@ -2386,6 +2390,10 @@ export default function FinancialHub() {
       <AnimatePresence mode="wait">
         <motion.div key="airtime" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
           <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Airtime" sub={billStep === "details" ? "Select network & phone" : billStep === "success" ? "Purchase Complete" : "Enter amount"} />
+          <div className="flex items-center justify-center gap-1.5 -mt-3">
+            <Shield className="w-3 h-3 text-tsia-green" />
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Powered by Squad VAS · Korapay fallback</span>
+          </div>
 
           {billStep === "details" ? (<>
             <div>

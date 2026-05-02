@@ -165,6 +165,12 @@ export default function AdminDashboard() {
   const [inviteNote,  setInviteNote]      = useState("");
   const [wdAction, setWdAction]           = useState<"approve" | "decline" | "refund" | null>(null);
   const [wdCopied, setWdCopied]           = useState<string | null>(null);
+  const [tradeExpandedUser, setTradeExpandedUser] = useState<number | null>(null);
+  const [tradeAdjustDialog, setTradeAdjustDialog] = useState<{ userId: number; name: string } | null>(null);
+  const [tradeAdjustAmount, setTradeAdjustAmount] = useState("");
+  const [tradeAdjustNote, setTradeAdjustNote]   = useState("");
+  const [sessionOverrideDialog, setSessionOverrideDialog] = useState<{ txId: number; userId: number; currentAmt: number } | null>(null);
+  const [sessionOverrideAmt, setSessionOverrideAmt] = useState("");
 
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -180,6 +186,8 @@ export default function AdminDashboard() {
   const { data: allTransactions = [] }     = useQuery({ queryKey: ["/api/admin/transactions-all"], enabled: activeTab === "transactions" });
   const { data: ecommerceStats }           = useQuery({ queryKey: ["/api/admin/ecommerce-stats"], enabled: activeTab === "ecommerce" });
   const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade", refetchInterval: 30_000, staleTime: 15_000 });
+  const { data: tradeUsers = [] }          = useQuery<any[]>({ queryKey: ["/api/admin/trade-users"], enabled: activeTab === "trade", refetchInterval: 30_000 });
+  const { data: tradeUserSessions = [] }   = useQuery<any[]>({ queryKey: ["/api/admin/trade-users", tradeExpandedUser, "sessions"], queryFn: async () => { if (!tradeExpandedUser) return []; const r = await fetch(`/api/admin/trade-users/${tradeExpandedUser}/sessions`, { credentials: "include" }); return r.json(); }, enabled: activeTab === "trade" && !!tradeExpandedUser });
   const { data: allDeposits = [] }         = useQuery({ queryKey: ["/api/admin/wallet-deposits"], enabled: activeTab === "deposits" });
   const { data: pendingBankTransfers = [], refetch: refetchBankTransfers } = useQuery<any[]>({ queryKey: ["/api/admin/pending-bank-transfers"], enabled: activeTab === "bank_transfers", refetchInterval: 30_000 });
   const { data: allMessages = [] }         = useQuery({ queryKey: ["/api/admin/messages"], enabled: activeTab === "messages" });
@@ -428,6 +436,34 @@ export default function AdminDashboard() {
       toast({ title: "Trade Settings Updated ✓", description: "New rates are stored and will apply to future trades." });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+
+  const sessionOverrideMutation = useMutation({
+    mutationFn: async ({ txId, newAmount }: { txId: number; newAmount: string }) => {
+      const res = await apiRequest("POST", `/api/admin/trade-sessions/${txId}/override`, { newAmount });
+      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-stats"] });
+      setSessionOverrideDialog(null); setSessionOverrideAmt("");
+      toast({ title: "Session Overridden ✓", description: "Bot session amount updated and user balance adjusted." });
+    },
+    onError: (e: any) => toast({ title: "Override failed", description: e.message, variant: "destructive" }),
+  });
+
+  const tradeAdjustMutation = useMutation({
+    mutationFn: async ({ userId, amount, note }: { userId: number; amount: string; note: string }) => {
+      const res = await apiRequest("POST", `/api/admin/trade-wallets/${userId}/adjust`, { amount, note });
+      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-stats"] });
+      setTradeAdjustDialog(null); setTradeAdjustAmount(""); setTradeAdjustNote("");
+      toast({ title: "Trade Balance Adjusted ✓", description: "User's trade capital updated." });
+    },
+    onError: (e: any) => toast({ title: "Adjustment failed", description: e.message, variant: "destructive" }),
   });
 
   const confirmDepositMutation = useMutation({
@@ -1511,12 +1547,127 @@ export default function AdminDashboard() {
             {/* ═══════════════════════════════ TRADE MARKET ═══════════════════════════════ */}
             {activeTab === "trade" && (
               <motion.div key="trade" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-6">
+                {/* Stats row */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard title="Reserve Fund"       value={fmtUSD(tradeStats?.reserveBalance)}   icon={Wallet}     color="green"  />
-                  <StatCard title="Total Trade Deposits" value={fmtUSD(tradeStats?.totalDeposited)} icon={TrendingUp} color="blue"   />
-                  <StatCard title="Bot Earnings"       value={fmtUSD(tradeStats?.totalBotEarnings)} icon={BarChart2}  color="tsia"   />
-                  <StatCard title="Active Affiliates"  value={tradeStats?.affiliateCount ?? 0}      icon={Share2}     color="purple" />
+                  <StatCard title="Reserve Fund"         value={fmtUSD(tradeStats?.reserveBalance)}   icon={Wallet}     color="green"  />
+                  <StatCard title="Total Trade Deposits"  value={fmtUSD(tradeStats?.totalDeposited)}  icon={TrendingUp} color="blue"   />
+                  <StatCard title="Bot Earnings"          value={fmtUSD(tradeStats?.totalBotEarnings)} icon={BarChart2} color="tsia"   />
+                  <StatCard title="Active Traders"        value={(tradeUsers as any[]).filter(u => u.isActive).length} icon={Users2} color="purple" />
                 </div>
+
+                {/* ─── Per-User Bot Session Management ─────────────────────────────── */}
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-base flex items-center gap-2"><Users2 className="w-4 h-4 text-purple-500" /> Trade Wallet Management</CardTitle>
+                        <CardDescription>Per-user bot sessions, capital locked, and loss overrides</CardDescription>
+                      </div>
+                      <Badge variant="outline" className="text-xs">{(tradeUsers as any[]).length} active traders</Badge>
+                    </div>
+                  </CardHeader>
+                  <div className="divide-y divide-border/50">
+                    {(tradeUsers as any[]).length === 0 ? (
+                      <div className="py-10 text-center text-slate-500 text-sm">No active trade wallets</div>
+                    ) : (tradeUsers as any[]).map((u: any) => (
+                      <div key={u.userId}>
+                        {/* User row */}
+                        <div className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50/50 cursor-pointer"
+                          onClick={() => setTradeExpandedUser(tradeExpandedUser === u.userId ? null : u.userId)}
+                          data-testid={`row-trade-user-${u.userId}`}>
+                          <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center shrink-0">
+                            <Users2 className="w-4 h-4 text-purple-500" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-slate-900">{u.name}</p>
+                            <p className="text-xs text-slate-500">{u.email}</p>
+                          </div>
+                          {/* Bot status badge */}
+                          <div className="text-center hidden sm:block">
+                            {u.isActive
+                              ? <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">● BOT ACTIVE</Badge>
+                              : u.tradingDayNumber > 0
+                                ? <Badge variant="outline" className="text-[10px] text-slate-500">Day {u.tradingDayNumber}/120</Badge>
+                                : <Badge variant="outline" className="text-[10px] text-slate-400">No sessions</Badge>}
+                          </div>
+                          {/* Balance / locked */}
+                          <div className="text-right hidden md:block">
+                            <p className="font-bold text-sm text-tsia-green">{fmtUSD(u.balance)}</p>
+                            <p className="text-[10px] text-slate-500">🔒 {fmtUSD(u.lockedPrincipal)} locked</p>
+                          </div>
+                          {/* Cycle progress */}
+                          <div className="text-right hidden lg:block">
+                            <p className="text-sm font-semibold">{fmtUSD(u.totalBotEarnings)}</p>
+                            <p className="text-[10px] text-slate-400">Bot earnings</p>
+                          </div>
+                          {/* Actions */}
+                          <Button size="sm" variant="outline" className="text-xs shrink-0"
+                            onClick={e => { e.stopPropagation(); setTradeAdjustDialog({ userId: u.userId, name: u.name }); }}
+                            data-testid={`button-trade-adjust-${u.userId}`}>
+                            Adjust Capital
+                          </Button>
+                          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${tradeExpandedUser === u.userId ? "rotate-180" : ""}`} />
+                        </div>
+
+                        {/* Expanded: session history */}
+                        {tradeExpandedUser === u.userId && (
+                          <div className="bg-slate-50 border-t border-border/50 px-6 py-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Bot Session History — {u.name}</p>
+                              <div className="flex gap-3 text-[10px] text-slate-400">
+                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400 inline-block" /> Profit</span>
+                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> Loss</span>
+                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" /> Missed/Zero</span>
+                              </div>
+                            </div>
+                            {(tradeUserSessions as any[]).length === 0 ? (
+                              <p className="text-xs text-slate-400 py-4 text-center">No bot sessions recorded yet</p>
+                            ) : (
+                              <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                                {(tradeUserSessions as any[]).map((s: any) => (
+                                  <div key={s.id} className={`flex items-center gap-3 rounded-xl px-3 py-2 text-xs ${
+                                    s.isLoss ? "bg-red-50 dark:bg-red-900/10" : s.isMissed ? "bg-slate-100 dark:bg-slate-800/40" : "bg-green-50 dark:bg-green-900/10"
+                                  }`} data-testid={`row-session-${s.id}`}>
+                                    <div className={`w-2 h-2 rounded-full shrink-0 ${s.isLoss ? "bg-red-400" : s.isMissed ? "bg-slate-400" : "bg-green-400"}`} />
+                                    <p className="flex-1 text-slate-600 truncate">{s.note || "Bot session"}</p>
+                                    <p className={`font-bold tabular-nums ${s.isLoss ? "text-red-600" : s.isMissed ? "text-slate-400" : "text-green-600"}`}>
+                                      {s.amountUsd >= 0 ? "+" : ""}${s.amountUsd.toFixed(4)}
+                                    </p>
+                                    <p className="text-slate-400 shrink-0">{fmtDate(s.createdAt)}</p>
+                                    {(s.isLoss || s.isMissed) && (
+                                      <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 border-amber-300 text-amber-700 hover:bg-amber-50 shrink-0"
+                                        onClick={() => { setSessionOverrideDialog({ txId: s.id, userId: u.userId, currentAmt: s.amountUsd }); setSessionOverrideAmt(""); }}
+                                        data-testid={`button-override-session-${s.id}`}>
+                                        Override → Profit
+                                      </Button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {/* User summary bar */}
+                            <div className="mt-3 pt-3 border-t border-border/50 grid grid-cols-3 gap-3 text-xs">
+                              <div className="bg-white rounded-lg px-3 py-2">
+                                <p className="text-slate-400">Balance</p>
+                                <p className="font-bold text-tsia-green">{fmtUSD(u.balance)}</p>
+                              </div>
+                              <div className="bg-white rounded-lg px-3 py-2">
+                                <p className="text-slate-400">Locked Capital</p>
+                                <p className="font-bold text-slate-700">{fmtUSD(u.lockedPrincipal)}</p>
+                              </div>
+                              <div className="bg-white rounded-lg px-3 py-2">
+                                <p className="text-slate-400">Day Progress</p>
+                                <p className="font-bold">{u.tradingDayNumber}/120 {u.roiComplete && "✓"}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* ─── Recent Transactions (collapsed) ─────────────────────────────── */}
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
                     <CardTitle className="text-base">Recent Trade Transactions</CardTitle>
@@ -1555,6 +1706,71 @@ export default function AdminDashboard() {
                     </Table>
                   </div>
                 </Card>
+
+                {/* ─── Session Override Dialog ──────────────────────────────────────── */}
+                <Dialog open={!!sessionOverrideDialog} onOpenChange={o => !o && setSessionOverrideDialog(null)}>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle>Override Bot Session → Profit</DialogTitle>
+                      <DialogDescription>Current amount: <strong className="text-red-500">${sessionOverrideDialog?.currentAmt?.toFixed(4)}</strong>. Enter the new profit amount for this session.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 py-2">
+                      <Label>New Amount (USD)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+                        <Input type="number" min="0" step="0.01" className="pl-7" placeholder="e.g. 2.50"
+                          value={sessionOverrideAmt} onChange={e => setSessionOverrideAmt(e.target.value)}
+                          data-testid="input-session-override-amt" />
+                      </div>
+                      <p className="text-xs text-muted-foreground">The user's trade balance will be adjusted by the difference automatically.</p>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setSessionOverrideDialog(null)}>Cancel</Button>
+                      <Button className="bg-amber-500 hover:bg-amber-600 text-white"
+                        disabled={!sessionOverrideAmt || sessionOverrideMutation.isPending}
+                        onClick={() => sessionOverrideDialog && sessionOverrideMutation.mutate({ txId: sessionOverrideDialog.txId, newAmount: sessionOverrideAmt })}
+                        data-testid="button-confirm-session-override">
+                        {sessionOverrideMutation.isPending ? "Saving…" : "Apply Override"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* ─── Capital Adjust Dialog ────────────────────────────────────────── */}
+                <Dialog open={!!tradeAdjustDialog} onOpenChange={o => !o && setTradeAdjustDialog(null)}>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle>Adjust Trade Capital — {tradeAdjustDialog?.name}</DialogTitle>
+                      <DialogDescription>Use a positive value to credit, negative to debit. A transaction record will be created.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 py-2">
+                      <div>
+                        <Label>Amount (USD)</Label>
+                        <div className="relative mt-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+                          <Input type="number" step="0.01" className="pl-7" placeholder="e.g. 10.00 or -5.00"
+                            value={tradeAdjustAmount} onChange={e => setTradeAdjustAmount(e.target.value)}
+                            data-testid="input-trade-adjust-amount" />
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Note (optional)</Label>
+                        <Input className="mt-1" placeholder="Reason for adjustment"
+                          value={tradeAdjustNote} onChange={e => setTradeAdjustNote(e.target.value)}
+                          data-testid="input-trade-adjust-note" />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setTradeAdjustDialog(null)}>Cancel</Button>
+                      <Button className="bg-tsia-green hover:bg-tsia-green/90 text-white"
+                        disabled={!tradeAdjustAmount || tradeAdjustMutation.isPending}
+                        onClick={() => tradeAdjustDialog && tradeAdjustMutation.mutate({ userId: tradeAdjustDialog.userId, amount: tradeAdjustAmount, note: tradeAdjustNote })}
+                        data-testid="button-confirm-trade-adjust">
+                        {tradeAdjustMutation.isPending ? "Saving…" : "Apply Adjustment"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </motion.div>
             )}
 

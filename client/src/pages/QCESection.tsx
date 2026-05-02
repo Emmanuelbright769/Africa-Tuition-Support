@@ -436,9 +436,6 @@ export default function QCESection() {
                   <p>Min <strong>${QCE.MIN_BALANCE}</strong> always retained. Withdrawals return to your SwiftWallet.</p>
                 </div>
 
-                {/* Credit Calculator — always shown when activated */}
-                <QceCreditCalculator qceBalance={qceBalance} eligibilityPct={eligibilityPct} />
-
                 {/* Transaction history */}
                 {transactions.length > 0 && (() => {
                   const totalQcePages = Math.ceil(transactions.length / QCE_PAGE_SIZE);
@@ -482,6 +479,15 @@ export default function QCESection() {
                 })()}
               </>
             )}
+
+            {/* Credit Calculator — always visible, even before activation */}
+            {!isActivated && (
+              <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-xl p-3 flex items-start gap-2 text-xs text-purple-700 dark:text-purple-300">
+                <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>Calculator preview — deposit above $5 to activate your vault and unlock your actual 30% credit limit.</p>
+              </div>
+            )}
+            <QceCreditCalculator qceBalance={qceBalance} eligibilityPct={eligibilityPct} />
           </motion.div>
         )}
 

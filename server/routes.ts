@@ -4289,6 +4289,163 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Trade Users — per-user wallet overview ──────────────────────────
+  app.get("/api/admin/trade-users", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const rows = await db.execute(sql`
+        SELECT
+          u.id, u.first_name, u.last_name, u.email,
+          tw.trade_balance, tw.locked_principal, tw.trading_day_number,
+          tw.roi_complete, tw.bot_activated_at, tw.total_bot_earnings,
+          tw.referral_commission_balance
+        FROM trade_wallets tw
+        JOIN users u ON u.id = tw.user_id
+        WHERE CAST(tw.trade_balance AS numeric) > 0
+           OR CAST(tw.locked_principal AS numeric) > 0
+           OR tw.trading_day_number > 0
+        ORDER BY CAST(tw.trade_balance AS numeric) DESC
+      `);
+      const nowMs = Date.now();
+      const BOT_MAX_MS = 12 * 3600 * 1000;
+      res.json((rows.rows as any[]).map(r => ({
+        userId: r.id,
+        name: `${r.first_name} ${r.last_name}`,
+        email: r.email,
+        balance: parseFloat(r.trade_balance ?? "0"),
+        lockedPrincipal: parseFloat(r.locked_principal ?? "0"),
+        tradingDayNumber: r.trading_day_number ?? 0,
+        roiComplete: r.roi_complete ?? false,
+        totalBotEarnings: parseFloat(r.total_bot_earnings ?? "0"),
+        referralCommission: parseFloat(r.referral_commission_balance ?? "0"),
+        botActivatedAt: r.bot_activated_at,
+        isActive: r.bot_activated_at
+          ? (nowMs - new Date(r.bot_activated_at).getTime()) < BOT_MAX_MS
+          : false,
+      })));
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Trade Sessions for a specific user ───────────────────────────────
+  app.get("/api/admin/trade-users/:userId/sessions", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const targetId = parseInt(req.params.userId);
+      const sessions = await db.execute(sql`
+        SELECT id, amount_usd, note, created_at, status
+        FROM trade_transactions
+        WHERE user_id = ${targetId}
+          AND type = 'bot_earning'
+        ORDER BY created_at DESC
+        LIMIT 120
+      `);
+      res.json((sessions.rows as any[]).map(s => ({
+        id: s.id,
+        amountUsd: parseFloat(s.amount_usd ?? "0"),
+        note: s.note ?? "",
+        createdAt: s.created_at,
+        status: s.status,
+        isLoss: parseFloat(s.amount_usd ?? "0") < 0,
+        isMissed: parseFloat(s.amount_usd ?? "0") === 0,
+        isProfit: parseFloat(s.amount_usd ?? "0") > 0,
+      })));
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Override a loss/missed session to profit ─────────────────────────
+  app.post("/api/admin/trade-sessions/:txId/override", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const txId = parseInt(req.params.txId);
+      const { newAmount } = req.body;
+      if (!newAmount || isNaN(parseFloat(newAmount))) return res.status(400).json({ message: "newAmount required" });
+
+      // Fetch original tx to know the user and original amount
+      const [origTx] = await db.select().from(tradeTransactions).where(eq(tradeTransactions.id, txId));
+      if (!origTx) return res.status(404).json({ message: "Session not found" });
+
+      const userId = origTx.userId;
+      const origAmount = parseFloat(origTx.amountUsd ?? "0");
+      const newAmt = parseFloat(parseFloat(newAmount).toFixed(6));
+      const diff = newAmt - origAmount; // positive = credit, negative = debit
+
+      // Update the transaction
+      await db.update(tradeTransactions)
+        .set({ amountUsd: newAmt.toFixed(6), note: (origTx.note ?? "") + " [admin override]" })
+        .where(eq(tradeTransactions.id, txId));
+
+      // Adjust trade balance by the diff
+      if (diff !== 0) {
+        await db.execute(sql`
+          UPDATE trade_wallets
+          SET trade_balance = CAST(trade_balance AS numeric) + ${diff},
+              total_bot_earnings = CAST(total_bot_earnings AS numeric) + ${diff},
+              updated_at = NOW()
+          WHERE user_id = ${userId}
+        `);
+      }
+      res.json({ ok: true, diff });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Adjust trade wallet capital ──────────────────────────────────────
+  app.post("/api/admin/trade-wallets/:userId/adjust", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const targetId = parseInt(req.params.userId);
+      const { amount, note } = req.body;
+      if (!amount || isNaN(parseFloat(amount))) return res.status(400).json({ message: "amount required" });
+      const amt = parseFloat(parseFloat(amount).toFixed(6));
+
+      await db.execute(sql`
+        UPDATE trade_wallets
+        SET trade_balance = GREATEST(0, CAST(trade_balance AS numeric) + ${amt}),
+            locked_principal = CASE WHEN ${amt} > 0 THEN CAST(locked_principal AS numeric) + ${amt} ELSE locked_principal END,
+            updated_at = NOW()
+        WHERE user_id = ${targetId}
+      `);
+
+      // Record adjustment transaction
+      await db.insert(tradeTransactions).values({
+        userId: targetId,
+        type: "bot_earning",
+        amountUsd: amt.toFixed(6),
+        feeUsd: "0",
+        reserveFundDeduction: "0",
+        affiliateShareDeduction: "0",
+        netAmount: amt.toFixed(6),
+        status: "completed",
+        note: note || `Admin balance adjustment by ${admin.firstName} ${admin.lastName}`,
+      });
+
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── ADMIN: Send notification to user ───────────────────────────────────────
   app.post("/api/admin/notify-user/:targetUserId", async (req, res) => {
     try {

@@ -10,6 +10,12 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - **Routing**: wouter (frontend), Express (backend)
 - **File Uploads**: multer (memory storage → base64 in DB)
 
+## Recent Updates (Session 11)
+- **Admin Trade Bot Session Management**: `GET /api/admin/trade-users` returns all active traders with balance/locked capital/day progress/bot status; `GET /api/admin/trade-users/:userId/sessions` returns per-user bot session history (profit/loss/missed); `POST /api/admin/trade-sessions/:txId/override` converts a loss/missed session to profit with auto balance adjustment; `POST /api/admin/trade-wallets/:userId/adjust` credits/debits user trade capital; AdminDashboard trade tab now shows "Trade Wallet Management" panel with click-to-expand per-user rows, color-coded session history, "Override → Profit" button on losses, "Adjust Capital" dialog
+- **QCE Calculator Always Visible**: Moved QceCreditCalculator outside `{isActivated && ...}` conditional — now shows for all users in savings tab; non-activated users see purple info banner; activated users see full calculator with real limit
+- **TenancyPage Landlord Cleanup**: Fixed orphaned md:grid-cols-2 for single-card section; Revenue Model stats updated (removed "Tenant saves", replaced with "Payment speed: 48h" and "TSIA service fee: 12%"); card title clarified to "For Landlords — Step by Step"
+- **Conversational Currency with 7.5% VAT**: LocalCurrencyContext exports VAT_RATE, formatAmountVAT(), rateLabelVAT(); wallet balance card shows two-line local currency (base rate + VAT-inclusive with amber pill badge); fund dialog amount inputs also show VAT-inclusive line
+
 ## Recent Updates (Session 10)
 - **Virtual US Mastercard (T004)**: New `virtual_cards` DB table (created via direct SQL); `getVirtualCard`, `createVirtualCard` storage methods; `GET /api/fintech/virtual-card` + `POST /api/fintech/virtual-card/purchase` routes; $5 one-time fee from SwiftWallet; beautiful Forest Green/Gold gradient card UI in FinancialHub between Quick Services and History; shows card number, holder, expiry, CVV with reveal/hide toggle and clipboard copy per field
 - **Netflix Subscription (T005)**: New `movie_subscriptions` DB table; `getMovieSubscription`, `createOrRenewMovieSubscription` storage methods; `GET /api/movies/subscription` + `POST /api/movies/subscribe` routes; $5/month from SwiftWallet; replaced "Coming Soon" movies section in StudentDashboard with live Netflix iframe when subscribed; removed "Soon" badge from Movies nav item

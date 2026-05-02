@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 import {
   Play, Info, Search, Crown, Home as HomeIcon, Grid3x3, Compass,
   ChevronLeft, ChevronRight, Star, Flame, X, Loader2, Lock, CheckCircle2,
@@ -83,6 +84,7 @@ export default function MoviesSection() {
   const [showInfo, setShowInfo] = useState<Movie | null>(null);
   const trendingRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const featured = useMemo(() => MOVIES.filter(m => FEATURED_IDS.includes(m.id)), []);
   const trending = useMemo(() => MOVIES.filter(m => TRENDING_IDS.includes(m.id)), []);
@@ -174,14 +176,18 @@ export default function MoviesSection() {
             <button onClick={() => setSearchOpen(s => !s)} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-300 hover:bg-white/5" data-testid="btn-search">
               <Search className="w-4 h-4" />
             </button>
-            {isSubscribed ? (
-              <span className="px-3 sm:px-4 py-1.5 rounded-lg bg-[#fbbf24]/15 text-[#fbbf24] text-xs sm:text-sm font-semibold flex items-center gap-1.5 border border-[#fbbf24]/30" data-testid="badge-premium-active">
+            {isSubscribed && (
+              <span className="hidden sm:inline-flex px-3 py-1.5 rounded-lg bg-[#fbbf24]/15 text-[#fbbf24] text-xs font-semibold items-center gap-1.5 border border-[#fbbf24]/30" data-testid="badge-premium-active">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Premium
               </span>
-            ) : (
-              <button onClick={() => setSelected(featured[0])} className="px-3 sm:px-4 py-1.5 rounded-lg bg-[#fbbf24] text-black text-xs sm:text-sm font-semibold hover:bg-[#fcd34d] transition-colors" data-testid="btn-signin">
-                Sign In
-              </button>
+            )}
+            {user && (
+              <div className="flex items-center gap-2 px-2 sm:px-3 py-1 rounded-full bg-white/5 border border-white/10" data-testid="chip-user-profile">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#fbbf24] to-[#d97706] flex items-center justify-center text-black text-xs font-bold">
+                  {(user.firstName?.[0] ?? "U").toUpperCase()}{(user.lastName?.[0] ?? "").toUpperCase()}
+                </div>
+                <span className="hidden sm:inline text-white text-xs font-medium" data-testid="text-username">{user.firstName}</span>
+              </div>
             )}
           </div>
         </div>

@@ -212,7 +212,8 @@ export default function QCESection() {
     <motion.div key="home" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-4">
 
       {/* QCE SwiftVault card */}
-      <Card className="shadow-sm border-0 overflow-hidden" data-testid="card-qce-savings-home">
+      <Card className={`shadow-sm border-0 overflow-hidden ${!isActivated ? "border border-tsia-green/20" : ""}`} data-testid="card-qce-savings-home">
+        {!isActivated && <div className="h-1 bg-gradient-to-r from-tsia-green to-tsia-gold" />}
         <CardContent className="pt-5 pb-5">
           <div className="w-full">
             <div className="flex items-start justify-between gap-2 mb-1">
@@ -227,15 +228,34 @@ export default function QCESection() {
               </div>
               {isActivated
                 ? <Badge className="bg-tsia-green/10 text-tsia-green border-0 text-[10px] shrink-0">Active · 30% Eligible</Badge>
-                : <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] shrink-0">Not activated</Badge>}
+                : <Badge className="bg-tsia-green/15 text-tsia-green border border-tsia-green/30 text-[10px] shrink-0 font-semibold">Instant 30% Credit</Badge>}
             </div>
             <p className="text-xs text-muted-foreground">
-              {isActivated ? `Balance: $${qceBalance.toFixed(2)} · Eligibility: ${eligibilityPct.toFixed(1)}%` : "Activate with above $5 to start building credit eligibility"}
+              {isActivated
+                ? `Balance: $${qceBalance.toFixed(2)} · Eligibility: ${eligibilityPct.toFixed(1)}%`
+                : "Deposit above $5 — unlock 30% credit across all services instantly"}
             </p>
           </div>
-          <div className="flex gap-2 mt-4">
+
+          {!isActivated && (
+            <div className="mt-3 grid grid-cols-2 gap-1.5">
+              {[
+                { icon: CarFront,    label: "V-Connect Credit" },
+                { icon: Home,        label: "Tenancy Credit" },
+                { icon: GraduationCap, label: "Student Loan" },
+                { icon: Banknote,    label: "Business Credit" },
+              ].map(({ icon: Icon, label }) => (
+                <div key={label} className="flex items-center gap-1.5 bg-tsia-green/5 rounded-lg px-2 py-1.5">
+                  <CheckCircle2 className="w-3 h-3 text-tsia-green shrink-0" />
+                  <span className="text-[10px] font-medium text-tsia-green truncate">{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-3">
             <Button size="sm" className="bg-tsia-green hover:bg-tsia-green/90 text-white flex-1" onClick={() => setContributeOpen(true)} data-testid="btn-home-qce-contribute">
-              <ArrowDownLeft className="w-3.5 h-3.5 mr-1" /> {isActivated ? "Add Savings" : "Activate"}
+              <Zap className="w-3.5 h-3.5 mr-1" /> {isActivated ? "Add Savings" : "Activate & Get 30% Credit"}
             </Button>
             {isActivated && (
               <Button size="sm" variant="outline" onClick={() => setActiveTab("savings")} data-testid="btn-home-qce-view">

@@ -376,7 +376,7 @@ export default function FinancialHub() {
     tradeBalance: string; referralBalance: string; totalAffiliateBalance: string;
   }>({ queryKey: ["/api/wallet/balances"], staleTime: 30_000 });
 
-  const bookBalance   = parseFloat(balances?.bookBalance   ?? String(balance));
+  const bookBalance   = parseFloat(balances?.bookBalance   ?? "0");
   const pendingAmount = parseFloat(balances?.pendingAmount  ?? "0");
 
   // ── Squad: load widget script ─────────────────────────────────────────────

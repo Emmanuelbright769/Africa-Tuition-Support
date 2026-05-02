@@ -301,8 +301,13 @@ export default function StudentDashboard() {
 
   const goBack = () => {
     const prev = navHistory.current.pop();
-    setActiveSection(prev ?? "overview");
-    setMenuOpen(false);
+    if (prev && prev !== "overview") {
+      setActiveSection(prev);
+      setMenuOpen(false);
+    } else {
+      setActiveSection("overview");
+      setMenuOpen(true);
+    }
   };
   const currentNav = NAV_ITEMS.find(n => n.id === activeSection) ?? NAV_ITEMS[0]!;
 

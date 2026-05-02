@@ -1103,8 +1103,13 @@ export default function AffiliateDashboard() {
 
   const goBack = () => {
     const prev = navHistory.current.pop();
-    setActiveSection(prev ?? "overview");
-    setMenuOpen(false);
+    if (prev && prev !== "overview") {
+      setActiveSection(prev);
+      setMenuOpen(false);
+    } else {
+      setActiveSection("overview");
+      setMenuOpen(true);
+    }
   };
   const currentNav = NAV_ITEMS.find(n => n.id === activeSection) ?? NAV_ITEMS[0]!;
   const upgradeEliteAmtNum = Math.max(500, Math.min(10000, parseFloat(upgradeEliteAmt) || 500));

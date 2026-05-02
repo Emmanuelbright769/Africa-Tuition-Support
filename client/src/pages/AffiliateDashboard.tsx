@@ -21,7 +21,7 @@ import {
   Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
   Eye, EyeOff, Bell, Power, Timer, CreditCard, PiggyBank,
   HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Lock,
-  Film, MapPin, UserCircle2
+  Film, MapPin, UserCircle2, Gift, Trophy, Unlock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -189,6 +189,136 @@ function ReferralSection({ referralStats, referrals, navigate }: {
             </div>
             <p className="text-2xl font-bold text-amber-700 dark:text-amber-400" data-testid="text-pending-referrals">{pendingCount}</p>
             <p className="text-xs text-muted-foreground mt-0.5">Pending</p>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ── Milestone Rewards Box ── */}
+      <motion.div variants={itemVariants}>
+        <Card className="border-0 shadow-md overflow-hidden" data-testid="card-milestone-rewards">
+          <div className="h-1 bg-gradient-to-r from-tsia-gold via-amber-400 to-tsia-green" />
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 bg-tsia-gold/10 rounded-xl flex items-center justify-center shrink-0">
+                <Gift className="w-5 h-5 text-tsia-gold" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Milestone Rewards</CardTitle>
+                <CardDescription className="text-xs">Grow your active wallets — earn free co-affiliate access for life</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3 pb-5">
+            {[
+              {
+                target: 100,
+                label: "Starter Co-Affiliate Spot",
+                value: "$100",
+                tier: "Starter",
+                color: "blue",
+                icon: "🥉",
+                desc: "Access to the Starter lifetime co-affiliate position — 5% profit share on a $100 investment.",
+                claimLabel: "Claim Starter Spot",
+              },
+              {
+                target: 500,
+                label: "Growth Co-Affiliate Spot",
+                value: "$300",
+                tier: "Growth",
+                color: "purple",
+                icon: "🥈",
+                desc: "Access to the Growth lifetime co-affiliate position — 5% profit share on a $300 investment.",
+                claimLabel: "Claim Growth Spot",
+              },
+              {
+                target: 1000,
+                label: "Elite Co-Affiliate — For Life",
+                value: "$1,200",
+                tier: "Elite",
+                color: "amber",
+                icon: "🏆",
+                desc: "Elite lifetime status at $1,200 · 5% profit share · 0.000500 per unit — yours forever.",
+                claimLabel: "Claim Elite Status",
+              },
+            ].map(({ target, label, value, tier, color, icon, desc, claimLabel }) => {
+              const pct = Math.min((activeCount / target) * 100, 100);
+              const unlocked = activeCount >= target;
+              const barColor =
+                color === "blue"   ? "bg-blue-500"   :
+                color === "purple" ? "bg-purple-500" : "bg-amber-500";
+              const bgColor =
+                color === "blue"   ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"   :
+                color === "purple" ? "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800" :
+                                    "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800";
+              const textColor =
+                color === "blue"   ? "text-blue-700 dark:text-blue-300"   :
+                color === "purple" ? "text-purple-700 dark:text-purple-300" :
+                                    "text-amber-700 dark:text-amber-300";
+              const badgeColor =
+                color === "blue"   ? "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"   :
+                color === "purple" ? "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" :
+                                    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
+              const btnColor =
+                color === "blue"   ? "bg-blue-600 hover:bg-blue-700"   :
+                color === "purple" ? "bg-purple-600 hover:bg-purple-700" :
+                                    "bg-amber-500 hover:bg-amber-600";
+
+              return (
+                <div key={target} className={`rounded-xl border p-4 ${bgColor}`} data-testid={`card-reward-${target}`}>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{icon}</span>
+                      <div>
+                        <p className={`text-sm font-bold ${textColor}`}>{label}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{desc}</p>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${badgeColor}`}>{value}</span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="mb-2">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] text-muted-foreground font-medium">
+                        {activeCount.toLocaleString()} / {target.toLocaleString()} active wallets
+                      </span>
+                      <span className={`text-[10px] font-bold ${textColor}`}>{pct.toFixed(0)}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-white/60 dark:bg-black/20 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${barColor} ${unlocked ? "opacity-100" : "opacity-70"}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {unlocked ? (
+                    <Button
+                      size="sm"
+                      className={`w-full text-white font-semibold mt-1 ${btnColor}`}
+                      onClick={() => navigate("trust_fund")}
+                      data-testid={`btn-claim-reward-${target}`}
+                    >
+                      <Trophy className="w-3.5 h-3.5 mr-1.5" />
+                      {claimLabel} — {tier} tier
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Lock className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-[10px] text-muted-foreground font-medium">
+                        {Math.max(0, target - activeCount).toLocaleString()} more active wallets to unlock
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <p className="text-[10px] text-muted-foreground text-center pt-1">
+              Rewards do not affect your existing referral earnings or commission withdrawals.
+            </p>
           </CardContent>
         </Card>
       </motion.div>

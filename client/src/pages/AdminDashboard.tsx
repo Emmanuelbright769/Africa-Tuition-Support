@@ -155,7 +155,7 @@ export default function AdminDashboard() {
   const [wdNote, setWdNote]               = useState("");
   const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "", silverMin: "", silverMax: "", goldMin: "", goldMax: "", platinumMin: "", platinumMax: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
-  const [tradeForm, setTradeForm] = useState({ feeExchangeWithdraw: "", feeBankWithdraw: "", reserveRate: "", affiliateShareRate: "", minDeposit: "", minWithdraw: "", coAffiliatePoolRate: "" });
+  const [tradeForm, setTradeForm] = useState({ feeExchangeWithdraw: "", feeBankWithdraw: "", reserveRate: "", affiliateShareRate: "", minDeposit: "", minWithdraw: "", coAffiliatePoolRate: "", botFullRate: "" });
   const [tradeSaved, setTradeSaved] = useState(false);
   const [tosEmailState, setTosEmailState] = useState<"idle" | "sending" | "done">("idle");
   const [tosEmailResult, setTosEmailResult] = useState("");
@@ -189,7 +189,7 @@ export default function AdminDashboard() {
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 600_000 });
   const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
-  const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" });
+  const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" });
   const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
@@ -2732,6 +2732,7 @@ export default function AdminDashboard() {
                       minDeposit:          tradeForm.minDeposit          || (td ? td.minDeposit.toString()                  : "10"),
                       minWithdraw:         tradeForm.minWithdraw         || (td ? td.minWithdraw.toString()                 : "5"),
                       coAffiliatePoolRate: tradeForm.coAffiliatePoolRate || (td ? (td.coAffiliatePoolRate != null ? (td.coAffiliatePoolRate * 100).toFixed(2) : "") : ""),
+                      botFullRate:         tradeForm.botFullRate         || (td ? (td.botFullRate * 100).toFixed(2)         : "2.00"),
                     };
                     const setTf = (k: keyof typeof tradeForm, v: string) => setTradeForm(f => ({ ...tf, [k]: v }));
                     const submitTrade = () => {
@@ -2743,6 +2744,7 @@ export default function AdminDashboard() {
                         minDeposit:          tf.minDeposit,
                         minWithdraw:         tf.minWithdraw,
                         coAffiliatePoolRate: tf.coAffiliatePoolRate ? (parseFloat(tf.coAffiliatePoolRate) / 100).toString() : "",
+                        botFullRate:         (parseFloat(tf.botFullRate) / 100).toString(),
                       };
                       saveTradeSettingsMutation.mutate(payload as any);
                     };
@@ -2790,16 +2792,29 @@ export default function AdminDashboard() {
                               </div>
                             ))}
                           </div>
-                          <div className="space-y-1 border-t pt-4">
-                            <Label className="font-semibold text-sm">Co-Affiliate Pool Rate Override (%)</Label>
-                            <div className="relative max-w-[200px]">
-                              <Input type="number" min="0" max="100" step="0.01" className="pr-8 h-10 bg-muted/30 font-semibold"
-                                placeholder="Auto (tiered)"
-                                value={tf.coAffiliatePoolRate} onChange={e => setTf("coAffiliatePoolRate", e.target.value)}
-                                data-testid="input-co-affiliate-pool-rate" />
-                              <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                            <div className="space-y-1">
+                              <Label className="font-semibold text-sm">Daily Bot Return Rate (%)</Label>
+                              <div className="relative">
+                                <Input type="number" min="0.1" max="20" step="0.01" className="pr-8 h-10 bg-muted/30 font-semibold"
+                                  placeholder="2.00"
+                                  value={tf.botFullRate} onChange={e => setTf("botFullRate", e.target.value)}
+                                  data-testid="input-trade-botFullRate" />
+                                <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">Max daily return from the AI bot (0.1–20%). Default: 2%.</p>
                             </div>
-                            <p className="text-xs text-muted-foreground">Leave blank to use automatic tiered rate (20% → 15% → 10% → 5% by enrollment count).</p>
+                            <div className="space-y-1">
+                              <Label className="font-semibold text-sm">Co-Affiliate Pool Rate Override (%)</Label>
+                              <div className="relative">
+                                <Input type="number" min="0" max="100" step="0.01" className="pr-8 h-10 bg-muted/30 font-semibold"
+                                  placeholder="Auto (tiered)"
+                                  value={tf.coAffiliatePoolRate} onChange={e => setTf("coAffiliatePoolRate", e.target.value)}
+                                  data-testid="input-co-affiliate-pool-rate" />
+                                <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">Leave blank to use auto tiered rate (20%→15%→10%→5%).</p>
+                            </div>
                           </div>
                           <Button className="w-full h-11 font-semibold bg-blue-600 hover:bg-blue-700" disabled={saveTradeSettingsMutation.isPending}
                             onClick={submitTrade} data-testid="button-save-trade-settings">

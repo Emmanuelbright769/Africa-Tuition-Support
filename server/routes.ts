@@ -2765,7 +2765,8 @@ export async function registerRoutes(
 
       // ── Compute session duration (proportional to hours the bot was active) ──
       const BOT_MAX_MS    = 12 * 3600 * 1000;
-      const BOT_FULL_RATE = 0.02; // 2% max daily
+      const _botRateSetting = await storage.getPlatformSetting("trade_bot_full_rate");
+      const BOT_FULL_RATE = _botRateSetting ? parseFloat(_botRateSetting) : 0.02; // configurable max daily return
       let elapsedMs = BOT_MAX_MS;
       if (activatedAt && Number.isFinite(activatedAt)) {
         elapsedMs = Math.min(Date.now() - activatedAt, BOT_MAX_MS);
@@ -3429,12 +3430,6 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
-      const keys = [
-        "trade_fee_exchange_withdraw", "trade_fee_bank_withdraw",
-        "trade_reserve_rate", "trade_affiliate_share_rate",
-        "trade_min_deposit", "trade_min_withdraw",
-        "co_affiliate_pool_rate_override",
-      ];
       const all = await storage.getAllPlatformSettings();
       const map = Object.fromEntries(all.map(r => [r.key, r.value]));
       res.json({
@@ -3445,6 +3440,7 @@ export async function registerRoutes(
         minDeposit:            parseFloat(map["trade_min_deposit"]              ?? "10"),
         minWithdraw:           parseFloat(map["trade_min_withdraw"]             ?? "5"),
         coAffiliatePoolRate:   map["co_affiliate_pool_rate_override"] != null ? parseFloat(map["co_affiliate_pool_rate_override"]) : null,
+        botFullRate:           parseFloat(map["trade_bot_full_rate"]            ?? "0.02"),
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3456,14 +3452,15 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
-      const { feeExchangeWithdraw, feeBankWithdraw, reserveRate, affiliateShareRate, minDeposit, minWithdraw, coAffiliatePoolRate } = req.body;
+      const { feeExchangeWithdraw, feeBankWithdraw, reserveRate, affiliateShareRate, minDeposit, minWithdraw, coAffiliatePoolRate, botFullRate } = req.body;
       const updates = [
-        { key: "trade_fee_exchange_withdraw",  val: parseFloat(feeExchangeWithdraw),  min: 0, max: 0.5,  label: "Exchange withdraw fee" },
-        { key: "trade_fee_bank_withdraw",      val: parseFloat(feeBankWithdraw),      min: 0, max: 0.5,  label: "Bank withdraw fee" },
-        { key: "trade_reserve_rate",           val: parseFloat(reserveRate),          min: 0, max: 0.5,  label: "Reserve fund rate" },
-        { key: "trade_affiliate_share_rate",   val: parseFloat(affiliateShareRate),   min: 0, max: 0.5,  label: "Affiliate share rate" },
-        { key: "trade_min_deposit",            val: parseFloat(minDeposit),           min: 1, max: 10000, label: "Min trade deposit" },
-        { key: "trade_min_withdraw",           val: parseFloat(minWithdraw),          min: 1, max: 10000, label: "Min trade withdraw" },
+        { key: "trade_fee_exchange_withdraw",  val: parseFloat(feeExchangeWithdraw),  min: 0,    max: 0.5,   label: "Exchange withdraw fee" },
+        { key: "trade_fee_bank_withdraw",      val: parseFloat(feeBankWithdraw),      min: 0,    max: 0.5,   label: "Bank withdraw fee" },
+        { key: "trade_reserve_rate",           val: parseFloat(reserveRate),          min: 0,    max: 0.5,   label: "Reserve fund rate" },
+        { key: "trade_affiliate_share_rate",   val: parseFloat(affiliateShareRate),   min: 0,    max: 0.5,   label: "Affiliate share rate" },
+        { key: "trade_min_deposit",            val: parseFloat(minDeposit),           min: 1,    max: 10000, label: "Min trade deposit" },
+        { key: "trade_min_withdraw",           val: parseFloat(minWithdraw),          min: 1,    max: 10000, label: "Min trade withdraw" },
+        { key: "trade_bot_full_rate",          val: parseFloat(botFullRate),          min: 0.001, max: 0.20, label: "Daily bot return rate" },
       ];
       for (const u of updates) {
         if (isNaN(u.val) || u.val < u.min || u.val > u.max) return res.status(400).json({ message: `Invalid value for ${u.label}` });

@@ -422,36 +422,23 @@ export default function StudentDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Main content — overview stays below nav, services go full-screen */}
-      <main className={activeSection !== "overview" ? "fixed inset-0 z-30 bg-background flex flex-col" : "container mx-auto px-4 pt-8 pb-20 max-w-5xl"}>
+      {/* Floating nav button — only shown when a service is open */}
+      {activeSection !== "overview" && (
+        <button
+          onClick={() => setMenuOpen(true)}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 px-5 py-3 rounded-full bg-card border shadow-xl text-sm font-bold transition-all hover:shadow-2xl active:scale-95"
+          data-testid="btn-floating-menu"
+        >
+          <Menu className="w-4 h-4" />
+          <span>{NAV_ITEMS.find(n => n.id === activeSection)?.label ?? "Menu"}</span>
+          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+      )}
 
-        {/* Compact top bar for service sections */}
-        {activeSection !== "overview" && (
-          <div className="flex items-center justify-between px-4 h-14 border-b bg-card shrink-0 shadow-sm">
-            <div className="flex items-center gap-2">
-              <button onClick={() => setActiveSection("overview")}
-                className="p-2 rounded-xl hover:bg-muted transition-colors" data-testid="btn-service-back">
-                <ChevronRight className="w-4 h-4 rotate-180" />
-              </button>
-              <span className="font-bold text-sm">{NAV_ITEMS.find(n => n.id === activeSection)?.label ?? activeSection}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center bg-muted rounded-full p-0.5 gap-0.5">
-                {themeOpts.map(o => (
-                  <button key={o.v} onClick={() => setMode(o.v)} className={`p-1.5 rounded-full transition-all ${mode === o.v ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}>
-                    <o.i className="w-3 h-3" />
-                  </button>
-                ))}
-              </div>
-              <NotificationBell />
-              <button onClick={handleLogout} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+      {/* Main content — overview normal, services cover entire screen (above nav) */}
+      <main className={activeSection !== "overview" ? "fixed inset-0 z-50 bg-background overflow-y-auto" : "container mx-auto px-4 pt-8 pb-20 max-w-5xl"}>
 
-        <div className={activeSection !== "overview" ? "flex-1 overflow-y-auto px-4 py-6" : ""}>
+        <div className={activeSection !== "overview" ? "container mx-auto px-4 pt-6 pb-24 max-w-5xl" : ""}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeSection}

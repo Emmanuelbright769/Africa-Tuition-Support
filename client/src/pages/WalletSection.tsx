@@ -110,6 +110,9 @@ export default function WalletSection() {
 
   // ── History tab ────────────────────────────────────────────────────────
   const [historyTab, setHistoryTab] = useState<"deposits" | "bills">("deposits");
+  const [depositsPage, setDepositsPage] = useState(0);
+  const [billsPage, setBillsPage] = useState(0);
+  const WS_PAGE_SIZE = 10;
 
   // ── Wallet KYC state ───────────────────────────────────────────────────
   const [kycBvn, setKycBvn] = useState("");
@@ -565,7 +568,7 @@ export default function WalletSection() {
         <h3 className="font-bold text-sm mb-3">Transaction History</h3>
         <div className="flex bg-muted/40 rounded-2xl p-1 text-xs mb-4 overflow-x-auto gap-0.5">
           {(["deposits","bills"] as const).map(tab => (
-            <button key={tab} onClick={() => setHistoryTab(tab)}
+            <button key={tab} onClick={() => { setHistoryTab(tab); setDepositsPage(0); setBillsPage(0); }}
               className={`flex-1 py-2 rounded-xl font-semibold capitalize transition-all whitespace-nowrap px-2 ${historyTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
               {tab === "deposits" ? "Deposits" : "Bills"}
             </button>
@@ -573,51 +576,81 @@ export default function WalletSection() {
         </div>
 
         <div className="space-y-2">
-          {historyTab === "deposits" && (
-            (deposits as DepositRecord[]).length === 0
-              ? <Empty icon={ArrowDownLeft} msg="No deposits yet" />
-              : (deposits as DepositRecord[]).slice(0, 15).map(d => (
-                <div key={d.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${d.status === "completed" ? "bg-green-50 dark:bg-green-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
-                    {d.status === "completed"
-                      ? <CheckCircle2 className="w-5 h-5 text-tsia-green" />
-                      : <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />}
+          {historyTab === "deposits" && (() => {
+            const allDeps = deposits as DepositRecord[];
+            if (allDeps.length === 0) return <Empty icon={ArrowDownLeft} msg="No deposits yet" />;
+            const totalPages = Math.ceil(allDeps.length / WS_PAGE_SIZE);
+            const page = allDeps.slice(depositsPage * WS_PAGE_SIZE, (depositsPage + 1) * WS_PAGE_SIZE);
+            return (
+              <>
+                {page.map(d => (
+                  <div key={d.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${d.status === "completed" ? "bg-green-50 dark:bg-green-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
+                      {d.status === "completed"
+                        ? <CheckCircle2 className="w-5 h-5 text-tsia-green" />
+                        : <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm capitalize">
+                        {d.walletType === "paystack" ? "Card/Bank" : d.walletType?.toUpperCase()} Deposit
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono truncate">{d.txHash}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
+                      <p className="text-[10px] text-tsia-green/70">{formatAmount(parseFloat(d.amountUsd))}</p>
+                      <p className={`text-[10px] font-semibold capitalize ${d.status === "completed" ? "text-tsia-green" : "text-amber-500"}`}>{d.status}</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm capitalize">
-                      {d.walletType === "paystack" ? "Paystack" : d.walletType?.toUpperCase()} Deposit
-                    </p>
-                    <p className="text-xs text-muted-foreground font-mono truncate">{d.txHash}</p>
+                ))}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button onClick={() => setDepositsPage(p => Math.max(0, p - 1))} disabled={depositsPage === 0}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+                    <span className="text-xs text-muted-foreground">Page {depositsPage + 1} of {totalPages}</span>
+                    <button onClick={() => setDepositsPage(p => Math.min(totalPages - 1, p + 1))} disabled={depositsPage >= totalPages - 1}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
-                    <p className="text-[10px] text-tsia-green/70">{formatAmount(parseFloat(d.amountUsd))}</p>
-                    <p className={`text-[10px] font-semibold capitalize ${d.status === "completed" ? "text-tsia-green" : "text-amber-500"}`}>{d.status}</p>
-                  </div>
-                </div>
-              ))
-          )}
+                )}
+              </>
+            );
+          })()}
 
-          {historyTab === "bills" && (
-            (bills as BillRecord[]).length === 0
-              ? <Empty icon={Receipt} msg="No bill payments yet" />
-              : (bills as BillRecord[]).slice(0, 15).map(b => (
-                <div key={b.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-                    <Receipt className="w-5 h-5 text-amber-500" />
+          {historyTab === "bills" && (() => {
+            const allBills = bills as BillRecord[];
+            if (allBills.length === 0) return <Empty icon={Receipt} msg="No bill payments yet" />;
+            const totalPages = Math.ceil(allBills.length / WS_PAGE_SIZE);
+            const page = allBills.slice(billsPage * WS_PAGE_SIZE, (billsPage + 1) * WS_PAGE_SIZE);
+            return (
+              <>
+                {page.map(b => (
+                  <div key={b.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
+                      <Receipt className="w-5 h-5 text-amber-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm capitalize">{SERVICE_LABELS[b.service] || b.service}</p>
+                      <p className="text-xs text-muted-foreground truncate">{b.reference}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
+                      <p className="text-[10px] text-muted-foreground/70">{formatAmount(parseFloat(b.amount))}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm capitalize">{SERVICE_LABELS[b.service] || b.service}</p>
-                    <p className="text-xs text-muted-foreground truncate">{b.reference}</p>
+                ))}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button onClick={() => setBillsPage(p => Math.max(0, p - 1))} disabled={billsPage === 0}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+                    <span className="text-xs text-muted-foreground">Page {billsPage + 1} of {totalPages}</span>
+                    <button onClick={() => setBillsPage(p => Math.min(totalPages - 1, p + 1))} disabled={billsPage >= totalPages - 1}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
-                    <p className="text-[10px] text-muted-foreground/70">{formatAmount(parseFloat(b.amount))}</p>
-                    <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
-                  </div>
-                </div>
-              ))
-          )}
+                )}
+              </>
+            );
+          })()}
 
         </div>
       </motion.div>

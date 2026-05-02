@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   Home, Building2, MapPin, Bed, Bath, CalendarDays, TrendingDown, CheckCircle2,
-  ArrowLeft, Menu, X, Sun, Moon, Monitor, DollarSign, Calculator, Clock, Shield, Users, Landmark,
+  ArrowLeft, Menu, X, Sun, Moon, Monitor, DollarSign, Calculator, Clock, Shield, Landmark,
 } from "lucide-react";
 import { calculateTenancyDeal } from "@shared/schema";
 
@@ -38,8 +38,6 @@ export default function TenancyPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [tab, setTab] = useState<"landlord" | "how" | "calculator">("landlord");
   const [listOpen, setListOpen] = useState(false);
-  const [applyProp, setApplyProp] = useState<any>(null);
-
   // Calculator state
   const [calcAnnual, setCalcAnnual] = useState("500000");
   const [calcYears, setCalcYears] = useState("5");
@@ -58,7 +56,6 @@ export default function TenancyPage() {
     annualRentNgn: "", leasePeriodYears: "5", description: "", amenities: [] as string[],
   });
 
-  const { data: properties = [] } = useQuery<any[]>({ queryKey: ["/api/tenancy/properties"] });
   const { data: myProperties = [] } = useQuery<any[]>({ queryKey: ["/api/tenancy/my-properties"], enabled: !!user });
   const { data: myLeases = [] } = useQuery<any[]>({ queryKey: ["/api/tenancy/my-leases"], enabled: !!user });
 
@@ -75,19 +72,6 @@ export default function TenancyPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/tenancy/my-properties"] });
       setListOpen(false);
       setForm({ propertyName: "", address: "", city: "", state: "", country: "Nigeria", propertyType: "Apartment", bedrooms: "2", bathrooms: "1", annualRentNgn: "", leasePeriodYears: "5", description: "", amenities: [] });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const applyMutation = useMutation({
-    mutationFn: async (propertyId: number) => {
-      const res = await apiRequest("POST", "/api/tenancy/apply", { propertyId });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Application Submitted!", description: "Your lease application has been processed. Check My Leases to see your payment schedule." });
-      queryClient.invalidateQueries({ queryKey: ["/api/tenancy/my-leases"] });
-      setApplyProp(null);
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -269,27 +253,6 @@ export default function TenancyPage() {
                     </CardContent>
                   </Card>
 
-                  {/* Tenant flow */}
-                  <Card className="border-0 shadow-md overflow-hidden">
-                    <div className="h-1.5 bg-gradient-to-r from-tsia-gold to-yellow-400" />
-                    <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Users className="w-5 h-5 text-tsia-gold" /> For Tenants</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                      {[
-                        { step: "1", text: "Browse available properties in your city and select one that fits your budget." },
-                        { step: "2", text: "Apply for a lease through TSIA. Our team verifies your application within 24 hours." },
-                        { step: "3", text: "Pay a small monthly installment instead of a large annual lump sum. 5% interest added." },
-                        { step: "4", text: "Move in and enjoy your new home! TSIA handles all communication with the landlord." },
-                      ].map(({ step, text }) => (
-                        <div key={step} className="flex gap-3">
-                          <div className="w-7 h-7 rounded-full bg-tsia-gold text-slate-900 text-sm font-bold flex items-center justify-center flex-shrink-0">{step}</div>
-                          <p className="text-sm leading-relaxed">{text}</p>
-                        </div>
-                      ))}
-                      <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-3 mt-2">
-                        <p className="text-xs text-yellow-700 dark:text-yellow-400 font-medium">Example: ₦1,000,000/yr → ₦1,050,000/yr with 5% interest → ₦87,500/month (vs ₦1M upfront!)</p>
-                      </div>
-                    </CardContent>
-                  </Card>
                 </div>
               </motion.div>
 
@@ -489,44 +452,6 @@ export default function TenancyPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Apply for Lease Confirmation */}
-      <Dialog open={!!applyProp} onOpenChange={(v) => !v && setApplyProp(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Apply for Lease</DialogTitle>
-            <DialogDescription>Confirm your lease application for this property.</DialogDescription>
-          </DialogHeader>
-          {applyProp && (() => {
-            const annual = parseFloat(applyProp.annualRentNgn);
-            const deal = calculateTenancyDeal(annual, applyProp.leasePeriodYears, parseFloat(applyProp.discountRate), parseFloat(applyProp.tenantInterestRate));
-            return (
-              <div className="space-y-4 py-2">
-                <div className="bg-muted/50 rounded-xl p-4 space-y-2">
-                  <p className="font-bold">{applyProp.propertyName}</p>
-                  <p className="text-sm text-muted-foreground">{applyProp.address}, {applyProp.city}, {applyProp.state}</p>
-                  <div className="border-t border-border pt-3 space-y-1.5">
-                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Monthly Payment</span><span className="font-bold text-tsia-green">{formatNgn(deal.monthlyTenantPayment)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Lease Duration</span><span>{applyProp.leasePeriodYears} years</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Total Payable</span><span>{formatNgn(deal.totalTenantPayable)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Interest Rate</span><span>5% per year</span></div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
-                  <Shield className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700 dark:text-amber-400">By applying, you agree to make monthly payments of {formatNgn(deal.monthlyTenantPayment)} for {applyProp.leasePeriodYears} years. Missed payments may result in lease termination.</p>
-                </div>
-              </div>
-            );
-          })()}
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setApplyProp(null)}>Cancel</Button>
-            <Button className="bg-tsia-green hover:bg-tsia-green/90 text-white" onClick={() => applyMutation.mutate(applyProp.id)}
-              disabled={applyMutation.isPending} data-testid="button-confirm-lease">
-              {applyMutation.isPending ? "Processing..." : "Confirm Lease Application"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

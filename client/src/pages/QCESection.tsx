@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   PiggyBank, Lock, Unlock, ArrowDownLeft, ArrowUpRight,
   CheckCircle2, Clock, Zap, BarChart3, Loader2, RefreshCw,
-  CalendarDays, History, ChevronLeft, Info,
+  CalendarDays, History, ChevronLeft, Info, GraduationCap,
   CarFront, Home, Banknote, AlertTriangle, TrendingDown,
   Shield, MapPin, CreditCard, BadgeCheck
 } from "lucide-react";
@@ -258,7 +258,7 @@ export default function QCESection() {
                 <p className="font-bold">V-Connect</p>
                 <Badge className="bg-tsia-gold/10 text-tsia-gold border-0 text-[10px]">Vehicle Credit</Badge>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">Purchase vehicles on credit — achieve 30% QCE eligibility over 90 days to qualify</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Purchase vehicles on credit — 30% credit eligibility granted instantly on your first deposit</p>
             </div>
           </div>
           <Button size="sm" className="w-full bg-tsia-gold hover:bg-tsia-gold/90 text-white" onClick={() => setActiveTab("v_connect")} data-testid="btn-home-vc-explore">
@@ -403,25 +403,27 @@ export default function QCESection() {
                 </div>
 
                 {/* Credit portal unlock tiers */}
-                <Card className={`shadow-sm border-0 ${creditPortalUnlocked ? "border-l-4 border-l-tsia-green" : ""}`}>
+                <Card className="shadow-sm border-0 border-l-4 border-l-tsia-green">
                   <CardHeader className="pb-2 pt-4">
                     <CardTitle className="text-sm flex items-center gap-2">
-                      {creditPortalUnlocked ? <Unlock className="w-4 h-4 text-tsia-green" /> : <Lock className="w-4 h-4 text-muted-foreground" />}
+                      <Unlock className="w-4 h-4 text-tsia-green" />
                       Credit Portal
-                      {creditPortalUnlocked && <Badge className="ml-auto bg-tsia-green/10 text-tsia-green border-0 text-[10px]">Unlocked</Badge>}
+                      <Badge className="ml-auto bg-tsia-green/10 text-tsia-green border-0 text-[10px]">All Unlocked</Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pb-4">
+                    <p className="text-[10px] text-muted-foreground mb-3">All credit services activated automatically on your first deposit — no waiting period.</p>
                     <div className="space-y-2">
                       {[
-                        { pct: 5,  label: "Micro-credit requests" },
-                        { pct: 10, label: "Student loan applications" },
-                        { pct: 20, label: "Increased limits + faster approval" },
-                        { pct: 30, label: "Full eligibility — maximum access" },
-                      ].map(tier => (
-                        <div key={tier.pct} className="flex items-center gap-2 text-xs">
-                          <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${eligibilityPct >= tier.pct ? "text-tsia-green" : "text-muted-foreground/30"}`} />
-                          <span className={eligibilityPct >= tier.pct ? "text-foreground font-medium" : "text-muted-foreground"}>{tier.pct}% — {tier.label}</span>
+                        { label: "V-Connect Vehicle Credit", icon: CarFront },
+                        { label: "Student Loan Applications", icon: GraduationCap },
+                        { label: "Home / Tenancy Credit", icon: Home },
+                        { label: "Business Credit (max access)", icon: Banknote },
+                      ].map(({ label, icon: Icon }) => (
+                        <div key={label} className="flex items-center gap-2 text-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-tsia-green" />
+                          <Icon className="w-3 h-3 text-muted-foreground" />
+                          <span className="font-medium">{label}</span>
                         </div>
                       ))}
                     </div>
@@ -434,8 +436,8 @@ export default function QCESection() {
                   <p>Min <strong>${QCE.MIN_BALANCE}</strong> always retained. Withdrawals return to your SwiftWallet.</p>
                 </div>
 
-                {/* Credit Calculator */}
-                {creditPortalUnlocked && <QceCreditCalculator qceBalance={qceBalance} eligibilityPct={eligibilityPct} />}
+                {/* Credit Calculator — always shown when activated */}
+                <QceCreditCalculator qceBalance={qceBalance} eligibilityPct={eligibilityPct} />
 
                 {/* Transaction history */}
                 {transactions.length > 0 && (() => {

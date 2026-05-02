@@ -207,6 +207,11 @@ export default function FinancialHub() {
   const [amount, setAmount]   = useState("0");
   const [note, setNote]       = useState("");
   const [activeTab, setActiveTab] = useState<"transfers" | "bank-transfers" | "bills">("transfers");
+  const [bankTxPage, setBankTxPage]   = useState(0);
+  const [transferPage, setTransferPage] = useState(0);
+  const [billPage, setBillPage]       = useState(0);
+  const [depositPage, setDepositPage] = useState(0);
+  const FH_PAGE_SIZE = 10;
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
 
   // ── Universal transaction receipt dialog ──────────────────────────────────
@@ -917,9 +922,9 @@ export default function FinancialHub() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-sm">History</h3>
           <div className="flex bg-muted/40 rounded-xl p-0.5 text-xs">
-            <button onClick={() => setActiveTab("transfers")}      className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "transfers"      ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Transfers</button>
-            <button onClick={() => setActiveTab("bank-transfers")} className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bank-transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bank</button>
-            <button onClick={() => setActiveTab("bills")}          className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bills"          ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bills</button>
+            <button onClick={() => { setActiveTab("transfers"); setTransferPage(0); }}      className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "transfers"      ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Transfers</button>
+            <button onClick={() => { setActiveTab("bank-transfers"); setBankTxPage(0); }} className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bank-transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bank</button>
+            <button onClick={() => { setActiveTab("bills"); setBillPage(0); }}            className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bills"          ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bills</button>
           </div>
         </div>
         <div className="space-y-2">
@@ -927,7 +932,9 @@ export default function FinancialHub() {
             (() => {
               const bankTxs = (bills as BillRecord[]).filter(b => b.service === "bank_transfer");
               if (bankTxs.length === 0) return <EmptyState icon={Building2} msg="No bank transfers yet" />;
-              return bankTxs.slice(0, 8).map(b => {
+              const btTotalPages = Math.ceil(bankTxs.length / FH_PAGE_SIZE);
+              const btPageItems = bankTxs.slice(bankTxPage * FH_PAGE_SIZE, (bankTxPage + 1) * FH_PAGE_SIZE);
+              return (<>{btPageItems.map(b => {
                 const btStatus: "success" | "pending" | "processing" =
                   b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
                 const btDate = new Date(b.createdAt).toLocaleString("en-GB", {
@@ -975,12 +982,23 @@ export default function FinancialHub() {
                     <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
                   </button>
                 );
-              });
+              })}
+              {btTotalPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                  <button onClick={() => setBankTxPage(p => Math.max(0, p - 1))} disabled={bankTxPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+                  <span className="text-xs text-muted-foreground">Page {bankTxPage + 1} of {btTotalPages}</span>
+                  <button onClick={() => setBankTxPage(p => Math.min(btTotalPages - 1, p + 1))} disabled={bankTxPage >= btTotalPages - 1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
+                </div>
+              )}
+              </>);
             })()
           ) : activeTab === "transfers" ? (
-            (transfers as TransferRecord[]).length === 0
-              ? <EmptyState icon={Send} msg="No transfers yet" />
-              : (transfers as TransferRecord[]).slice(0, 8).map(t => {
+            (() => {
+              const allTx = transfers as TransferRecord[];
+              if (allTx.length === 0) return <EmptyState icon={Send} msg="No transfers yet" />;
+              const txTotalPages = Math.ceil(allTx.length / FH_PAGE_SIZE);
+              const txPageItems = allTx.slice(transferPage * FH_PAGE_SIZE, (transferPage + 1) * FH_PAGE_SIZE);
+              return (<>{txPageItems.map(t => {
                   const isOut = t.senderId === user?.id;
                   const txStatus: "success" | "pending" | "processing" =
                     t.status === "completed" ? "success" : t.status === "pending" ? "pending" : "processing";
@@ -1023,12 +1041,23 @@ export default function FinancialHub() {
                       <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
                     </button>
                   );
-                })
+                })}
+                {txTotalPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button onClick={() => setTransferPage(p => Math.max(0, p - 1))} disabled={transferPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+                    <span className="text-xs text-muted-foreground">Page {transferPage + 1} of {txTotalPages}</span>
+                    <button onClick={() => setTransferPage(p => Math.min(txTotalPages - 1, p + 1))} disabled={transferPage >= txTotalPages - 1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
+                  </div>
+                )}
+                </>);
+              })()
           ) : (
             (() => {
               const billItems = (bills as BillRecord[]).filter(b => b.service !== "bank_transfer");
               if (billItems.length === 0) return <EmptyState icon={Receipt} msg="No bill payments yet" />;
-              return billItems.slice(0, 8).map(b => {
+              const blTotalPages = Math.ceil(billItems.length / FH_PAGE_SIZE);
+              const blPageItems = billItems.slice(billPage * FH_PAGE_SIZE, (billPage + 1) * FH_PAGE_SIZE);
+              return (<>{blPageItems.map(b => {
                 const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
                 const billStatus: "success" | "pending" | "processing" =
                   b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
@@ -1069,7 +1098,15 @@ export default function FinancialHub() {
                     <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
                   </button>
                 );
-              });
+              })}
+              {blTotalPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                  <button onClick={() => setBillPage(p => Math.max(0, p - 1))} disabled={billPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+                  <span className="text-xs text-muted-foreground">Page {billPage + 1} of {blTotalPages}</span>
+                  <button onClick={() => setBillPage(p => Math.min(blTotalPages - 1, p + 1))} disabled={billPage >= blTotalPages - 1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
+                </div>
+              )}
+              </>);
             })()
           )}
         </div>
@@ -1409,28 +1446,40 @@ export default function FinancialHub() {
         )}
 
         {/* Recent deposits */}
-        {(walletDeposits as any[]).length > 0 && (
-          <div>
-            <h3 className="font-bold text-sm mb-3">Recent Deposits</h3>
-            <div className="space-y-2">
-              {(walletDeposits as any[]).slice(0, 5).map((d: any) => (
-                <div key={d.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${d.status === "completed" ? "bg-green-50 dark:bg-green-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
-                    {d.status === "completed" ? <CheckCircle2 className="w-4 h-4 text-tsia-green" /> : <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />}
+        {(walletDeposits as any[]).length > 0 && (() => {
+          const allDeps = walletDeposits as any[];
+          const dpTotalPages = Math.ceil(allDeps.length / FH_PAGE_SIZE);
+          const dpPage = allDeps.slice(depositPage * FH_PAGE_SIZE, (depositPage + 1) * FH_PAGE_SIZE);
+          return (
+            <div>
+              <h3 className="font-bold text-sm mb-3">Deposit History</h3>
+              <div className="space-y-2">
+                {dpPage.map((d: any) => (
+                  <div key={d.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${d.status === "completed" ? "bg-green-50 dark:bg-green-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
+                      {d.status === "completed" ? <CheckCircle2 className="w-4 h-4 text-tsia-green" /> : <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold capitalize">{d.walletType === "paystack" ? "Card/Bank" : d.walletType?.toUpperCase()} Deposit</p>
+                      <p className="text-xs text-muted-foreground font-mono truncate">{d.txHash}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
+                      <p className={`text-[10px] font-semibold capitalize ${d.status === "completed" ? "text-tsia-green" : "text-amber-500"}`}>{d.status}</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold capitalize">{d.walletType === "paystack" ? "Paystack" : d.walletType?.toUpperCase()} Deposit</p>
-                    <p className="text-xs text-muted-foreground font-mono truncate">{d.txHash}</p>
+                ))}
+                {dpTotalPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button onClick={() => setDepositPage(p => Math.max(0, p - 1))} disabled={depositPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+                    <span className="text-xs text-muted-foreground">Page {depositPage + 1} of {dpTotalPages}</span>
+                    <button onClick={() => setDepositPage(p => Math.min(dpTotalPages - 1, p + 1))} disabled={depositPage >= dpTotalPages - 1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
-                    <p className={`text-[10px] font-semibold capitalize ${d.status === "completed" ? "text-tsia-green" : "text-amber-500"}`}>{d.status}</p>
-                  </div>
-                </div>
-              ))}
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </motion.div>
     </AnimatePresence>
   );

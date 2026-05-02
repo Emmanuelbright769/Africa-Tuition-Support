@@ -229,6 +229,65 @@ function CategoryRow({ activeCategory, setActiveCategory }: { activeCategory: st
   );
 }
 
+// ─── Countdown timer (resets daily) ──────────────────────────────────────────
+function CountdownBadge() {
+  const [remaining, setRemaining] = useState(() => {
+    const end = new Date(); end.setHours(23, 59, 59, 999);
+    return end.getTime() - Date.now();
+  });
+  useEffect(() => {
+    const t = setInterval(() => {
+      const end = new Date(); end.setHours(23, 59, 59, 999);
+      setRemaining(end.getTime() - Date.now());
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+  const h = Math.floor(remaining / 3600000);
+  const m = Math.floor((remaining % 3600000) / 60000);
+  const s = Math.floor((remaining % 60000) / 1000);
+  return (
+    <span style={{ background: AMZ.red, color: "white" }} className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded">
+      <Clock className="w-2.5 h-2.5" /> Ends in {String(h).padStart(2,"0")}:{String(m).padStart(2,"0")}:{String(s).padStart(2,"0")}
+    </span>
+  );
+}
+
+// ─── Hero category tile grid (4-up with mini product thumbnails) ────────────
+function HeroCategoryTiles({ products, onPick }: { products: Product[]; onPick: (cat: string) => void }) {
+  const tiles = [
+    { cat: "electronics", title: "Top picks in Electronics" },
+    { cat: "fashion",     title: "Refresh your wardrobe" },
+    { cat: "home",        title: "Spruce up your space" },
+    { cat: "health",      title: "Health & beauty deals" },
+  ];
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {tiles.map(t => {
+        const items = products.filter(p => p.category === t.cat).slice(0, 4);
+        return (
+          <div key={t.cat} style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-3" data-testid={`hero-tile-${t.cat}`}>
+            <h4 style={{ color: AMZ.text }} className="font-black text-sm mb-2 line-clamp-1">{t.title}</h4>
+            <div className="grid grid-cols-2 gap-1.5 mb-2">
+              {[0,1,2,3].map(i => {
+                const p = items[i];
+                const img = p?.images?.[0];
+                return (
+                  <div key={i} className="aspect-square bg-gray-50 rounded overflow-hidden flex items-center justify-center text-2xl">
+                    {img ? <img src={img} alt="" className="w-full h-full object-cover" /> : <span className="opacity-50">{CATEGORY_ICONS[t.cat]}</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={() => onPick(t.cat)} style={{ color: AMZ.link }} className="text-[11px] font-semibold hover:underline" data-testid={`btn-shop-${t.cat}`}>
+              Shop {CATEGORY_LABELS[t.cat]} →
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Top Sellers (Amazon "Sponsored Brands" style) ───────────────────────────
 function SellerStories({ products }: { products: Product[] }) {
   const seen = new Set<number>();
@@ -1309,6 +1368,14 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   const [chatProduct, setChatProduct] = useState<Product | null>(null);
   const [chatProductOpen, setChatProductOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [recentlyViewed, setRecentlyViewed] = useState<number[]>(() => {
+    try { return JSON.parse(localStorage.getItem("tsia_recently_viewed") || "[]"); } catch { return []; }
+  });
+  const [deliverTo, setDeliverTo] = useState<string>(() => {
+    try { return localStorage.getItem("tsia_deliver_to") || ""; } catch { return ""; }
+  });
+  const [deliverToOpen, setDeliverToOpen] = useState(false);
+  const [deliverToInput, setDeliverToInput] = useState("");
   const [cart, setCart] = useState<Set<number>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("tsia_cart") || "[]")); } catch { return new Set(); }
   });
@@ -1428,7 +1495,14 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const handleView = (p: Product) => { setSelectedProduct(p); setDetailOpen(true); };
+  const handleView = (p: Product) => {
+    setSelectedProduct(p); setDetailOpen(true);
+    setRecentlyViewed(prev => {
+      const next = [p.id, ...prev.filter(id => id !== p.id)].slice(0, 12);
+      try { localStorage.setItem("tsia_recently_viewed", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
   const handleBuy = (p: Product) => {
     if (p.sellerId === user?.id || (!!p.sellerEmail && p.sellerEmail === user?.email)) {
       toast({ title: "Your listing", description: "You cannot buy your own product.", variant: "destructive" });
@@ -1514,7 +1588,19 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
               <span className="text-white font-black text-xl tracking-tight">TSIA</span>
               <span style={{ color: AMZ.gold }} className="font-black text-xl tracking-tight">Market</span>
             </div>
-            <p style={{ color: "#ccc" }} className="text-[11px]">Hello, {user?.firstName || "Shopper"} · Fast Escrow</p>
+            <button
+              onClick={() => { setDeliverToInput(deliverTo); setDeliverToOpen(true); }}
+              data-testid="btn-deliver-to"
+              className="flex items-center gap-1 hover:opacity-80 transition-opacity"
+            >
+              <MapPin style={{ color: "#ccc" }} className="w-3 h-3" />
+              <p style={{ color: "#ccc" }} className="text-[11px]">
+                Hello, {user?.firstName || "Shopper"} ·
+                <span className="text-white font-semibold ml-1">
+                  {deliverTo ? `Deliver to ${deliverTo}` : "Add delivery address"}
+                </span>
+              </p>
+            </button>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setChatDrawerOpen(true)} data-testid="btn-messages" className="relative flex items-center gap-1 text-white hover:opacity-80 transition-opacity">
@@ -1621,6 +1707,85 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
           {/* Promo Banner */}
           <PromoBanner />
 
+          {/* Hero category tiles */}
+          {!activeSearch && (products as Product[]).length > 0 && (
+            <HeroCategoryTiles products={products as Product[]} onPick={(c) => setActiveCategory(c)} />
+          )}
+
+          {/* Today's Deals — with live countdown */}
+          {!activeSearch && filteredProducts.length > 0 && (
+            <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4" data-testid="rail-todays-deals">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <h3 style={{ color: AMZ.text }} className="font-bold text-sm flex items-center gap-2">
+                  <Zap className="w-4 h-4" style={{ color: AMZ.red }} /> Today's Deals
+                  <CountdownBadge />
+                </h3>
+                <button style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" onClick={() => setShowAllProducts(true)}>See all deals <ChevronRight className="w-3.5 h-3.5" /></button>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
+                {[...filteredProducts].sort((a, b) => b.viewCount - a.viewCount).slice(0, 12).map((p, i) => {
+                  const discountPct = 15 + ((p.id * 7) % 35);
+                  return (
+                    <div key={p.id} onClick={() => handleView(p)} data-testid={`deal-card-${p.id}`}
+                      className="w-40 shrink-0 cursor-pointer group">
+                      <div className="aspect-square bg-gray-50 rounded overflow-hidden relative">
+                        {p.images?.[0]
+                          ? <img src={p.images[0]} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          : <div className="w-full h-full flex items-center justify-center text-4xl">{CATEGORY_ICONS[p.category]}</div>}
+                        <div style={{ background: AMZ.red, color: "white" }} className="absolute top-1.5 left-1.5 text-[10px] font-black px-1.5 py-0.5 rounded">
+                          -{discountPct}%
+                        </div>
+                      </div>
+                      <p style={{ color: AMZ.red }} className="text-[11px] font-black mt-1.5">Up to {discountPct}% off</p>
+                      <p style={{ color: AMZ.text }} className="text-xs line-clamp-1 font-semibold">{p.title}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Buy it again — purchase history */}
+          {!activeSearch && (purchases as Order[]).length > 0 && (
+            <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4" data-testid="rail-buy-again">
+              <div className="flex items-center justify-between mb-3">
+                <h3 style={{ color: AMZ.text }} className="font-bold text-sm flex items-center gap-1.5">
+                  <RotateCcw className="w-4 h-4" style={{ color: AMZ.green }} /> Buy it again
+                </h3>
+                <button style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" onClick={() => setTab("purchases")}>Your orders <ChevronRight className="w-3.5 h-3.5" /></button>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
+                {(() => {
+                  const seen = new Set<number>();
+                  const items = (purchases as Order[])
+                    .filter(o => { if (seen.has(o.productId)) return false; seen.add(o.productId); return true; })
+                    .map(o => (products as Product[]).find(p => p.id === o.productId))
+                    .filter(Boolean) as Product[];
+                  if (items.length === 0) {
+                    return <p style={{ color: AMZ.muted }} className="text-xs">Items from your past orders will appear here.</p>;
+                  }
+                  return items.slice(0, 10).map(p => (
+                    <div key={p.id} onClick={() => handleView(p)} data-testid={`buy-again-${p.id}`}
+                      className="w-32 shrink-0 cursor-pointer group">
+                      <div className="aspect-square bg-gray-50 rounded overflow-hidden">
+                        {p.images?.[0]
+                          ? <img src={p.images[0]} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          : <div className="w-full h-full flex items-center justify-center text-3xl">{CATEGORY_ICONS[p.category]}</div>}
+                      </div>
+                      <p style={{ color: AMZ.text }} className="text-xs line-clamp-2 mt-1.5">{p.title}</p>
+                      <button onClick={e => { e.stopPropagation(); handleBuy(p); }}
+                        style={{ background: AMZ.gold, color: AMZ.text, border: `1px solid ${AMZ.goldHov}` }}
+                        className="w-full mt-1.5 py-1 text-[11px] font-bold rounded hover:opacity-90"
+                        data-testid={`btn-reorder-${p.id}`}>
+                        Buy again
+                      </button>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
+
           {/* Featured */}
           {!activeSearch && (
             <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
@@ -1650,6 +1815,39 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
           {!activeSearch && (products as Product[]).length > 0 && (
             <SellerStories products={products as Product[]} />
           )}
+
+          {/* Recently viewed */}
+          {!activeSearch && recentlyViewed.length > 0 && (() => {
+            const items = recentlyViewed
+              .map(id => (products as Product[]).find(p => p.id === id))
+              .filter(Boolean) as Product[];
+            if (items.length === 0) return null;
+            return (
+              <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4" data-testid="rail-recently-viewed">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 style={{ color: AMZ.text }} className="font-bold text-sm flex items-center gap-1.5">
+                    <Eye className="w-4 h-4" style={{ color: AMZ.link }} /> Inspired by your browsing
+                  </h3>
+                  <button onClick={() => { setRecentlyViewed([]); try { localStorage.removeItem("tsia_recently_viewed"); } catch {} }}
+                    style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline" data-testid="btn-clear-recent">Clear</button>
+                </div>
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
+                  {items.map(p => (
+                    <div key={p.id} onClick={() => handleView(p)} data-testid={`recent-${p.id}`}
+                      className="w-28 shrink-0 cursor-pointer group">
+                      <div className="aspect-square bg-gray-50 rounded overflow-hidden">
+                        {p.images?.[0]
+                          ? <img src={p.images[0]} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          : <div className="w-full h-full flex items-center justify-center text-3xl">{CATEGORY_ICONS[p.category]}</div>}
+                      </div>
+                      <p style={{ color: AMZ.text }} className="text-[11px] line-clamp-2 mt-1.5">{p.title}</p>
+                      <p style={{ color: AMZ.text }} className="text-xs font-black">${parseFloat(p.price).toFixed(2)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* All Products / Search results */}
           <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
@@ -2131,6 +2329,69 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Deliver-to dialog ────────────────────────────────────────── */}
+      <Dialog open={deliverToOpen} onOpenChange={setDeliverToOpen}>
+        <DialogContent className="max-w-sm" data-testid="modal-deliver-to">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><MapPin className="w-4 h-4" /> Choose your location</DialogTitle>
+            <DialogDescription>Delivery options and shipping fees update based on this address.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <Input
+              placeholder="e.g. Lagos, NG · Manchester, UK"
+              value={deliverToInput}
+              onChange={e => setDeliverToInput(e.target.value)}
+              data-testid="input-deliver-to"
+              className="rounded-xl"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => {
+                setDeliverTo(""); try { localStorage.removeItem("tsia_deliver_to"); } catch {}
+                setDeliverToOpen(false);
+              }} data-testid="btn-deliver-clear">Remove</Button>
+              <Button className="flex-1 rounded-xl bg-tsia-green text-white" onClick={() => {
+                const v = deliverToInput.trim();
+                setDeliverTo(v);
+                try { v ? localStorage.setItem("tsia_deliver_to", v) : localStorage.removeItem("tsia_deliver_to"); } catch {}
+                setDeliverToOpen(false);
+                if (v) toast({ description: `Delivering to ${v}` });
+              }} data-testid="btn-deliver-save">Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Service footer + back to top ──────────────────────────────── */}
+      <div style={{ background: AMZ.navyMid }} className="mt-6 -mx-4 px-4 py-3 text-center cursor-pointer hover:opacity-90"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} data-testid="btn-back-to-top">
+        <span className="text-white text-xs font-semibold flex items-center justify-center gap-1.5">
+          <ChevronUp className="w-3.5 h-3.5" /> Back to top
+        </span>
+      </div>
+      <div style={{ background: AMZ.navy }} className="-mx-4 px-4 py-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-white">
+        {[
+          { title: "Get to Know Us", links: ["About TSIA", "Careers", "Press"] },
+          { title: "Make Money With Us", links: ["Sell on TSIA Market", "Become an Affiliate", "Advertise"] },
+          { title: "Payment Products", links: ["TSIA Wallet", "Reward Points", "Reload Balance"] },
+          { title: "Let Us Help You", links: ["Your Account", "Your Orders", "Help Center"] },
+        ].map(col => (
+          <div key={col.title}>
+            <p className="font-bold text-xs mb-2">{col.title}</p>
+            <ul className="space-y-1">
+              {col.links.map(l => <li key={l} className="text-[11px] opacity-80 hover:opacity-100 cursor-pointer">{l}</li>)}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <div style={{ background: "#131A22" }} className="-mx-4 px-4 py-4 text-center">
+        <div className="flex items-center justify-center gap-1.5 mb-1.5">
+          <span className="text-white font-black text-sm">TSIA</span>
+          <span style={{ color: AMZ.gold }} className="font-black text-sm">Market</span>
+        </div>
+        <p className="text-[10px] text-white/50">SMAKEMGGOLD Ltd · RC: 1359954 · Escrow Protected · Verified Sellers</p>
+      </div>
 
       {/* ── Filter Panel (slide-up sheet) ────────────────────────────── */}
       <AnimatePresence>

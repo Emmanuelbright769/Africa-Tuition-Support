@@ -62,6 +62,7 @@ export default function StudentDashboard() {
   const { toast } = useToast();
 
   const [activeSection, setActiveSection] = useState<Section>("overview");
+  const navHistory = useRef<Section[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
   const [sponsorCodeDialogOpen, setSponsorCodeDialogOpen] = useState(false);
@@ -305,7 +306,14 @@ export default function StudentDashboard() {
         .then(() => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }))
         .catch(() => {});
     }
+    navHistory.current.push(activeSection);
     setActiveSection(section); setMenuOpen(false);
+  };
+
+  const goBack = () => {
+    const prev = navHistory.current.pop();
+    setActiveSection(prev ?? "overview");
+    setMenuOpen(false);
   };
   const currentNav = NAV_ITEMS.find(n => n.id === activeSection) ?? NAV_ITEMS[0]!;
 
@@ -438,7 +446,17 @@ export default function StudentDashboard() {
       {/* Main content — overview normal, services cover entire screen (above nav) */}
       <main className={activeSection !== "overview" ? "fixed inset-0 z-50 bg-background overflow-y-auto" : "container mx-auto px-4 pt-8 pb-20 max-w-5xl"}>
 
-        <div className={activeSection !== "overview" ? "container mx-auto px-4 pt-6 pb-24 max-w-5xl" : ""}>
+        {/* Back button bar — shown for all service sections */}
+        {activeSection !== "overview" && (
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b flex items-center gap-2 px-4 h-13 py-3 shadow-sm">
+            <button onClick={goBack} className="p-1.5 rounded-xl hover:bg-muted transition-colors shrink-0" data-testid="btn-student-section-back">
+              <ChevronRight className="w-5 h-5 rotate-180" />
+            </button>
+            <span className="font-bold text-sm truncate">{NAV_ITEMS.find(n => n.id === activeSection)?.label ?? activeSection}</span>
+          </div>
+        )}
+
+        <div className={activeSection !== "overview" ? "container mx-auto px-4 pt-4 pb-24 max-w-5xl" : ""}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeSection}

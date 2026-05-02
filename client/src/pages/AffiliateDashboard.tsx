@@ -842,7 +842,7 @@ export default function AffiliateDashboard() {
 
   const { data: affiliateInfo }   = useQuery({ queryKey: ["/api/affiliate/info"] });
   const { data: programData }     = useQuery({ queryKey: ["/api/co-affiliate/program"] });
-  const { data: myCoAff, refetch: refetchMyCoAff } = useQuery({ queryKey: ["/api/co-affiliate/my-info"] });
+  const { data: myCoAff, refetch: refetchMyCoAff } = useQuery({ queryKey: ["/api/co-affiliate/my-info"], refetchInterval: 30_000, staleTime: 15_000 });
   const { data: notifData }       = useQuery<any>({ queryKey: ["/api/notifications"], refetchInterval: 60000 });
 
   const tsmartNewCount = useMemo(() =>

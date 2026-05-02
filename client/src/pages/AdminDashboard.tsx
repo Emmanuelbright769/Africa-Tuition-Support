@@ -2459,6 +2459,7 @@ export default function AdminDashboard() {
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Earned</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Available</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Withdrawn</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet Bal.</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Joined</TableHead>
                           <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Actions</TableHead>
@@ -2493,6 +2494,7 @@ export default function AdminDashboard() {
                                 <p className="text-[10px] text-muted-foreground">withdrawable</p>
                               </TableCell>
                               <TableCell className="text-sm text-slate-500 font-mono">{fmtUSD(withdrawn)}</TableCell>
+                              <TableCell className="font-semibold text-sm text-tsia-green">{fmtUSD(tf.walletBalance ?? 0)}</TableCell>
                               <TableCell><StatusBadge status={tf.status} /></TableCell>
                               <TableCell className="text-xs text-slate-500">{fmtDate(tf.createdAt)}</TableCell>
                               <TableCell className="text-right px-6">

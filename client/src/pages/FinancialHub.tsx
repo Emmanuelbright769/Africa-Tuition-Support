@@ -15,9 +15,103 @@ import {
   Loader2, CheckCircle2, X, Zap, Phone, Wallet, Gamepad2, Delete,
   Copy, Search, ChevronDown, AlertCircle, Users, Building2, Clock,
   CreditCard, Shield, Lock, Coins, Smartphone, ExternalLink, Banknote,
-  RefreshCcw, BookMarked
+  RefreshCcw, BookMarked, GraduationCap, Briefcase, ArrowLeftRight, Check
 } from "lucide-react";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
+
+// ─── Wallet Account Switcher (Student ↔ Affiliate) ────────────────────────────
+function WalletAccountSwitcher() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const { data } = useQuery<{ roles: string[]; currentRole: string }>({
+    queryKey: ["/api/auth/linked-roles"],
+    queryFn: () => apiRequest("GET", "/api/auth/linked-roles").then(r => r.json()),
+    staleTime: 60_000,
+    enabled: !!user,
+  });
+  const switchMut = useMutation({
+    mutationFn: (targetRole: string) =>
+      apiRequest("POST", "/api/auth/switch-role", { targetRole }).then(async r => {
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || "Switch failed"); }
+        return r.json();
+      }),
+    onSuccess: (newUser: any) => {
+      queryClient.setQueryData(["/api/auth/me"], newUser);
+      queryClient.removeQueries({ predicate: q => (q.queryKey[0] as string) !== "/api/auth/me" });
+      setOpen(false);
+      toast({ title: `Switched to ${newUser.role === "affiliate" ? "Business" : "Student"} wallet` });
+      if (newUser.role === "affiliate") window.location.href = "/affiliate-dashboard";
+      else window.location.href = "/dashboard";
+    },
+    onError: (e: any) => toast({ title: "Could not switch", description: e.message, variant: "destructive" }),
+  });
+
+  if (!user || !data) return null;
+  const roles = (data.roles || []).filter(r => r !== "admin");
+  if (roles.length < 2) return null; // single-account user — render nothing
+
+  const labelFor = (r: string) => r === "affiliate" ? "Business" : "Student";
+  const IconFor = (r: string) => r === "affiliate" ? Briefcase : GraduationCap;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        disabled={switchMut.isPending}
+        className="flex items-center gap-1 bg-white/10 hover:bg-white/20 transition-colors rounded-full px-2 py-0.5"
+        data-testid="btn-switch-wallet-account"
+        title="Switch wallet account"
+      >
+        {switchMut.isPending
+          ? <Loader2 className="w-2.5 h-2.5 text-white/70 animate-spin" />
+          : <ArrowLeftRight className="w-2.5 h-2.5 text-white/70" />}
+        <span className="text-[9px] font-bold text-white/70">{labelFor(data.currentRole).toUpperCase()}</span>
+        <ChevronDown className={`w-2.5 h-2.5 text-white/60 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, y: -4, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4, scale: 0.97 }}
+              className="absolute right-0 top-full mt-2 z-50 w-52 rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-border overflow-hidden"
+              data-testid="menu-wallet-accounts"
+            >
+              <div className="px-3 py-2 border-b border-border">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Your wallets</p>
+              </div>
+              {roles.map(r => {
+                const Icon = IconFor(r);
+                const isCurrent = r === data.currentRole;
+                return (
+                  <button
+                    key={r}
+                    onClick={() => { if (!isCurrent) switchMut.mutate(r); }}
+                    disabled={isCurrent || switchMut.isPending}
+                    data-testid={`item-wallet-${r}`}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${isCurrent ? "bg-muted cursor-default" : "hover:bg-muted/60"}`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${r === "affiliate" ? "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"}`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-foreground">{labelFor(r)} Wallet</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{r === "affiliate" ? "Affiliate account" : "Student account"}</p>
+                    </div>
+                    {isCurrent && <Check className="w-4 h-4 text-tsia-green shrink-0" />}
+                  </button>
+                );
+              })}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 declare global {
   interface Window {
@@ -805,15 +899,18 @@ export default function FinancialHub() {
           <div className="absolute top-4 right-16 w-20 h-20 rounded-full bg-white/5" />
           <div className="absolute -bottom-6 left-24 w-28 h-28 rounded-full bg-white/5" />
           <div className="relative z-10">
-            {/* Label row with wallet switcher */}
-            <div className="flex items-center justify-between mb-0.5">
-              <p className="text-white/60 text-[10px] font-medium uppercase tracking-widest">TSIA Bank • Wallet Balance</p>
-              <button onClick={() => setShowLocalBalance(v => !v)}
-                className="flex items-center gap-1 bg-white/10 hover:bg-white/20 transition-colors rounded-full px-2 py-0.5"
-                data-testid="btn-switch-currency">
-                <RefreshCcw className="w-2.5 h-2.5 text-white/60" />
-                <span className="text-[9px] font-bold text-white/60">{showLocalBalance ? "USD" : (currency?.code ?? "NGN")}</span>
-              </button>
+            {/* Label row with currency + wallet switchers */}
+            <div className="flex items-center justify-between mb-0.5 gap-2">
+              <p className="text-white/60 text-[10px] font-medium uppercase tracking-widest truncate">TSIA Bank • Wallet Balance</p>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <WalletAccountSwitcher />
+                <button onClick={() => setShowLocalBalance(v => !v)}
+                  className="flex items-center gap-1 bg-white/10 hover:bg-white/20 transition-colors rounded-full px-2 py-0.5"
+                  data-testid="btn-switch-currency">
+                  <RefreshCcw className="w-2.5 h-2.5 text-white/60" />
+                  <span className="text-[9px] font-bold text-white/60">{showLocalBalance ? "USD" : (currency?.code ?? "NGN")}</span>
+                </button>
+              </div>
             </div>
             {/* Balance amount */}
             <div className="flex items-end gap-2 mb-1">
@@ -828,12 +925,15 @@ export default function FinancialHub() {
             {!balanceHidden && !showLocalBalance && currency?.code !== "USD" && (
               <p className="text-white/50 text-[10px] mb-2">≈ {formatAmount(balance)} {currency?.code}</p>
             )}
-            {/* Book balance + pending */}
-            {pendingAmount > 0 && !balanceHidden && (
-              <div className="flex items-center gap-1.5 mb-2">
-                <BookMarked className="w-3 h-3 text-amber-300/80" />
-                <p className="text-amber-300/80 text-[10px] font-semibold">
-                  +${pendingAmount.toFixed(2)} pending confirmation
+            {/* Ledger / Book balance */}
+            {!balanceHidden && (
+              <div className="flex items-center gap-1.5 mb-2" data-testid="text-ledger-balance">
+                <BookMarked className="w-3 h-3 text-amber-300/90" />
+                <p className="text-amber-300/90 text-[11px] font-semibold">
+                  Ledger balance: ${bookBalance.toFixed(2)}
+                  {pendingAmount > 0 && (
+                    <span className="text-amber-300/70 font-medium"> · +${pendingAmount.toFixed(2)} pending</span>
+                  )}
                 </p>
               </div>
             )}

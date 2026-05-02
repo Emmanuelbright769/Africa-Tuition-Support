@@ -14,8 +14,9 @@ import {
   ChevronRight, ArrowLeft, ArrowRight, Send, Bell, TrendingUp, TrendingDown,
   Loader2, CheckCircle2, X, Zap, Phone, Wallet, Gamepad2, Delete,
   Copy, Search, ChevronDown, AlertCircle, Users, Building2, Clock,
-  CreditCard, Shield, Lock
+  CreditCard, Shield, Lock, Coins, Smartphone, ExternalLink, Banknote
 } from "lucide-react";
+import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 
 // ─── Weekend maintenance block helper (Fri 23:59 – Mon 08:00 WAT) ─────────────
 function checkWeekendBlock(): { blocked: boolean; resumeLabel: string } {
@@ -58,7 +59,13 @@ function LocalEquiv({ usd, country }: { usd: number; country?: string }) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
-type View = "home" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "receipt";
+type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "receipt";
+
+// ── TSIA Receiving Wallet Addresses ───────────────────────────────────────────
+const TSIA_WALLETS = {
+  trc20: "TGwtyWAmBkcQiuD4CFavKr8ySTJ8zFt9Mj",
+  bep20: "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977",
+};
 type ReceiptData = { txRef: string; txDate: string; amount: string; senderName: string; recipientName: string; walletLabel: string; note: string | null; newBalance: string };
 type WalletData = { id: number; userId: number; balance: string };
 type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
@@ -211,6 +218,16 @@ export default function FinancialHub() {
     setTxReceiptOpen(true);
   };
 
+  // ── Fund Account state ────────────────────────────────────────────────────
+  const [fundMethod, setFundMethod]     = useState<"paystack" | "crypto">("paystack");
+  const [fundAmount, setFundAmount]     = useState("");
+  const [fundStep, setFundStep]         = useState<"amount" | "pending">("amount");
+  const [pendingRef, setPendingRef]     = useState("");
+  const [verifyRef, setVerifyRef]       = useState("");
+  const [cryptoNetwork, setCryptoNetwork] = useState<"trc20" | "bep20">("trc20");
+  const [cryptoAmount, setCryptoAmount]   = useState("");
+  const [cryptoTxHash, setCryptoTxHash]   = useState("");
+
   // ── Send-to-bank state ────────────────────────────────────────────────────
   const [sendMode, setSendMode]         = useState<SendMode>("bank");
   const [bankSearch, setBankSearch]     = useState("");
@@ -328,6 +345,69 @@ export default function FinancialHub() {
       toast({ title: "💳 Virtual Card Issued!", description: "Your US Mastercard is ready to use." });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // ── Fund Account Mutations ────────────────────────────────────────────────
+  const { formatAmount, rateLabel } = useLocalCurrency();
+  const { data: walletDeposits = [] } = useQuery<any[]>({ queryKey: ["/api/wallet/deposits"] });
+
+  const initPaystackMutation = useMutation({
+    mutationFn: async () => {
+      const amount = parseFloat(fundAmount);
+      if (!amount || amount < 1) throw new Error("Minimum funding amount is $1");
+      const res = await apiRequest("POST", "/api/wallet/paystack/initialize", { amountUsd: amount });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d as { authorization_url: string; reference: string };
+    },
+    onSuccess: (d) => {
+      setPendingRef(d.reference);
+      setVerifyRef(d.reference);
+      setFundStep("pending");
+      window.open(d.authorization_url, "_blank", "width=600,height=700,noopener");
+    },
+    onError: (e: any) => toast({ title: "Could not start payment", description: e.message, variant: "destructive" }),
+  });
+
+  const verifyPaystackMutation = useMutation({
+    mutationFn: async () => {
+      const ref = verifyRef.trim() || pendingRef;
+      if (!ref) throw new Error("No reference found");
+      const res = await apiRequest("POST", "/api/wallet/paystack/verify", { reference: ref });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d as { message: string; amountUsd: number };
+    },
+    onSuccess: (d) => {
+      toast({ title: "Wallet funded! 🎉", description: d.message, className: "border-tsia-green" });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/deposits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef("");
+      setView("home");
+    },
+    onError: (e: any) => toast({ title: "Verification failed", description: e.message, variant: "destructive" }),
+  });
+
+  const cryptoDepositMutation = useMutation({
+    mutationFn: async () => {
+      const amount = parseFloat(cryptoAmount);
+      if (!amount || amount <= 5) throw new Error("Crypto deposit must be above $5");
+      if (!cryptoTxHash.trim()) throw new Error("Transaction hash is required");
+      const res = await apiRequest("POST", "/api/wallet/deposit", {
+        amountUsd: amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: () => {
+      toast({ title: "Deposit Submitted ✓", description: "Pending admin confirmation — usually within 30 minutes.", className: "border-tsia-green" });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/deposits"] });
+      setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20");
+      setView("home");
+    },
+    onError: (e: any) => toast({ title: "Submission failed", description: e.message, variant: "destructive" }),
   });
 
   const balance  = parseFloat(wallet?.balance ?? "0");
@@ -670,7 +750,7 @@ export default function FinancialHub() {
             </div>
           </div>
         </div>
-        <button onClick={() => toast({ title: "Add money", description: "Go to Digital Wallet → Deposit to fund via USDT." })}
+        <button onClick={() => { setFundMethod("paystack"); setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); }}
           className="absolute right-0 top-0 h-full w-16 flex flex-col items-center justify-center gap-2 border-l-2 border-dashed border-white/30 bg-white/10 hover:bg-white/20 transition-colors"
           data-testid="btn-add-money">
           <span className="text-white text-2xl font-black">+</span>
@@ -681,10 +761,10 @@ export default function FinancialHub() {
       {/* Quick Actions */}
       <div className="grid grid-cols-4 gap-2">
         {[
-          { icon: Send,      label: "Send",     color: "bg-tsia-green", action: () => { resetSend(); setView("send"); } },
-          { icon: RefreshCw, label: "Transfer", color: "bg-blue-500",   action: () => { resetSend(); setView("send"); } },
-          { icon: Bell,      label: "Request",  color: "bg-violet-500", action: () => setView("request") },
-          { icon: Receipt,   label: "Pay Bill", color: "bg-amber-500",  action: () => { resetBill(); setView("pay-bill"); } },
+          { icon: ArrowDownLeft, label: "Fund",     color: "bg-emerald-600", action: () => { setFundMethod("paystack"); setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); } },
+          { icon: Send,          label: "Send",     color: "bg-tsia-green",  action: () => { resetSend(); setView("send"); } },
+          { icon: Bell,          label: "Request",  color: "bg-violet-500",  action: () => setView("request") },
+          { icon: Receipt,       label: "Pay Bill", color: "bg-amber-500",   action: () => { resetBill(); setView("pay-bill"); } },
         ].map(({ icon: Icon, label, color, action }) => (
           <button key={label} onClick={action} className="flex flex-col items-center gap-2 group" data-testid={`btn-quick-${label.toLowerCase().replace(" ","-")}`}>
             <div className={`w-14 h-14 rounded-2xl ${color} flex items-center justify-center shadow-md group-hover:scale-105 transition-transform group-active:scale-95`}>
@@ -1168,6 +1248,191 @@ export default function FinancialHub() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // FUND ACCOUNT
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "fund") return (
+    <AnimatePresence mode="wait">
+      <motion.div key="fund" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-4">
+        <BackHeader onBack={() => { setFundStep("amount"); setFundAmount(""); setPendingRef(""); setVerifyRef(""); setCryptoAmount(""); setCryptoTxHash(""); setView("home"); }} title="Fund Account" sub="Add money to your TSIA wallet" />
+
+        {/* Balance pill */}
+        <div className="flex items-center justify-between bg-gradient-to-r from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-4 py-3">
+          <span className="text-sm text-muted-foreground font-medium">Current Balance</span>
+          <span className="text-lg font-black text-tsia-green">${balance.toFixed(2)}</span>
+        </div>
+
+        {/* Method tabs */}
+        <div className="flex bg-muted/40 rounded-2xl p-1">
+          <button onClick={() => setFundMethod("paystack")}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${fundMethod === "paystack" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+            data-testid="btn-fund-method-paystack">
+            <CreditCard className="w-4 h-4" /> Card / Bank / USSD
+          </button>
+          <button onClick={() => setFundMethod("crypto")}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${fundMethod === "crypto" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+            data-testid="btn-fund-method-crypto">
+            <Coins className="w-4 h-4" /> USDT Crypto
+          </button>
+        </div>
+
+        {/* ── PAYSTACK ── */}
+        {fundMethod === "paystack" && fundStep === "amount" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-4 gap-2">
+              {[{ icon: CreditCard, label: "Card" }, { icon: Building2, label: "Bank" }, { icon: Smartphone, label: "USSD" }, { icon: Banknote, label: "Mobile" }].map(({ icon: Icon, label }) => (
+                <div key={label} className="flex flex-col items-center gap-1.5 bg-muted/50 rounded-2xl p-3">
+                  <Icon className="w-5 h-5 text-tsia-green" />
+                  <span className="text-[10px] text-muted-foreground font-semibold">{label}</span>
+                </div>
+              ))}
+            </div>
+            <div>
+              <Label className="text-sm font-semibold">Amount (USD)</Label>
+              <Input type="number" min={1} step={0.01} placeholder="e.g. 10.00"
+                value={fundAmount} onChange={e => setFundAmount(e.target.value)}
+                className="mt-1.5 text-lg font-bold h-12" data-testid="input-fund-amount" />
+              {parseFloat(fundAmount) > 0 && (
+                <p className="text-xs text-muted-foreground mt-1.5">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[10, 25, 50, 100, 200, 500].map(amt => (
+                <button key={amt} onClick={() => setFundAmount(String(amt))}
+                  className={`py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${fundAmount === String(amt) ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border hover:border-tsia-green/40"}`}>
+                  ${amt}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">
+              <Shield className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-700 dark:text-blue-300">Payments processed securely via Paystack. You'll be redirected to complete payment in a new tab.</p>
+            </div>
+            <Button onClick={() => initPaystackMutation.mutate()}
+              disabled={initPaystackMutation.isPending || !fundAmount || parseFloat(fundAmount) < 1}
+              className="w-full h-12 bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-2xl"
+              data-testid="btn-pay-paystack">
+              {initPaystackMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening payment…</> : <><ExternalLink className="w-4 h-4 mr-2" />Pay ${parseFloat(fundAmount || "0").toFixed(2)} via Paystack</>}
+            </Button>
+          </div>
+        )}
+
+        {fundMethod === "paystack" && fundStep === "pending" && (
+          <div className="space-y-4">
+            <div className="bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-5 text-center">
+              <ExternalLink className="w-10 h-10 text-tsia-green mx-auto mb-3" />
+              <p className="font-bold">Payment page opened in a new tab</p>
+              <p className="text-xs text-muted-foreground mt-1">Complete the payment, then return here and click <strong>Verify Payment</strong>.</p>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Payment Reference</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <Input value={verifyRef} onChange={e => setVerifyRef(e.target.value)}
+                  placeholder="Auto-filled from payment" className="font-mono text-xs" data-testid="input-verify-ref" />
+                <button onClick={() => { navigator.clipboard.writeText(verifyRef); toast({ title: "Copied" }); }}
+                  className="p-2.5 rounded-xl hover:bg-muted transition-colors shrink-0">
+                  <Copy className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </div>
+            </div>
+            <Button onClick={() => verifyPaystackMutation.mutate()}
+              disabled={verifyPaystackMutation.isPending || !verifyRef.trim()}
+              className="w-full h-12 bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-2xl"
+              data-testid="btn-verify-payment">
+              {verifyPaystackMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Verifying…</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Verify Payment</>}
+            </Button>
+            <button onClick={() => { setPendingRef(""); setVerifyRef(""); setFundStep("amount"); }}
+              className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
+              ← Start a new payment
+            </button>
+          </div>
+        )}
+
+        {/* ── CRYPTO ── */}
+        {fundMethod === "crypto" && (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm font-semibold mb-2 block">Select Network</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["trc20", "bep20"] as const).map(n => (
+                  <button key={n} onClick={() => setCryptoNetwork(n)}
+                    className={`p-3 rounded-xl border-2 text-sm font-bold transition-all ${cryptoNetwork === n ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border hover:border-tsia-green/40"}`}
+                    data-testid={`btn-crypto-network-${n}`}>
+                    {n === "trc20" ? "TRC20 (TRON)" : "BEP20 (BSC)"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">TSIA Receiving Address ({cryptoNetwork.toUpperCase()})</Label>
+              <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-3 py-2.5 border">
+                <p className="flex-1 font-mono text-xs break-all leading-relaxed">{TSIA_WALLETS[cryptoNetwork]}</p>
+                <button onClick={() => { navigator.clipboard.writeText(TSIA_WALLETS[cryptoNetwork]); toast({ title: "Address copied!" }); }}
+                  className="shrink-0 p-1.5 rounded-lg hover:bg-muted transition-colors" data-testid="btn-copy-wallet-address">
+                  <Copy className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </div>
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 flex items-start gap-1">
+                <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                Send USDT only on the selected network. Wrong network = lost funds.
+              </p>
+            </div>
+            <div>
+              <Label className="text-sm font-semibold">Amount (USD)</Label>
+              <Input type="number" min={5.01} step={0.01} placeholder="Above $5.00"
+                value={cryptoAmount} onChange={e => setCryptoAmount(e.target.value)}
+                className="mt-1.5 text-lg font-bold h-12" data-testid="input-crypto-amount" />
+              {parseFloat(cryptoAmount) > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(cryptoAmount))} {rateLabel()}</p>
+              )}
+            </div>
+            <div>
+              <Label className="text-sm font-semibold">Transaction Hash (TxID)</Label>
+              <Input placeholder="Paste your USDT transaction hash here"
+                value={cryptoTxHash} onChange={e => setCryptoTxHash(e.target.value)}
+                className="mt-1.5 font-mono text-xs" data-testid="input-crypto-txhash" />
+              <p className="text-[11px] text-muted-foreground mt-1">Copy the TxID from your crypto wallet after sending.</p>
+            </div>
+            <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
+              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700 dark:text-amber-300">Crypto deposits are manually reviewed. Processing typically takes up to 30 minutes. Minimum deposit is $5.01.</p>
+            </div>
+            <Button onClick={() => cryptoDepositMutation.mutate()}
+              disabled={cryptoDepositMutation.isPending || !cryptoTxHash.trim() || parseFloat(cryptoAmount) <= 5}
+              className="w-full h-12 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-2xl"
+              data-testid="btn-submit-crypto">
+              {cryptoDepositMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</> : <><Coins className="w-4 h-4 mr-2" />Submit Crypto Deposit</>}
+            </Button>
+          </div>
+        )}
+
+        {/* Recent deposits */}
+        {(walletDeposits as any[]).length > 0 && (
+          <div>
+            <h3 className="font-bold text-sm mb-3">Recent Deposits</h3>
+            <div className="space-y-2">
+              {(walletDeposits as any[]).slice(0, 5).map((d: any) => (
+                <div key={d.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${d.status === "completed" ? "bg-green-50 dark:bg-green-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
+                    {d.status === "completed" ? <CheckCircle2 className="w-4 h-4 text-tsia-green" /> : <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold capitalize">{d.walletType === "paystack" ? "Paystack" : d.walletType?.toUpperCase()} Deposit</p>
+                    <p className="text-xs text-muted-foreground font-mono truncate">{d.txHash}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
+                    <p className={`text-[10px] font-semibold capitalize ${d.status === "completed" ? "text-tsia-green" : "text-amber-500"}`}>{d.status}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </AnimatePresence>
   );
 
   // ═════════════════════════════════════════════════════════════════════════

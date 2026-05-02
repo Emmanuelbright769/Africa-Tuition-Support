@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import FinancialHub from "./FinancialHub";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
-import WalletSection from "./WalletSection";
 import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
 import QCESection from "./QCESection";
@@ -34,12 +33,11 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 
 
-type Section = "overview" | "wallet" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies" | "msc_plans";
+type Section = "overview" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies" | "msc_plans";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
   { id: "fintech",      label: "Swift Hub",              icon: CreditCard },
-  { id: "wallet",       label: "SwiftWallet",            icon: Wallet },
   { id: "qce",          label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
   { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
   { id: "tour_africa",  label: "Glide Africa",           icon: Car },
@@ -66,7 +64,6 @@ export default function StudentDashboard() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
-  const [servicesExpanded, setServicesExpanded] = useState(false);
   const [sponsorCodeDialogOpen, setSponsorCodeDialogOpen] = useState(false);
   const [sponsorCodeInput, setSponsorCodeInput] = useState("");
   const [sponsorCodeLoading, setSponsorCodeLoading] = useState(false);
@@ -302,7 +299,6 @@ export default function StudentDashboard() {
 
   const navigate = (section: Section) => {
     if (section === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
-    if (section === "wallet") { setMenuOpen(false); setLocation("/wallet"); return; }
     if (section !== "ecommerce") setOpenChatId(null);
     if (section === "ecommerce" && tsmartNewCount > 0) {
       apiRequest("PATCH", "/api/notifications/mark-type-read", { type: "new_arrival" })
@@ -357,109 +353,105 @@ export default function StudentDashboard() {
         </div>
       </nav>
 
-      {/* Slide-in menu overlay */}
+      {/* Full-screen grid menu overlay */}
       <AnimatePresence>
         {menuOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/40 z-30 backdrop-blur-sm"
-              onClick={() => setMenuOpen(false)}
-            />
-            <motion.aside
-              initial={{ x: -300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="fixed top-0 left-0 h-full w-72 bg-card border-r shadow-2xl z-40 flex flex-col"
-            >
-              <div className="p-5 border-b flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Logo variant="badge" height={36} />
-                  <div>
-                    <p className="font-bold text-sm">{user.firstName} {user.lastName}</p>
-                    <p className="text-xs text-muted-foreground">Student Account</p>
-                  </div>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 flex flex-col"
+            style={{ background: "linear-gradient(135deg, #0a2e1a 0%, #0f3d22 50%, #1a5c32 100%)" }}
+          >
+            {/* Top bar */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <Logo variant="badge" height={36} />
+                <div>
+                  <p className="font-bold text-sm text-white">{user.firstName} {user.lastName}</p>
+                  <p className="text-xs text-white/50">Student Account</p>
                 </div>
-                <button onClick={() => setMenuOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
-                  <X className="w-4 h-4" />
-                </button>
               </div>
-              <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                {/* Top-level flat items: Overview, Swift Hub, SwiftWallet */}
-                {NAV_ITEMS.filter(item => ["overview", "fintech", "wallet"].includes(item.id)).map(item => {
+              <button onClick={() => setMenuOpen(false)} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Nav grid */}
+            <div className="flex-1 overflow-y-auto px-4 py-6">
+              <div className="grid grid-cols-3 gap-3 max-w-lg mx-auto">
+                {NAV_ITEMS.map(item => {
                   const isActive = activeSection === item.id;
                   return (
-                    <button key={item.id} onClick={() => { navigate(item.id); setMenuOpen(false); }}
+                    <motion.button
+                      key={item.id}
+                      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
+                      onClick={() => { navigate(item.id); setMenuOpen(false); }}
                       data-testid={`nav-${item.id}`}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                        isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-muted text-foreground'
-                      }`}>
-                      <item.icon className="w-4 h-4 shrink-0" />
-                      <span>{item.label}</span>
-                    </button>
+                      className={`relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border transition-all ${
+                        isActive
+                          ? "bg-tsia-gold border-tsia-gold/60 text-slate-900"
+                          : "bg-white/8 border-white/10 text-white hover:bg-white/15 hover:border-white/25"
+                      }`}
+                    >
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${isActive ? "bg-slate-900/20" : "bg-white/10"}`}>
+                        <item.icon className={`w-5 h-5 ${isActive ? "text-slate-900" : "text-white"}`} />
+                      </div>
+                      <span className={`text-[11px] font-semibold leading-tight text-center ${isActive ? "text-slate-900" : "text-white/80"}`}>{item.label}</span>
+                      {item.badge && (
+                        <span className="absolute top-2 right-2 text-[9px] font-bold bg-tsia-gold text-slate-900 px-1.5 py-0.5 rounded-full leading-none">{item.badge}</span>
+                      )}
+                    </motion.button>
                   );
                 })}
-
-                {/* More Services collapsible group */}
-                {(() => {
-                  const serviceItems = NAV_ITEMS.filter(item => !["overview", "fintech", "wallet"].includes(item.id));
-                  const anyServiceActive = serviceItems.some(i => i.id === activeSection);
-                  const isOpen = servicesExpanded || anyServiceActive;
-                  return (
-                    <div>
-                      <button
-                        onClick={() => setServicesExpanded(v => !v)}
-                        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                          anyServiceActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <LayoutGrid className="w-4 h-4 shrink-0" />
-                          <span>More Services</span>
-                        </div>
-                        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
-                      </button>
-                      {isOpen && (
-                        <div className="ml-4 mt-1 space-y-0.5 border-l-2 border-primary/20 pl-3">
-                          {serviceItems.map(item => {
-                            const isActive = activeSection === item.id;
-                            return (
-                              <button key={item.id} onClick={() => { navigate(item.id); setMenuOpen(false); }}
-                                data-testid={`nav-${item.id}`}
-                                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                                  isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                                }`}>
-                                <div className="flex items-start gap-2">
-                                  <item.icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                                  <span className="leading-tight">{item.label}</span>
-                                </div>
-                                {item.badge && (
-                                  <Badge className={`text-[10px] py-0 px-2 font-semibold shrink-0 ${(item as any)._badgeRed ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>{item.badge}</Badge>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </nav>
-              <div className="p-4 border-t space-y-2">
-                <Button variant="outline" className="w-full" onClick={() => { setLocation("/profile"); setMenuOpen(false); }}
-                  data-testid="button-menu-profile">
-                  <UserCircle2 className="w-4 h-4 mr-2" /> My Profile
-                </Button>
-                <Button variant="outline" className="w-full" onClick={handleLogout}>
-                  <LogOut className="w-4 h-4 mr-2" /> Logout
-                </Button>
               </div>
-            </motion.aside>
-          </>
+            </div>
+
+            {/* Bottom actions */}
+            <div className="px-5 py-4 border-t border-white/10 flex gap-3">
+              <button onClick={() => { setLocation("/profile"); setMenuOpen(false); }}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors"
+                data-testid="button-menu-profile">
+                <UserCircle2 className="w-4 h-4" /> My Profile
+              </button>
+              <button onClick={handleLogout}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors">
+                <LogOut className="w-4 h-4" /> Logout
+              </button>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Main content */}
-      <main className="container mx-auto px-4 pt-8 pb-20 max-w-5xl">
+      {/* Main content — overview stays below nav, services go full-screen */}
+      <main className={activeSection !== "overview" ? "fixed inset-0 z-30 bg-background flex flex-col" : "container mx-auto px-4 pt-8 pb-20 max-w-5xl"}>
+
+        {/* Compact top bar for service sections */}
+        {activeSection !== "overview" && (
+          <div className="flex items-center justify-between px-4 h-14 border-b bg-card shrink-0 shadow-sm">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setActiveSection("overview")}
+                className="p-2 rounded-xl hover:bg-muted transition-colors" data-testid="btn-service-back">
+                <ChevronRight className="w-4 h-4 rotate-180" />
+              </button>
+              <span className="font-bold text-sm">{NAV_ITEMS.find(n => n.id === activeSection)?.label ?? activeSection}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center bg-muted rounded-full p-0.5 gap-0.5">
+                {themeOpts.map(o => (
+                  <button key={o.v} onClick={() => setMode(o.v)} className={`p-1.5 rounded-full transition-all ${mode === o.v ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}>
+                    <o.i className="w-3 h-3" />
+                  </button>
+                ))}
+              </div>
+              <NotificationBell />
+              <button onClick={handleLogout} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className={activeSection !== "overview" ? "flex-1 overflow-y-auto px-4 py-6" : ""}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeSection}
@@ -473,18 +465,18 @@ export default function StudentDashboard() {
                 <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
                   <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />
                 </div>
-                <h2 className="text-2xl font-bold mb-3">Activate Your Wallet First</h2>
+                <h2 className="text-2xl font-bold mb-3">Fund Your Account First</h2>
                 <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  To access this feature, you need to activate your TSIA SwiftWallet by funding it with above <strong>$5</strong>. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
+                  To access this feature, you need to fund your TSIA wallet with above <strong>$5</strong> via Swift Hub. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
                 </p>
                 <Button
                   size="lg"
                   className="bg-primary text-primary-foreground font-bold px-8"
-                  onClick={() => setLocation("/wallet")}
+                  onClick={() => navigate("fintech")}
                   data-testid="button-wallet-gate-activate"
                 >
-                  <Wallet className="w-4 h-4 mr-2" />
-                  Fund & Activate Wallet
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Fund via Swift Hub
                 </Button>
                 <p className="text-xs text-muted-foreground mt-4">Deposit above $5 · Activates immediately on confirmation</p>
               </motion.div>
@@ -514,7 +506,7 @@ export default function StudentDashboard() {
                       <div className="flex flex-wrap gap-3 items-center">
                         {showGoToOnboarding && (
                           <Button
-                            onClick={() => walletActivated ? setLocation("/onboarding") : setLocation("/wallet")}
+                            onClick={() => walletActivated ? setLocation("/onboarding") : navigate("fintech")}
                             className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold h-11 px-6"
                             data-testid="button-go-onboarding"
                           >
@@ -625,7 +617,7 @@ export default function StudentDashboard() {
                         <span className="font-mono font-bold text-yellow-300 text-base mt-1 block">Time remaining: {deadlineCountdown}</span>
                       </p>
                     </div>
-                    <Button size="sm" className="bg-white text-red-700 hover:bg-red-50 font-bold shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-deadline-fund-wallet">
+                    <Button size="sm" className="bg-white text-red-700 hover:bg-red-50 font-bold shrink-0" onClick={() => navigate("fintech")} data-testid="button-deadline-fund-wallet">
                       Fund Now
                     </Button>
                   </motion.div>
@@ -638,11 +630,11 @@ export default function StudentDashboard() {
                       <Wallet className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                     </div>
                     <div className="flex-1">
-                      <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Wallet to Unlock All Features</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA SwiftWallet with above <strong>$5</strong> to access all platform services.</p>
+                      <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Account to Unlock All Features</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA wallet with above <strong>$5</strong> via Swift Hub to access all platform services.</p>
                     </div>
-                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => setLocation("/wallet")} data-testid="button-overview-wallet-activate">
-                      Fund Wallet
+                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => navigate("fintech")} data-testid="button-overview-wallet-activate">
+                      Fund via Swift Hub
                     </Button>
                   </motion.div>
                 )}
@@ -768,9 +760,6 @@ export default function StudentDashboard() {
                 </motion.div>
               </>
             )}
-
-            {/* ── WALLET ── */}
-            {activeSection === "wallet" && walletActivated && <WalletSection />}
 
             {/* ── QCE ── */}
             {activeSection === "qce" && walletActivated && <QCESection />}
@@ -1477,6 +1466,7 @@ export default function StudentDashboard() {
 
           </motion.div>
         </AnimatePresence>
+        </div>
       </main>
 
       {/* ── Wallet Activation Popup ── */}
@@ -1503,7 +1493,7 @@ export default function StudentDashboard() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">Activate with above $5</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Go to SwiftWallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Go to Swift Hub → Fund Account to deposit via card, bank transfer, or USDT crypto. Admin confirms within 30 minutes.</p>
               </div>
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-start gap-2">
@@ -1520,9 +1510,9 @@ export default function StudentDashboard() {
               Remind Me Later
             </Button>
             <Button className="flex-1 bg-tsia-green hover:bg-tsia-green/90 text-white"
-              onClick={() => { localStorage.setItem("tsia_wallet_activation_dismissed_" + user?.id, "1"); setActivationPopupOpen(false); setLocation("/wallet"); }}
+              onClick={() => { localStorage.setItem("tsia_wallet_activation_dismissed_" + user?.id, "1"); setActivationPopupOpen(false); navigate("fintech"); }}
               data-testid="button-activation-goto-wallet">
-              <Wallet className="w-4 h-4 mr-2" /> Go to Wallet
+              <CreditCard className="w-4 h-4 mr-2" /> Fund via Swift Hub
             </Button>
           </DialogFooter>
         </DialogContent>

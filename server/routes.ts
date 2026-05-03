@@ -6098,10 +6098,8 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const _wb1 = isWeekendBlock();
-      if (_wb1.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb1.until} (Nigeria time).`, weekendBlock: true });
 
-      // Admin kill-switch — bank transfers can be paused from the admin dashboard
+      // Admin kill-switch is the SOLE gate — when admin opens transfers, they're open 24/7.
       const btEnabled = (await storage.getPlatformSetting("bank_transfers_enabled")) ?? "true";
       if (btEnabled === "false") {
         return res.status(503).json({ message: "Bank transfers are temporarily paused by the administrator. Please try again later.", bankTransfersDisabled: true });
@@ -6114,11 +6112,10 @@ export async function registerRoutes(
       const transferAmount = parseFloat(amount);
       if (isNaN(transferAmount) || transferAmount <= 0) return res.status(400).json({ message: "Invalid amount" });
 
-      // ── Minimum transfer enforcement (gateways reject tiny amounts) ────────
-      // Korapay & Squad both require ≥ ₦100 net. After 7.5% VAT and FX, $2 ≈ ₦1,330 net which is safely above.
-      const MIN_TRANSFER_USD = 2;
+      // ── Minimum transfer ────────────────────────────────────────────────
+      const MIN_TRANSFER_USD = 0.1;
       if (transferAmount < MIN_TRANSFER_USD) {
-        return res.status(400).json({ message: `Minimum bank transfer is $${MIN_TRANSFER_USD.toFixed(2)}. Smaller amounts are rejected by the bank gateway.` });
+        return res.status(400).json({ message: `Minimum bank transfer is $${MIN_TRANSFER_USD.toFixed(2)}.` });
       }
 
       const wallet = await storage.getOrCreateWallet(userId);

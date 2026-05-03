@@ -1604,7 +1604,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   ];
 
   return (
-    <div className="relative pb-24" style={{ background: AMZ.bg, margin: "-16px", padding: "0" }}>
+    <div className="relative pb-24 overflow-x-hidden w-full max-w-full" style={{ background: AMZ.bg, margin: "-16px", padding: "0" }}>
 
       {/* ── Amazon-style header ──────────────────────────────────────────── */}
       <div style={{ background: AMZ.navy }} className="px-4 pt-4 pb-2">

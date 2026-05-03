@@ -2420,14 +2420,14 @@ export default function AdminDashboard() {
             {activeTab === "trustfunders" && (
               <motion.div key="trustfunders" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
 
-                {/* ─── Pool summary bar ─────────────────────────────────────────── */}
-                {(allTrustFunders as any[]).length > 0 && (() => {
-                  const tf0 = (allTrustFunders as any[])[0];
+                {/* ─── Pool summary bar — ALWAYS VISIBLE ─────────────────────── */}
+                {(() => {
+                  const tfs = allTrustFunders as any[];
+                  const tf0 = tfs[0];
                   const totalPool = tf0?.totalPool ?? 0;
-                  const totalInvested = (allTrustFunders as any[]).reduce((s: number, t: any) => s + parseFloat(t.amountPaid ?? "0"), 0);
-                  const totalEarned   = (allTrustFunders as any[]).reduce((s: number, t: any) => s + (t.earnedAmount ?? 0), 0);
-                  const totalAvail    = (allTrustFunders as any[]).reduce((s: number, t: any) => s + (t.availableAmount ?? 0), 0);
-                  const totalWithdraw = (allTrustFunders as any[]).reduce((s: number, t: any) => s + parseFloat(t.withdrawnAmount ?? "0"), 0);
+                  const totalInvested = tfs.reduce((s: number, t: any) => s + parseFloat(t.amountPaid ?? "0"), 0);
+                  const totalEarned   = tfs.reduce((s: number, t: any) => s + (t.earnedAmount ?? 0), 0);
+                  const totalAvail    = tfs.reduce((s: number, t: any) => s + (t.availableAmount ?? 0), 0);
                   return (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <StatCard title="Affiliate Pool (Total)" value={fmtUSD(totalPool)}    icon={Coins}    color="purple" sub="all-time trade pool" />
@@ -2437,6 +2437,30 @@ export default function AdminDashboard() {
                     </div>
                   );
                 })()}
+
+                {/* ─── Admin Power Tools strip ─────────────────────────────────── */}
+                <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 via-white to-amber-50/40">
+                  <CardContent className="py-4 px-6">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                        <Award className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-slate-900">Admin Power Tools</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          You have full control over every trust funder's <strong>share percentage</strong> and <strong>profit balance</strong>.
+                          Use the <strong>Adjust</strong> button on each row to grant or deduct profit, change pool share, activate/cancel, or remove records.
+                          The pool itself is fed automatically from the 20% reserve allocations on every deposit/withdrawal.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1"><Edit className="w-3 h-3 text-amber-600" /> Adjust share % & grant/deduct profit</span>
+                          <span className="inline-flex items-center gap-1"><ToggleRight className="w-3 h-3 text-red-500" /> Activate / Cancel</span>
+                          <span className="inline-flex items-center gap-1"><Trash2 className="w-3 h-3 text-red-500" /> Delete record</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
                 {/* ─── Trust Funders table ──────────────────────────────────────── */}
                 <Card className="border-0 shadow-sm overflow-hidden">
@@ -2467,7 +2491,13 @@ export default function AdminDashboard() {
                       </TableHeader>
                       <TableBody>
                         {(allTrustFunders as any[]).length === 0 ? (
-                          <TableRow><TableCell colSpan={10} className="text-center py-10 text-slate-500">No trust funders yet.</TableCell></TableRow>
+                          <TableRow>
+                            <TableCell colSpan={11} className="text-center py-12 text-slate-500 bg-white">
+                              <Award className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                              <p className="font-medium text-sm text-slate-600">No trust funders yet</p>
+                              <p className="text-xs text-slate-400 mt-1">When affiliates subscribe to the Trust Funder programme they'll appear here with full Adjust / Activate / Delete controls.</p>
+                            </TableCell>
+                          </TableRow>
                         ) : (allTrustFunders as any[]).map((tf: any) => {
                           const tier = tf.investmentCategory >= 500 ? "Elite" : tf.investmentCategory >= 300 ? "Growth" : "Starter";
                           const tierColor = tier === "Elite" ? "bg-slate-800 text-white" : tier === "Growth" ? "bg-amber-100 text-amber-800 border-amber-200" : "bg-blue-50 text-blue-700 border-blue-200";

@@ -608,15 +608,6 @@ export default function QCESection() {
                 : <Badge className="ml-auto bg-amber-100 text-amber-700 border-0 text-[10px] shrink-0">{eligibilityPct.toFixed(1)}% / 30%</Badge>}
             </div>
 
-            {/* ── Terms notice ───────────────────────────────────── */}
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 flex items-start gap-3" data-testid="card-vc-terms">
-              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-              <div className="text-xs text-red-800 dark:text-red-300 space-y-1">
-                <p className="font-semibold">Important: Early withdrawal resets eligibility</p>
-                <p>If you change or withdraw your QCE SwiftVault plan before the 90-day target is complete, your savings are returned without profit and your QCE credit eligibility resets to zero.</p>
-              </div>
-            </div>
-
             {/* ── Vehicle listings ────────────────────────────────── */}
             <div>
               <p className="text-sm font-bold mb-3">Available Vehicles via V-Connect Credit</p>

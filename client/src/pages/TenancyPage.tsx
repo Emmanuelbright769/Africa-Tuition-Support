@@ -14,8 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
-  Home, Building2, MapPin, Bed, Bath, CalendarDays, TrendingDown, CheckCircle2,
-  ArrowLeft, Menu, X, Sun, Moon, Monitor, DollarSign, Calculator, Clock, Shield, Landmark,
+  Home, Building2, MapPin, Bed, Bath, CalendarDays, CheckCircle2,
+  ArrowLeft, Menu, X, Sun, Moon, Monitor, DollarSign, Calculator, Clock, Shield,
 } from "lucide-react";
 import { calculateTenancyDeal } from "@shared/schema";
 
@@ -36,7 +36,7 @@ export default function TenancyPage() {
   const { mode, setMode } = useTheme();
   const { toast } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [tab, setTab] = useState<"landlord" | "how" | "calculator">("landlord");
+  const [tab, setTab] = useState<"landlord" | "calculator">("landlord");
   const [listOpen, setListOpen] = useState(false);
   // Calculator state
   const [calcAnnual, setCalcAnnual] = useState("500000");
@@ -139,13 +139,13 @@ export default function TenancyPage() {
             <div className="inline-flex items-center gap-2 bg-tsia-green/10 text-tsia-green px-4 py-1.5 rounded-full text-sm font-semibold mb-4">
               <Home className="w-4 h-4" /> TSIA Tenancy Programme
             </div>
-            <h1 className="text-3xl md:text-4xl font-bold mb-3">Housing Made Affordable for Everyone</h1>
+            <h1 className="text-3xl md:text-4xl font-bold mb-3">Get Paid Upfront for Your Property</h1>
             <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              Landlords get a <strong>lump-sum payment upfront</strong>. Tenants pay in <strong>easy monthly installments</strong>. TSIA bridges the gap — no more massive annual rent demands.
+              Landlords receive a <strong>full lump-sum payment upfront</strong> from TSIA. We handle everything — tenant sourcing, monthly collections, and property management. No more chasing rent.
             </p>
             <div className="flex flex-wrap justify-center gap-3 mt-6">
               <Button className="bg-tsia-green hover:bg-tsia-green/90 text-white" onClick={() => user ? setListOpen(true) : setLocation("/login")} data-testid="button-list-property">List Your Property</Button>
-              <Button variant="outline" onClick={() => setTab("how")} data-testid="button-how-it-works">How It Works</Button>
+              <Button variant="outline" onClick={() => setTab("calculator")} data-testid="button-calculator">See the Numbers</Button>
             </div>
           </motion.div>
         </div>
@@ -217,66 +217,6 @@ export default function TenancyPage() {
                   </div>
                 </motion.div>
               )}
-            </>
-          )}
-
-          {/* HOW IT WORKS TAB */}
-          {tab === "how" && (
-            <>
-              <motion.div variants={item}>
-                <h2 className="text-xl font-bold mb-1">How TSIA Tenancy Works</h2>
-                <p className="text-muted-foreground text-sm">A win-win for landlords and tenants — TSIA is the bridge.</p>
-              </motion.div>
-
-              <motion.div variants={item}>
-                <Card className="border-0 shadow-md overflow-hidden max-w-2xl">
-                  <div className="h-1.5 bg-gradient-to-r from-tsia-green to-emerald-400" />
-                  <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Landmark className="w-5 h-5 text-tsia-green" /> For Landlords — Step by Step</CardTitle></CardHeader>
-                  <CardContent className="space-y-4">
-                    {[
-                      { step: "1", text: "List your property on TSIA Tenancy with details about rent, location, and period (1–10 years)." },
-                      { step: "2", text: "TSIA reviews your listing and calculates the lump-sum payment (annual rent × years × 88%)." },
-                      { step: "3", text: "Upon agreement, TSIA transfers the full lump sum to your account within 48 hours." },
-                      { step: "4", text: "TSIA manages all tenant sourcing, monthly collections, and property management on your behalf." },
-                    ].map(({ step, text }) => (
-                      <div key={step} className="flex gap-3">
-                        <div className="w-7 h-7 rounded-full bg-tsia-green text-white text-sm font-bold flex items-center justify-center flex-shrink-0">{step}</div>
-                        <p className="text-sm leading-relaxed">{text}</p>
-                      </div>
-                    ))}
-                    <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-3 mt-2">
-                      <p className="text-xs text-green-700 dark:text-green-400 font-medium">Example: ₦1,000,000/yr × 5 years = ₦5,000,000 total → TSIA pays ₦4,400,000 upfront (12% discount = ₦600,000 TSIA fee)</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              <motion.div variants={item}>
-                <Card className="border-0 bg-gradient-to-br from-tsia-green/5 to-tsia-gold/5 shadow-md">
-                  <CardContent className="p-6">
-                    <div className="flex items-start gap-3 mb-4">
-                      <TrendingDown className="w-6 h-6 text-tsia-green shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-bold text-base">TSIA Revenue Model</p>
-                        <p className="text-sm text-muted-foreground mt-1">TSIA earns the difference between what tenants pay (with interest) and what we paid the landlord (with discount). This sustains the platform and funds our education programme.</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      {[
-                        { label: "Landlord gets", val: "88%", sub: "of total value upfront" },
-                        { label: "TSIA service fee", val: "12%", sub: "discount on total" },
-                        { label: "Payment speed", val: "48h", sub: "lump-sum transfer" },
-                      ].map((s, i) => (
-                        <div key={i} className="bg-background rounded-xl p-3 shadow-sm">
-                          <p className="text-2xl font-bold text-tsia-green">{s.val}</p>
-                          <p className="text-xs font-semibold mt-1">{s.label}</p>
-                          <p className="text-xs text-muted-foreground">{s.sub}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
             </>
           )}
 

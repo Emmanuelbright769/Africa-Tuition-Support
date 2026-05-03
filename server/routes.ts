@@ -5683,21 +5683,9 @@ export async function registerRoutes(
   // ─── FINTECH: BANKS, RESOLUTION & P2P ───────────────────────────────────────
   // Nigerian banks list
   // ── Banks list — live from Squad, hardcoded fallback ────────────────────────
-  const FALLBACK_BANKS = [
-    { code: "044", name: "Access Bank" }, { code: "035A", name: "ALAT by Wema" },
-    { code: "023", name: "Citibank Nigeria" }, { code: "050", name: "EcoBank Nigeria" },
-    { code: "070", name: "Fidelity Bank" }, { code: "011", name: "First Bank of Nigeria" },
-    { code: "214", name: "First City Monument Bank (FCMB)" }, { code: "058", name: "Guaranty Trust Bank (GTB)" },
-    { code: "301", name: "Jaiz Bank" }, { code: "082", name: "Keystone Bank" },
-    { code: "526", name: "Kuda Bank" }, { code: "090405", name: "Moniepoint MFB" },
-    { code: "076", name: "Polaris Bank" }, { code: "101", name: "Providus Bank" },
-    { code: "221", name: "Stanbic IBTC Bank" }, { code: "232", name: "Sterling Bank" },
-    { code: "032", name: "Union Bank of Nigeria" }, { code: "033", name: "United Bank for Africa (UBA)" },
-    { code: "215", name: "Unity Bank" }, { code: "035", name: "Wema Bank" },
-    { code: "057", name: "Zenith Bank" }, { code: "090110", name: "VFD Microfinance Bank" },
-    { code: "000026", name: "Taj Bank" }, { code: "000031", name: "PalmPay" },
-    { code: "000014", name: "OPay (OPay Digital)" }, { code: "000019", name: "Flutterwave" },
-  ];
+  // Complete static bank list (Squad-coded). Used when live API is unavailable.
+  const { ALL_NIGERIAN_BANKS: FALLBACK_BANKS } = await import("./nigerian-banks");
+
   let cachedBankList: { code: string; name: string; gateway: string }[] | null = null;
   let bankListCachedAt = 0;
 
@@ -5706,10 +5694,35 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     // Serve from memory cache (1 hour TTL)
     if (cachedBankList && Date.now() - bankListCachedAt < 3600_000) return res.json(cachedBankList);
-    // Primary: Korapay bank list (comprehensive, NIP-coded)
-    try {
-      const koraKey = process.env.KORAPAY_SECRET_KEY;
-      if (koraKey) {
+
+    // 1) Squad bank list (primary — user has Squad configured)
+    const squadKey = process.env.SQUAD_SECRET_KEY;
+    if (squadKey) {
+      try {
+        const isLive = squadKey.startsWith("sk_");
+        const squadBase = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+        const rs = await fetch(`${squadBase}/bank_code_list`, {
+          headers: { "Authorization": `Bearer ${squadKey}` },
+          signal: AbortSignal.timeout(8000),
+        });
+        const ds = await rs.json() as any;
+        if ((ds.success || rs.ok) && Array.isArray(ds.data) && ds.data.length > 0) {
+          const banks = ds.data
+            .map((b: any) => ({ code: String(b.bank_code ?? b.code ?? ""), name: String(b.bank_name ?? b.name ?? ""), gateway: "squad" }))
+            .filter((b: any) => b.code && b.name)
+            .sort((a: any, z: any) => a.name.localeCompare(z.name));
+          cachedBankList = banks;
+          bankListCachedAt = Date.now();
+          console.log(`[BANKS] Loaded ${banks.length} banks from Squad live API`);
+          return res.json(banks);
+        }
+      } catch (_) {}
+    }
+
+    // 2) Korapay bank list (fallback)
+    const koraKey = process.env.KORAPAY_SECRET_KEY;
+    if (koraKey) {
+      try {
         const rk = await fetch(`${KORA_BASE}/misc/banks?countryCode=NG`, {
           headers: { "Authorization": `Bearer ${koraKey}` },
           signal: AbortSignal.timeout(8000),
@@ -5724,11 +5737,12 @@ export async function registerRoutes(
           bankListCachedAt = Date.now();
           return res.json(banks);
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
-    // Final hardcoded fallback
-    res.json(FALLBACK_BANKS);
+    // 3) Comprehensive static fallback (all Nigerian banks from Squad docs)
+    console.log("[BANKS] Using comprehensive static fallback list");
+    res.json(FALLBACK_BANKS.map(b => ({ ...b, gateway: "squad" })));
   });
 
   // ── Resolve bank account via Squad ──────────────────────────────────────────

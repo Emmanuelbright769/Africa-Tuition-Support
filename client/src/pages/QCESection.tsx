@@ -285,6 +285,33 @@ export default function QCESection() {
         </CardContent>
       </Card>
 
+      {/* Instant 30% Credit Activation Banner */}
+      {!isActivated && (
+        <div className="bg-gradient-to-r from-tsia-green/10 via-tsia-green/5 to-tsia-gold/10 border-2 border-tsia-green/30 rounded-2xl p-4" data-testid="banner-instant-credit">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-tsia-green flex items-center justify-center shrink-0">
+              <Zap className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-tsia-green">30% Credit Activates Instantly</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                The moment you make your first deposit (min $5), your full 30% credit eligibility unlocks automatically — across V-Connect, Tenancy, Loans &amp; more. No waiting period. No admin approval required.
+              </p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {["V-Connect", "Tenancy", "Student Loan", "Business Credit"].map(s => (
+                  <span key={s} className="inline-flex items-center gap-1 bg-tsia-green/10 text-tsia-green text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    <CheckCircle2 className="w-2.5 h-2.5" /> {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Credit Calculator — always visible on home view */}
+      <QceCreditCalculator qceBalance={qceBalance} eligibilityPct={eligibilityPct} />
+
       {/* V-Connect card */}
       <Card className="shadow-sm border-0" data-testid="card-qce-vconnect-home">
         <CardContent className="pt-5 pb-5">

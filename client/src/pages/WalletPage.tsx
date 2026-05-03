@@ -53,27 +53,14 @@ const NG_BANKS = [
   { code: "050", name: "Ecobank Nigeria" },
   { code: "070", name: "Fidelity Bank" },
   { code: "011", name: "First Bank of Nigeria" },
-  { code: "214", name: "FCMB (First City Monument Bank)" },
-  { code: "058", name: "GTBank (Guaranty Trust Bank)" },
-  { code: "301", name: "Jaiz Bank" },
-  { code: "082", name: "Keystone Bank" },
-  { code: "090267", name: "Kuda Bank (MFB)" },
-  { code: "100004", name: "OPay Digital Services" },
-  { code: "076", name: "Polaris Bank" },
-  { code: "221", name: "Stanbic IBTC Bank" },
-  { code: "232", name: "Sterling Bank" },
-  { code: "100033", name: "PalmPay" },
-  { code: "50515", name: "Moniepoint MFB" },
-  { code: "032", name: "Union Bank" },
-  { code: "033", name: "United Bank for Africa (UBA)" },
-  { code: "035", name: "Wema Bank" },
-  { code: "057", name: "Zenith Bank" },
-  { code: "566", name: "VFD Microfinance Bank" },
 ];
 
 const fade = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
+import { useBanks } from "@/hooks/useBanks";
+
 export default function WalletPage() {
+  const { banks: NG_BANKS } = useBanks();
   const { user } = useAuth();
   const { toast } = useToast();
   const [, nav] = useLocation();

@@ -5731,52 +5731,76 @@ export async function registerRoutes(
     const koraKey = process.env.KORAPAY_SECRET_KEY;
     const squadKey = process.env.SQUAD_SECRET_KEY;
 
+    // Known fintech/MFB code aliases — when the primary code fails, try these alternates.
+    // Each gateway sometimes only recognises one of the variants for the same bank.
+    const BANK_CODE_ALIASES: Record<string, string[]> = {
+      "100004": ["999992", "305", "100033"],          // OPay
+      "999992": ["100004", "305"],
+      "100033": ["999991", "100004"],                 // PalmPay
+      "999991": ["100033"],
+      "50515":  ["90405", "100029"],                  // Moniepoint MFB
+      "90405":  ["50515"],
+      "090267": ["50211", "100025"],                  // Kuda
+      "50211":  ["090267"],
+      "090110": ["566"],                              // VFD
+      "566":    ["090110"],
+      "100029": ["50515"],                            // Sparkle
+      "100025": ["090267"],
+      "000026": ["302"],                              // Taj
+      "000031": ["100033"],                           // PalmPay alt
+      "000014": ["100004"],                           // OPay alt
+      "000019": ["110"],                              // Flutterwave
+    };
+
+    const tryKora = async (bc: string) => {
+      try {
+        const rk = await fetch(`${KORA_BASE}/misc/banks/resolve`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ bank: bc, account: accountNumber }),
+          signal: AbortSignal.timeout(10000),
+        });
+        const dk = await rk.json() as any;
+        console.log(`[KORAPAY] resolve(${bc}) → HTTP ${rk.status} | status=${dk.status} | name="${dk.data?.account_name ?? ""}" | msg="${dk.message}"`);
+        if (dk.status && dk.data?.account_name) return { name: dk.data.account_name, msg: "" };
+        return { name: "", msg: dk.message || "" };
+      } catch (ek: any) { console.warn(`[KORAPAY] resolve(${bc}) failed:`, ek.message); return { name: "", msg: "" }; }
+    };
+
+    const trySquad = async (bc: string) => {
+      try {
+        const rs = await fetch(`${SQUAD_BASE}/payout/account/lookup`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ bank_code: bc, account_number: accountNumber, currency_id: "NGN" }),
+          signal: AbortSignal.timeout(10000),
+        });
+        const ds = await rs.json() as any;
+        console.log(`[SQUAD] resolve(${bc}) → HTTP ${rs.status} | success=${ds.success} | name="${ds.data?.account_name ?? ""}" | msg="${ds.message}"`);
+        if ((ds.success || ds.status === 200 || ds.status === "200") && ds.data?.account_name) return { name: ds.data.account_name, msg: "" };
+        return { name: "", msg: ds.message || "" };
+      } catch (es: any) { console.warn(`[SQUAD] resolve(${bc}) failed:`, es.message); return { name: "", msg: "" }; }
+    };
+
     try {
       let accountName = "";
       let lastMsg = "";
       let usedGateway = "";
 
-      // Primary: Korapay /misc/banks/resolve
-      if (koraKey) {
-        try {
-          const rk = await fetch(`${KORA_BASE}/misc/banks/resolve`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ bank: bankCode, account: accountNumber }),
-            signal: AbortSignal.timeout(12000),
-          });
-          const dk = await rk.json() as any;
-          console.log(`[KORAPAY] resolve-bank → HTTP ${rk.status} | status=${dk.status} | name="${dk.data?.account_name ?? ""}" | msg="${dk.message}"`);
-          if (dk.status && dk.data?.account_name) {
-            accountName = dk.data.account_name;
-            usedGateway = "korapay";
-          } else {
-            lastMsg = dk.message || "";
-          }
-        } catch (ek: any) {
-          console.warn("[KORAPAY] resolve-bank failed:", ek.message);
-        }
-      }
+      // Build the full list of codes to try (primary + known aliases)
+      const codesToTry = [bankCode, ...(BANK_CODE_ALIASES[bankCode] || [])];
 
-      // Fallback: Squad /payout/account/lookup (covers OPay, Kuda, Moniepoint, PalmPay, etc.)
-      if (!accountName && squadKey) {
-        try {
-          const rs = await fetch(`${SQUAD_BASE}/payout/account/lookup`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber, currency_id: "NGN" }),
-            signal: AbortSignal.timeout(12000),
-          });
-          const ds = await rs.json() as any;
-          console.log(`[SQUAD] resolve-bank → HTTP ${rs.status} | success=${ds.success} | name="${ds.data?.account_name ?? ""}" | msg="${ds.message}"`);
-          if ((ds.success || ds.status === 200 || ds.status === "200") && ds.data?.account_name) {
-            accountName = ds.data.account_name;
-            usedGateway = "squad";
-          } else if (!lastMsg) {
-            lastMsg = ds.message || "";
-          }
-        } catch (es: any) {
-          console.warn("[SQUAD] resolve-bank failed:", es.message);
+      // Try every code on Korapay first, then Squad — short-circuit on success.
+      outer: for (const bc of codesToTry) {
+        if (koraKey) {
+          const r = await tryKora(bc);
+          if (r.name) { accountName = r.name; usedGateway = "korapay"; break outer; }
+          if (r.msg && !lastMsg) lastMsg = r.msg;
+        }
+        if (squadKey) {
+          const r = await trySquad(bc);
+          if (r.name) { accountName = r.name; usedGateway = "squad"; break outer; }
+          if (r.msg && !lastMsg) lastMsg = r.msg;
         }
       }
 

@@ -46,19 +46,7 @@ import ForumSection from "./ForumSection";
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
 
-const NIGERIAN_BANKS = [
-  { code: "044", name: "Access Bank" }, { code: "023", name: "Citibank Nigeria" },
-  { code: "050", name: "Ecobank Nigeria" }, { code: "070", name: "Fidelity Bank" },
-  { code: "011", name: "First Bank of Nigeria" }, { code: "214", name: "FCMB" },
-  { code: "058", name: "GTBank" }, { code: "301", name: "Jaiz Bank" },
-  { code: "082", name: "Keystone Bank" }, { code: "090267", name: "Kuda Bank (MFB)" },
-  { code: "100004", name: "OPay Digital Services" }, { code: "076", name: "Polaris Bank" },
-  { code: "221", name: "Stanbic IBTC Bank" }, { code: "232", name: "Sterling Bank" },
-  { code: "100033", name: "PalmPay" }, { code: "50515", name: "Moniepoint MFB" },
-  { code: "032", name: "Union Bank" }, { code: "033", name: "UBA" },
-  { code: "035", name: "Wema Bank" }, { code: "057", name: "Zenith Bank" },
-  { code: "566", name: "VFD Microfinance Bank" },
-];
+import { useBanks } from "@/hooks/useBanks";
 
 const TIER_STYLES: Record<string, { bg: string; border: string; text: string; badge: string; icon: string }> = {
   "100": { bg: "bg-blue-50 dark:bg-blue-900/20",    border: "border-blue-200 dark:border-blue-800",    text: "text-blue-700 dark:text-blue-300",    badge: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",    icon: "🥉" },
@@ -537,6 +525,7 @@ function LocationSection({ user }: { user: any }) {
 // ────────────────────────────────────────────────────────────────────────────
 
 export default function AffiliateDashboard() {
+  const { banks: NIGERIAN_BANKS } = useBanks();
   const { formatAmount, rateLabel } = useLocalCurrency();
   const [, setLocation] = useLocation();
   const search = useSearch();

@@ -2064,7 +2064,7 @@ export default function FinancialHub() {
           <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
             disabled={sendBankMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-            onClick={() => { if (weekendBlocked) { toast({ title: "Network error", description: "Unable to process your transfer. Please try again later.", variant: "destructive" }); return; } sendBankMutation.mutate(); }} data-testid="btn-send-bank">
+            onClick={() => { if (weekendBlocked) { toast({ title: "Weekend Pause", description: `Bank transfers are paused for the weekend. Service resumes ${resumeLabel}.`, variant: "destructive" }); return; } sendBankMutation.mutate(); }} data-testid="btn-send-bank">
             {sendBankMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Send ${fmt(amount)} via {bankGateway === "korapay" ? "Korapay" : "Squad"}
           </Button>

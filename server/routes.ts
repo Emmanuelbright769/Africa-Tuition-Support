@@ -3171,9 +3171,10 @@ export async function registerRoutes(
       // Get per-user total pool (for more granular breakdown if needed)
       const enriched = await Promise.all(all.map(async (ca) => {
         const u = await storage.getUser(ca.userId);
-        const sharePct = parseFloat(ca.sharePercentage ?? "0");
+        // sharePercentage is stored as a FRACTION (0–1), not a percentage. Match my-info math.
+        const shareFraction = parseFloat(ca.sharePercentage ?? "0");
         const withdrawn = parseFloat(ca.withdrawnAmount ?? "0");
-        const earnedAmount = parseFloat((totalPool * sharePct / 100).toFixed(6));
+        const earnedAmount = parseFloat((totalPool * shareFraction).toFixed(6));
         const availableAmount = parseFloat(Math.max(0, earnedAmount - withdrawn).toFixed(6));
         const wallet = u ? await storage.getWalletByUser(u.id) : null;
         return {
@@ -6113,6 +6114,13 @@ export async function registerRoutes(
       const transferAmount = parseFloat(amount);
       if (isNaN(transferAmount) || transferAmount <= 0) return res.status(400).json({ message: "Invalid amount" });
 
+      // ── Minimum transfer enforcement (gateways reject tiny amounts) ────────
+      // Korapay & Squad both require ≥ ₦100 net. After 7.5% VAT and FX, $2 ≈ ₦1,330 net which is safely above.
+      const MIN_TRANSFER_USD = 2;
+      if (transferAmount < MIN_TRANSFER_USD) {
+        return res.status(400).json({ message: `Minimum bank transfer is $${MIN_TRANSFER_USD.toFixed(2)}. Smaller amounts are rejected by the bank gateway.` });
+      }
+
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
       if (balance < transferAmount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
@@ -6206,7 +6214,9 @@ export async function registerRoutes(
       }
 
       if (!gatewaySuccess) {
-        return res.status(502).json({ message: `Bank transfer failed: ${gatewayMsg || "no gateway available"}. Your wallet has not been debited.` });
+        // Surface the actual gateway error so the user understands (e.g. "amount below minimum", "invalid account", etc.)
+        const cleanMsg = gatewayMsg ? gatewayMsg.replace(/^(Squad:|Korapay:)\s*/, "") : "no gateway available";
+        return res.status(502).json({ message: `Bank transfer could not be completed: ${cleanMsg}. Your wallet was NOT debited — please try again or use a different amount.` });
       }
 
       // ── Gateway confirmed — now debit wallet and record ─────────────────────

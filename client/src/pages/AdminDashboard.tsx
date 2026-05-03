@@ -98,8 +98,7 @@ const NAV = [
   { id: "transactions",  icon: ArrowLeftRight, label: "Transactions" },
   { id: "ecommerce",     icon: ShoppingBag,    label: "TS-Mart Online Stores" },
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
-  { id: "deposits",      icon: Coins,          label: "Deposits" },
-  { id: "bank_transfers", icon: Banknote,     label: "Bank Transfers", badgeKey: "pendingBankTransfers" },
+  { id: "deposits",      icon: Coins,          label: "Deposit History" },
   { id: "withdrawals",  icon: Banknote,       label: "Bank W/D",      badgeKey: "pendingWithdrawals" },
   { id: "crypto_withdrawals", icon: Coins,    label: "Crypto W/D",    badgeKey: "pendingCryptoWd" },
   { id: "reserve",      icon: ShieldCheck,    label: "Str. Reserve" },
@@ -2592,7 +2591,7 @@ export default function AdminDashboard() {
                               </TableCell>
                               <TableCell><Badge variant="outline" className={`text-xs ${tierColor}`}>{tier}</Badge></TableCell>
                               <TableCell className="font-bold text-sm">{fmtUSD(tf.amountPaid)}</TableCell>
-                              <TableCell className="text-sm font-mono">{parseFloat(tf.sharePercentage).toFixed(4)}%</TableCell>
+                              <TableCell className="text-sm font-mono">{(parseFloat(tf.sharePercentage) * 100).toFixed(6)}%</TableCell>
                               {/* Real-time earnings */}
                               <TableCell>
                                 <p className="font-bold text-sm text-tsia-green">{fmtUSD(earned)}</p>

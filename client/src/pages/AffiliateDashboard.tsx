@@ -1062,7 +1062,7 @@ export default function AffiliateDashboard() {
   const myAvailable        = myCoAff ? parseFloat(myCoAff.myAvailable ?? "0") : 0;
   const myWithdrawn        = myCoAff ? parseFloat(myCoAff.withdrawnAmount ?? "0") : 0;
   const myAmountPaid       = myCoAff ? parseFloat(myCoAff.amountPaid) : 0;
-  const mySharePct         = myCoAff ? parseFloat(myCoAff.sharePercentage).toFixed(8) : "0";
+  const mySharePct         = myCoAff ? (parseFloat(myCoAff.sharePercentage) * 100).toFixed(8) : "0";
   const tradeBalance     = parseFloat(tradeWallet?.tradeBalance ?? "0");
   const totalInvested    = parseFloat(tradeWallet?.totalInvested ?? "0");
   const totalBotEarned   = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
@@ -3176,7 +3176,7 @@ export default function AffiliateDashboard() {
               <div className="bg-muted/50 rounded-xl p-4 border text-sm">
                 <p className="text-muted-foreground text-xs mb-1">Current tier</p>
                 <p className="font-bold">{myCategory && myCategory >= 500 ? `Elite ($${myCategory})` : myCategory === 300 ? "Growth ($300)" : "Starter ($100)"}</p>
-                <p className="text-xs text-muted-foreground mt-1">Share: {parseFloat(myCoAff.sharePercentage).toFixed(8)}% lifetime</p>
+                <p className="text-xs text-muted-foreground mt-1">Share: {(parseFloat(myCoAff.sharePercentage) * 100).toFixed(8)}% lifetime</p>
               </div>
             )}
             <div className="space-y-2">

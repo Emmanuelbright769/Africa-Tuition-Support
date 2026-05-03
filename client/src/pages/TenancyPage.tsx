@@ -97,10 +97,10 @@ export default function TenancyPage() {
             </div>
           </div>
           <div className="hidden md:flex items-center gap-2">
-            {["landlord", "how", "calculator"].map((t) => (
-              <button key={t} onClick={() => setTab(t as any)}
+            {(["landlord", "calculator"] as const).map((t) => (
+              <button key={t} onClick={() => setTab(t)}
                 className={`px-3 py-1.5 text-sm rounded-full font-medium transition-colors ${tab === t ? "bg-tsia-green text-white" : "text-muted-foreground hover:text-foreground"}`}>
-                {t === "landlord" ? "List Property" : t === "how" ? "How It Works" : "Calculator"}
+                {t === "landlord" ? "List Property" : "Calculator"}
               </button>
             ))}
             <div className="flex items-center bg-muted rounded-full p-1 ml-2">
@@ -120,10 +120,10 @@ export default function TenancyPage() {
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
               className="md:hidden border-t border-border bg-background overflow-hidden">
               <div className="flex flex-col p-4 gap-2">
-                {["landlord", "how", "calculator"].map((t) => (
-                  <button key={t} onClick={() => { setTab(t as any); setMenuOpen(false); }}
+                {(["landlord", "calculator"] as const).map((t) => (
+                  <button key={t} onClick={() => { setTab(t); setMenuOpen(false); }}
                     className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? "bg-tsia-green/10 text-tsia-green" : "hover:bg-muted"}`}>
-                    {t === "landlord" ? "List Property" : t === "how" ? "How It Works" : "Calculator"}
+                    {t === "landlord" ? "List Property" : "Calculator"}
                   </button>
                 ))}
               </div>

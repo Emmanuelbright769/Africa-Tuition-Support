@@ -6129,22 +6129,11 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      // Admin kill-switch — completely closes bank transfers regardless of day.
+      // Admin toggle is the sole gate. ON → transfers work any day.
+      // OFF → users see a generic network error.
       const btEnabled = (await storage.getPlatformSetting("bank_transfers_enabled")) ?? "true";
       if (btEnabled === "false") {
-        return res.status(503).json({ message: "Bank transfers are temporarily paused by the administrator. Please try again later.", bankTransfersDisabled: true });
-      }
-
-      // Weekend block — Fri 23:59 → Mon 08:00 WAT. Admin can override the
-      // current weekend by setting `bank_transfers_weekend_override` to a
-      // future timestamp (auto-expires).
-      const _wb = isWeekendBlock();
-      if (_wb.blocked) {
-        const overrideRaw = await storage.getPlatformSetting("bank_transfers_weekend_override");
-        const overrideTs  = overrideRaw ? parseInt(overrideRaw, 10) : 0;
-        if (!overrideTs || overrideTs < Date.now()) {
-          return res.status(503).json({ message: `Bank transfers are closed for the weekend. Service resumes ${_wb.until} (Nigeria time).`, weekendBlock: true });
-        }
+        return res.status(503).json({ message: "Network error. Please try again later.", bankTransfersDisabled: true });
       }
 
       const { bankCode, bankName, accountNumber, accountName, amount, narration } = req.body;

@@ -1899,7 +1899,7 @@ export default function AdminDashboard() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {bankTransfersEnabled
-                            ? "Users can send bank transfers via the Fintech Hub on weekdays. Bank transfers are automatically closed on weekends (Fri 23:59 → Mon 08:00 WAT) unless you override below. Toggle this to block all transfers platform-wide."
+                            ? "Users can send bank transfers via the Fintech Hub. Toggle off to block all outgoing bank transfers platform-wide — users will see a network error."
                             : "All bank transfer attempts are blocked. Wallets are not debited. Airtime/data/bill payments still work."}
                         </p>
                       </div>
@@ -1941,59 +1941,6 @@ export default function AdminDashboard() {
                       </Button>
                     </div>
 
-                    {/* ── Weekend override row ───────────────────────────────────── */}
-                    {(() => {
-                      const overrideActive = bankWeekendOverrideUntil > Date.now();
-                      return (
-                        <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl border-2 ${overrideActive ? "bg-amber-50/50 border-amber-200" : "bg-slate-50 border-slate-200"}`}>
-                          <div className="space-y-1">
-                            <p className="font-semibold text-sm flex items-center gap-2">
-                              <Banknote className="w-4 h-4 text-amber-600" />
-                              Weekend Override: <span className={overrideActive ? "text-amber-700" : "text-slate-600"}>{overrideActive ? "ACTIVE" : "INACTIVE"}</span>
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {overrideActive
-                                ? `Bank transfers will stay open through the weekend until ${new Date(bankWeekendOverrideUntil).toLocaleString("en-NG", { weekday: "short", hour: "2-digit", minute: "2-digit" })} (auto-expires Mon 08:00 WAT). Click below to cancel.`
-                                : "Bank transfers are closed on weekends by default. Click below to open them for this weekend (auto-closes Mon 08:00 WAT)."}
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant={overrideActive ? "destructive" : "default"}
-                            className={`font-semibold shrink-0 ${overrideActive ? "" : "bg-amber-600 hover:bg-amber-700 text-white"}`}
-                            disabled={bankWeekendSaving}
-                            data-testid="button-toggle-weekend-override"
-                            onClick={async () => {
-                              setBankWeekendSaving(true);
-                              try {
-                                const res = await apiRequest("PUT", "/api/admin/trade-settings", {
-                                  feeExchangeWithdraw: tradeSettingsData?.feeExchangeWithdraw?.toString() ?? "0.05",
-                                  feeBankWithdraw:     tradeSettingsData?.feeBankWithdraw?.toString()     ?? "0.08",
-                                  reserveRate:         tradeSettingsData?.reserveRate?.toString()         ?? "0.20",
-                                  affiliateShareRate:  tradeSettingsData?.affiliateShareRate?.toString()  ?? "0.05",
-                                  minDeposit:          tradeSettingsData?.minDeposit?.toString()          ?? "10",
-                                  minWithdraw:         tradeSettingsData?.minWithdraw?.toString()         ?? "5",
-                                  botFullRate:         tradeSettingsData?.botFullRate?.toString()         ?? "0.02",
-                                  coAffiliatePoolRate: tradeSettingsData?.coAffiliatePoolRate != null ? tradeSettingsData.coAffiliatePoolRate.toString() : "",
-                                  bankTransfersWeekendOverride: !overrideActive,
-                                });
-                                if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
-                                refetchTradeSettings();
-                                toast({ title: overrideActive ? "Weekend Override Cancelled ✓" : "Weekend Override Activated ✓", description: overrideActive ? "Bank transfers will follow the normal weekend schedule." : "Users can transfer through the weekend until Mon 08:00 WAT." });
-                              } catch (e: any) {
-                                toast({ title: "Override failed", description: e.message, variant: "destructive" });
-                              } finally {
-                                setBankWeekendSaving(false);
-                              }
-                            }}
-                          >
-                            {bankWeekendSaving
-                              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Saving…</>
-                              : (overrideActive ? "Cancel Weekend Override" : "Open This Weekend")}
-                          </Button>
-                        </div>
-                      );
-                    })()}
                   </CardContent>
                 </Card>
 

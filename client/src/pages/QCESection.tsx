@@ -901,25 +901,64 @@ export default function QCESection() {
       <Dialog open={withdrawOpen} onOpenChange={v => { setWithdrawOpen(v); if (!v) setWithdrawAmt(""); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-blue-600" /> Withdraw from QCE</DialogTitle>
-            <DialogDescription>Available: <strong>${maxWithdraw.toFixed(2)}</strong> (min ${QCE.MIN_BALANCE} retained)</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              {withdrawLocked ? <Lock className="w-5 h-5 text-amber-600" /> : <ArrowUpRight className="w-5 h-5 text-blue-600" />}
+              {withdrawLocked ? "Withdrawal Locked" : "Withdraw from QCE"}
+            </DialogTitle>
+            <DialogDescription>
+              {withdrawLocked
+                ? <>Funds are locked for the full 90-day savings period.</>
+                : <>Available: <strong>${maxWithdraw.toFixed(2)}</strong> (min ${QCE.MIN_BALANCE} retained)</>}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label>Amount (USD)</Label>
-              <Input type="number" min={0.01} max={maxWithdraw} placeholder={`Max $${maxWithdraw.toFixed(2)}`}
-                value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-qce-withdraw-amount" />
+
+          {withdrawLocked ? (
+            <div className="py-2">
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-4 space-y-2" data-testid="banner-withdraw-dialog-locked">
+                <div className="flex items-start gap-2">
+                  <Lock className="w-5 h-5 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-amber-800 dark:text-amber-200">No withdrawals during the 90-day period</p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                      QCE SwiftVault locks every deposit for a full 90 days from your savings start date. Withdrawals are blocked round-the-clock until maturity.
+                    </p>
+                    {maturityDate && !windowExpired && (
+                      <p className="text-xs text-amber-800 dark:text-amber-200 pt-1">
+                        🔓 Your 24-hour withdrawal window opens in <strong data-testid="text-withdraw-countdown">{fmtCountdown(msToMaturity)}</strong>
+                        <br/>
+                        <span className="text-[11px] text-amber-700 dark:text-amber-300">on {maturityDate.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })} at {maturityDate.toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" })}</span>
+                      </p>
+                    )}
+                    {windowExpired && (
+                      <p className="text-xs text-amber-800 dark:text-amber-200 pt-1">Your withdrawal window has closed. Contact support if you need assistance.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-            {withdrawAmt && parseFloat(withdrawAmt) > maxWithdraw && <p className="text-xs text-red-500">Exceeds available balance.</p>}
-          </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              <div className="space-y-1.5">
+                <Label>Amount (USD)</Label>
+                <Input type="number" min={0.01} max={maxWithdraw} placeholder={`Max $${maxWithdraw.toFixed(2)}`}
+                  value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-qce-withdraw-amount" />
+              </div>
+              {withdrawAmt && parseFloat(withdrawAmt) > maxWithdraw && <p className="text-xs text-red-500">Exceeds available balance.</p>}
+            </div>
+          )}
+
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
-            <Button onClick={() => withdrawMutation.mutate()}
-              disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) <= 0 || parseFloat(withdrawAmt) > maxWithdraw}
-              data-testid="button-confirm-qce-withdraw">
-              {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />}
-              Withdraw ${parseFloat(withdrawAmt || "0").toFixed(2)}
+            <Button variant="outline" onClick={() => setWithdrawOpen(false)} data-testid="button-cancel-qce-withdraw">
+              {withdrawLocked ? "Close" : "Cancel"}
             </Button>
+            {!withdrawLocked && (
+              <Button onClick={() => withdrawMutation.mutate()}
+                disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) <= 0 || parseFloat(withdrawAmt) > maxWithdraw}
+                data-testid="button-confirm-qce-withdraw">
+                {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowUpRight className="w-4 h-4 mr-2" />}
+                Withdraw ${parseFloat(withdrawAmt || "0").toFixed(2)}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

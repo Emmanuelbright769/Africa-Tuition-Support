@@ -6094,50 +6094,100 @@ export async function registerRoutes(
       const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
       const txRef = `TSIA-FT-${userId}-${Date.now()}`;
 
-      // ── Call Korapay disburse BEFORE touching the wallet ──────────────────────
-      const koraKey = process.env.KORAPAY_SECRET_KEY;
-      if (!koraKey) return res.status(500).json({ message: "Payment gateway not configured. Contact support." });
+      // ── Try Squad payout first, fall back to Korapay disburse ────────────────
+      // Both gateways are tried BEFORE the wallet is touched — failures don't lose funds.
+      const squadKey = process.env.SQUAD_SECRET_KEY;
+      const koraKey  = process.env.KORAPAY_SECRET_KEY;
+      if (!squadKey && !koraKey) return res.status(500).json({ message: "No payment gateway configured. Contact support." });
 
-      let koraSuccess = false, koraMsg = "";
-      try {
-        const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reference: txRef,
-            destination: {
-              type: "bank_account",
-              amount: netAmountNgn,
-              currency: "NGN",
-              bank_account: { bank: bankCode, account: accountNumber },
-              customer: { name: accountName, email: "transfers@tsiforafrica.com" },
-            },
-            description: narration || `TSIA Bank Transfer to ${accountName} | Ref: ${txRef}`,
-          }),
-          signal: AbortSignal.timeout(30000),
-        });
-        const kData = await kRes.json() as any;
-        console.log(`[KORAPAY DISBURSE] ref=${txRef} | HTTP ${kRes.status} | status=${kData.status} | msg="${kData.message}"`);
-        if (kData.status) {
-          koraSuccess = true;
-        } else {
-          koraMsg = kData.message ?? "Transfer declined by gateway";
+      let gatewaySuccess = false, gatewayMsg = "", usedGateway: "squad" | "korapay" | "" = "";
+
+      // 1) Squad payout
+      if (squadKey) {
+        try {
+          const isLiveKey = squadKey.startsWith("sk_");
+          const squadBase = isLiveKey ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+          const merchantId = process.env.SQUAD_MERCHANT_ID ?? "TSIA";
+          const squadRef   = `${merchantId}_${txRef}`.slice(0, 50);
+          const amountKobo = Math.round(netAmountNgn * 100);
+          const sRes = await fetch(`${squadBase}/payout/transfer`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transaction_reference: squadRef,
+              amount: String(amountKobo),
+              bank_code: bankCode,
+              account_number: accountNumber,
+              account_name: accountName,
+              currency_id: "NGN",
+              remark: narration || `TSIA Payout | ${txRef}`,
+            }),
+            signal: AbortSignal.timeout(25000),
+          });
+          const sData = await sRes.json() as any;
+          console.log(`[SQUAD PAYOUT] ref=${squadRef} | HTTP ${sRes.status} | success=${sData.success} | msg="${sData.message}"`);
+          if (sData.success) { gatewaySuccess = true; usedGateway = "squad"; }
+          else if (sRes.status === 424) {
+            // Timeout — re-query to confirm actual status
+            try {
+              const reqRes = await fetch(`${squadBase}/payout/requery`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ transaction_reference: squadRef }),
+                signal: AbortSignal.timeout(15000),
+              });
+              const reqData = await reqRes.json() as any;
+              if (reqData.success) { gatewaySuccess = true; usedGateway = "squad"; }
+              else gatewayMsg = sData.message ?? "Squad transfer failed";
+            } catch { gatewayMsg = sData.message ?? "Squad timed out"; }
+          } else {
+            gatewayMsg = sData.message ?? "Squad transfer declined";
+          }
+        } catch (e: any) {
+          gatewayMsg = `Squad: ${e.message ?? "network error"}`;
         }
-      } catch (e: any) {
-        koraMsg = e.message ?? "Network error reaching payment gateway";
       }
 
-      if (!koraSuccess) {
-        return res.status(502).json({ message: `Bank transfer failed: ${koraMsg}. Your wallet has not been debited.` });
+      // 2) Korapay fallback
+      if (!gatewaySuccess && koraKey) {
+        console.warn(`[PAYOUT] Squad failed (${gatewayMsg || "not configured"}) — trying Korapay fallback`);
+        try {
+          const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reference: `${txRef}-K`,
+              destination: {
+                type: "bank_account",
+                amount: netAmountNgn,
+                currency: "NGN",
+                bank_account: { bank: bankCode, account: accountNumber },
+                customer: { name: accountName, email: "transfers@tsiforafrica.com" },
+              },
+              description: narration || `TSIA Bank Transfer to ${accountName} | Ref: ${txRef}`,
+            }),
+            signal: AbortSignal.timeout(30000),
+          });
+          const kData = await kRes.json() as any;
+          console.log(`[KORAPAY DISBURSE] ref=${txRef} | HTTP ${kRes.status} | status=${kData.status} | msg="${kData.message}"`);
+          if (kData.status) { gatewaySuccess = true; usedGateway = "korapay"; }
+          else gatewayMsg = kData.message ?? "Korapay transfer declined";
+        } catch (e: any) {
+          gatewayMsg = `Korapay: ${e.message ?? "network error"}`;
+        }
       }
 
-      // ── Korapay confirmed — now debit wallet and record ────────────────────────
+      if (!gatewaySuccess) {
+        return res.status(502).json({ message: `Bank transfer failed: ${gatewayMsg || "no gateway available"}. Your wallet has not been debited.` });
+      }
+
+      // ── Gateway confirmed — now debit wallet and record ─────────────────────
       await storage.updateWalletBalance(userId, (balance - transferAmount).toFixed(2));
 
-      const transferDetails = JSON.stringify({ bankCode, bankName, accountNumber, accountName, narration, netAmountNgn, vatAmount, txRef });
+      const transferDetails = JSON.stringify({ bankCode, bankName, accountNumber, accountName, narration, netAmountNgn, vatAmount, txRef, gateway: usedGateway });
       const bill = await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: transferDetails, status: "completed" });
 
-      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer_korapay", description: `Bank transfer sent — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) | Ref: ${txRef}` });
+      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: `bank_transfer_${usedGateway}`, description: `Bank transfer sent via ${usedGateway} — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) | Ref: ${txRef}` });
 
       const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) has been sent successfully. Ref: ${txRef}`;
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Sent ✓", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
@@ -6169,7 +6219,7 @@ export async function registerRoutes(
       }).catch(() => {});
 
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway: "korapay" });
+      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway: usedGateway });
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 

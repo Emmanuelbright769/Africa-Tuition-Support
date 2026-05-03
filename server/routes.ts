@@ -5635,20 +5635,31 @@ export async function registerRoutes(
     if (!amount || amount < ECOMMERCE.MIN_DEPOSIT) return res.status(400).json({ message: `Minimum deposit is above $${ECOMMERCE.MIN_DEPOSIT}` });
     if (!txHash || txHash.trim().length < 10) return res.status(400).json({ message: "Valid transaction hash is required" });
     try {
-      // Save as pending — admin must confirm before wallet is credited
-      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "pending" });
+      // ── AUTO-APPROVE: instantly credit the user's wallet, no admin queue ──
+      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "confirmed" });
 
-      // Notify user that their deposit is under review
-      const notif = await storage.createNotification({ userId, type: "deposit", title: "Deposit Received — Under Review", message: `Your crypto deposit of $${amount.toFixed(2)} has been submitted and is awaiting admin confirmation. You will be notified once it is approved.`, data: { depositId: deposit.id }, isRead: false });
-      pushToUser(userId, "notification", notif);
+      // Credit the wallet balance immediately
+      const wallet = await storage.getOrCreateWallet(userId);
+      const newBal = (parseFloat(wallet.balance || "0") + amount).toFixed(2);
+      await storage.updateWalletBalance(userId, newBal);
 
-      // Alert admin to action this deposit
-      const depositUser = await storage.getUser(userId);
-      if (depositUser) {
-        sendAdminDepositEmail({ name: `${depositUser.firstName} ${depositUser.lastName}`, email: depositUser.email, amount: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", userId }).catch(() => {});
+      // Auto-activate wallet on first qualifying deposit
+      if (!wallet.activated && parseFloat(newBal) >= 5) {
+        try { await storage.updateWalletActivation?.(userId, true); } catch {}
       }
 
-      res.json({ deposit, message: `Your deposit of $${amount.toFixed(2)} has been submitted and is pending admin confirmation.` });
+      // Record the transaction
+      await storage.createTransaction({ userId, type: "deposit", amount: amount.toFixed(2), fee: "0.00", paymentMethod: walletType || "trc20", description: `Crypto deposit auto-credited (txn: ${txHash.trim().slice(0, 12)}…)` });
+
+      // Notify user — funds are live
+      const notif = await storage.createNotification({ userId, type: "deposit", title: "✅ Wallet Funded", message: `$${amount.toFixed(2)} has been credited to your TSIA SwiftWallet instantly. New balance: $${newBal}.`, data: { depositId: deposit.id, amount: amount.toFixed(2), newBalance: newBal }, isRead: false });
+      pushToUser(userId, "notification", notif);
+      pushToUser(userId, "wallet:updated", { balance: newBal });
+
+      // Credit referral commission on first qualifying deposit (best-effort)
+      try { creditReferrerCommission(userId, amount, "wallet deposit").catch(() => {}); } catch {}
+
+      res.json({ deposit, balance: newBal, message: `$${amount.toFixed(2)} credited to your wallet. Balance: $${newBal}.` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

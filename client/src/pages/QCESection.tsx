@@ -247,12 +247,12 @@ export default function QCESection() {
               </div>
               {isActivated
                 ? <Badge className="bg-tsia-green/10 text-tsia-green border-0 text-[10px] shrink-0">Active · 30% Eligible</Badge>
-                : <Badge className="bg-tsia-green/15 text-tsia-green border border-tsia-green/30 text-[10px] shrink-0 font-semibold">Instant 30% Credit</Badge>}
+                : <Badge className="bg-tsia-green/15 text-tsia-green border border-tsia-green/30 text-[10px] shrink-0 font-semibold animate-pulse">⚡ Instant 30% Credit</Badge>}
             </div>
             <p className="text-xs text-muted-foreground">
               {isActivated
                 ? `Balance: $${qceBalance.toFixed(2)} · Eligibility: ${eligibilityPct.toFixed(1)}%`
-                : "Deposit above $5 — unlock 30% credit across all services instantly"}
+                : "Deposit above $5 → 30% credit eligibility activates instantly across V-Connect, Tenancy, Loans & more. No waiting, no admin approval."}
             </p>
           </div>
 

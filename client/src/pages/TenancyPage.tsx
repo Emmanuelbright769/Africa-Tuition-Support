@@ -57,7 +57,6 @@ export default function TenancyPage() {
   });
 
   const { data: myProperties = [] } = useQuery<any[]>({ queryKey: ["/api/tenancy/my-properties"], enabled: !!user });
-  const { data: myLeases = [] } = useQuery<any[]>({ queryKey: ["/api/tenancy/my-leases"], enabled: !!user });
 
   const listMutation = useMutation({
     mutationFn: async () => {

@@ -1833,17 +1833,34 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
       {/* ═══════════ BROWSE TAB ════════════════════════════════════════ */}
       {tab === "browse" && (
         <div className="space-y-3">
-          {/* Categories */}
-          <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 style={{ color: AMZ.text }} className="font-bold text-sm">Shop by Category</h3>
-              <button onClick={() => setShowCategoriesModal(true)} style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" data-testid="btn-view-all-cats">See all <ChevronRight className="w-3.5 h-3.5" /></button>
+          {/* When a search is active, jump straight to results — hide categories/promo/rails */}
+          {activeSearch && (
+            <div className="flex items-center gap-2 text-xs">
+              <button
+                onClick={() => { setActiveSearch(""); setSearch(""); }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-full font-semibold hover:opacity-80"
+                style={{ background: AMZ.navyMid, color: "white" }}
+                data-testid="btn-back-from-search"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Back to home
+              </button>
+              <span style={{ color: AMZ.muted }}>Showing results for <strong style={{ color: AMZ.text }}>"{activeSearch}"</strong></span>
             </div>
-            <CategoryRow activeCategory={activeCategory} setActiveCategory={setActiveCategory} />
-          </div>
+          )}
 
-          {/* Promo Banner */}
-          <PromoBanner />
+          {/* Categories — hidden during active search */}
+          {!activeSearch && (
+            <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 style={{ color: AMZ.text }} className="font-bold text-sm">Shop by Category</h3>
+                <button onClick={() => setShowCategoriesModal(true)} style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" data-testid="btn-view-all-cats">See all <ChevronRight className="w-3.5 h-3.5" /></button>
+              </div>
+              <CategoryRow activeCategory={activeCategory} setActiveCategory={setActiveCategory} />
+            </div>
+          )}
+
+          {/* Promo Banner — hidden during active search */}
+          {!activeSearch && <PromoBanner />}
 
           {/* Hero category tiles */}
           {!activeSearch && (products as Product[]).length > 0 && (

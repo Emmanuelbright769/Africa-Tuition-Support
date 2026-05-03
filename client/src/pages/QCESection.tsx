@@ -151,7 +151,26 @@ export default function QCESection() {
   const isActivated = savings?.activated ?? false;
   const creditPortalUnlocked = savings?.creditPortalUnlocked ?? false;
   const maxWithdraw = Math.max(qceBalance - QCE.MIN_BALANCE, 0);
-  const canWithdraw = qceBalance > QCE.MIN_BALANCE;
+
+  // ── 90-day lock + 24-hour window logic ──────────────────────────────────
+  const startDate    = savings?.startDate ? new Date(savings.startDate) : null;
+  const maturityDate = startDate ? new Date(startDate.getTime() + QCE.PERIOD_DAYS * 24 * 3600 * 1000) : null;
+  const windowEnd    = maturityDate ? new Date(maturityDate.getTime() + 24 * 3600 * 1000) : null;
+  const now = new Date();
+  const periodComplete    = maturityDate ? now >= maturityDate : false;
+  const inWithdrawWindow  = periodComplete && windowEnd ? now <= windowEnd : false;
+  const windowExpired     = periodComplete && windowEnd ? now > windowEnd : false;
+  const withdrawLocked    = isActivated && !inWithdrawWindow;   // locked unless in the window
+  const msToMaturity      = maturityDate ? Math.max(maturityDate.getTime() - now.getTime(), 0) : 0;
+  const msToWindowEnd     = windowEnd    ? Math.max(windowEnd.getTime()    - now.getTime(), 0) : 0;
+  const fmtCountdown = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return `${d}d ${String(h).padStart(2,"0")}h ${String(m).padStart(2,"0")}m`;
+  };
+  const canWithdraw = qceBalance > QCE.MIN_BALANCE && inWithdrawWindow;
 
   const vcEligibilityOk = eligibilityPct >= 30;
   const formatNaira = (n: number) => `₦${n.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
@@ -412,13 +431,72 @@ export default function QCESection() {
                   </div>
                 </div>
 
+                {/* ── Withdrawal lock status banner ─────────────────────────── */}
+                {inWithdrawWindow ? (
+                  <div className="bg-tsia-green/10 border-2 border-tsia-green rounded-xl p-4 flex items-start gap-3" data-testid="banner-withdraw-window-open">
+                    <Unlock className="w-5 h-5 text-tsia-green shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-tsia-green">Withdrawal window is open!</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Your 90-day savings period is complete. You have <strong className="text-tsia-green">{fmtCountdown(msToWindowEnd)}</strong> left to withdraw.
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Window closes {windowEnd?.toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</p>
+                    </div>
+                  </div>
+                ) : windowExpired ? (
+                  <div className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl p-4 flex items-start gap-3" data-testid="banner-withdraw-window-expired">
+                    <Lock className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Withdrawal window closed</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Your 24-hour withdrawal window after day 90 has passed. Contact support if you need assistance with your SwiftVault funds.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-4 flex items-start gap-3" data-testid="banner-withdraw-locked">
+                    <Lock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-amber-800 dark:text-amber-200">Withdrawal locked — 90-day savings period</p>
+                      {maturityDate ? (
+                        <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                          Your 24-hour withdrawal window opens automatically in <strong>{fmtCountdown(msToMaturity)}</strong> on {maturityDate.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">Keep your balance active to complete the 90-day period.</p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-1.5">Early withdrawal resets your credit eligibility to zero.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Progress toward maturity */}
+                {!periodComplete && maturityDate && (
+                  <div className="bg-card border rounded-xl p-3 space-y-2" data-testid="card-qce-progress">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5 text-tsia-green" /> 90-Day Progress</span>
+                      <span className="font-bold text-tsia-green">{daysActive} / {QCE.PERIOD_DAYS} days</span>
+                    </div>
+                    <Progress value={progressPct} className="h-2" />
+                    <p className="text-[10px] text-muted-foreground">
+                      Matures on {maturityDate.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })} — withdrawal window opens 24 hrs after maturity
+                    </p>
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-3">
                   <Button onClick={() => setContributeOpen(true)} className="bg-tsia-green hover:bg-tsia-green/90 text-white flex-1" data-testid="button-qce-contribute">
                     <ArrowDownLeft className="w-4 h-4 mr-2" /> Add Savings
                   </Button>
-                  <Button variant="outline" onClick={() => setWithdrawOpen(true)} disabled={!canWithdraw} className="flex-1" data-testid="button-qce-withdraw">
-                    <ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw
+                  <Button
+                    variant={inWithdrawWindow ? "default" : "outline"}
+                    onClick={() => setWithdrawOpen(true)}
+                    disabled={!canWithdraw}
+                    className={`flex-1 ${inWithdrawWindow ? "bg-tsia-green hover:bg-tsia-green/90 text-white" : ""}`}
+                    data-testid="button-qce-withdraw"
+                    title={withdrawLocked && !windowExpired ? `Locked — opens ${maturityDate?.toLocaleDateString()}` : windowExpired ? "Window closed" : ""}
+                  >
+                    {withdrawLocked ? <Lock className="w-4 h-4 mr-2" /> : <Unlock className="w-4 h-4 mr-2" />}
+                    {inWithdrawWindow ? "Withdraw Now" : "Withdraw"}
                   </Button>
                 </div>
 

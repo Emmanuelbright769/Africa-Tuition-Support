@@ -7756,6 +7756,37 @@ export async function registerRoutes(
       const amount = parseFloat(amountUsd);
       if (!amount || amount <= 0) return res.status(400).json({ message: "Valid amount required." });
 
+      // ── 90-day lock + 24-hour withdrawal window ──────────────────────────
+      const qceSavings = await storage.getOrCreateQceSavings(userId);
+      if (qceSavings.startDate) {
+        const startMs    = new Date(qceSavings.startDate).getTime();
+        const maturityMs = startMs + QCE.PERIOD_DAYS * 24 * 3600 * 1000;
+        const windowEndMs = maturityMs + 24 * 3600 * 1000;
+        const now = Date.now();
+
+        if (now < maturityMs) {
+          const hoursLeft = Math.ceil((maturityMs - now) / 3600000);
+          const days = Math.floor(hoursLeft / 24);
+          const hrs  = hoursLeft % 24;
+          const maturityDate = new Date(maturityMs).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+          return res.status(403).json({
+            message: `Your QCE SwiftVault is locked for the 90-day savings period. ${days}d ${hrs}h remaining. Your 24-hour withdrawal window opens automatically on ${maturityDate}.`,
+            locked: true,
+            maturityDate: new Date(maturityMs).toISOString(),
+            windowEndDate: new Date(windowEndMs).toISOString(),
+          });
+        }
+
+        if (now > windowEndMs) {
+          return res.status(403).json({
+            message: "Your 24-hour withdrawal window has closed. Please contact support if you need assistance with your SwiftVault funds.",
+            locked: true,
+            windowExpired: true,
+          });
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────
+
       const { savings, transaction } = await storage.withdrawFromQce(userId, amount);
 
       // Credit personal wallet

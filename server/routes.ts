@@ -3551,6 +3551,7 @@ export async function registerRoutes(
         coAffiliatePoolRate:   map["co_affiliate_pool_rate_override"] != null ? parseFloat(map["co_affiliate_pool_rate_override"]) : null,
         botFullRate:           parseFloat(map["trade_bot_full_rate"]            ?? "0.02"),
         bankTransfersEnabled:  (map["bank_transfers_enabled"] ?? "true") !== "false",
+        bankTransfersWeekendOverrideUntil: map["bank_transfers_weekend_override"] ? parseInt(map["bank_transfers_weekend_override"], 10) : 0,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3562,9 +3563,24 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
-      const { feeExchangeWithdraw, feeBankWithdraw, reserveRate, affiliateShareRate, minDeposit, minWithdraw, coAffiliatePoolRate, botFullRate, bankTransfersEnabled } = req.body;
+      const { feeExchangeWithdraw, feeBankWithdraw, reserveRate, affiliateShareRate, minDeposit, minWithdraw, coAffiliatePoolRate, botFullRate, bankTransfersEnabled, bankTransfersWeekendOverride } = req.body;
       if (bankTransfersEnabled !== undefined) {
         await storage.setPlatformSetting("bank_transfers_enabled", bankTransfersEnabled === false || bankTransfersEnabled === "false" ? "false" : "true");
+      }
+      if (bankTransfersWeekendOverride !== undefined) {
+        if (bankTransfersWeekendOverride === false || bankTransfersWeekendOverride === "false" || bankTransfersWeekendOverride === 0) {
+          await storage.setPlatformSetting("bank_transfers_weekend_override", "");
+        } else {
+          // Compute next Monday 08:00 WAT (UTC+1) → expire automatically
+          const WAT = 60 * 60 * 1000;
+          const nowWat = new Date(Date.now() + WAT);
+          const day = nowWat.getUTCDay();
+          const daysUntilMon = day === 1 ? 7 : ((8 - day) % 7) || 7;
+          const expiry = new Date(nowWat);
+          expiry.setUTCDate(nowWat.getUTCDate() + daysUntilMon);
+          expiry.setUTCHours(8, 0, 0, 0);
+          await storage.setPlatformSetting("bank_transfers_weekend_override", (expiry.getTime() - WAT).toString());
+        }
       }
       const updates = [
         { key: "trade_fee_exchange_withdraw",  val: parseFloat(feeExchangeWithdraw),  min: 0,    max: 0.5,   label: "Exchange withdraw fee" },
@@ -6093,16 +6109,42 @@ export async function registerRoutes(
     return { blocked: false };
   }
 
+  // ── Public: bank-transfer availability status (no auth) ─────────────────────
+  app.get("/api/fintech/bank-transfer-status", async (_req, res) => {
+    try {
+      const enabled = (await storage.getPlatformSetting("bank_transfers_enabled")) ?? "true";
+      const overrideRaw = await storage.getPlatformSetting("bank_transfers_weekend_override");
+      const overrideTs = overrideRaw ? parseInt(overrideRaw, 10) : 0;
+      const wb = isWeekendBlock();
+      const weekendActive = wb.blocked;
+      const weekendOverridden = weekendActive && overrideTs > Date.now();
+      const open = enabled !== "false" && (!weekendActive || weekendOverridden);
+      res.json({ open, adminClosed: enabled === "false", weekendActive, weekendOverridden, weekendOverrideUntil: overrideTs });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── POST /api/fintech/bank-transfer — Direct Korapay disburse (no admin queue) ─
   app.post("/api/fintech/bank-transfer", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      // Admin kill-switch is the SOLE gate — when admin opens transfers, they're open 24/7.
+      // Admin kill-switch — completely closes bank transfers regardless of day.
       const btEnabled = (await storage.getPlatformSetting("bank_transfers_enabled")) ?? "true";
       if (btEnabled === "false") {
         return res.status(503).json({ message: "Bank transfers are temporarily paused by the administrator. Please try again later.", bankTransfersDisabled: true });
+      }
+
+      // Weekend block — Fri 23:59 → Mon 08:00 WAT. Admin can override the
+      // current weekend by setting `bank_transfers_weekend_override` to a
+      // future timestamp (auto-expires).
+      const _wb = isWeekendBlock();
+      if (_wb.blocked) {
+        const overrideRaw = await storage.getPlatformSetting("bank_transfers_weekend_override");
+        const overrideTs  = overrideRaw ? parseInt(overrideRaw, 10) : 0;
+        if (!overrideTs || overrideTs < Date.now()) {
+          return res.status(503).json({ message: `Bank transfers are closed for the weekend. Service resumes ${_wb.until} (Nigeria time).`, weekendBlock: true });
+        }
       }
 
       const { bankCode, bankName, accountNumber, accountName, amount, narration } = req.body;

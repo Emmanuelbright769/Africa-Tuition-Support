@@ -595,8 +595,16 @@ export default function FinancialHub() {
   const totalIn  = (txHistory as any[]).filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
   const totalOut = Math.abs((txHistory as any[]).filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + parseFloat(t.amount), 0));
 
-  // ── Weekend block ─────────────────────────────────────────────────────────
-  const { blocked: weekendBlocked, resumeLabel } = checkWeekendBlock();
+  // ── Weekend block (with admin override awareness) ────────────────────────
+  const localWeekend = checkWeekendBlock();
+  const { data: btStatus } = useQuery<{ open: boolean; weekendActive: boolean; weekendOverridden: boolean }>({
+    queryKey: ["/api/fintech/bank-transfer-status"],
+    refetchInterval: 60_000,
+  });
+  const weekendBlocked = btStatus
+    ? (btStatus.weekendActive && !btStatus.weekendOverridden)
+    : localWeekend.blocked;
+  const resumeLabel = localWeekend.resumeLabel;
 
   const recentRecipients = Array.from(
     new Map((transfers as TransferRecord[]).map(t => [t.recipientId, t])).values()
@@ -2064,7 +2072,7 @@ export default function FinancialHub() {
           <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
             disabled={sendBankMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-            onClick={() => sendBankMutation.mutate()} data-testid="btn-send-bank">
+            onClick={() => { if (weekendBlocked) { toast({ title: "Weekend Pause", description: `Bank transfers are closed for the weekend. Service resumes ${resumeLabel}, unless an admin opens it sooner.`, variant: "destructive" }); return; } sendBankMutation.mutate(); }} data-testid="btn-send-bank">
             {sendBankMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Send ${fmt(amount)} via {bankGateway === "korapay" ? "Korapay" : "Squad"}
           </Button>

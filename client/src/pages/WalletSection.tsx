@@ -280,7 +280,7 @@ export default function WalletSection() {
       return d;
     },
     onSuccess: () => {
-      toast({ title: "Deposit Submitted ✓", description: "Your crypto deposit is pending admin confirmation. You'll be notified once it's approved (usually within 30 minutes).", className: "border-tsia-green" });
+      toast({ title: "Wallet Funded ✓", description: "Your crypto deposit has been credited to your wallet instantly. No admin approval needed.", className: "border-tsia-green" });
       refetchDeposits();
       setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20");
       setFundOpen(false);
@@ -1133,7 +1133,7 @@ export default function WalletSection() {
                   <Input id="crypto-txhash" placeholder="Paste your transaction hash here"
                     value={cryptoTxHash} onChange={e => setCryptoTxHash(e.target.value)}
                     className="mt-1 font-mono text-xs" data-testid="input-crypto-txhash" />
-                  <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange/wallet after sending. Your wallet will be credited within 30 minutes after admin confirmation.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Find this in your exchange/wallet after sending. Your wallet is credited instantly once submitted — no admin approval required.</p>
                 </div>
 
                 <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">

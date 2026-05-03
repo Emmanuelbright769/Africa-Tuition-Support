@@ -6242,9 +6242,10 @@ export async function registerRoutes(
       }
 
       if (!gatewaySuccess) {
-        // Surface the actual gateway error so the user understands (e.g. "amount below minimum", "invalid account", etc.)
-        const cleanMsg = gatewayMsg ? gatewayMsg.replace(/^(Squad:|Korapay:)\s*/, "") : "no gateway available";
-        return res.status(502).json({ message: `Bank transfer could not be completed: ${cleanMsg}. Your wallet was NOT debited — please try again or use a different amount.` });
+        // Log the raw gateway error for ops visibility, but show a friendly
+        // message to the user — never expose cryptic gateway internals.
+        console.warn(`[BANK TRANSFER] All gateways failed for user ${userId} amount $${transferAmount} — raw="${gatewayMsg}"`);
+        return res.status(502).json({ message: "Network error. Please try again later. Your wallet was not debited." });
       }
 
       // ── Gateway confirmed — now debit wallet and record ─────────────────────

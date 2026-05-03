@@ -566,7 +566,7 @@ export default function FinancialHub() {
       return d;
     },
     onSuccess: () => {
-      toast({ title: "Deposit Submitted ✓", description: "Pending admin confirmation — usually within 30 minutes.", className: "border-tsia-green" });
+      toast({ title: "Wallet Funded ✓", description: "Your deposit has been credited to your wallet instantly. No admin approval needed.", className: "border-tsia-green" });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/deposits"] });
       setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20");
       setView("home");

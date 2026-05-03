@@ -11,7 +11,7 @@ import {
   sendReferralCommissionEmail, sendPriceDropEmail,
   sendNewSaleEmail, sendBotEarningsEmail, sendCoAffiliateEnrollmentEmail,
   sendTourBookingEmail, sendQceActivationEmail, sendQceWithdrawalEmail,
-  sendNewArrivalEmail, sendReferralSignupEmail,
+  sendNewArrivalEmail, sendReferralSignupEmail, sendNewMovieEmail,
   sendSupportContactToAdmin, sendSupportConfirmation,
   sendAdminNewUserEmail, sendAdminDepositEmail, sendAdminWithdrawalEmail,
   sendAdminVerificationEmail, sendAdminPortalFeeEmail, sendAdminLoanEmail,
@@ -7918,6 +7918,46 @@ export async function registerRoutes(
 
   // ─── MOVIE SUBSCRIPTIONS ───────────────────────────────────────────────────
   const NETFLIX_MONTHLY_FEE = 5;
+
+  // ─── ADMIN: Broadcast "new movie added" email + notification to all users ──
+  app.post("/api/admin/movies/broadcast", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.userId || session.role !== "admin") return res.status(403).json({ message: "Admin only" });
+    const { title, description } = req.body ?? {};
+    const movieTitle = String(title ?? "").trim();
+    const movieDesc  = description ? String(description).trim() : undefined;
+    if (!movieTitle) return res.status(400).json({ message: "Movie title is required" });
+    if (movieTitle.length > 200) return res.status(400).json({ message: "Title too long (max 200 chars)" });
+    if (movieDesc && movieDesc.length > 500) return res.status(400).json({ message: "Description too long (max 500 chars)" });
+
+    res.json({ ok: true, message: "Broadcast started — emails are being sent in the background." });
+
+    setImmediate(async () => {
+      try {
+        const allUsers = await db.select({ id: users.id, email: users.email, firstName: users.firstName, role: users.role }).from(users);
+        const recipients = allUsers.filter(u => u.role !== "admin");
+        let sent = 0;
+        for (const u of recipients) {
+          try {
+            const notif = await storage.createNotification({
+              userId: u.id,
+              type: "new_movie",
+              title: "🎥 New Movie Added",
+              message: `"${movieTitle}" is now streaming on TSIA Movies & Streaming. Tap to watch.`,
+              data: { movieTitle, movieDesc: movieDesc ?? null },
+              isRead: false,
+            });
+            try { pushToUser(u.id, "notification", notif); } catch {}
+            sendNewMovieEmail(u.email, u.firstName, movieTitle, movieDesc).catch((err: any) => console.error("[EMAIL] New movie email failed:", err?.message ?? err));
+            sent++;
+          } catch {}
+        }
+        console.log(`[MOVIES] New movie broadcast "${movieTitle}" → ${sent}/${recipients.length} users`);
+      } catch (err: any) {
+        console.error("[MOVIES] Broadcast error:", err?.message ?? err);
+      }
+    });
+  });
 
   app.get("/api/movies/subscription", async (req, res) => {
     const userId = (req.session as any)?.userId;

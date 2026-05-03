@@ -1296,3 +1296,56 @@ export async function sendTransactionReceiptEmail(
 
   await sendEmail(to, subject, html);
 }
+
+// ─── Trade Window Open (Mon 12:30pm GMT) ──────────────────────────────────────
+
+export async function sendTradeWindowOpenEmail(to: string, firstName: string): Promise<void> {
+  const subject = `🟢 Itera Trading BOT — Weekly Market Window is OPEN`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🟢 The Trade Market is OPEN</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;">Hi ${firstName}, the Itera Trading BOT weekly market window has just opened.</p>
+    <div style="background:#f0f8f4;border-left:4px solid #1a6b3c;border-radius:12px;padding:18px 22px;margin:0 0 24px;">
+      <p style="color:#1a6b3c;font-weight:800;font-size:15px;margin:0 0 6px;">⏰ Window: Monday 12:30 PM GMT → Friday 12:30 PM GMT</p>
+      <p style="color:#4a5e50;font-size:13px;margin:0;">Activate your bot every working day during this window to capture the daily 2% target return and keep compounding your Trade Wallet.</p>
+    </div>
+    <div style="background:#fffbf0;border:1px solid #f0d070;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
+      <p style="color:#92400e;font-size:13px;margin:0;"><strong>Reminder:</strong> The bot can only be activated within the active window. Once Friday 12:30 PM GMT hits, activations close until Monday.</p>
+    </div>
+    ${btn("https://tsiforafrica.com/dashboard", "Open Trade Market")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
+// ─── Trade Window Close (Fri 12:30pm GMT) ─────────────────────────────────────
+
+export async function sendTradeWindowCloseEmail(to: string, firstName: string): Promise<void> {
+  const subject = `🔴 Itera Trading BOT — Weekly Market Window is now CLOSED`;
+  const html = baseTemplate(`
+    <h2 style="color:#92400e;margin:0 0 8px;font-size:22px;">🔴 The Trade Market is CLOSED</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;">Hi ${firstName}, the Itera Trading BOT weekly market window has just closed.</p>
+    <div style="background:#fff7ed;border-left:4px solid #d97706;border-radius:12px;padding:18px 22px;margin:0 0 24px;">
+      <p style="color:#92400e;font-weight:800;font-size:15px;margin:0 0 6px;">⏸ Window closed: Friday 12:30 PM GMT</p>
+      <p style="color:#4a5e50;font-size:13px;margin:0;">The bot will be available again on <strong>Monday 12:30 PM GMT</strong>. Use the weekend to top up, review your earnings, or invite friends.</p>
+    </div>
+    ${btn("https://tsiforafrica.com/dashboard", "View My Trade Wallet")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
+// ─── New Movie Added (Admin broadcast) ────────────────────────────────────────
+
+export async function sendNewMovieEmail(to: string, firstName: string, movieTitle: string, movieDescription?: string): Promise<void> {
+  const subject = `🎥 New Movie Added — "${movieTitle}" is now streaming on TSIA`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🎥 New Movie Just Added!</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;">Hi ${firstName}, a brand new title has just landed in the TSIA Movies & Streaming library.</p>
+    <div style="background:linear-gradient(135deg,#1a1a1a 0%,#2d2d2d 100%);border-radius:14px;padding:22px 24px;margin:0 0 24px;text-align:center;">
+      <p style="color:#c9a227;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin:0 0 8px;">🎬 Now Streaming</p>
+      <p style="color:#fff;font-size:22px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">${movieTitle}</p>
+      ${movieDescription ? `<p style="color:rgba(255,255,255,0.7);font-size:13px;margin:0;line-height:1.5;">${movieDescription}</p>` : ""}
+    </div>
+    <p style="color:#4a5e50;font-size:14px;margin:0 0 24px;">Open your dashboard and head to <strong>Movies & Streaming</strong> to watch it now.</p>
+    ${btn("https://tsiforafrica.com/dashboard", "🍿 Watch Now")}
+  `);
+  await sendEmail(to, subject, html);
+}

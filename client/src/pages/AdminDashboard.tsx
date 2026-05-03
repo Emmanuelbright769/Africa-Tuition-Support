@@ -17,7 +17,7 @@ import {
   ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
   Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight, GitBranch,
   Banknote, Copy, Phone, ThumbsUp, ThumbsDown, Settings, Save, Percent,
-  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info, Mail
+  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info, Mail, Film
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -132,6 +132,8 @@ export default function AdminDashboard() {
   const [notifyTitle, setNotifyTitle] = useState("");
   const [notifyMsg, setNotifyMsg] = useState("");
   const [notifyRole, setNotifyRole] = useState("all");
+  const [movieBcTitle, setMovieBcTitle] = useState("");
+  const [movieBcDesc, setMovieBcDesc] = useState("");
   const [txFilter, setTxFilter] = useState("all");
   const [editBalanceDialog, setEditBalanceDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [editBalanceAmount, setEditBalanceAmount] = useState("");
@@ -307,6 +309,18 @@ export default function AdminDashboard() {
       setNotifyMsg("");
       toast({ title: "Notification Sent ✓", description: data?.sent ? `Sent to ${data.sent} users.` : "Notification delivered." });
     },
+  });
+
+  const movieBroadcastMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/movies/broadcast", { title: movieBcTitle.trim(), description: movieBcDesc.trim() || undefined });
+      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d;
+    },
+    onSuccess: () => {
+      setMovieBcTitle(""); setMovieBcDesc("");
+      toast({ title: "🎥 Movie Broadcast Started", description: "Notifications and emails are being sent to every user in the background." });
+    },
+    onError: (e: any) => toast({ title: "Broadcast failed", description: e.message, variant: "destructive" }),
   });
 
   const editBalanceMutation = useMutation({
@@ -2705,6 +2719,57 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
                 <p className="text-xs text-slate-500 text-center">To notify a specific user, go to the Users or Affiliates tab and use the Notify button on their row.</p>
+
+                {/* ─── New Movie Broadcast ─────────────────────────────────────── */}
+                <Card className="border-0 shadow-sm">
+                  <CardHeader className="border-b pb-4">
+                    <CardTitle className="text-base flex items-center gap-2"><Film className="w-4 h-4 text-rose-500" /> Broadcast: New Movie Added</CardTitle>
+                    <CardDescription>Sends an in-app notification AND an email to every student & affiliate announcing a new movie in the streaming library.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-6 space-y-5">
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Movie Title *</Label>
+                      <Input placeholder="e.g. Inception" className="h-10 bg-muted/30" value={movieBcTitle} onChange={e => setMovieBcTitle(e.target.value)} maxLength={200} data-testid="input-movie-broadcast-title" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Short Description (optional)</Label>
+                      <Textarea placeholder="One-liner for the email and notification..." className="bg-muted/30 min-h-[80px] resize-none" value={movieBcDesc} onChange={e => setMovieBcDesc(e.target.value)} maxLength={500} data-testid="input-movie-broadcast-desc" />
+                    </div>
+                    <Button className="w-full h-11 font-semibold bg-rose-600 hover:bg-rose-700 text-white"
+                      disabled={!movieBcTitle.trim() || movieBroadcastMutation.isPending}
+                      onClick={() => movieBroadcastMutation.mutate()}
+                      data-testid="button-broadcast-movie">
+                      {movieBroadcastMutation.isPending
+                        ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Broadcasting…</>
+                        : <><Film className="w-4 h-4 mr-2" /> Broadcast New Movie to Everyone</>}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* ─── Trade Window Schedule (auto, info only) ─────────────────── */}
+                <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 via-white to-emerald-50/40">
+                  <CardHeader className="border-b pb-4">
+                    <CardTitle className="text-base flex items-center gap-2"><Coins className="w-4 h-4 text-emerald-600" /> Itera Trade BOT — Weekly Window Broadcasts</CardTitle>
+                    <CardDescription>Automated. Notifications + emails go out to every user when the market window opens and closes each week.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-6 space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-emerald-200">
+                      <div>
+                        <p className="text-sm font-semibold text-emerald-700">🟢 Market OPENS</p>
+                        <p className="text-xs text-muted-foreground">Every Monday at 12:30 PM GMT</p>
+                      </div>
+                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Auto</Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-rose-200">
+                      <div>
+                        <p className="text-sm font-semibold text-rose-700">🔴 Market CLOSES</p>
+                        <p className="text-xs text-muted-foreground">Every Friday at 12:30 PM GMT</p>
+                      </div>
+                      <Badge className="bg-rose-100 text-rose-700 border-rose-200">Auto</Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground pt-1">Each broadcast fires once per week and is de-duplicated by date — restarting the server will not re-send the same day's message.</p>
+                  </CardContent>
+                </Card>
               </motion.div>
             )}
 

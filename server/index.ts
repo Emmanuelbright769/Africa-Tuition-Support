@@ -6,7 +6,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
-import { sendEmail } from "./email";
+import { sendEmail, sendTradeWindowOpenEmail, sendTradeWindowCloseEmail } from "./email";
 
 const app = express();
 const httpServer = createServer(app);
@@ -261,12 +261,80 @@ async function startAutoRefundJob() {
   console.log("[AUTO-REFUND] Job started — checking every 60 minutes");
 }
 
+async function startTradeWindowBroadcastJob() {
+  const INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
+  const run = async () => {
+    try {
+      const now = new Date();
+      const ukParts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        weekday: "short", year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      }).formatToParts(now);
+      const get = (t: string) => ukParts.find(p => p.type === t)?.value ?? "";
+      const weekday = get("weekday"); // "Mon", "Fri", ...
+      const hour = parseInt(get("hour"));
+      const minute = parseInt(get("minute"));
+      const dateKey = `${get("year")}-${get("month")}-${get("day")}`; // YYYY-MM-DD UK
+
+      // Trigger window: 12:30–12:34 GMT on Mon (open) / Fri (close)
+      const inWindow = minute >= 30 && minute <= 34 && hour === 12;
+      if (!inWindow) return;
+
+      let kind: "open" | "close" | null = null;
+      if (weekday === "Mon") kind = "open";
+      else if (weekday === "Fri") kind = "close";
+      if (!kind) return;
+
+      const settingKey = `trade_window_${kind}_last_broadcast`;
+      const last = await storage.getPlatformSetting(settingKey);
+      if (last === dateKey) return; // already broadcast today
+
+      const allUsers = await db.select({ id: users.id, email: users.email, firstName: users.firstName, role: users.role }).from(users);
+      const recipients = allUsers.filter(u => u.role !== "admin");
+
+      const title = kind === "open"
+        ? "🟢 Trade Market Window OPEN"
+        : "🔴 Trade Market Window CLOSED";
+      const message = kind === "open"
+        ? "The Itera Trading BOT weekly window is now OPEN (Mon 12:30 PM → Fri 12:30 PM GMT). Activate your bot daily to capture the 2% return."
+        : "The Itera Trading BOT weekly window is now CLOSED. The market reopens Monday at 12:30 PM GMT.";
+
+      let sent = 0;
+      for (const u of recipients) {
+        try {
+          await storage.createNotification({
+            userId: u.id,
+            type: kind === "open" ? "trade_window_open" : "trade_window_close",
+            title, message, data: { kind, dateKey }, isRead: false,
+          });
+          if (kind === "open") {
+            await sendTradeWindowOpenEmail(u.email, u.firstName).catch(() => {});
+          } else {
+            await sendTradeWindowCloseEmail(u.email, u.firstName).catch(() => {});
+          }
+          sent++;
+        } catch { /* skip individual failures */ }
+      }
+
+      await storage.setPlatformSetting(settingKey, dateKey);
+      console.log(`[TRADE-WINDOW] Broadcast ${kind.toUpperCase()} sent to ${sent}/${recipients.length} users (UK ${dateKey} ${hour}:${minute})`);
+    } catch (e) {
+      console.error("[TRADE-WINDOW] Broadcast job error:", e);
+    }
+  };
+  await run();
+  setInterval(run, INTERVAL_MS);
+  console.log("[TRADE-WINDOW] Weekly broadcast job started — Mon/Fri 12:30 PM GMT");
+}
+
 (async () => {
   await runMigrations();
   await registerRoutes(httpServer, app);
   await seedAdmin();
   startAutoRefundJob();
   startWalletFundPurgeJob();
+  startTradeWindowBroadcastJob();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

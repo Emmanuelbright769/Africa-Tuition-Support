@@ -767,7 +767,7 @@ export default function AdminDashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans flex">
+    <div className="admin-root min-h-screen bg-slate-50 dark:bg-slate-950 font-sans flex">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex w-64 bg-slate-950 text-slate-300 flex-col flex-shrink-0 border-r border-slate-800 h-screen sticky top-0">
         <SidebarContent />

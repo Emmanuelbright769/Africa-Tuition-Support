@@ -138,3 +138,62 @@
     display: none;
   }
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Dark-mode overrides for the Admin Dashboard.
+   The admin UI uses many hardcoded slate/gray light-mode classes. Rather
+   than rewriting every occurrence, we map them to dark-friendly tones when
+   the admin root is rendered with the `.dark` theme class on <html>.
+   These rules are scoped to `.admin-root` so they don't leak to other pages.
+   ─────────────────────────────────────────────────────────────────────── */
+.dark .admin-root {
+  color-scheme: dark;
+}
+
+/* Backgrounds — surface tones */
+.dark .admin-root .bg-white,
+.dark .admin-root .bg-slate-50 { background-color: hsl(222 47% 9%) !important; }
+.dark .admin-root .bg-slate-100 { background-color: hsl(222 38% 13%) !important; }
+.dark .admin-root .bg-slate-200 { background-color: hsl(222 32% 18%) !important; }
+
+/* Text — primary, body, muted */
+.dark .admin-root .text-slate-900,
+.dark .admin-root .text-slate-800,
+.dark .admin-root .text-black { color: hsl(210 40% 96%) !important; }
+.dark .admin-root .text-slate-700 { color: hsl(215 20% 80%) !important; }
+.dark .admin-root .text-slate-600 { color: hsl(215 18% 72%) !important; }
+.dark .admin-root .text-slate-500 { color: hsl(215 16% 62%) !important; }
+.dark .admin-root .text-slate-400 { color: hsl(215 14% 55%) !important; }
+.dark .admin-root .text-gray-900,
+.dark .admin-root .text-gray-800 { color: hsl(210 40% 96%) !important; }
+.dark .admin-root .text-gray-700 { color: hsl(215 20% 80%) !important; }
+.dark .admin-root .text-gray-600 { color: hsl(215 18% 72%) !important; }
+.dark .admin-root .text-gray-500 { color: hsl(215 16% 62%) !important; }
+.dark .admin-root .text-gray-400 { color: hsl(215 14% 55%) !important; }
+
+/* Borders */
+.dark .admin-root .border-slate-100,
+.dark .admin-root .border-slate-200,
+.dark .admin-root .border-gray-100,
+.dark .admin-root .border-gray-200 { border-color: hsl(222 30% 18%) !important; }
+
+/* Tinted card backgrounds (50/50 alpha cards) */
+.dark .admin-root .bg-emerald-50,
+.dark .admin-root [class*="bg-emerald-50/"] { background-color: hsl(150 40% 12%) !important; }
+.dark .admin-root .bg-red-50,
+.dark .admin-root [class*="bg-red-50/"] { background-color: hsl(0 40% 14%) !important; }
+.dark .admin-root .bg-amber-50,
+.dark .admin-root [class*="bg-amber-50/"] { background-color: hsl(38 40% 14%) !important; }
+.dark .admin-root .bg-blue-50,
+.dark .admin-root [class*="bg-blue-50/"] { background-color: hsl(212 40% 14%) !important; }
+
+/* Inputs and selects need readable text on dark surfaces */
+.dark .admin-root input,
+.dark .admin-root textarea,
+.dark .admin-root select {
+  color: hsl(210 40% 96%);
+  background-color: hsl(222 38% 13%);
+  border-color: hsl(222 30% 22%);
+}
+.dark .admin-root input::placeholder,
+.dark .admin-root textarea::placeholder { color: hsl(215 14% 50%); }

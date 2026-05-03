@@ -40,7 +40,7 @@ export default function TenancyPage() {
   const [listOpen, setListOpen] = useState(false);
   // Calculator state
   const [calcAnnual, setCalcAnnual] = useState("500000");
-  const [calcYears, setCalcYears] = useState("5");
+  const [calcYears, setCalcYears] = useState("1");
 
   const calcResult = (() => {
     const annual = parseFloat(calcAnnual) || 0;
@@ -53,7 +53,7 @@ export default function TenancyPage() {
   const [form, setForm] = useState({
     propertyName: "", address: "", city: "", state: "", country: "Nigeria",
     propertyType: "Apartment", bedrooms: "2", bathrooms: "1",
-    annualRentNgn: "", leasePeriodYears: "5", description: "", amenities: [] as string[],
+    annualRentNgn: "", leasePeriodYears: "1", description: "", amenities: [] as string[],
   });
 
   const { data: myProperties = [] } = useQuery<any[]>({ queryKey: ["/api/tenancy/my-properties"], enabled: !!user });
@@ -71,7 +71,7 @@ export default function TenancyPage() {
       toast({ title: "Property Listed!", description: "We'll review your listing and get back to you within 24–48 hours." });
       queryClient.invalidateQueries({ queryKey: ["/api/tenancy/my-properties"] });
       setListOpen(false);
-      setForm({ propertyName: "", address: "", city: "", state: "", country: "Nigeria", propertyType: "Apartment", bedrooms: "2", bathrooms: "1", annualRentNgn: "", leasePeriodYears: "5", description: "", amenities: [] });
+      setForm({ propertyName: "", address: "", city: "", state: "", country: "Nigeria", propertyType: "Apartment", bedrooms: "2", bathrooms: "1", annualRentNgn: "", leasePeriodYears: "1", description: "", amenities: [] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -168,7 +168,7 @@ export default function TenancyPage() {
                   {[
                     { icon: DollarSign, color: "text-green-600", bg: "bg-green-50 dark:bg-green-900/20", title: "Upfront Payment", desc: "Receive full multi-year rent in one lump sum, minus a 12% TSIA service discount." },
                     { icon: Shield, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-900/20", title: "Zero Risk", desc: "TSIA guarantees your payment regardless of tenant issues. No more chasing rent." },
-                    { icon: Clock, color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20", title: "3–10 Year Terms", desc: "Choose your lease period. Longer lease = better deal for everyone." },
+                    { icon: Clock, color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-900/20", title: "1–10 Year Terms", desc: "Choose your lease period. Start from 1 year — longer lease = better deal for everyone." },
                   ].map((f, i) => (
                     <div key={i} className={`rounded-xl p-4 ${f.bg}`}>
                       <f.icon className={`w-6 h-6 mb-2 ${f.color}`} />
@@ -235,7 +235,7 @@ export default function TenancyPage() {
                   <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Landmark className="w-5 h-5 text-tsia-green" /> For Landlords — Step by Step</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                     {[
-                      { step: "1", text: "List your property on TSIA Tenancy with details about rent, location, and period (3–10 years)." },
+                      { step: "1", text: "List your property on TSIA Tenancy with details about rent, location, and period (1–10 years)." },
                       { step: "2", text: "TSIA reviews your listing and calculates the lump-sum payment (annual rent × years × 88%)." },
                       { step: "3", text: "Upon agreement, TSIA transfers the full lump sum to your account within 48 hours." },
                       { step: "4", text: "TSIA manages all tenant sourcing, monthly collections, and property management on your behalf." },
@@ -298,14 +298,22 @@ export default function TenancyPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Lease Period (years)</Label>
-                      <div className="flex gap-2">
-                        {[3, 5, 7, 10].map(y => (
+                      <div className="flex gap-2 items-center">
+                        {[1, 3].map(y => (
                           <button key={y} onClick={() => setCalcYears(y.toString())}
-                            className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${calcYears === y.toString() ? "bg-tsia-green text-white border-tsia-green" : "border-border hover:border-tsia-green/50"}`}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${calcYears === y.toString() ? "bg-tsia-green text-white border-tsia-green" : "border-border hover:border-tsia-green/50"}`}
                             data-testid={`button-calc-years-${y}`}>
                             {y} yr
                           </button>
                         ))}
+                        <Input
+                          type="number" min="1" max="30"
+                          placeholder="Custom"
+                          value={[1,3].includes(Number(calcYears)) ? "" : calcYears}
+                          onChange={e => setCalcYears(e.target.value)}
+                          className="flex-1 h-9 text-sm"
+                          data-testid="input-calc-years-custom"
+                        />
                       </div>
                     </div>
 
@@ -399,10 +407,24 @@ export default function TenancyPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Lease Period (yrs)</Label>
-                <select value={form.leasePeriodYears} onChange={e => setForm(f => ({ ...f, leasePeriodYears: e.target.value }))}
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm" data-testid="select-lease-period">
-                  {[3, 4, 5, 6, 7, 8, 10].map(y => <option key={y} value={y}>{y} years</option>)}
-                </select>
+                <div className="flex gap-2 items-center">
+                  {[1, 3].map(y => (
+                    <button key={y} type="button"
+                      onClick={() => setForm(f => ({ ...f, leasePeriodYears: y.toString() }))}
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${form.leasePeriodYears === y.toString() ? "bg-tsia-green text-white border-tsia-green" : "border-border hover:border-tsia-green/50"}`}
+                      data-testid={`btn-lease-years-${y}`}>
+                      {y} yr
+                    </button>
+                  ))}
+                  <Input
+                    type="number" min="1" max="30"
+                    placeholder="Custom yrs"
+                    value={[1,3].includes(Number(form.leasePeriodYears)) ? "" : form.leasePeriodYears}
+                    onChange={e => setForm(f => ({ ...f, leasePeriodYears: e.target.value }))}
+                    className="flex-1 h-10 text-sm"
+                    data-testid="input-lease-years-custom"
+                  />
+                </div>
               </div>
             </div>
 

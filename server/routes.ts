@@ -5424,6 +5424,20 @@ export async function registerRoutes(
   // ── Korapay webhook ───────────────────────────────────────────────────────
   app.post("/api/webhook/korapay", async (req, res) => {
     try {
+      // ── Signature validation — Korapay sends x-korapay-signature (HMAC-SHA512 of raw body) ──
+      const koraSecret = process.env.KORAPAY_SECRET_KEY ?? "";
+      const sigHeader = req.headers["x-korapay-signature"] as string | undefined;
+      if (sigHeader && koraSecret) {
+        const { createHmac } = await import("crypto");
+        const rawBody = (req as any).rawBody;
+        const payload = rawBody ? rawBody.toString() : JSON.stringify(req.body);
+        const computed = createHmac("sha512", koraSecret).update(payload).digest("hex");
+        if (computed !== sigHeader) {
+          console.error("[WEBHOOK/Korapay] Signature mismatch — ignoring request");
+          return res.sendStatus(200); // Return 200 so Korapay stops retrying; just don't process
+        }
+      }
+
       const { event, data } = req.body;
       if (event === "charge.success" && data?.status === "success") {
         const ref = data.reference as string;

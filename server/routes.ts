@@ -4873,13 +4873,16 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "User not found" });
       const activeLoan = await storage.getActiveLoanByUser(userId);
       if (user.role === "student") {
-        const verification = await storage.getVerificationByUser(userId);
-        if (!verification || verification.verificationStatus !== "verified") {
-          return res.json({ eligible: false, reason: "You must complete enrollment (identity + WAEC + biometric + $3 fee) to qualify for a student loan.", limitUsd: 0 });
+        const qce = await storage.getOrCreateQceSavings(userId);
+        const qceBalance = parseFloat(qce.balance || "0");
+        if (qceBalance <= 0) {
+          return res.json({ eligible: false, reason: "Make your first QCE SwiftVault deposit to instantly unlock student loan eligibility.", limitUsd: 0 });
         }
-        const tier = verification.tier || "none";
-        const limitUsd = calculateStudentLoanLimit(tier);
-        res.json({ eligible: limitUsd > 0, limitUsd, tier, activeLoan: activeLoan || null, interestRate: 10, terms: [6, 12, 18] });
+        const verification = await storage.getVerificationByUser(userId);
+        const tier = verification?.verificationStatus === "verified" ? (verification.tier || "none") : "none";
+        const tierLimit = calculateStudentLoanLimit(tier);
+        const limitUsd = tierLimit > 0 ? tierLimit : 50;
+        res.json({ eligible: true, limitUsd, tier: tier === "none" ? "starter" : tier, activeLoan: activeLoan || null, interestRate: 10, terms: [6, 12, 18] });
       } else if (user.role === "affiliate") {
         const referrals = await storage.getReferralsByCode(user.affiliateCode || "");
         const tradeWallet = await storage.getOrCreateTradeWallet(userId);
@@ -4912,9 +4915,12 @@ export async function registerRoutes(
       let interestRate = 10;
       let maxLimit = 0;
       if (user.role === "student") {
+        const qce = await storage.getOrCreateQceSavings(userId);
+        if (parseFloat(qce.balance || "0") <= 0) return res.status(400).json({ message: "Make your first QCE SwiftVault deposit to unlock student loan eligibility." });
         const verification = await storage.getVerificationByUser(userId);
-        if (!verification || verification.verificationStatus !== "verified") return res.status(400).json({ message: "You must be a verified student to apply for a student loan." });
-        maxLimit = calculateStudentLoanLimit(verification.tier || "none");
+        const tier = verification?.verificationStatus === "verified" ? (verification.tier || "none") : "none";
+        const tierLimit = calculateStudentLoanLimit(tier);
+        maxLimit = tierLimit > 0 ? tierLimit : 50;
         interestRate = 10;
       } else if (user.role === "affiliate") {
         const referrals = await storage.getReferralsByCode(user.affiliateCode || "");

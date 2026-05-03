@@ -7,6 +7,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { sendEmail, sendTradeWindowOpenEmail, sendTradeWindowCloseEmail } from "./email";
+import { pushToUser } from "./realtime";
 
 const app = express();
 const httpServer = createServer(app);
@@ -328,6 +329,139 @@ async function startTradeWindowBroadcastJob() {
   console.log("[TRADE-WINDOW] Weekly broadcast job started — Mon/Fri 12:30 PM GMT");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Background on-chain verifier for crypto wallet deposits.
+// Auto-credited TRC20/BEP20 deposits are checked against TronScan / BscScan
+// every 5 min. After a 10-min grace period:
+//   • If the txHash matches our recipient address + amount → status="verified"
+//   • If invalid (fake hash, wrong recipient, wrong amount) → wallet is debited,
+//     status="reversed", user is notified.
+// Deposits older than 48h that never resolved → status="expired_unverified".
+// ─────────────────────────────────────────────────────────────────────────────
+async function startCryptoDepositVerifierJob() {
+  const INTERVAL_MS  = 5 * 60 * 1000;
+  const GRACE_MS     = 10 * 60 * 1000;
+  const TSIA_TRC20   = "TGwtyWAmBkcQiuD4CFavKr8ySTJ8zFt9Mj";
+  const TSIA_BEP20   = "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977".toLowerCase();
+  const AMOUNT_TOLERANCE = 0.5; // dollars
+
+  async function verifyTron(txHash: string, expectedUsd: number): Promise<{ ok: boolean; reason?: string }> {
+    try {
+      const r = await fetch(`https://apilist.tronscanapi.com/api/transaction-info?hash=${encodeURIComponent(txHash)}`, {
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!r.ok) return { ok: false, reason: `tronscan http ${r.status}` };
+      const d: any = await r.json();
+      if (!d || Object.keys(d).length === 0) return { ok: false, reason: "tx not found on TRON" };
+      if (d.contractRet && d.contractRet !== "SUCCESS") return { ok: false, reason: `tx status: ${d.contractRet}` };
+      const transfer = d.tokenTransferInfo;
+      if (!transfer) return { ok: false, reason: "no token transfer in this tx" };
+      if (transfer.to_address !== TSIA_TRC20) return { ok: false, reason: `recipient mismatch (${transfer.to_address || "unknown"})` };
+      const symbol = String(transfer.symbol || "").toUpperCase();
+      if (symbol !== "USDT") return { ok: false, reason: `not USDT (got ${symbol || "unknown"})` };
+      const decimals = parseInt(transfer.decimals || "6", 10) || 6;
+      const amt = parseFloat(transfer.amount_str || "0") / Math.pow(10, decimals);
+      if (Math.abs(amt - expectedUsd) > AMOUNT_TOLERANCE) {
+        return { ok: false, reason: `amount mismatch (chain ${amt.toFixed(2)} vs claimed ${expectedUsd.toFixed(2)})` };
+      }
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, reason: `tron api error: ${e?.message ?? "network"}` };
+    }
+  }
+
+  async function verifyBsc(txHash: string, expectedUsd: number): Promise<{ ok: boolean; reason?: string }> {
+    try {
+      const apiKey = process.env.BSCSCAN_API_KEY ? `&apikey=${process.env.BSCSCAN_API_KEY}` : "";
+      // Step 1 — receipt status
+      const rs = await fetch(`https://api.bscscan.com/api?module=transaction&action=gettxreceiptstatus&txhash=${encodeURIComponent(txHash)}${apiKey}`, {
+        signal: AbortSignal.timeout(15000),
+      });
+      const ds: any = await rs.json();
+      if (ds?.result?.status !== "1") return { ok: false, reason: "tx failed or not found on BSC" };
+      // Step 2 — list token transfers TO our address & match this hash
+      const rt = await fetch(`https://api.bscscan.com/api?module=account&action=tokentx&address=${TSIA_BEP20}&startblock=0&endblock=99999999&sort=desc${apiKey}`, {
+        signal: AbortSignal.timeout(15000),
+      });
+      const dt: any = await rt.json();
+      if (!Array.isArray(dt?.result)) return { ok: false, reason: "could not fetch token transfers" };
+      const tx = dt.result.find((t: any) => String(t.hash || "").toLowerCase() === txHash.toLowerCase());
+      if (!tx) return { ok: false, reason: "tx not found among our address inflows" };
+      if (String(tx.to || "").toLowerCase() !== TSIA_BEP20) return { ok: false, reason: "recipient mismatch" };
+      const sym = String(tx.tokenSymbol || "").toUpperCase();
+      if (!["USDT", "BUSD", "USDC"].includes(sym)) return { ok: false, reason: `unsupported token (${sym})` };
+      const decimals = parseInt(tx.tokenDecimal || "18", 10) || 18;
+      const amt = parseFloat(tx.value || "0") / Math.pow(10, decimals);
+      if (Math.abs(amt - expectedUsd) > AMOUNT_TOLERANCE) {
+        return { ok: false, reason: `amount mismatch (chain ${amt.toFixed(2)} vs claimed ${expectedUsd.toFixed(2)})` };
+      }
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, reason: `bsc api error: ${e?.message ?? "network"}` };
+    }
+  }
+
+  const run = async () => {
+    try {
+      const candidates = await storage.getCryptoDepositsNeedingVerification();
+      if (candidates.length === 0) return;
+      const now = Date.now();
+      for (const dep of candidates) {
+        const createdMs = new Date(dep.createdAt as any).getTime();
+        const age = now - createdMs;
+        if (age < GRACE_MS) continue; // wait for tx confirmations
+        const wt = String(dep.walletType || "").toLowerCase();
+        const expected = parseFloat(dep.amountUsd as any);
+        if (!isFinite(expected) || expected <= 0) continue;
+
+        let result: { ok: boolean; reason?: string };
+        if (wt === "trc20") result = await verifyTron(dep.txHash, expected);
+        else if (wt === "bep20") result = await verifyBsc(dep.txHash, expected);
+        else continue;
+
+        if (result.ok) {
+          await storage.updateWalletDeposit(dep.id, { status: "verified" } as any);
+          console.log(`[CRYPTO-VERIFY] ✓ Deposit #${dep.id} (${wt}) verified on-chain — $${expected.toFixed(2)}`);
+        } else {
+          // Reverse the credit
+          try {
+            const wallet = await storage.getOrCreateWallet(dep.userId);
+            const newBal = Math.max(0, parseFloat(wallet.balance as any) - expected).toFixed(2);
+            await storage.updateWalletBalance(dep.userId, newBal);
+            await storage.updateWalletDeposit(dep.id, { status: "reversed" } as any);
+            await storage.createTransaction({
+              userId: dep.userId,
+              type: "refund",
+              amount: (-expected).toFixed(2),
+              fee: "0.00",
+              paymentMethod: wt,
+              description: `Crypto deposit reversed — could not verify on-chain. Reason: ${result.reason}. Tx: ${String(dep.txHash).slice(0, 14)}…`,
+            } as any);
+            const notif = await storage.createNotification({
+              userId: dep.userId,
+              type: "deposit",
+              title: "❌ Crypto Deposit Reversed",
+              message: `We could not verify your ${wt.toUpperCase()} deposit on-chain (${result.reason}). $${expected.toFixed(2)} has been removed from your wallet. New balance: $${newBal}. If you believe this is a mistake, contact support with your tx hash.`,
+              data: { depositId: dep.id, reason: result.reason, txHash: dep.txHash },
+              isRead: false,
+            } as any);
+            try { pushToUser(dep.userId, "notification", notif); } catch {}
+            try { pushToUser(dep.userId, "wallet:updated", { balance: newBal }); } catch {}
+            console.warn(`[CRYPTO-VERIFY] ✗ Deposit #${dep.id} (${wt}) REVERSED — ${result.reason}`);
+          } catch (revErr: any) {
+            console.error(`[CRYPTO-VERIFY] Failed to reverse deposit #${dep.id}:`, revErr?.message ?? revErr);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error("[CRYPTO-VERIFY] Job error:", e?.message ?? e);
+    }
+  };
+
+  setInterval(run, INTERVAL_MS);
+  console.log("[CRYPTO-VERIFY] Background on-chain verifier started — checks confirmed crypto deposits every 5 min");
+}
+
 (async () => {
   await runMigrations();
   await registerRoutes(httpServer, app);
@@ -335,6 +469,7 @@ async function startTradeWindowBroadcastJob() {
   startAutoRefundJob();
   startWalletFundPurgeJob();
   startTradeWindowBroadcastJob();
+  startCryptoDepositVerifierJob();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

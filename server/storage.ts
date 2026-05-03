@@ -202,6 +202,7 @@ export interface IStorage {
   getWalletDepositsByUser(userId: number): Promise<WalletDeposit[]>;
   getPendingWalletDeposits(): Promise<(WalletDeposit & { user: User })[]>;
   updateWalletDeposit(id: number, data: Partial<WalletDeposit>): Promise<WalletDeposit>;
+  getCryptoDepositsNeedingVerification(): Promise<WalletDeposit[]>;
   deleteWalletDeposit(id: number): Promise<void>;
 
   // Fintech: P2P Transfers
@@ -1381,6 +1382,20 @@ export class DatabaseStorage implements IStorage {
   async updateWalletDeposit(id: number, data: Partial<WalletDeposit>): Promise<WalletDeposit> {
     const [d] = await db.update(walletDeposits).set(data as any).where(eq(walletDeposits.id, id)).returning();
     return d;
+  }
+
+  // ── Crypto deposits needing on-chain verification ─────────────────────────
+  // Returns auto-credited TRC20/BEP20 deposits in last 48h still in "confirmed" state
+  async getCryptoDepositsNeedingVerification(): Promise<WalletDeposit[]> {
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const rows = await db.select().from(walletDeposits)
+      .where(and(
+        eq(walletDeposits.status, "confirmed"),
+        sql`LOWER(${walletDeposits.walletType}) IN ('trc20','bep20')`,
+        sql`${walletDeposits.createdAt} > ${cutoff}`,
+      ))
+      .orderBy(desc(walletDeposits.createdAt));
+    return rows;
   }
 
   async deleteWalletDeposit(id: number): Promise<void> {

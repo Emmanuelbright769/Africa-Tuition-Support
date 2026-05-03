@@ -158,6 +158,8 @@ export default function AdminDashboard() {
   const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "", silverMin: "", silverMax: "", goldMin: "", goldMax: "", platinumMin: "", platinumMax: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [tradeForm, setTradeForm] = useState({ feeExchangeWithdraw: "", feeBankWithdraw: "", reserveRate: "", affiliateShareRate: "", minDeposit: "", minWithdraw: "", coAffiliatePoolRate: "", botFullRate: "" });
+  const [bankTransfersEnabled, setBankTransfersEnabled] = useState<boolean>(true);
+  const [bankToggleSaving, setBankToggleSaving] = useState(false);
   const [tradeSaved, setTradeSaved] = useState(false);
   const [tosEmailState, setTosEmailState] = useState<"idle" | "sending" | "done">("idle");
   const [tosEmailResult, setTosEmailResult] = useState("");
@@ -202,7 +204,7 @@ export default function AdminDashboard() {
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 600_000 });
   const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
-  const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" });
+  const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number; bankTransfersEnabled: boolean }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" });
   const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
@@ -676,6 +678,12 @@ export default function AdminDashboard() {
       platinumMax: t ? t.platinum.max.toString() : "230",
     });
   }, [platformSettingsData]);
+
+  useEffect(() => {
+    if (tradeSettingsData && typeof tradeSettingsData.bankTransfersEnabled === "boolean") {
+      setBankTransfersEnabled(tradeSettingsData.bankTransfersEnabled);
+    }
+  }, [tradeSettingsData]);
 
   if (authLoading || (!user && !authLoading)) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin w-8 h-8 border-4 border-tsia-green border-t-transparent rounded-full" /></div>;
 
@@ -3154,6 +3162,76 @@ export default function AdminDashboard() {
                           </p>
                         </div>
                       ))}
+                    </CardContent>
+                  </Card>
+
+                  {/* ── Fintech Hub Kill-Switches ───────────────────────── */}
+                  <Card className={`border-0 shadow-sm border-l-4 ${bankTransfersEnabled ? "border-l-emerald-500" : "border-l-red-500"}`}>
+                    <CardHeader className="border-b pb-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${bankTransfersEnabled ? "bg-emerald-50" : "bg-red-50"}`}>
+                          <Banknote className={`w-5 h-5 ${bankTransfersEnabled ? "text-emerald-600" : "text-red-600"}`} />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">Fintech Hub — Bank Transfers</CardTitle>
+                          <CardDescription>Open or close outgoing bank transfers across the entire platform.</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-4">
+                      <div className={`flex items-center justify-between p-4 rounded-xl border-2 ${bankTransfersEnabled ? "bg-emerald-50/50 border-emerald-200" : "bg-red-50/50 border-red-200"}`}>
+                        <div className="space-y-1">
+                          <p className="font-semibold text-sm flex items-center gap-2">
+                            {bankTransfersEnabled
+                              ? <><ToggleRight className="w-5 h-5 text-emerald-600" /> Bank Transfers are <span className="text-emerald-700">OPEN</span></>
+                              : <><ToggleLeft className="w-5 h-5 text-red-600" /> Bank Transfers are <span className="text-red-700">CLOSED</span></>}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {bankTransfersEnabled
+                              ? "Users can send bank transfers via Korapay disburse from the Fintech Hub."
+                              : "All bank transfer attempts return 503 with a friendly message. No wallets are debited."}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={bankTransfersEnabled ? "destructive" : "default"}
+                          className={`font-semibold ${bankTransfersEnabled ? "" : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}
+                          disabled={bankToggleSaving}
+                          data-testid="button-toggle-bank-transfers"
+                          onClick={async () => {
+                            const next = !bankTransfersEnabled;
+                            setBankToggleSaving(true);
+                            try {
+                              const res = await apiRequest("PUT", "/api/admin/trade-settings", {
+                                feeExchangeWithdraw: tradeSettingsData?.feeExchangeWithdraw?.toString() ?? "0.05",
+                                feeBankWithdraw:     tradeSettingsData?.feeBankWithdraw?.toString()     ?? "0.08",
+                                reserveRate:         tradeSettingsData?.reserveRate?.toString()         ?? "0.20",
+                                affiliateShareRate:  tradeSettingsData?.affiliateShareRate?.toString()  ?? "0.05",
+                                minDeposit:          tradeSettingsData?.minDeposit?.toString()          ?? "10",
+                                minWithdraw:         tradeSettingsData?.minWithdraw?.toString()         ?? "5",
+                                botFullRate:         tradeSettingsData?.botFullRate?.toString()         ?? "0.02",
+                                coAffiliatePoolRate: tradeSettingsData?.coAffiliatePoolRate != null ? tradeSettingsData.coAffiliatePoolRate.toString() : "",
+                                bankTransfersEnabled: next,
+                              });
+                              if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+                              setBankTransfersEnabled(next);
+                              refetchTradeSettings();
+                              toast({ title: next ? "Bank Transfers Re-Opened ✓" : "Bank Transfers Closed ✓", description: next ? "Users can now send bank transfers again." : "All bank transfer attempts will be blocked." });
+                            } catch (e: any) {
+                              toast({ title: "Toggle failed", description: e.message, variant: "destructive" });
+                            } finally {
+                              setBankToggleSaving(false);
+                            }
+                          }}
+                        >
+                          {bankToggleSaving
+                            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Saving…</>
+                            : (bankTransfersEnabled ? <><ToggleLeft className="w-4 h-4 mr-1.5" />Close Bank Transfers</> : <><ToggleRight className="w-4 h-4 mr-1.5" />Re-Open Bank Transfers</>)}
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+                        <strong>Note:</strong> Airtime, data, and bill payments stay live regardless of this toggle. This only blocks the Korapay bank disburse flow.
+                      </p>
                     </CardContent>
                   </Card>
 

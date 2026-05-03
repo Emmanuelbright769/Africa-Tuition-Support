@@ -163,3 +163,10 @@ Full-stack education fintech platform that manages student sponsorship funding a
 - Uses CSS custom properties with `.dark` class toggle
 - ThemeProvider stores preference in localStorage as "tsia-theme"
 - Three modes: light, dark, system (auto-detects OS preference)
+
+## Recent Additions (May 2026)
+- **Background Crypto Verifier** — `startCryptoDepositVerifierJob` (server/index.ts) runs every 5 min. Checks auto-credited TRC20/BEP20 deposits ≥10 min old against TronScan + BscScan public APIs. Validates recipient (TGwt… / 0x37d…), USDT/BUSD/USDC token, and amount within $0.50 tolerance. Marks valid → `verified`; invalid → `reversed` (debits wallet + sends notification with reason).
+- **Bank-Transfer Admin Kill-Switch** — Platform setting `bank_transfers_enabled` (default `"true"`). Gated at `/api/fintech/bank-transfer` (returns 503 + `bankTransfersDisabled` flag when off). Toggle UI: Admin → Settings → "Fintech Hub — Bank Transfers" card. Persists via PUT `/api/admin/trade-settings` (added `bankTransfersEnabled` field; GET returns it too).
+- **Webhook URLs to register in payment dashboards:**
+  - Korapay: `https://<your-domain>/api/webhook/korapay` (events: `charge.success`)
+  - Squad:   `https://<your-domain>/api/webhook/squad`   (events: `charge_successful`, `transaction.success`)

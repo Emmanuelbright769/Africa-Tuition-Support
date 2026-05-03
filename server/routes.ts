@@ -3549,6 +3549,7 @@ export async function registerRoutes(
         minWithdraw:           parseFloat(map["trade_min_withdraw"]             ?? "5"),
         coAffiliatePoolRate:   map["co_affiliate_pool_rate_override"] != null ? parseFloat(map["co_affiliate_pool_rate_override"]) : null,
         botFullRate:           parseFloat(map["trade_bot_full_rate"]            ?? "0.02"),
+        bankTransfersEnabled:  (map["bank_transfers_enabled"] ?? "true") !== "false",
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -3560,7 +3561,10 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
-      const { feeExchangeWithdraw, feeBankWithdraw, reserveRate, affiliateShareRate, minDeposit, minWithdraw, coAffiliatePoolRate, botFullRate } = req.body;
+      const { feeExchangeWithdraw, feeBankWithdraw, reserveRate, affiliateShareRate, minDeposit, minWithdraw, coAffiliatePoolRate, botFullRate, bankTransfersEnabled } = req.body;
+      if (bankTransfersEnabled !== undefined) {
+        await storage.setPlatformSetting("bank_transfers_enabled", bankTransfersEnabled === false || bankTransfersEnabled === "false" ? "false" : "true");
+      }
       const updates = [
         { key: "trade_fee_exchange_withdraw",  val: parseFloat(feeExchangeWithdraw),  min: 0,    max: 0.5,   label: "Exchange withdraw fee" },
         { key: "trade_fee_bank_withdraw",      val: parseFloat(feeBankWithdraw),      min: 0,    max: 0.5,   label: "Bank withdraw fee" },
@@ -6067,6 +6071,12 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const _wb1 = isWeekendBlock();
       if (_wb1.blocked) return res.status(503).json({ message: `Fintech services are paused for the weekend. Transactions resume ${_wb1.until} (Nigeria time).`, weekendBlock: true });
+
+      // Admin kill-switch — bank transfers can be paused from the admin dashboard
+      const btEnabled = (await storage.getPlatformSetting("bank_transfers_enabled")) ?? "true";
+      if (btEnabled === "false") {
+        return res.status(503).json({ message: "Bank transfers are temporarily paused by the administrator. Please try again later.", bankTransfersDisabled: true });
+      }
 
       const { bankCode, bankName, accountNumber, accountName, amount, narration } = req.body;
       if (!bankCode || !accountNumber || !accountName || !amount) {

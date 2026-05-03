@@ -103,7 +103,7 @@ const NAV = [
   { id: "withdrawals",  icon: Banknote,       label: "Bank W/D",      badgeKey: "pendingWithdrawals" },
   { id: "crypto_withdrawals", icon: Coins,    label: "Crypto W/D",    badgeKey: "pendingCryptoWd" },
   { id: "reserve",      icon: ShieldCheck,    label: "Str. Reserve" },
-  { id: "trustfunders", icon: Award,          label: "Trust Funders" },
+  { id: "trustfunders", icon: Award,          label: "Affiliate Trust Fund" },
   { id: "messages",     icon: MessageSquare,  label: "Forum Messages" },
   { id: "notifications", icon: Bell,          label: "Notifications" },
   { id: "enrollment",   icon: UserPlus,       label: "Enrollment" },
@@ -204,7 +204,7 @@ export default function AdminDashboard() {
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 600_000 });
   const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
-  const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number; bankTransfersEnabled: boolean }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" });
+  const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number; bankTransfersEnabled: boolean }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" || activeTab === "bank_transfers" });
   const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
@@ -1881,7 +1881,64 @@ export default function AdminDashboard() {
 
             {/* ═══════════════════════ PENDING BANK TRANSFERS ══════════════════════ */}
             {activeTab === "bank_transfers" && (
-              <motion.div key="bank_transfers" variants={slide} initial="hidden" animate="visible" exit="exit">
+              <motion.div key="bank_transfers" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+
+                {/* ── Quick kill-switch banner (full controls also live in Settings) ── */}
+                <Card className={`border-0 shadow-sm border-l-4 ${bankTransfersEnabled ? "border-l-emerald-500" : "border-l-red-500"}`}>
+                  <CardContent className="pt-5 pb-5">
+                    <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl border-2 ${bankTransfersEnabled ? "bg-emerald-50/50 border-emerald-200" : "bg-red-50/50 border-red-200"}`}>
+                      <div className="space-y-1">
+                        <p className="font-semibold text-sm flex items-center gap-2">
+                          {bankTransfersEnabled
+                            ? <><ToggleRight className="w-5 h-5 text-emerald-600" /> Bank Transfers are <span className="text-emerald-700">OPEN</span></>
+                            : <><ToggleLeft className="w-5 h-5 text-red-600" /> Bank Transfers are <span className="text-red-700">CLOSED</span></>}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {bankTransfersEnabled
+                            ? "Users can send bank transfers via the Fintech Hub. Toggle to instantly block all outgoing bank transfers platform-wide."
+                            : "All bank transfer attempts are blocked. Wallets are not debited. Airtime/data/bill payments still work."}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={bankTransfersEnabled ? "destructive" : "default"}
+                        className={`font-semibold shrink-0 ${bankTransfersEnabled ? "" : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}
+                        disabled={bankToggleSaving}
+                        data-testid="button-toggle-bank-transfers-tab"
+                        onClick={async () => {
+                          const next = !bankTransfersEnabled;
+                          setBankToggleSaving(true);
+                          try {
+                            const res = await apiRequest("PUT", "/api/admin/trade-settings", {
+                              feeExchangeWithdraw: tradeSettingsData?.feeExchangeWithdraw?.toString() ?? "0.05",
+                              feeBankWithdraw:     tradeSettingsData?.feeBankWithdraw?.toString()     ?? "0.08",
+                              reserveRate:         tradeSettingsData?.reserveRate?.toString()         ?? "0.20",
+                              affiliateShareRate:  tradeSettingsData?.affiliateShareRate?.toString()  ?? "0.05",
+                              minDeposit:          tradeSettingsData?.minDeposit?.toString()          ?? "10",
+                              minWithdraw:         tradeSettingsData?.minWithdraw?.toString()         ?? "5",
+                              botFullRate:         tradeSettingsData?.botFullRate?.toString()         ?? "0.02",
+                              coAffiliatePoolRate: tradeSettingsData?.coAffiliatePoolRate != null ? tradeSettingsData.coAffiliatePoolRate.toString() : "",
+                              bankTransfersEnabled: next,
+                            });
+                            if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+                            setBankTransfersEnabled(next);
+                            refetchTradeSettings();
+                            toast({ title: next ? "Bank Transfers Re-Opened ✓" : "Bank Transfers Closed ✓", description: next ? "Users can now send bank transfers again." : "All bank transfer attempts will be blocked." });
+                          } catch (e: any) {
+                            toast({ title: "Toggle failed", description: e.message, variant: "destructive" });
+                          } finally {
+                            setBankToggleSaving(false);
+                          }
+                        }}
+                      >
+                        {bankToggleSaving
+                          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Saving…</>
+                          : (bankTransfersEnabled ? <><ToggleLeft className="w-4 h-4 mr-1.5" />Close Bank Transfers</> : <><ToggleRight className="w-4 h-4 mr-1.5" />Re-Open Bank Transfers</>)}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
                     <CardTitle className="text-base flex items-center gap-2">

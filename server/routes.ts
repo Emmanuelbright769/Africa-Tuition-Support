@@ -1308,26 +1308,8 @@ export async function registerRoutes(
     res.json(getWithdrawalWindowStatus());
   });
 
-  app.post("/api/wallet/withdrawal-otp/request", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const windowStatus = getWithdrawalWindowStatus();
-      if (!windowStatus.open) {
-        return res.status(403).json({ message: windowStatus.message });
-      }
-      const { amount, type } = req.body;
-      if (!amount || isNaN(parseFloat(amount))) return res.status(400).json({ message: "A valid amount is required" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      const purpose = type === "crypto" ? "crypto_withdrawal" : "bank_withdrawal";
-      const code = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit OTP
-      await storage.createWithdrawalOtp(userId, code, purpose);
-      await sendWithdrawalOtpEmail(user.email, user.firstName, code, parseFloat(amount).toFixed(2), type === "crypto" ? "crypto" : "bank");
-      res.json({ success: true, message: `OTP sent to ${user.email.replace(/(.{2}).+(@.+)/, "$1***$2")}` });
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
-    }
+  app.post("/api/wallet/withdrawal-otp/request", (_req, res) => {
+    res.status(410).json({ message: "Wallet withdrawals are no longer supported. Use Fintech Hub for all money-out flows." });
   });
 
   // ── Transfer OTP — request code for wallet-to-wallet transfers ─────────────
@@ -1348,7 +1330,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/wallet/withdraw", async (req, res) => {
+  app.post("/api/wallet/withdraw", (_req, res) => {
+    res.status(410).json({ message: "Wallet withdrawals are no longer supported. Use Fintech Hub for all money-out flows." });
+  });
+
+  app.post("/api/wallet/withdraw__disabled", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1534,8 +1520,12 @@ export async function registerRoutes(
     res.json(txns);
   });
 
-  // ── USDT Crypto Withdrawal (manual fulfilment) ───────────────────────────
-  app.post("/api/wallet/withdraw-crypto", async (req, res) => {
+  // ── USDT Crypto Withdrawal — disabled (wallet is deposit-only; use Fintech Hub) ──
+  app.post("/api/wallet/withdraw-crypto", (_req, res) => {
+    res.status(410).json({ message: "Wallet withdrawals are no longer supported. Use Fintech Hub for all money-out flows." });
+  });
+
+  app.post("/api/wallet/withdraw-crypto__disabled", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });

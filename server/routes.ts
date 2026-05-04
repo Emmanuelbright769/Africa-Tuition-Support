@@ -3176,7 +3176,7 @@ export async function registerRoutes(
         const withdrawn = parseFloat(ca.withdrawnAmount ?? "0");
         const earnedAmount = parseFloat((totalPool * shareFraction).toFixed(6));
         const availableAmount = parseFloat(Math.max(0, earnedAmount - withdrawn).toFixed(6));
-        const wallet = u ? await storage.getWalletByUser(u.id) : null;
+        const wallet = u ? await storage.getOrCreateWallet(u.id) : null;
         return {
           ...ca,
           userName: u ? `${u.firstName} ${u.lastName}` : "Unknown",

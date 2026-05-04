@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, type ComponentProps } from "react";
+import { useLocation } from "wouter";
 import { TransactionReceipt, type ReceiptRow } from "@/components/ui/TransactionReceipt";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -54,6 +55,7 @@ const itemVariants = {
 };
 
 export default function WalletSection() {
+  const [, setLocation] = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
   const { formatAmount, formatAmountVAT, rateLabel, rateLabelVAT, currency, loading: currencyLoading } = useLocalCurrency();
@@ -1169,7 +1171,27 @@ export default function WalletSection() {
 
             {/* Options */}
             <div className="flex-1 px-5 py-8 space-y-4">
-              {/* ── USDT Crypto — Fully Active ── */}
+              {/* ── Bank Transfer — Auto-processed ── */}
+              <button
+                onClick={() => { setWithdrawChoiceOpen(false); setLocation("/wallet"); }}
+                className="w-full flex items-center gap-4 p-5 rounded-3xl bg-[#1a5c38] hover:bg-[#1e6b42] active:scale-[0.98] transition-all text-left group shadow-lg"
+                data-testid="btn-choose-bank-withdraw"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
+                  <Banknote className="w-8 h-8 text-amber-300" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-black text-lg text-white leading-tight">Bank Withdrawal</p>
+                    <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>
+                  </div>
+                  <p className="text-sm text-white/60">NGN to Nigerian bank · 7.5% VAT</p>
+                  <p className="text-xs text-white/40 mt-0.5">Auto-processed via Squad or Korapay</p>
+                </div>
+                <ArrowUpRight className="w-6 h-6 text-white/70 group-hover:text-white shrink-0 transition-colors" />
+              </button>
+
+              {/* ── USDT Crypto ── */}
               <button
                 onClick={() => {
                   setWithdrawChoiceOpen(false);

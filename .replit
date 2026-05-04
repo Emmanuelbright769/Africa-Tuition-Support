@@ -61,6 +61,7 @@ SMTP_HOST = "smtp-relay.brevo.com"
 SMTP_PORT = "587"
 SMTP_FROM = "noreply@tsiforafrica.com"
 BREVO_SENDER_EMAIL = "emmanuelbright769@gmail.com"
+SQUAD_MERCHANT_ID = "GTT114FHEJT1"
 
 [postMerge]
 path = "scripts/post-merge.sh"

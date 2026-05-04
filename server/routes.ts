@@ -1352,13 +1352,8 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const bankWdWindow = getWithdrawalWindowStatus();
-      if (!bankWdWindow.open) {
-        return res.status(403).json({ message: bankWdWindow.message });
-      }
 
-      const { amount, bankName, bankCode, accountNumber, accountName, otpCode, gateway } = req.body;
-      const payoutGateway: "squad" | "korapay" = gateway === "korapay" ? "korapay" : "squad";
+      const { amount, bankName, bankCode, accountNumber, accountName, otpCode } = req.body;
       if (!otpCode || otpCode.trim().length !== 6) {
         return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this withdrawal" });
       }
@@ -1369,7 +1364,7 @@ export async function registerRoutes(
       if (!bankName || !accountNumber || !accountName) {
         return res.status(400).json({ message: "Bank name, account number and account name are required" });
       }
-      if (accountNumber.length !== 10) {
+      if (String(accountNumber).length !== 10) {
         return res.status(400).json({ message: "Account number must be exactly 10 digits" });
       }
 
@@ -1383,86 +1378,144 @@ export async function registerRoutes(
         return res.status(400).json({ message: `A minimum of $${MIN_BALANCE} must remain in your wallet` });
       }
 
-      const vatAmount   = parseFloat((withdrawAmount * 0.075).toFixed(2));
+      const vatAmount    = parseFloat((withdrawAmount * 0.075).toFixed(2));
       const netAmountUsd = parseFloat((withdrawAmount - vatAmount).toFixed(2));
       const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
+      const txRef        = `TSIA-WD-${userId}-${Date.now()}`;
 
-      // Deduct from wallet immediately — funds held pending manual admin transfer
+      // ── Try Squad first, then Korapay — gateway must confirm BEFORE wallet is touched ──
+      const squadKey = process.env.SQUAD_SECRET_KEY;
+      const koraKey  = process.env.KORAPAY_SECRET_KEY;
+      if (!squadKey && !koraKey) return res.status(500).json({ message: "No payment gateway configured. Contact support." });
+
+      let gatewaySuccess = false, gatewayMsg = "", usedGateway: "squad" | "korapay" | "" = "";
+
+      // 1) Squad payout
+      if (squadKey) {
+        try {
+          const isLiveKey  = squadKey.startsWith("sk_");
+          const squadBase  = isLiveKey ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+          const merchantId = process.env.SQUAD_MERCHANT_ID ?? "TSIA";
+          const squadRef   = `${merchantId}_${txRef}`.slice(0, 50);
+          const amountKobo = Math.round(netAmountNgn * 100);
+          const sRes = await fetch(`${squadBase}/payout/transfer`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transaction_reference: squadRef,
+              amount: String(amountKobo),
+              bank_code: bankCode,
+              account_number: accountNumber,
+              account_name: accountName,
+              currency_id: "NGN",
+              remark: `TSIA Withdrawal | ${txRef}`,
+            }),
+            signal: AbortSignal.timeout(25000),
+          });
+          const sData = await sRes.json() as any;
+          console.log(`[SQUAD WITHDRAW] ref=${squadRef} | HTTP ${sRes.status} | success=${sData.success} | msg="${sData.message}"`);
+          if (sData.success) { gatewaySuccess = true; usedGateway = "squad"; }
+          else if (sRes.status === 424) {
+            try {
+              const reqRes = await fetch(`${squadBase}/payout/requery`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ transaction_reference: squadRef }),
+                signal: AbortSignal.timeout(15000),
+              });
+              const reqData = await reqRes.json() as any;
+              if (reqData.success) { gatewaySuccess = true; usedGateway = "squad"; }
+              else gatewayMsg = sData.message ?? "Squad transfer failed";
+            } catch { gatewayMsg = sData.message ?? "Squad timed out"; }
+          } else {
+            gatewayMsg = sData.message ?? "Squad transfer declined";
+          }
+        } catch (e: any) {
+          gatewayMsg = `Squad: ${e.message ?? "network error"}`;
+        }
+      }
+
+      // 2) Korapay fallback
+      if (!gatewaySuccess && koraKey) {
+        console.warn(`[WITHDRAW] Squad failed (${gatewayMsg || "not configured"}) — trying Korapay fallback`);
+        try {
+          const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reference: `${txRef}-K`,
+              destination: {
+                type: "bank_account", amount: netAmountNgn, currency: "NGN",
+                bank_account: { bank: bankCode, account: accountNumber },
+                customer: { name: accountName, email: "transfers@tsiforafrica.com" },
+              },
+              description: `TSIA Withdrawal to ${accountName} | Ref: ${txRef}`,
+            }),
+            signal: AbortSignal.timeout(30000),
+          });
+          const kData = await kRes.json() as any;
+          console.log(`[KORAPAY WITHDRAW] ref=${txRef} | HTTP ${kRes.status} | status=${kData.status} | msg="${kData.message}"`);
+          if (kData.status) { gatewaySuccess = true; usedGateway = "korapay"; }
+          else gatewayMsg = kData.message ?? "Korapay transfer declined";
+        } catch (e: any) {
+          gatewayMsg = `Korapay: ${e.message ?? "network error"}`;
+        }
+      }
+
+      if (!gatewaySuccess) {
+        console.warn(`[WITHDRAW] All gateways failed for user ${userId} amount $${withdrawAmount} — raw="${gatewayMsg}"`);
+        return res.status(502).json({ message: "Network error. Please try again later. Your wallet was not debited." });
+      }
+
+      // ── Gateway confirmed — now debit wallet and record ────────────────────
       const newBalance = (parseFloat(wallet.balance) - withdrawAmount).toFixed(2);
       await storage.updateWalletBalance(userId, newBalance);
 
-      // Record ledger transaction
-      const txRef = `TSIA-WD-${userId}-${Date.now()}`;
       await storage.createTransaction({
         userId, type: "withdrawal",
         amount: (-withdrawAmount).toFixed(2),
         fee: vatAmount.toFixed(2),
-        paymentMethod: "bank_transfer",
-        description: `Bank withdrawal ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} via ${payoutGateway === "korapay" ? "Korapay" : "Squad"} — 7.5% VAT $${vatAmount.toFixed(2)} | Ref: ${txRef}`,
+        paymentMethod: `bank_transfer_${usedGateway}`,
+        description: `Bank withdrawal ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} via ${usedGateway} — 7.5% VAT $${vatAmount.toFixed(2)} | Ref: ${txRef}`,
       });
 
-      // Create withdrawal request for admin dashboard
-      const wdReq = await storage.createWithdrawalRequest({
-        userId, type: "bank",
-        amount: withdrawAmount.toFixed(2),
-        fee: vatAmount.toFixed(2),
-        netAmount: netAmountUsd.toFixed(2),
-        bankName, bankCode: bankCode ?? "",
-        accountNumber, accountName,
-      });
-
-      // In-app notification
       const user = await storage.getUser(userId);
       const notif = await storage.createNotification({
         userId, type: "wallet_credit",
-        title: "Withdrawal Submitted ✓",
-        message: `Your withdrawal of ₦${netAmountNgn.toLocaleString()} to ${accountName} at ${bankName} is being processed. You will receive your funds within 30 minutes to 24 hours.`,
+        title: "Withdrawal Sent ✓",
+        message: `Your withdrawal of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} has been sent successfully. Ref: ${txRef}`,
         data: { ref: txRef }, isRead: false,
       });
       pushToUser(userId, "notification", notif);
 
-      // Email receipt
       sendTransactionReceiptEmail(user!.email, user!.firstName, {
-        title: "Bank Withdrawal",
-        status: "processing",
+        title: "Bank Withdrawal Sent",
+        status: "success",
         amount: `₦${netAmountNgn.toLocaleString()}`,
-        amountLabel: `$${withdrawAmount.toFixed(2)} requested`,
+        amountLabel: `$${withdrawAmount.toFixed(2)} deducted`,
         reference: txRef,
         rows: [
-          { label: "Amount Requested", value: `$${withdrawAmount.toFixed(2)}` },
-          { label: "VAT (7.5%)", value: `-$${vatAmount.toFixed(2)}`, color: "red" },
-          { label: "Net (USD)", value: `$${netAmountUsd.toFixed(2)}` },
-          { label: "You Receive (NGN)", value: `₦${netAmountNgn.toLocaleString()}`, color: "green" },
-          { label: "Bank", value: bankName },
-          { label: "Account", value: `${accountNumber} — ${accountName}` },
-          { label: "Gateway", value: payoutGateway === "korapay" ? "Korapay" : "Squad" },
+          { label: "Amount Deducted", value: `$${withdrawAmount.toFixed(2)}` },
+          { label: "VAT (7.5%)",      value: `-$${vatAmount.toFixed(2)}`,              color: "red" },
+          { label: "You Receive (NGN)", value: `₦${netAmountNgn.toLocaleString()}`,   color: "green" },
+          { label: "Bank",             value: bankName },
+          { label: "Account",          value: `${accountNumber} — ${accountName}` },
+          { label: "Gateway",          value: usedGateway === "korapay" ? "Korapay" : "Squad" },
+          { label: "Status",           value: "Sent ✓",                               color: "green" },
         ],
-        footerNote: "Funds are credited to your bank within 30 minutes to 24 hours.",
+        footerNote: "Funds are on their way. Should arrive within minutes.",
       }).catch(() => {});
-
-      // Notify admin — bank withdrawal needs manual processing
-      if (user) {
-        sendAdminWithdrawalEmail({
-          name: `${user.firstName} ${user.lastName}`,
-          email: user.email,
-          amount: withdrawAmount.toFixed(2),
-          method: "bank",
-          bankName: `${bankName} [via ${payoutGateway === "korapay" ? "Korapay" : "Squad"}]`,
-          accountNumber,
-          accountName,
-          userId,
-        }).catch(() => {});
-      }
 
       invalidateCacheKey(`wallet:${userId}`);
       invalidateCacheKey(`transactions:${userId}`);
       const updatedWallet = await storage.getOrCreateWallet(userId);
       res.json({
         wallet: updatedWallet,
-        withdrawalRequestId: wdReq.id,
+        reference: txRef,
+        gateway: usedGateway,
         vatAmount: vatAmount.toFixed(2),
         netAmount: netAmountUsd.toFixed(2),
-        netAmountNgn: netAmountNgn.toFixed(0),
+        netAmountNgn,
         bankName, accountNumber, accountName,
       });
     } catch (e: any) {

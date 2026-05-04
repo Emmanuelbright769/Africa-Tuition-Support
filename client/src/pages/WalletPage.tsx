@@ -412,21 +412,21 @@ export default function WalletPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       showWalletReceipt({
         title: "Bank Withdrawal",
-        status: "processing",
+        status: "success",
         amount: `$${amt.toFixed(2)}`,
         rows: [
-          { label: "Reference",      value: ref,                                         mono: true },
+          { label: "Reference",      value: ref,                                              mono: true },
           { label: "Bank",           value: effectiveBankName },
-          { label: "Account No",     value: bwAccount,                                   mono: true },
+          { label: "Account No",     value: bwAccount,                                        mono: true },
           { label: "Account Name",   value: bwAccountName },
           { label: "Gateway",        value: (d.gateway ?? bwGateway).toUpperCase() },
           { label: "Amount",         value: `$${amt.toFixed(2)}` },
-          { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                       red: true },
-          { label: "You'll Receive", value: `₦${(d.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
-          { label: "ETA",            value: "30 minutes — 24 hours" },
+          { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                            red: true },
+          { label: "You Receive",    value: `₦${(d.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
+          { label: "Status",         value: "Sent ✓",                                         green: true, bold: true },
         ] as ReceiptRow[],
         referenceRow: ref,
-        footerNote: "Processing time: 30 minutes to 24 hours. Auto-refunded if not processed.",
+        footerNote: "Funds sent instantly. Should arrive within minutes.",
         onNewTx: () => { setTxReceiptOpen(false); setBwOpen(true); },
         newTxLabel: "New Withdrawal",
       });
@@ -1179,29 +1179,9 @@ export default function WalletPage() {
                     <span className="text-[9px] font-black bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>
                   </div>
                   <p className="text-sm text-white/60">NGN to Nigerian bank · 7.5% VAT</p>
-                  <p className="text-xs text-white/40 mt-0.5">Settles in 30 min – 24 h</p>
+                  <p className="text-xs text-white/40 mt-0.5">Processed automatically · arrives in minutes</p>
                 </div>
                 <ArrowUpRight className="w-6 h-6 text-white/70 group-hover:text-white shrink-0 transition-colors" />
-              </button>
-
-              {/* Korapay Bank Withdrawal */}
-              <button
-                onClick={() => { setWithdrawChoiceOpen(false); setBwGateway("korapay"); setBwBankName(""); setBwBankCode(""); setBwBankOther(""); setBwAccount(""); setBwAccountName(""); setBwAmount(""); setBwOpen(true); }}
-                className="w-full flex items-center gap-4 p-5 rounded-3xl bg-orange-500 hover:bg-orange-600 active:scale-[0.98] transition-all text-left group shadow-lg"
-                data-testid="btn-choose-korapay-withdraw"
-              >
-                <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-                  <Building2 className="w-8 h-8 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-black text-lg text-white leading-tight">Bank Withdrawal</p>
-                    <span className="text-[9px] font-black bg-white/30 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">Alt</span>
-                  </div>
-                  <p className="text-sm text-white/80">NGN to Nigerian bank · 7.5% VAT</p>
-                  <p className="text-xs text-white/60 mt-0.5">Settles in 30 min – 24 h</p>
-                </div>
-                <ArrowUpRight className="w-6 h-6 text-white/80 group-hover:text-white shrink-0 transition-colors" />
               </button>
 
               {/* USDT Crypto */}
@@ -1509,7 +1489,7 @@ export default function WalletPage() {
               <div className="flex items-start gap-2.5 rounded-2xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700/50 p-3">
                 <Shield className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-green-800 dark:text-green-300 leading-relaxed">
-                  Funds are debited immediately. Bank transfer takes <strong>30 minutes to 24 hours</strong>. Auto-refunded if not processed in 24h.
+                  Transfers are processed <strong>automatically</strong> via Squad or Korapay. Funds arrive within minutes. Your wallet is only debited after the gateway confirms success.
                 </p>
               </div>
 

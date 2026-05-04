@@ -122,6 +122,19 @@ async function runMigrations() {
         ('tier_platinum_max', '230')
       ON CONFLICT (key) DO NOTHING
     `);
+    // ── BACKFILL: co_affiliates rows where share_percentage was stored as 0
+    // Root cause: a code defect stored 0.0000000000 for all non-elite tiers
+    // when those users enrolled. Only records with share_percentage = 0 are
+    // touched. The correct formula mirrors the only correct record in the DB
+    // (id=1, $10 000 elite → 0.0005000000 = SHARE_FACTOR × (10000/100)
+    //  where SHARE_FACTOR = 0.000005).
+    await db.execute(sql`
+      UPDATE co_affiliates
+      SET share_percentage = ROUND(0.000005 * (investment_category / 100.0), 10)
+      WHERE share_percentage = 0
+        AND status = 'active'
+    `);
+    console.log("[MIGRATE] Co-affiliate share_percentage backfill applied");
     console.log("[MIGRATE] Schema migrations applied successfully");
   } catch (e) {
     console.error("[MIGRATE] Migration error:", e);

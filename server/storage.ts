@@ -670,7 +670,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCoAffiliate(userId: number, data: Partial<InsertCoAffiliate>): Promise<CoAffiliate> {
-    const [updated] = await db.update(coAffiliates).set({ ...data, updatedAt: new Date() }).where(eq(coAffiliates.userId, userId)).returning();
+    const [updated] = await db.update(coAffiliates).set({ ...data }).where(eq(coAffiliates.userId, userId)).returning();
     return updated;
   }
 

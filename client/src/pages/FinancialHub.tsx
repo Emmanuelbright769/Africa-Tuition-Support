@@ -710,10 +710,11 @@ export default function FinancialHub() {
           rows: [
             { label: "Reference",   value: r.txRef,                                    mono: true },
             { label: "Date & Time", value: r.txDate },
-            { label: "Sender",      value: `${r.senderName} (You)` },
-            { label: "Recipient",   value: `${r.recipientName} — ${r.walletLabel}` },
-            { label: "Amount",      value: `-$${r.amount}`,                            red: true },
-            { label: "Fee",         value: "$0.00 — Free",                             green: true },
+            { label: "Sender",           value: `${r.senderName} (You)` },
+            { label: "Recipient",        value: `${r.recipientName} — ${r.walletLabel}` },
+            { label: "Amount Sent",      value: `-$${r.amount}`,                            red: true },
+            { label: "Platform Fee (25%)", value: `-$${r.fee ?? (parseFloat(r.amount) * 0.25).toFixed(2)}`,  red: true },
+            { label: "Recipient Received", value: `$${r.recipientCredit ?? (parseFloat(r.amount) * 0.75).toFixed(2)}`, green: true },
             ...(r.note ? [{ label: "Narration", value: `"${r.note}"` }] : []),
           ] as ReceiptRow[],
           referenceRow: r.txRef,
@@ -2086,6 +2087,15 @@ export default function FinancialHub() {
           className="w-full text-center text-sm border border-border rounded-2xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
           data-testid="input-tsia-note" />
 
+        {parseFloat(amount) > 0 && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 text-xs space-y-1" data-testid="transfer-fee-breakdown">
+            <p className="font-bold text-amber-800 dark:text-amber-300">Platform Service Fee (25%)</p>
+            <div className="flex justify-between text-muted-foreground"><span>You send</span><span className="font-semibold text-foreground">${fmt(amount)}</span></div>
+            <div className="flex justify-between text-muted-foreground"><span>Platform fee (25%)</span><span className="text-red-500">-${(parseFloat(amount) * 0.25).toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold text-tsia-green"><span>Recipient receives</span><span>${(parseFloat(amount) * 0.75).toFixed(2)}</span></div>
+          </div>
+        )}
+
         <Numpad value={amount} onChange={setAmount} />
 
         <div className="flex gap-3">
@@ -2112,8 +2122,16 @@ export default function FinancialHub() {
         {/* Transfer summary */}
         <div className="rounded-2xl bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 p-4 space-y-2">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Amount</span>
+            <span className="text-muted-foreground">You send</span>
             <span className="font-black text-tsia-green text-lg">${fmt(amount)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Platform fee (25%)</span>
+            <span className="font-semibold text-red-500">-${(parseFloat(amount) * 0.25).toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm border-t border-tsia-green/20 pt-2">
+            <span className="text-muted-foreground font-semibold">Recipient gets</span>
+            <span className="font-black text-tsia-green">${(parseFloat(amount) * 0.75).toFixed(2)}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">To</span>

@@ -275,7 +275,7 @@ export default function TermsAndConditions() {
                 <p>TSIA offers access to Netflix streaming through a platform-managed subscription at a subsidised rate of <strong>$5.00/month</strong>, billed from your TSIA SwiftWallet. This service is provided for convenience and is subject to Netflix's own Terms of Service. TSIA cannot guarantee uninterrupted access to Netflix content, which may vary by region. Subscription fees are non-refundable once the monthly access period has commenced.</p>
               </Clause>
               <Clause num="7.10" title="Deposit Allocation (Wallet Deposits)">
-                <p>Funds deposited into your TSIA SwiftWallet are allocated as follows: <strong>75%</strong> to your active wallet balance, <strong>20%</strong> to TSIA's operational reserve, and <strong>5%</strong> to the affiliate rewards pool. Service charges (airtime, data, bills) are processed at face value with <strong>no additional platform fee</strong>. Bank withdrawals attract a 7.5% VAT as set out in clause 7.2.</p>
+                <p>Funds deposited into your TSIA SwiftWallet are credited <strong>in full (100%)</strong> to your active wallet balance — no deductions are made at the point of deposit. Platform service fees of <strong>20%</strong> (operational reserve) and <strong>5%</strong> (affiliate rewards pool) apply only when transactions are made within the app (e.g. wallet-to-wallet transfers). Service charges (airtime, data, bills) are processed at face value with <strong>no additional platform fee</strong>. Bank transfers attract a 7.5% VAT as set out in clause 7.2.</p>
               </Clause>
             </Section>
 

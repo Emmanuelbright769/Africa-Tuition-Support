@@ -3787,7 +3787,7 @@ export default function AdminDashboard() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Manual Payment Credit</DialogTitle>
-            <DialogDescription>Credit a user's wallet for a Korapay/Squad payment that wasn't automatically applied. The 75/20/5 split is applied — user receives 75% of the gross amount.</DialogDescription>
+            <DialogDescription>Credit a user's wallet for a Korapay/Squad payment that wasn't automatically applied. The full 100% is credited — no deductions at deposit time.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
@@ -3813,8 +3813,7 @@ export default function AdminDashboard() {
             </div>
             {mcAmount && parseFloat(mcAmount) > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 space-y-0.5">
-                <p>Gross: <strong>${parseFloat(mcAmount).toFixed(2)}</strong> → User receives: <strong>${(parseFloat(mcAmount) * 0.75).toFixed(2)}</strong> (75%)</p>
-                <p>Reserve fund: ${(parseFloat(mcAmount) * 0.20).toFixed(2)} | Affiliate pool: ${(parseFloat(mcAmount) * 0.05).toFixed(2)}</p>
+                <p>Amount to credit: <strong>${parseFloat(mcAmount).toFixed(2)}</strong> (100% — no deductions at deposit)</p>
               </div>
             )}
           </div>

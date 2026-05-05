@@ -2924,18 +2924,24 @@ export default function AffiliateDashboard() {
                 value={fundTradeAmt} onChange={e => setFundTradeAmt(e.target.value)}
                 className="mt-1 text-lg font-bold" data-testid="input-fund-trade-amt" />
               {parseFloat(fundTradeAmt) >= 10 && (
-                <div className="mt-2 text-xs space-y-1 text-muted-foreground">
-                  <div className="flex justify-between"><span>Your trade wallet gets (75%)</span><span className="font-semibold text-green-600">${(parseFloat(fundTradeAmt) * 0.75).toFixed(2)}</span></div>
-                  <div className="flex justify-between"><span>Reserve fund (20%)</span><span>${(parseFloat(fundTradeAmt) * 0.20).toFixed(2)}</span></div>
-                  <div className="flex justify-between"><span>Affiliate pool (5%)</span><span>${(parseFloat(fundTradeAmt) * 0.05).toFixed(2)}</span></div>
+                <div className="mt-2 text-xs space-y-1 text-muted-foreground border border-border rounded-xl p-3 bg-muted/30">
+                  <p className="font-semibold text-foreground mb-1">Breakdown</p>
+                  <div className="flex justify-between"><span>You transfer</span><span className="font-semibold text-foreground">${parseFloat(fundTradeAmt).toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span>Affiliate pool (5%)</span><span className="text-red-500">-${(parseFloat(fundTradeAmt) * 0.05).toFixed(2)}</span></div>
+                  <div className="flex justify-between font-bold text-green-600 border-t border-border pt-1 mt-1"><span>Trade wallet receives (95%)</span><span>${(parseFloat(fundTradeAmt) * 0.95).toFixed(2)}</span></div>
                 </div>
+              )}
+              {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) > personalBalance - 2 && (
+                <p className="mt-2 text-xs text-red-500 font-semibold flex items-center gap-1">
+                  <span>⚠</span> Insufficient balance — you need at least ${(parseFloat(fundTradeAmt) + 2).toFixed(2)} (keeping $2.00 minimum in SwiftWallet)
+                </p>
               )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFundTradeOpen(false)}>Cancel</Button>
             <Button onClick={() => fundTradeMutation.mutate()}
-              disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < 10}
+              disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < 10 || parseFloat(fundTradeAmt) > personalBalance - 2}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold" data-testid="btn-confirm-fund-trade">
               {fundTradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />}
               Transfer ${parseFloat(fundTradeAmt || "0").toFixed(2)}

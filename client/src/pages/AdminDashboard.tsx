@@ -486,43 +486,6 @@ export default function AdminDashboard() {
     onError: (e: any) => toast({ title: "Adjustment failed", description: e.message, variant: "destructive" }),
   });
 
-  const confirmDepositMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("POST", `/api/admin/wallet-deposit/${id}/confirm`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/wallet-deposits"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
-      toast({ title: "Deposit Confirmed ✓", description: "Wallet funded and user notified." });
-    },
-    onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
-  });
-
-  const declineDepositMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("POST", `/api/admin/wallet-deposit/${id}/decline`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/wallet-deposits"] });
-      toast({ title: "Deposit Declined", description: "User has been notified." });
-    },
-    onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
-  });
-
-  const pendingDepositMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("POST", `/api/admin/wallet-deposit/${id}/pending`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/wallet-deposits"] });
-      toast({ title: "Reverted to Pending", description: "Deposit is now pending review." });
-    },
-    onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
-  });
-
   const deleteDepositMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("DELETE", `/api/admin/wallet-deposit/${id}`);
@@ -1822,7 +1785,7 @@ export default function AdminDashboard() {
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
                     <CardTitle className="text-base">Wallet Deposits</CardTitle>
-                    <CardDescription>All crypto and fiat deposits. Approve pending crypto deposits here.</CardDescription>
+                    <CardDescription>All crypto and fiat deposits. Deposits are auto-confirmed by payment gateways — no manual approval needed.</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
@@ -1853,22 +1816,9 @@ export default function AdminDashboard() {
                             <TableCell className="text-xs text-slate-500">{fmtDate(d.createdAt)}</TableCell>
                             <TableCell className="text-right px-6">
                               <div className="flex items-center justify-end gap-1 flex-wrap">
-                                {d.status === "pending" && (<>
-                                  <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" disabled={confirmDepositMutation.isPending} onClick={() => confirmDepositMutation.mutate(d.id)} data-testid={`button-confirm-deposit-${d.id}`}>
-                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Confirm
-                                  </Button>
-                                  <Button size="sm" variant="outline" className="h-7 text-xs border-amber-400 text-amber-700 hover:bg-amber-50" disabled={declineDepositMutation.isPending} onClick={() => declineDepositMutation.mutate(d.id)} data-testid={`button-decline-deposit-${d.id}`}>
-                                    <XCircle className="w-3 h-3 mr-1" /> Decline
-                                  </Button>
-                                </>)}
-                                {d.status === "declined" && (
-                                  <Button size="sm" variant="outline" className="h-7 text-xs" disabled={pendingDepositMutation.isPending} onClick={() => pendingDepositMutation.mutate(d.id)} data-testid={`button-pending-deposit-${d.id}`}>
-                                    <Clock className="w-3 h-3 mr-1" /> Pending
-                                  </Button>
-                                )}
-                                {d.status === "completed" && (
-                                  <span className="text-xs text-slate-400 italic mr-1">Confirmed</span>
-                                )}
+                                <span className={`text-xs font-medium mr-1 ${d.status === "completed" ? "text-emerald-600" : d.status === "declined" ? "text-red-500" : "text-amber-600"}`} data-testid={`status-deposit-${d.id}`}>
+                                  {d.status === "completed" ? "Auto-confirmed" : d.status === "declined" ? "Declined" : "Processing…"}
+                                </span>
                                 <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50" disabled={deleteDepositMutation.isPending} onClick={() => { if (window.confirm(`Delete this deposit record (ID: ${d.id})? This cannot be undone.`)) deleteDepositMutation.mutate(d.id); }} data-testid={`button-delete-deposit-${d.id}`}>
                                   <Trash2 className="w-3 h-3 mr-1" /> Delete
                                 </Button>

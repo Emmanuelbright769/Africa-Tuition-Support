@@ -475,7 +475,7 @@ export default function FinancialHub() {
   // ── Squad: open inline modal ──────────────────────────────────────────────
   const openSquadModal = useCallback(async () => {
     const amount = parseFloat(fundAmount);
-    if (!amount || amount < 1) { toast({ title: "Enter a valid amount", description: "Minimum funding is $1.", variant: "destructive" }); return; }
+    if (!amount || amount <= 2) { toast({ title: "Enter a valid amount", description: "Minimum deposit is above $2.00.", variant: "destructive" }); return; }
     setSquadLoading(true);
     try {
       await loadSquadScript();
@@ -520,7 +520,7 @@ export default function FinancialHub() {
   // ── Korapay: open checkout in new tab + poll ──────────────────────────────
   const openKorapayCheckout = useCallback(async () => {
     const amount = parseFloat(fundAmount);
-    if (!amount || amount < 1) { toast({ title: "Enter a valid amount", description: "Minimum funding is $1.", variant: "destructive" }); return; }
+    if (!amount || amount <= 2) { toast({ title: "Enter a valid amount", description: "Minimum deposit is above $2.00.", variant: "destructive" }); return; }
     setKoraLoading(true);
     try {
       const res = await apiRequest("POST", "/api/wallet/korapay/initiate", { amountUsd: amount });
@@ -1510,17 +1510,23 @@ export default function FinancialHub() {
             </div>
             <div>
               <Label className="text-sm font-semibold">Amount (USD)</Label>
-              <Input type="number" min={1} step={0.01} placeholder="e.g. 10.00"
+              <Input type="number" min={2.01} step={0.01} placeholder="Above $2.00"
                 value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                 className="mt-1.5 text-lg font-bold h-12" data-testid="input-fund-amount" />
               {parseFloat(fundAmount) > 0 && (
-                <div className="mt-1.5 space-y-0.5">
+                <div className="mt-1.5 space-y-1">
                   <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
                   {(currency?.code ?? "NGN") !== "USD" && (
                     <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
                       ≈ <span className="font-semibold">{formatAmountVAT(parseFloat(fundAmount))}</span>
                       <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-[9px] font-semibold px-1.5 py-0.5 rounded-full">incl. 7.5% VAT</span>
                     </p>
+                  )}
+                  {parseFloat(fundAmount) > 2 && (
+                    <div className="mt-1 text-xs border border-border rounded-xl px-3 py-2 bg-muted/30 space-y-0.5" data-testid="deposit-fee-breakdown">
+                      <div className="flex justify-between text-muted-foreground"><span>Affiliate pool (5%)</span><span className="text-red-500">-${(parseFloat(fundAmount) * 0.05).toFixed(2)}</span></div>
+                      <div className="flex justify-between font-semibold text-tsia-green"><span>You receive (95%)</span><span>${(parseFloat(fundAmount) * 0.95).toFixed(2)}</span></div>
+                    </div>
                   )}
                 </div>
               )}
@@ -1547,7 +1553,7 @@ export default function FinancialHub() {
               <p className="text-xs text-tsia-green">Secure inline checkout — card, bank transfer, USSD &amp; mobile money supported.</p>
             </div>
             <Button onClick={openSquadModal}
-              disabled={squadLoading || !fundAmount || parseFloat(fundAmount) < 1}
+              disabled={squadLoading || !fundAmount || parseFloat(fundAmount) <= 2}
               className="w-full h-12 bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-2xl"
               data-testid="btn-pay-squad">
               {squadLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening payment…</> : <><CreditCard className="w-4 h-4 mr-2" />Pay ${parseFloat(fundAmount || "0").toFixed(2)} via Squad</>}
@@ -1568,11 +1574,19 @@ export default function FinancialHub() {
             </div>
             <div>
               <Label className="text-sm font-semibold">Amount (USD)</Label>
-              <Input type="number" min={1} step={0.01} placeholder="e.g. 10.00"
+              <Input type="number" min={2.01} step={0.01} placeholder="Above $2.00"
                 value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                 className="mt-1.5 text-lg font-bold h-12" data-testid="input-fund-amount-korapay" />
               {parseFloat(fundAmount) > 0 && (
-                <p className="text-xs text-muted-foreground mt-1.5">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
+                <div className="mt-1.5 space-y-1">
+                  <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(fundAmount))} {rateLabel()}</p>
+                  {parseFloat(fundAmount) > 2 && (
+                    <div className="mt-1 text-xs border border-border rounded-xl px-3 py-2 bg-muted/30 space-y-0.5" data-testid="deposit-fee-breakdown-korapay">
+                      <div className="flex justify-between text-muted-foreground"><span>Affiliate pool (5%)</span><span className="text-red-500">-${(parseFloat(fundAmount) * 0.05).toFixed(2)}</span></div>
+                      <div className="flex justify-between font-semibold text-tsia-green"><span>You receive (95%)</span><span>${(parseFloat(fundAmount) * 0.95).toFixed(2)}</span></div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -1594,7 +1608,7 @@ export default function FinancialHub() {
               </div>
             )}
             <Button onClick={openKorapayCheckout}
-              disabled={koraLoading || !fundAmount || parseFloat(fundAmount) < 1}
+              disabled={koraLoading || !fundAmount || parseFloat(fundAmount) <= 2}
               className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold rounded-2xl"
               data-testid="btn-pay-korapay">
               {koraLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening Korapay…</> : <><ExternalLink className="w-4 h-4 mr-2" />Pay ${parseFloat(fundAmount || "0").toFixed(2)} via Korapay</>}
@@ -1637,7 +1651,15 @@ export default function FinancialHub() {
                 value={cryptoAmount} onChange={e => setCryptoAmount(e.target.value)}
                 className="mt-1.5 text-lg font-bold h-12" data-testid="input-crypto-amount" />
               {parseFloat(cryptoAmount) > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(cryptoAmount))} {rateLabel()}</p>
+                <div className="mt-1 space-y-1">
+                  <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(cryptoAmount))} {rateLabel()}</p>
+                  {parseFloat(cryptoAmount) > 2 && (
+                    <div className="text-xs border border-border rounded-xl px-3 py-2 bg-muted/30 space-y-0.5" data-testid="deposit-fee-breakdown-crypto">
+                      <div className="flex justify-between text-muted-foreground"><span>Affiliate pool (5%)</span><span className="text-red-500">-${(parseFloat(cryptoAmount) * 0.05).toFixed(2)}</span></div>
+                      <div className="flex justify-between font-semibold text-tsia-green"><span>You receive (95%)</span><span>${(parseFloat(cryptoAmount) * 0.95).toFixed(2)}</span></div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             <div>
@@ -1649,7 +1671,7 @@ export default function FinancialHub() {
             </div>
             <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
               <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700 dark:text-amber-300">Crypto deposits are manually reviewed. Processing typically takes up to 30 minutes. Minimum deposit is $5.01.</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300">Crypto deposits are auto-verified on-chain. Processing typically takes up to 30 minutes. Minimum deposit is $5.01. A 5% affiliate pool applies; 95% is credited to your wallet.</p>
             </div>
             <Button onClick={() => cryptoDepositMutation.mutate()}
               disabled={cryptoDepositMutation.isPending || !cryptoTxHash.trim() || parseFloat(cryptoAmount) <= 5}

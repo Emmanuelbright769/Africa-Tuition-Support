@@ -609,7 +609,7 @@ export default function WalletSection() {
                 {pendingCount > 0 && (
                   <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-400/20 rounded-xl px-3 py-2 mb-3">
                     <Clock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                    <p className="text-amber-200 text-[11px]">{pendingCount} deposit{pendingCount > 1 ? "s" : ""} pending admin approval · <span className="font-bold">${pendingAmount.toFixed(2)}</span> in ledger</p>
+                    <p className="text-amber-200 text-[11px]">{pendingCount} deposit{pendingCount > 1 ? "s" : ""} awaiting gateway confirmation · <span className="font-bold">${pendingAmount.toFixed(2)}</span> in ledger</p>
                   </div>
                 )}
 

@@ -325,6 +325,297 @@ function CategoryShelf({ onPick }: { onPick: (cat: string) => void }) {
   );
 }
 
+// ─── Category Browser Data ────────────────────────────────────────────────────
+const CAT_BROWSER = [
+  {
+    id: "phones", label: "Phones & Telecom", icon: "📱", color: "#10B981",
+    subs: [
+      { label: "Smartphones",       img: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=300&h=300&fit=crop&auto=format", cat: "phones" },
+      { label: "Tablets",           img: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=300&h=300&fit=crop&auto=format", cat: "phones" },
+      { label: "Phone Cases",       img: "https://images.unsplash.com/photo-1588492885706-b8917f06df77?w=300&h=300&fit=crop&auto=format", cat: "phones" },
+      { label: "Chargers & Cables", img: "https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?w=300&h=300&fit=crop&auto=format", cat: "phones" },
+      { label: "Power Banks",       img: "https://images.unsplash.com/photo-1625314868143-20e93ce3ff33?w=300&h=300&fit=crop&auto=format", cat: "phones" },
+      { label: "Earphones & Buds",  img: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300&h=300&fit=crop&auto=format", cat: "electronics" },
+    ],
+  },
+  {
+    id: "computers", label: "Computers & Laptops", icon: "💻", color: "#1a5c38",
+    subs: [
+      { label: "Laptops",           img: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=300&h=300&fit=crop&auto=format", cat: "computers" },
+      { label: "Desktops",          img: "https://images.unsplash.com/photo-1587202372775-e229f172b9d7?w=300&h=300&fit=crop&auto=format", cat: "computers" },
+      { label: "Monitors",          img: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=300&h=300&fit=crop&auto=format", cat: "computers" },
+      { label: "Keyboards",         img: "https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=300&h=300&fit=crop&auto=format", cat: "computers" },
+      { label: "Mouse & Pads",      img: "https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=300&h=300&fit=crop&auto=format", cat: "computers" },
+      { label: "External Drives",   img: "https://images.unsplash.com/photo-1531492746076-161ca9bcad58?w=300&h=300&fit=crop&auto=format", cat: "computers" },
+    ],
+  },
+  {
+    id: "electronics", label: "Electronics", icon: "🔌", color: "#6366F1",
+    subs: [
+      { label: "Cameras & DSLR",    img: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=300&h=300&fit=crop&auto=format", cat: "electronics" },
+      { label: "Smart TVs",         img: "https://images.unsplash.com/photo-1593359677879-a4bb92f4834f?w=300&h=300&fit=crop&auto=format", cat: "tvs_audio" },
+      { label: "Speakers",          img: "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=300&h=300&fit=crop&auto=format", cat: "electronics" },
+      { label: "Drones",            img: "https://images.unsplash.com/photo-1527977966376-1c8408f9f108?w=300&h=300&fit=crop&auto=format", cat: "electronics" },
+      { label: "Gaming Consoles",   img: "https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?w=300&h=300&fit=crop&auto=format", cat: "gaming" },
+      { label: "Smart Home",        img: "https://images.unsplash.com/photo-1558002038-1055907df827?w=300&h=300&fit=crop&auto=format", cat: "electronics" },
+    ],
+  },
+  {
+    id: "watches", label: "Jewelry & Watch", icon: "⌚", color: "#8B5CF6",
+    subs: [
+      { label: "Men's Watches",     img: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300&h=300&fit=crop&auto=format", cat: "watches" },
+      { label: "Women's Watches",   img: "https://images.unsplash.com/photo-1548171915-e1aebc9a3b7e?w=300&h=300&fit=crop&auto=format", cat: "watches" },
+      { label: "Smart Watches",     img: "https://images.unsplash.com/photo-1434493789847-2f02dc6ca35d?w=300&h=300&fit=crop&auto=format", cat: "watches" },
+      { label: "Gold Jewelry",      img: "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=300&h=300&fit=crop&auto=format", cat: "jewelry" },
+      { label: "Bracelets",         img: "https://images.unsplash.com/photo-1573408301185-9519f94816b5?w=300&h=300&fit=crop&auto=format", cat: "jewelry" },
+      { label: "Necklaces",         img: "https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=300&h=300&fit=crop&auto=format", cat: "jewelry" },
+    ],
+  },
+  {
+    id: "fashion_men", label: "Men's Clothing", icon: "👔", color: "#3B82F6",
+    subs: [
+      { label: "Casual Shirts",     img: "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=300&h=300&fit=crop&auto=format", cat: "fashion_men" },
+      { label: "Suits & Blazers",   img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&auto=format", cat: "fashion_men" },
+      { label: "Trousers",          img: "https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=300&h=300&fit=crop&auto=format", cat: "fashion_men" },
+      { label: "T-Shirts",          img: "https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=300&h=300&fit=crop&auto=format", cat: "fashion_men" },
+      { label: "Polo Shirts",       img: "https://images.unsplash.com/photo-1586790170083-2f9ceadc732d?w=300&h=300&fit=crop&auto=format", cat: "fashion_men" },
+      { label: "Jackets & Coats",   img: "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=300&h=300&fit=crop&auto=format", cat: "fashion_men" },
+    ],
+  },
+  {
+    id: "fashion_women", label: "Women's Clothing", icon: "👗", color: "#EC4899",
+    subs: [
+      { label: "Dresses",           img: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=300&h=300&fit=crop&auto=format", cat: "fashion_women" },
+      { label: "Tops & Blouses",    img: "https://images.unsplash.com/photo-1562157873-818bc0726f68?w=300&h=300&fit=crop&auto=format", cat: "fashion_women" },
+      { label: "Skirts",            img: "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=300&h=300&fit=crop&auto=format", cat: "fashion_women" },
+      { label: "Handbags",          img: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=300&h=300&fit=crop&auto=format", cat: "bags" },
+      { label: "Ladies' Shoes",     img: "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=300&h=300&fit=crop&auto=format", cat: "shoes" },
+      { label: "Accessories",       img: "https://images.unsplash.com/photo-1630019852942-f89202989a59?w=300&h=300&fit=crop&auto=format", cat: "jewelry" },
+    ],
+  },
+  {
+    id: "automotive", label: "Automobiles & Parts", icon: "🚗", color: "#F59E0B",
+    subs: [
+      { label: "Car Accessories",   img: "https://images.unsplash.com/photo-1511919884226-fd3cad34687c?w=300&h=300&fit=crop&auto=format", cat: "automotive" },
+      { label: "Car Audio",         img: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=300&h=300&fit=crop&auto=format", cat: "automotive" },
+      { label: "Tyres & Wheels",    img: "https://images.unsplash.com/photo-1621335539234-c7a4f5e0fa89?w=300&h=300&fit=crop&auto=format", cat: "automotive" },
+      { label: "Motorcycle Parts",  img: "https://images.unsplash.com/photo-1558981852-426c349a49ed?w=300&h=300&fit=crop&auto=format", cat: "automotive" },
+      { label: "Car Care Products", img: "https://images.unsplash.com/photo-1607860108855-64acf2078ed9?w=300&h=300&fit=crop&auto=format", cat: "automotive" },
+      { label: "Spare Parts",       img: "https://images.unsplash.com/photo-1597638289770-4b41a8bd6c1f?w=300&h=300&fit=crop&auto=format", cat: "automotive" },
+    ],
+  },
+  {
+    id: "health", label: "Health & Beauty", icon: "💊", color: "#EF4444",
+    subs: [
+      { label: "Skincare",          img: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=300&h=300&fit=crop&auto=format", cat: "beauty" },
+      { label: "Hair Care",         img: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=300&h=300&fit=crop&auto=format", cat: "beauty" },
+      { label: "Perfumes",          img: "https://images.unsplash.com/photo-1594035910387-fea47794261f?w=300&h=300&fit=crop&auto=format", cat: "beauty" },
+      { label: "Vitamins & Supps",  img: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=300&h=300&fit=crop&auto=format", cat: "health" },
+      { label: "Makeup",            img: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=300&h=300&fit=crop&auto=format", cat: "beauty" },
+      { label: "Personal Care",     img: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=300&h=300&fit=crop&auto=format", cat: "health" },
+    ],
+  },
+  {
+    id: "home", label: "Home & Living", icon: "🏠", color: "#92400E",
+    subs: [
+      { label: "Furniture",         img: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=300&h=300&fit=crop&auto=format", cat: "furniture" },
+      { label: "Bedding & Pillows", img: "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=300&h=300&fit=crop&auto=format", cat: "home" },
+      { label: "Kitchen Items",     img: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=300&h=300&fit=crop&auto=format", cat: "kitchen" },
+      { label: "Lighting",          img: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=300&h=300&fit=crop&auto=format", cat: "home" },
+      { label: "Home Appliances",   img: "https://images.unsplash.com/photo-1574269909862-7e1d70bb8078?w=300&h=300&fit=crop&auto=format", cat: "appliances" },
+      { label: "Garden & Outdoor",  img: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=300&h=300&fit=crop&auto=format", cat: "garden" },
+    ],
+  },
+  {
+    id: "sports", label: "Sports & Fitness", icon: "⚽", color: "#0277BD",
+    subs: [
+      { label: "Gym Equipment",     img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=300&h=300&fit=crop&auto=format", cat: "sports" },
+      { label: "Football & Soccer", img: "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?w=300&h=300&fit=crop&auto=format", cat: "sports" },
+      { label: "Running Shoes",     img: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&h=300&fit=crop&auto=format", cat: "sports" },
+      { label: "Sportswear",        img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=300&h=300&fit=crop&auto=format", cat: "sports" },
+      { label: "Cycling",           img: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=300&h=300&fit=crop&auto=format", cat: "sports" },
+      { label: "Swimming",          img: "https://images.unsplash.com/photo-1530549387789-4c1017266635?w=300&h=300&fit=crop&auto=format", cat: "sports" },
+    ],
+  },
+  {
+    id: "food", label: "Food & Grocery", icon: "🍎", color: "#65A30D",
+    subs: [
+      { label: "Fresh Fruits",      img: "https://images.unsplash.com/photo-1610832958506-aa56368176cf?w=300&h=300&fit=crop&auto=format", cat: "food" },
+      { label: "Packaged Food",     img: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300&h=300&fit=crop&auto=format", cat: "groceries" },
+      { label: "Cooking Oils",      img: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=300&h=300&fit=crop&auto=format", cat: "food" },
+      { label: "Beverages",         img: "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=300&h=300&fit=crop&auto=format", cat: "food" },
+      { label: "Snacks",            img: "https://images.unsplash.com/photo-1599490659213-e2b9527bd087?w=300&h=300&fit=crop&auto=format", cat: "groceries" },
+      { label: "Spices",            img: "https://images.unsplash.com/photo-1532336414038-cf19250c5757?w=300&h=300&fit=crop&auto=format", cat: "food" },
+    ],
+  },
+  {
+    id: "baby", label: "Baby & Mum", icon: "👶", color: "#F472B6",
+    subs: [
+      { label: "Baby Clothes",      img: "https://images.unsplash.com/photo-1522771930-78848d9293e8?w=300&h=300&fit=crop&auto=format", cat: "baby" },
+      { label: "Baby Toys",         img: "https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=300&h=300&fit=crop&auto=format", cat: "toys" },
+      { label: "Diapers & Care",    img: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=300&h=300&fit=crop&auto=format", cat: "baby" },
+      { label: "Baby Strollers",    img: "https://images.unsplash.com/photo-1519689680058-324335c77eba?w=300&h=300&fit=crop&auto=format", cat: "baby" },
+      { label: "Feeding & Nursing", img: "https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=300&h=300&fit=crop&auto=format", cat: "baby" },
+      { label: "Maternity",         img: "https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=300&h=300&fit=crop&auto=format", cat: "baby" },
+    ],
+  },
+  {
+    id: "shoes", label: "Shoes & Footwear", icon: "👟", color: "#DC2626",
+    subs: [
+      { label: "Sneakers",          img: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&h=300&fit=crop&auto=format", cat: "shoes" },
+      { label: "Formal Shoes",      img: "https://images.unsplash.com/photo-1533867617858-e7b97e060509?w=300&h=300&fit=crop&auto=format", cat: "shoes" },
+      { label: "Sandals & Slippers",img: "https://images.unsplash.com/photo-1603487742131-4160ec999306?w=300&h=300&fit=crop&auto=format", cat: "shoes" },
+      { label: "Boots",             img: "https://images.unsplash.com/photo-1608256246200-53e635b5b65f?w=300&h=300&fit=crop&auto=format", cat: "shoes" },
+      { label: "Sports Shoes",      img: "https://images.unsplash.com/photo-1556906781-9a412961a28c?w=300&h=300&fit=crop&auto=format", cat: "shoes" },
+      { label: "Kids' Shoes",       img: "https://images.unsplash.com/photo-1515347619252-60a4bf4fff4f?w=300&h=300&fit=crop&auto=format", cat: "shoes" },
+    ],
+  },
+  {
+    id: "books", label: "Books & Education", icon: "📚", color: "#7C3AED",
+    subs: [
+      { label: "Textbooks",         img: "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=300&h=300&fit=crop&auto=format", cat: "books" },
+      { label: "Fiction & Novels",  img: "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=300&h=300&fit=crop&auto=format", cat: "books" },
+      { label: "Self Development",  img: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=300&h=300&fit=crop&auto=format", cat: "books" },
+      { label: "Children's Books",  img: "https://images.unsplash.com/photo-1529539795054-3c162aab037a?w=300&h=300&fit=crop&auto=format", cat: "books" },
+      { label: "Art & Crafts",      img: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=300&h=300&fit=crop&auto=format", cat: "art" },
+      { label: "Music Instruments", img: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=300&h=300&fit=crop&auto=format", cat: "music" },
+    ],
+  },
+];
+
+// ─── Category Browser Overlay (full-screen, portal-rendered) ─────────────────
+function CategoryBrowserOverlay({ open, onClose, onPick }: {
+  open: boolean; onClose: () => void; onPick: (cat: string) => void;
+}) {
+  const [activeCat, setActiveCat] = useState(CAT_BROWSER[0]);
+  const rightPanelRef = useRef<HTMLDivElement>(null);
+
+  // scroll right panel to top when category changes
+  useEffect(() => {
+    if (rightPanelRef.current) rightPanelRef.current.scrollTop = 0;
+  }, [activeCat]);
+
+  // lock body scroll while open
+  useEffect(() => {
+    if (open) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  // close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const ACCENT = "#E53935";
+
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 99998, display: "flex", flexDirection: "column", background: "#F5F5F5" }}>
+
+      {/* ── Header ── */}
+      <div style={{ background: ACCENT, display: "flex", alignItems: "center", padding: "0 4px", height: 52, flexShrink: 0 }}>
+        <button
+          onClick={onClose}
+          style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "none", cursor: "pointer" }}
+        >
+          <ChevronLeft className="w-6 h-6 text-white" />
+        </button>
+        <h1 style={{ flex: 1, textAlign: "center", color: "white", fontWeight: 700, fontSize: 18, letterSpacing: 0.3 }}>Category</h1>
+        <div style={{ width: 44 }} />
+      </div>
+
+      {/* ── Body: left sidebar + right grid ── */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+
+        {/* Left sidebar */}
+        <div style={{ width: 96, background: "white", borderRight: "1px solid #E8E8E8", overflowY: "auto", flexShrink: 0 }}>
+          {CAT_BROWSER.map(cat => {
+            const active = activeCat.id === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCat(cat)}
+                data-testid={`sidebar-cat-${cat.id}`}
+                style={{
+                  width: "100%", padding: "14px 8px 12px",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
+                  background: active ? "#FFF5F5" : "white",
+                  borderLeft: active ? `3px solid ${ACCENT}` : "3px solid transparent",
+                  borderBottom: "1px solid #F0F0F0",
+                  cursor: "pointer", border: "none",
+                  borderLeftColor: active ? ACCENT : "transparent",
+                  borderLeftWidth: 3, borderLeftStyle: "solid",
+                }}
+              >
+                <span style={{ fontSize: 22, lineHeight: 1 }}>{cat.icon}</span>
+                <span style={{
+                  fontSize: 10, fontWeight: active ? 700 : 500,
+                  color: active ? ACCENT : "#555",
+                  textAlign: "center", lineHeight: 1.3,
+                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                }}>
+                  {cat.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right content panel */}
+        <div ref={rightPanelRef} style={{ flex: 1, overflowY: "auto", padding: "14px 10px" }}>
+          {/* Category header row */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <span style={{ fontWeight: 700, fontSize: 15, color: "#111" }}>{activeCat.label}</span>
+            <button
+              onClick={() => { onPick(activeCat.id); onClose(); }}
+              style={{ color: ACCENT, fontSize: 13, fontWeight: 600, border: "none", background: "none", cursor: "pointer" }}
+            >
+              All
+            </button>
+          </div>
+
+          {/* 2-column sub-category grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {activeCat.subs.map(sub => (
+              <button
+                key={sub.label}
+                onClick={() => { onPick(sub.cat); onClose(); }}
+                data-testid={`sub-cat-${sub.label.replace(/\s+/g, "-").toLowerCase()}`}
+                style={{
+                  background: "white", border: "none", borderRadius: 8,
+                  overflow: "hidden", cursor: "pointer", padding: 0,
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+                  display: "flex", flexDirection: "column",
+                }}
+              >
+                <div style={{ width: "100%", aspectRatio: "1/1", overflow: "hidden", background: "#f5f5f5" }}>
+                  <img
+                    src={sub.img}
+                    alt={sub.label}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    loading="lazy"
+                  />
+                </div>
+                <div style={{ padding: "8px 8px 10px", textAlign: "center" }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "#333", lineHeight: 1.35, display: "block" }}>
+                    {sub.label}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Top Sellers (Amazon "Sponsored Brands" style) ───────────────────────────
 function SellerStories({ products }: { products: Product[] }) {
   const seen = new Set<number>();
@@ -2498,45 +2789,12 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
         />
       )}
 
-      {/* ── Categories Grid Modal ──────────────────────────────────────── */}
-      <Dialog open={showCategoriesModal} onOpenChange={setShowCategoriesModal}>
-        <DialogContent className="max-w-sm max-h-[80vh] overflow-y-auto" data-testid="modal-categories">
-          <DialogHeader>
-            <DialogTitle>All Categories</DialogTitle>
-            <DialogDescription>Select a category to filter products</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            {/* All */}
-            <button
-              onClick={() => { setActiveCategory(""); setShowCategoriesModal(false); }}
-              className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${!activeCategory ? "border-tsia-green bg-tsia-green/5" : "border-transparent bg-muted/50 hover:bg-muted"}`}
-              data-testid="cat-modal-all"
-            >
-              <span className="text-2xl">🛍️</span>
-              <div className="text-left">
-                <p className="font-bold text-sm">All</p>
-                <p className="text-[10px] text-muted-foreground">Everything</p>
-              </div>
-              {!activeCategory && <Check className="w-4 h-4 text-tsia-green ml-auto" />}
-            </button>
-            {CATEGORIES.map(c => (
-              <button key={c}
-                onClick={() => { setActiveCategory(c); setShowCategoriesModal(false); }}
-                className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${activeCategory === c ? "border-tsia-green bg-tsia-green/5" : "border-transparent bg-muted/50 hover:bg-muted"}`}
-                data-testid={`cat-modal-${c}`}
-              >
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${CATEGORY_GRADIENTS[c]} flex items-center justify-center text-xl shrink-0`}>
-                  {CATEGORY_ICONS[c]}
-                </div>
-                <div className="text-left min-w-0">
-                  <p className="font-bold text-sm truncate">{CATEGORY_LABELS[c]}</p>
-                </div>
-                {activeCategory === c && <Check className="w-4 h-4 text-tsia-green ml-auto shrink-0" />}
-              </button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ── Category Browser Overlay ────────────────────────────────── */}
+      <CategoryBrowserOverlay
+        open={showCategoriesModal}
+        onClose={() => setShowCategoriesModal(false)}
+        onPick={(cat) => { setActiveCategory(cat); setShowCategoriesModal(false); }}
+      />
 
       {/* ── Deliver-to dialog ────────────────────────────────────────── */}
       <Dialog open={deliverToOpen} onOpenChange={setDeliverToOpen}>

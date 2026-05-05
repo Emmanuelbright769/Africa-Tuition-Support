@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -336,98 +335,104 @@ function ImageLightbox({ images, startIndex = 0, open, onClose }: {
     return () => window.removeEventListener("keydown", handler);
   }, [open, images.length, onClose]);
 
+  const [imgLoaded, setImgLoaded] = useState(false);
+  useEffect(() => { if (open) setImgLoaded(false); }, [open, idx]);
+
   if (!images.length) return null;
 
-  return createPortal(
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="lightbox-bg"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center"
-          onClick={onClose}
-          data-testid="image-lightbox"
-        >
-          {/* Close */}
-          <button
-            className="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors z-10"
-            onClick={onClose} data-testid="btn-lightbox-close"
-          >
-            <X className="w-5 h-5 text-white" />
-          </button>
+  // Render directly in the React tree (no portal) so Radix Dialog's focus trap
+  // includes lightbox elements — avoids the focus-loop freeze on mobile.
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[300] bg-black/95 flex flex-col items-center justify-center"
+      onClick={onClose}
+      data-testid="image-lightbox"
+      style={{ touchAction: "none" }}
+    >
+      {/* Close */}
+      <button
+        className="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors z-10"
+        onClick={e => { e.stopPropagation(); onClose(); }} data-testid="btn-lightbox-close"
+      >
+        <X className="w-5 h-5 text-white" />
+      </button>
 
-          {/* Counter */}
-          {images.length > 1 && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
-              {idx + 1} / {images.length}
-            </div>
-          )}
-
-          {/* Image */}
-          <motion.img
-            key={idx}
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.92 }}
-            transition={{ duration: 0.2 }}
-            src={images[idx]}
-            alt={`Image ${idx + 1}`}
-            className="max-w-[95vw] max-h-[80vh] object-contain rounded-xl select-none"
-            onClick={e => e.stopPropagation()}
-            draggable={false}
-          />
-
-          {/* Arrows */}
-          {images.length > 1 && (
-            <>
-              <button
-                onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + images.length) % images.length); }}
-                className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
-                data-testid="btn-lightbox-prev"
-              >
-                <ChevronLeft className="w-6 h-6 text-white" />
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % images.length); }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
-                data-testid="btn-lightbox-next"
-              >
-                <ChevronRight className="w-6 h-6 text-white" />
-              </button>
-            </>
-          )}
-
-          {/* Dot strip */}
-          {images.length > 1 && (
-            <div className="absolute bottom-6 flex items-center gap-2">
-              {images.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={e => { e.stopPropagation(); setIdx(i); }}
-                  className={`rounded-full transition-all ${i === idx ? "w-5 h-2 bg-white" : "w-2 h-2 bg-white/40 hover:bg-white/70"}`}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Thumbnail strip (multi-image) */}
-          {images.length > 1 && (
-            <div className="absolute bottom-14 flex gap-2 overflow-x-auto max-w-[90vw] px-2">
-              {images.map((src, i) => (
-                <button
-                  key={i}
-                  onClick={e => { e.stopPropagation(); setIdx(i); }}
-                  className={`shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${i === idx ? "border-white" : "border-white/20 opacity-60 hover:opacity-90"}`}
-                >
-                  <img src={src} className="w-full h-full object-cover" alt="" draggable={false} />
-                </button>
-              ))}
-            </div>
-          )}
-        </motion.div>
+      {/* Counter */}
+      {images.length > 1 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
+          {idx + 1} / {images.length}
+        </div>
       )}
-    </AnimatePresence>,
-    document.body
+
+      {/* Loading spinner */}
+      {!imgLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* Image — no framer-motion to avoid mobile jank */}
+      <img
+        key={idx}
+        src={images[idx]}
+        alt={`Image ${idx + 1}`}
+        className="max-w-[95vw] max-h-[80vh] object-contain rounded-xl select-none transition-opacity duration-150"
+        style={{ opacity: imgLoaded ? 1 : 0 }}
+        onClick={e => e.stopPropagation()}
+        onLoad={() => setImgLoaded(true)}
+        draggable={false}
+        decoding="async"
+      />
+
+      {/* Arrows */}
+      {images.length > 1 && (
+        <>
+          <button
+            onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i => (i - 1 + images.length) % images.length); }}
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
+            data-testid="btn-lightbox-prev"
+          >
+            <ChevronLeft className="w-6 h-6 text-white" />
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i => (i + 1) % images.length); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
+            data-testid="btn-lightbox-next"
+          >
+            <ChevronRight className="w-6 h-6 text-white" />
+          </button>
+        </>
+      )}
+
+      {/* Dot strip */}
+      {images.length > 1 && (
+        <div className="absolute bottom-6 flex items-center gap-2">
+          {images.map((_, i) => (
+            <button
+              key={i}
+              onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i); }}
+              className={`rounded-full transition-all ${i === idx ? "w-5 h-2 bg-white" : "w-2 h-2 bg-white/40 hover:bg-white/70"}`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Thumbnail strip (multi-image) */}
+      {images.length > 1 && (
+        <div className="absolute bottom-14 flex gap-2 overflow-x-auto max-w-[90vw] px-2">
+          {images.map((src, i) => (
+            <button
+              key={i}
+              onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i); }}
+              className={`shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${i === idx ? "border-white" : "border-white/20 opacity-60 hover:opacity-90"}`}
+            >
+              <img src={src} className="w-full h-full object-cover" alt="" draggable={false} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -437,6 +442,8 @@ function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
   onBuy: (product: Product) => void; onRemove: (id: number) => void; onClearAll: () => void;
 }) {
   const { formatAmount } = useLocalCurrency();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (open && scrollRef.current) scrollRef.current.scrollTop = 0; }, [open]);
   const { data: allProducts = [], isLoading } = useQuery<Product[]>({
     queryKey: ["/api/products/browse-all"],
     queryFn: async () => {
@@ -463,7 +470,7 @@ function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
             data-testid="cart-drawer"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-4 border-b shrink-0 bg-card/95 backdrop-blur-sm sticky top-0 z-10">
+            <div className="flex items-center justify-between px-4 py-4 border-b shrink-0 bg-card z-10">
               <div className="flex items-center gap-3">
                 <button onClick={onClose} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center active:scale-95 transition-transform" data-testid="btn-cart-close">
                   <ChevronLeft className="w-5 h-5" />
@@ -490,7 +497,7 @@ function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
             )}
 
             {/* Items */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-3">
               {cartIds.size === 0 ? (
                 <div className="text-center py-16">
                   <ShoppingCart className="w-14 h-14 text-muted-foreground/20 mx-auto mb-3" />

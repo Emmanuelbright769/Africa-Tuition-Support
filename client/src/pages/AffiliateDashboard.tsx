@@ -2979,11 +2979,10 @@ export default function AffiliateDashboard() {
               <Input placeholder="0x..." value={depositTxHash} onChange={e => setDepositTxHash(e.target.value)} data-testid="input-deposit-txhash" />
             </div>
             {depositAmt && parseFloat(depositAmt) >= TRADE_MARKET.MIN_DEPOSIT && (
-              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-3 text-xs space-y-1">
-                <p className="font-semibold text-green-800 dark:text-green-300">Allocation Preview</p>
-                <p>Credited to you: <strong>${(parseFloat(depositAmt) * 0.75).toFixed(2)}</strong> <span className="text-muted-foreground">(≈ {formatAmount(parseFloat(depositAmt) * 0.75)})</span> (75%)</p>
-                <p>Reserve Fund: <strong>${(parseFloat(depositAmt) * 0.20).toFixed(2)}</strong> <span className="text-muted-foreground">(≈ {formatAmount(parseFloat(depositAmt) * 0.20)})</span> (20%)</p>
-                <p>Affiliate Pool: <strong>${(parseFloat(depositAmt) * 0.05).toFixed(2)}</strong> <span className="text-muted-foreground">(≈ {formatAmount(parseFloat(depositAmt) * 0.05)})</span> (5%)</p>
+              <div className="border border-border rounded-xl px-3 py-2 bg-muted/30 text-xs space-y-0.5" data-testid="trade-deposit-fee-breakdown">
+                <p className="font-semibold text-foreground mb-1">Allocation Preview</p>
+                <div className="flex justify-between text-muted-foreground"><span>Affiliate pool (5%)</span><span className="text-red-500">-${(parseFloat(depositAmt) * 0.05).toFixed(2)}</span></div>
+                <div className="flex justify-between font-semibold text-tsia-green"><span>Credited to trade wallet (95%)</span><span>${(parseFloat(depositAmt) * 0.95).toFixed(2)}</span></div>
               </div>
             )}
           </div>
@@ -3034,14 +3033,20 @@ export default function AffiliateDashboard() {
             {/* Transfer to SwiftWallet */}
             {withdrawType === "transfer_wallet" && (
               <>
-                <div className="bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3 text-xs text-tsia-green font-medium">
-                  Instant transfer — no fees charged. Funds appear in your SwiftWallet immediately. Only trade <strong>earnings</strong> can be transferred (above $5).
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-200 font-medium">
+                  A <strong>20% reserve</strong> is deducted on transfer — 80% is credited to your SwiftWallet. Only trade <strong>earnings</strong> can be transferred (above $5).
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
                   <Input type="number" min={5} max={withdrawableAmt} placeholder="Min $5.00 (earnings only)" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
                   {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
                 </div>
+                {withdrawAmt && parseFloat(withdrawAmt) >= 5 && parseFloat(withdrawAmt) <= withdrawableAmt && (
+                  <div className="border border-border rounded-xl px-3 py-2 bg-muted/30 text-xs space-y-0.5" data-testid="transfer-fee-breakdown">
+                    <div className="flex justify-between text-muted-foreground"><span>Reserve fund (20%)</span><span className="text-red-500">-${(parseFloat(withdrawAmt) * 0.20).toFixed(2)}</span></div>
+                    <div className="flex justify-between font-semibold text-tsia-green"><span>You receive (80%)</span><span>${(parseFloat(withdrawAmt) * 0.80).toFixed(2)}</span></div>
+                  </div>
+                )}
               </>
             )}
 
@@ -3307,7 +3312,7 @@ export default function AffiliateDashboard() {
                 iconBg: "bg-amber-100 dark:bg-amber-900/40",
                 iconColor: "text-amber-600",
                 title: "Make Your First Deposit",
-                body: "Send USDT to TSIA's receiving address, then click Deposit and enter the amount. 75% is credited to your trade wallet, 20% goes to the reserve fund, and 5% to the affiliate pool.",
+                body: "Send USDT to TSIA's receiving address, then click Deposit and enter the amount. 95% is credited to your trade wallet and 5% goes to the affiliate pool.",
               },
               {
                 icon: Bot,

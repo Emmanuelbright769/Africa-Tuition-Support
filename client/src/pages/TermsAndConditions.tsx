@@ -291,10 +291,10 @@ export default function TermsAndConditions() {
                 <p>The Itera Trading BOT is active from <strong>1:00 PM GMT to 1:00 AM GMT</strong> on standard working days. You must manually activate your bot session within this window. Sessions started outside this window will not generate returns.</p>
               </Clause>
               <Clause num="8.4" title="Deposit Allocation">
-                <p>Every trade deposit is allocated as follows: 75% to your active trade wallet, 20% to TSIA's strategic reserve fund, and 5% to the affiliate pool. These allocations are non-negotiable and applied automatically.</p>
+                <p>Every trade market deposit is allocated as follows: 95% to your active trade wallet and 5% to the affiliate pool. These allocations are non-negotiable and applied automatically. When transferring earnings from your trade wallet to your SwiftWallet, a 20% reserve is deducted and 80% is credited.</p>
               </Clause>
-              <Clause num="8.5" title="20% Reserve Fund">
-                <p>The 20% reserve fund is held to cover platform obligations, insurance against trading losses, and long-term operational stability. Users have no claim over the reserve fund, and it cannot be withdrawn.</p>
+              <Clause num="8.5" title="Reserve Fund">
+                <p>The 20% reserve deducted on trade-to-wallet transfers is held to cover platform obligations, insurance against trading losses, and long-term operational stability. Users have no claim over the reserve fund, and it cannot be withdrawn.</p>
               </Clause>
               <Clause num="8.6" title="Minimum Deposit">
                 <p>The minimum trade deposit is <strong>$10</strong>. TSIA reserves the right to change the minimum deposit amount with reasonable notice.</p>

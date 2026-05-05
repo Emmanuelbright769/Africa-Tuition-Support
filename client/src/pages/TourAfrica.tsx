@@ -88,7 +88,7 @@ export default function TourAfrica() {
     },
   });
 
-  const handleLogout = async () => { await logout(); setLocation("/"); };
+  const handleLogout = async () => { await logout(); setLocation("/login"); };
   const walletBalance = parseFloat((wallet as any)?.balance || "0");
   const COMMISSION_RATE = 0.10;
 

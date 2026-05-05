@@ -1076,7 +1076,7 @@ export default function AffiliateDashboard() {
 
   const copyCode = () => { navigator.clipboard.writeText(affiliateCode); toast({ title: "Copied!", description: "Affiliate code copied." }); };
   const copyLink = () => { navigator.clipboard.writeText(referralLink); toast({ title: "Copied!", description: "Referral link copied." }); };
-  const handleLogout = async () => { await logout(); setLocation("/"); };
+  const handleLogout = async () => { await logout(); setLocation("/login"); };
 
   const navigate = (s: Section) => {
     if (s === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }

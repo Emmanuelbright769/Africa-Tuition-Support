@@ -654,7 +654,7 @@ export default function AdminDashboard() {
 
   if (authLoading || (!user && !authLoading)) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin w-8 h-8 border-4 border-tsia-green border-t-transparent rounded-full" /></div>;
 
-  const handleLogout = async () => { await logout(); setLocation("/"); };
+  const handleLogout = async () => { await logout(); setLocation("/login"); };
 
   const slide = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35 } }, exit: { opacity: 0, y: -12, transition: { duration: 0.25 } } };
 

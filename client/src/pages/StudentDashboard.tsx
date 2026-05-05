@@ -149,7 +149,7 @@ export default function StudentDashboard() {
   });
 
 
-  const handleLogout = async () => { await logout(); setLocation("/"); };
+  const handleLogout = async () => { await logout(); setLocation("/login"); };
 
   const handleSponsorCodeSubmit = async () => {
     if (!sponsorCodeInput.trim()) return;

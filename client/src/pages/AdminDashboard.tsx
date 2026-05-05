@@ -101,6 +101,7 @@ const NAV = [
   { id: "deposits",      icon: Coins,          label: "Deposit History" },
   { id: "withdrawals",  icon: Banknote,       label: "Bank W/D",      badgeKey: "pendingWithdrawals" },
   { id: "crypto_withdrawals", icon: Coins,    label: "Crypto W/D",    badgeKey: "pendingCryptoWd" },
+  { id: "bank_transfers", icon: Send,         label: "Bank Transfers", badgeKey: "pendingBankTransfers" },
   { id: "reserve",      icon: ShieldCheck,    label: "Str. Reserve" },
   { id: "trustfunders", icon: Award,          label: "Affiliate Trust Fund" },
   { id: "messages",     icon: MessageSquare,  label: "Forum Messages" },

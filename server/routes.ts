@@ -6232,6 +6232,35 @@ export async function registerRoutes(
             ...(narration ? [{ label: "Narration", value: narration }] : []),
           ],
         }).catch(() => {});
+
+        // Notify admin so the transfer is attended to promptly
+        sendEmail({
+          to: ADMIN_EMAIL,
+          subject: `[Action Required] New Bank Transfer — ₦${netAmountNgn.toLocaleString()} from ${u.firstName} ${u.lastName}`,
+          html: `
+            <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
+              <div style="background:#1a5c38;padding:20px 24px;border-radius:8px 8px 0 0">
+                <h2 style="color:#fff;margin:0;font-size:18px">&#128196; Pending Bank Transfer — Action Required</h2>
+              </div>
+              <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:24px">
+                <p style="margin:0 0 16px">A user has submitted a bank transfer request. Please complete the transfer manually and approve (or reject) it in the admin dashboard.</p>
+                <table style="width:100%;border-collapse:collapse;font-size:14px">
+                  <tr style="background:#f9fafb"><td style="padding:8px 12px;font-weight:600;width:40%">User</td><td style="padding:8px 12px">${u.firstName} ${u.lastName} &lt;${u.email}&gt;</td></tr>
+                  <tr><td style="padding:8px 12px;font-weight:600">Recipient Name</td><td style="padding:8px 12px">${accountName}</td></tr>
+                  <tr style="background:#f9fafb"><td style="padding:8px 12px;font-weight:600">Account Number</td><td style="padding:8px 12px;font-family:monospace;font-size:15px;font-weight:700;color:#1a5c38">${accountNumber}</td></tr>
+                  <tr><td style="padding:8px 12px;font-weight:600">Bank</td><td style="padding:8px 12px">${bankName || bankCode}</td></tr>
+                  <tr style="background:#f9fafb"><td style="padding:8px 12px;font-weight:600">Amount to Send (NGN)</td><td style="padding:8px 12px;font-weight:700;color:#1a5c38;font-size:16px">₦${netAmountNgn.toLocaleString()}</td></tr>
+                  <tr><td style="padding:8px 12px;font-weight:600">Amount (USD)</td><td style="padding:8px 12px">$${transferAmount.toFixed(2)}</td></tr>
+                  <tr style="background:#f9fafb"><td style="padding:8px 12px;font-weight:600">VAT (7.5%)</td><td style="padding:8px 12px">$${vatAmount.toFixed(2)}</td></tr>
+                  ${narration ? `<tr><td style="padding:8px 12px;font-weight:600">Narration</td><td style="padding:8px 12px">${narration}</td></tr>` : ""}
+                  <tr style="background:#f9fafb"><td style="padding:8px 12px;font-weight:600">Reference</td><td style="padding:8px 12px;font-family:monospace;font-size:12px">${txRef}</td></tr>
+                </table>
+                <div style="margin-top:20px;padding:12px 16px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px;font-size:13px">
+                  <strong>Next steps:</strong> Make the transfer on your bank app, then go to <strong>Admin Dashboard → Bank Transfers</strong> and click <em>Approve &amp; Send</em>. To cancel and refund the user, click <em>Reject &amp; Refund</em>.
+                </div>
+              </div>
+            </div>`,
+        }).catch(() => {});
       }).catch(() => {});
 
       const updated = await storage.getOrCreateWallet(userId);

@@ -1256,7 +1256,7 @@ export default function AffiliateDashboard() {
                 </div>
                 <h2 className="text-2xl font-bold mb-3">Fund Your Account First</h2>
                 <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  To access this feature, fund your TSIA wallet with above <strong>$5</strong> via Swift Hub. This unlocks the trade market, TS-Mart, QCE SwiftVault, and all other services.
+                  To access this feature, fund your TSIA wallet with above <strong>$2</strong> via Swift Hub. This unlocks the trade market, TS-Mart, QCE SwiftVault, and all other services.
                 </p>
                 <Button
                   size="lg"
@@ -1267,7 +1267,7 @@ export default function AffiliateDashboard() {
                   <CreditCard className="w-4 h-4 mr-2" />
                   Fund via Swift Hub
                 </Button>
-                <p className="text-xs text-muted-foreground mt-4">Deposit above $5 · Activates immediately on confirmation</p>
+                <p className="text-xs text-muted-foreground mt-4">Deposit above $2 · Activates immediately on confirmation</p>
               </motion.div>
             )}
 
@@ -1658,17 +1658,17 @@ export default function AffiliateDashboard() {
                           size="sm"
                           variant="outline"
                           onClick={() => setWithdrawOpen(true)}
-                          disabled={withdrawableAmt < 5 || botActive}
+                          disabled={withdrawableAmt < 2 || botActive}
                           data-testid="button-trade-withdraw"
-                          title={botActive ? "Withdrawals are locked during an active trade session" : withdrawableAmt < 5 ? `Earnings must be above $5 (you have $${withdrawableAmt.toFixed(2)})` : "Withdraw your earnings"}
+                          title={botActive ? "Withdrawals are locked during an active trade session" : withdrawableAmt < 2 ? `Earnings must be above $2 (you have $${withdrawableAmt.toFixed(2)})` : "Withdraw your earnings"}
                           className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 h-7 text-xs px-2.5 disabled:opacity-40"
                         >
                           {botActive ? <Lock className="w-3 h-3 mr-1" /> : <ArrowUpRight className="w-3 h-3 mr-1" />} Withdraw
                         </Button>
                         {botActive ? (
                           <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">🔒 Active session</p>
-                        ) : withdrawableAmt > 0 && withdrawableAmt < 5 ? (
-                          <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Above $5 to unlock</p>
+                        ) : withdrawableAmt > 0 && withdrawableAmt < 2 ? (
+                          <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Above $2 to unlock</p>
                         ) : null}
                       </div>
                     </div>
@@ -3034,11 +3034,11 @@ export default function AffiliateDashboard() {
             {withdrawType === "transfer_wallet" && (
               <>
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-200 font-medium">
-                  A <strong>20% reserve</strong> is deducted on transfer — 80% is credited to your SwiftWallet. Only trade <strong>earnings</strong> can be transferred (above $5).
+                  A <strong>20% reserve</strong> is deducted on transfer — 80% is credited to your SwiftWallet. Only trade <strong>earnings</strong> can be transferred (above $2).
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
-                  <Input type="number" min={5} max={withdrawableAmt} placeholder="Min $5.00 (earnings only)" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
+                  <Input type="number" min={2} max={withdrawableAmt} placeholder="Min $2.00 (earnings only)" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
                   {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
                 </div>
                 {withdrawAmt && parseFloat(withdrawAmt) >= 5 && parseFloat(withdrawAmt) <= withdrawableAmt && (
@@ -3370,7 +3370,7 @@ export default function AffiliateDashboard() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              To access the trade market, QCE SwiftVault, e-commerce, loans, and all other platform features, please <strong>fund your SwiftWallet with above $5</strong>.
+              To access the trade market, QCE SwiftVault, e-commerce, loans, and all other platform features, please <strong>fund your SwiftWallet with above $2</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -3379,7 +3379,7 @@ export default function AffiliateDashboard() {
                 <Zap className="w-4 h-4 text-tsia-green" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Activate with above $5</p>
+                <p className="text-sm font-semibold text-foreground">Activate with above $2</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Go to SwiftWallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
               </div>
             </div>

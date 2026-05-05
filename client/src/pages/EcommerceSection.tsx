@@ -321,118 +321,109 @@ function ImageLightbox({ images, startIndex = 0, open, onClose }: {
   images: string[]; startIndex?: number; open: boolean; onClose: () => void;
 }) {
   const [idx, setIdx] = useState(startIndex);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   useEffect(() => { setIdx(startIndex); }, [startIndex, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "ArrowRight") setIdx(i => (i + 1) % images.length);
-      if (e.key === "ArrowLeft")  setIdx(i => (i - 1 + images.length) % images.length);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, images.length, onClose]);
-
-  const [imgLoaded, setImgLoaded] = useState(false);
   useEffect(() => { if (open) setImgLoaded(false); }, [open, idx]);
 
   if (!images.length) return null;
 
-  // Render directly in the React tree (no portal) so Radix Dialog's focus trap
-  // includes lightbox elements — avoids the focus-loop freeze on mobile.
-  if (!open) return null;
+  // Use a nested Radix Dialog so the outer product-detail Dialog's focus trap
+  // is automatically paused — this is the only reliable fix for the "lightbox
+  // doesn't open / freezes on mobile" issue caused by the Radix focus scope.
   return (
-    <div
-      className="fixed inset-0 z-[300] bg-black/95 flex flex-col items-center justify-center"
-      onClick={onClose}
-      data-testid="image-lightbox"
-      style={{ touchAction: "none" }}
-    >
-      {/* Close */}
-      <button
-        className="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors z-10"
-        onClick={e => { e.stopPropagation(); onClose(); }} data-testid="btn-lightbox-close"
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent
+        data-testid="image-lightbox"
+        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, transform: "none", maxWidth: "100vw", width: "100vw", height: "100vh", maxHeight: "100vh", margin: 0, padding: 0, borderRadius: 0, border: "none", backgroundColor: "rgba(0,0,0,0.97)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", overflow: "hidden", touchAction: "none" }}
+        onPointerDownOutside={e => e.preventDefault()}
+        onInteractOutside={e => e.preventDefault()}
       >
-        <X className="w-5 h-5 text-white" />
-      </button>
+        <DialogTitle className="sr-only">Product image viewer</DialogTitle>
 
-      {/* Counter */}
-      {images.length > 1 && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
-          {idx + 1} / {images.length}
-        </div>
-      )}
+        {/* Close */}
+        <button
+          className="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors z-10"
+          onClick={onClose} data-testid="btn-lightbox-close"
+        >
+          <X className="w-5 h-5 text-white" />
+        </button>
 
-      {/* Loading spinner */}
-      {!imgLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin" />
-        </div>
-      )}
+        {/* Counter */}
+        {images.length > 1 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium bg-black/40 px-3 py-1 rounded-full z-10">
+            {idx + 1} / {images.length}
+          </div>
+        )}
 
-      {/* Image — no framer-motion to avoid mobile jank */}
-      <img
-        key={idx}
-        src={images[idx]}
-        alt={`Image ${idx + 1}`}
-        className="max-w-[95vw] max-h-[80vh] object-contain rounded-xl select-none transition-opacity duration-150"
-        style={{ opacity: imgLoaded ? 1 : 0 }}
-        onClick={e => e.stopPropagation()}
-        onLoad={() => setImgLoaded(true)}
-        draggable={false}
-        decoding="async"
-      />
+        {/* Loading spinner */}
+        {!imgLoaded && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+          </div>
+        )}
 
-      {/* Arrows */}
-      {images.length > 1 && (
-        <>
-          <button
-            onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i => (i - 1 + images.length) % images.length); }}
-            className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
-            data-testid="btn-lightbox-prev"
-          >
-            <ChevronLeft className="w-6 h-6 text-white" />
-          </button>
-          <button
-            onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i => (i + 1) % images.length); }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
-            data-testid="btn-lightbox-next"
-          >
-            <ChevronRight className="w-6 h-6 text-white" />
-          </button>
-        </>
-      )}
+        {/* Image */}
+        <img
+          key={idx}
+          src={images[idx]}
+          alt={`Image ${idx + 1}`}
+          className="max-w-[95vw] max-h-[80vh] object-contain rounded-xl select-none transition-opacity duration-150"
+          style={{ opacity: imgLoaded ? 1 : 0 }}
+          onLoad={() => setImgLoaded(true)}
+          draggable={false}
+          decoding="async"
+        />
 
-      {/* Dot strip */}
-      {images.length > 1 && (
-        <div className="absolute bottom-6 flex items-center gap-2">
-          {images.map((_, i) => (
+        {/* Arrows */}
+        {images.length > 1 && (
+          <>
             <button
-              key={i}
-              onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i); }}
-              className={`rounded-full transition-all ${i === idx ? "w-5 h-2 bg-white" : "w-2 h-2 bg-white/40 hover:bg-white/70"}`}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Thumbnail strip (multi-image) */}
-      {images.length > 1 && (
-        <div className="absolute bottom-14 flex gap-2 overflow-x-auto max-w-[90vw] px-2">
-          {images.map((src, i) => (
-            <button
-              key={i}
-              onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i); }}
-              className={`shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${i === idx ? "border-white" : "border-white/20 opacity-60 hover:opacity-90"}`}
+              onClick={() => { setImgLoaded(false); setIdx(i => (i - 1 + images.length) % images.length); }}
+              className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
+              data-testid="btn-lightbox-prev"
             >
-              <img src={src} className="w-full h-full object-cover" alt="" draggable={false} />
+              <ChevronLeft className="w-6 h-6 text-white" />
             </button>
-          ))}
-        </div>
-      )}
-    </div>
+            <button
+              onClick={() => { setImgLoaded(false); setIdx(i => (i + 1) % images.length); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
+              data-testid="btn-lightbox-next"
+            >
+              <ChevronRight className="w-6 h-6 text-white" />
+            </button>
+          </>
+        )}
+
+        {/* Dot strip */}
+        {images.length > 1 && (
+          <div className="absolute bottom-6 flex items-center gap-2 z-10">
+            {images.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => { setImgLoaded(false); setIdx(i); }}
+                className={`rounded-full transition-all ${i === idx ? "w-5 h-2 bg-white" : "w-2 h-2 bg-white/40 hover:bg-white/70"}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Thumbnail strip */}
+        {images.length > 1 && (
+          <div className="absolute bottom-14 flex gap-2 overflow-x-auto max-w-[90vw] px-2 z-10">
+            {images.map((src, i) => (
+              <button
+                key={i}
+                onClick={() => { setImgLoaded(false); setIdx(i); }}
+                className={`shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${i === idx ? "border-white" : "border-white/20 opacity-60 hover:opacity-90"}`}
+              >
+                <img src={src} className="w-full h-full object-cover" alt="" draggable={false} />
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -78,7 +78,7 @@ export default function Onboarding() {
     if (walletActivated) return true;
     toast({
       title: "Activate Wallet First",
-      description: "Fund your TSIA SwiftWallet with above $5 before starting sponsorship verification.",
+      description: "Fund your TSIA SwiftWallet with above $2 before starting sponsorship verification.",
       variant: "destructive",
     });
     setLocation("/wallet");
@@ -601,7 +601,7 @@ export default function Onboarding() {
                       <div>
                         <p className="font-bold text-red-800 dark:text-red-200 text-base mb-1">Important: 72-Hour Wallet Funding Requirement</p>
                         <p className="text-sm text-red-700 dark:text-red-300 leading-relaxed">
-                          After completing your WAEC validation (the next step), you will have exactly <strong>72 hours</strong> to fund your TSIA SwiftWallet with above <strong>$5</strong>.
+                          After completing your WAEC validation (the next step), you will have exactly <strong>72 hours</strong> to fund your TSIA SwiftWallet with above <strong>$2</strong>.
                         </p>
                         <p className="text-sm text-red-700 dark:text-red-300 mt-2 leading-relaxed">
                           <strong>Failure to fund your wallet within this window will reset your enrollment.</strong> Your account will remain, but your WAEC and NIN verification records will be cleared and you will need to restart the onboarding process — including re-payment of the portal fee — when you return.

@@ -1929,7 +1929,15 @@ export default function AdminDashboard() {
                               <TableCell className="font-bold text-sm">{fmtUSD(t.amount)}</TableCell>
                               <TableCell>
                                 <div className="font-medium text-sm">{details.accountName || "—"}</div>
-                                <div className="text-xs text-slate-500 font-mono">{details.accountNumber || "—"}</div>
+                                <button
+                                  className="text-xs text-slate-500 font-mono hover:text-tsia-green transition-colors flex items-center gap-1 group"
+                                  title="Click to copy account number"
+                                  onClick={() => { navigator.clipboard.writeText(details.accountNumber || ""); toast({ title: "Copied!", description: `Account number ${details.accountNumber} copied.` }); }}
+                                  data-testid={`btn-copy-acct-${t.id}`}
+                                >
+                                  {details.accountNumber || "—"}
+                                  <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </button>
                               </TableCell>
                               <TableCell className="text-sm">{details.bankName || details.bankCode || "—"}</TableCell>
                               <TableCell className="font-semibold text-sm text-tsia-green">₦{(details.netAmountNgn || 0).toLocaleString()}</TableCell>

@@ -153,7 +153,7 @@ export async function registerRoutes(
               userId: u!.id,
               type: "wallet_activation",
               title: "Activate Your TSIA Wallet",
-              message: `Welcome to TSIA! To unlock all platform features — including QCE SwiftVault, loans, TS-Mart Online Stores and more — please fund your SwiftWallet with above $5. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your SwiftWallet section to make your first deposit.`,
+              message: `Welcome to TSIA! To unlock all platform features — including QCE SwiftVault, loans, TS-Mart Online Stores and more — please fund your SwiftWallet with above $2. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your SwiftWallet section to make your first deposit.`,
               data: { minActivation: QCE.MIN_ACTIVATION, minBalance: QCE.MIN_BALANCE },
               isRead: false,
             });
@@ -1022,7 +1022,7 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const feeWallet = await storage.getOrCreateWallet(userId);
       if (!feeWallet.activated) {
-        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $5 before paying the portal fee." });
+        return res.status(403).json({ message: "Activate your TSIA SwiftWallet with above $2 before paying the portal fee." });
       }
 
       let verification = await storage.getVerificationByUser(userId);
@@ -1216,9 +1216,9 @@ export async function registerRoutes(
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
     let wallet = await storage.getOrCreateWallet(userId);
-    // Self-heal: activate wallets that already have > $5 but were never activated
+    // Self-heal: activate wallets that already have > $2 but were never activated
     // (can happen if balance was set before the activated column existed)
-    if (!wallet.activated && parseFloat(wallet.balance) > 5) {
+    if (!wallet.activated && parseFloat(wallet.balance) > 2) {
       wallet = await storage.activateWallet(userId);
     }
     const balanceUsd = parseFloat(wallet.balance);
@@ -2613,7 +2613,7 @@ export async function registerRoutes(
       const personalWallet = await storage.getOrCreateWallet(userId);
       const newPersonalBal = (parseFloat(personalWallet.balance) + twUserCredit).toFixed(2);
       await storage.updateWalletBalance(userId, newPersonalBal);
-      if (!personalWallet.activated && parseFloat(newPersonalBal) > 5) await storage.activateWallet(userId);
+      if (!personalWallet.activated && parseFloat(newPersonalBal) > 2) await storage.activateWallet(userId);
       await storage.createTransaction({ userId, type: "deposit", amount: twUserCredit.toFixed(2), fee: twReserveCut.toFixed(2), paymentMethod: "internal", description: `Transfer from Trade Wallet — $${twUserCredit.toFixed(2)} credited (80%), $${twReserveCut.toFixed(2)} reserve (20%)` });
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Trade Transfer Complete ✓", message: `$${twUserCredit.toFixed(2)} credited to your SwiftWallet (80% of $${amount.toFixed(2)} — 20% reserve applied).`, data: {}, isRead: false });
       pushToUser(userId, "notification", notif);
@@ -3896,8 +3896,8 @@ export async function registerRoutes(
       if (isNaN(newBal) || newBal < 0) return res.status(400).json({ message: "Invalid balance amount" });
       const curWal = await storage.getOrCreateWallet(targetId);
       await storage.updateWalletBalance(targetId, newBal.toFixed(2));
-      // Auto-activate wallet if balance reaches $5 minimum and fire referral commission once
-      if (!curWal.activated && newBal > 5) {
+      // Auto-activate wallet if balance reaches $2 minimum and fire referral commission once
+      if (!curWal.activated && newBal > 2) {
         await storage.activateWallet(targetId);
         const adminAdjustmentReferralResult = await creditReferrerCommissionOnce(targetId, newBal, "personal wallet activation");
         if (!adminAdjustmentReferralResult.credited) console.log(`[REFERRAL] No admin-adjusted wallet activation commission credited for user ${targetId}`);
@@ -3924,8 +3924,8 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(targetId);
       const newBal = (parseFloat(wallet.balance) + credit).toFixed(2);
       await storage.updateWalletBalance(targetId, newBal);
-      // Auto-activate wallet if balance now meets $5 minimum
-      if (!wallet.activated && parseFloat(newBal) > 5) await storage.activateWallet(targetId);
+      // Auto-activate wallet if balance now meets $2 minimum
+      if (!wallet.activated && parseFloat(newBal) > 2) await storage.activateWallet(targetId);
       await storage.createTransaction({ userId: targetId, type: "admin_credit", amount: credit.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin credit: ${note}` : "Admin credit" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Credited ✓", message: `$${credit.toFixed(2)} has been added to your wallet by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
       pushToUser(targetId, "notification", notif);
@@ -5154,8 +5154,8 @@ export async function registerRoutes(
       const squadWallet = await storage.getOrCreateWallet(userId);
       const newBalance = (parseFloat(squadWallet.balance) + sqUserCredit).toFixed(2);
       await storage.updateWalletBalance(userId, newBalance);
-      // Activate wallet on first funding ≥ $5 and credit referral commission
-      if (!squadWallet.activated && parseFloat(newBalance) > 5) {
+      // Activate wallet on first funding ≥ $2 and credit referral commission
+      if (!squadWallet.activated && parseFloat(newBalance) > 2) {
         try {
           await storage.activateWallet(userId);
           const activationReferralResult = await creditReferrerCommissionOnce(userId, gross, "personal wallet activation");
@@ -5243,7 +5243,7 @@ export async function registerRoutes(
             const wl = await storage.getOrCreateWallet(userId);
             const newBal = (parseFloat(wl.balance) + wkUserCredit).toFixed(2);
             await storage.updateWalletBalance(userId, newBal);
-            if (!wl.activated && parseFloat(newBal) > 5) {
+            if (!wl.activated && parseFloat(newBal) > 2) {
               await storage.activateWallet(userId);
               const webhookReferralResult = await creditReferrerCommissionOnce(userId, wkGross, "personal wallet activation");
               if (!webhookReferralResult.credited) console.log(`[REFERRAL] No Squad webhook wallet activation commission credited for user ${userId}`);
@@ -5540,7 +5540,7 @@ export async function registerRoutes(
     const w = await storage.getOrCreateWallet(userId);
     const newBal = (parseFloat(w.balance) + userCredit).toFixed(2);
     await storage.updateWalletBalance(userId, newBal);
-    if (!w.activated && parseFloat(newBal) > 5) {
+    if (!w.activated && parseFloat(newBal) > 2) {
       try {
         await storage.activateWallet(userId);
         await creditReferrerCommissionOnce(userId, gross, "personal wallet activation");
@@ -5630,8 +5630,8 @@ export async function registerRoutes(
       const pstackWallet = await storage.getOrCreateWallet(userId);
       const psNewBalance = (parseFloat(pstackWallet.balance) + psUserCredit).toFixed(2);
       await storage.updateWalletBalance(userId, psNewBalance);
-      // Activate wallet on first funding ≥ $5 and credit referral commission
-      if (!pstackWallet.activated && parseFloat(psNewBalance) > 5) {
+      // Activate wallet on first funding ≥ $2 and credit referral commission
+      if (!pstackWallet.activated && parseFloat(psNewBalance) > 2) {
         try {
           await storage.activateWallet(userId);
           const paystackReferralResult = await creditReferrerCommissionOnce(userId, psGross, "personal wallet activation");
@@ -6194,118 +6194,30 @@ export async function registerRoutes(
       const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
       const txRef = `TSIA-FT-${userId}-${Date.now()}`;
 
-      // ── Try Squad payout first, fall back to Korapay disburse ────────────────
-      // Both gateways are tried BEFORE the wallet is touched — failures don't lose funds.
-      const squadKey = process.env.SQUAD_SECRET_KEY;
-      const koraKey  = process.env.KORAPAY_SECRET_KEY;
-      if (!squadKey && !koraKey) return res.status(500).json({ message: "No payment gateway configured. Contact support." });
-
-      let gatewaySuccess = false, gatewayMsg = "", usedGateway: "squad" | "korapay" | "" = "";
-
-      // 1) Squad payout
-      if (squadKey) {
-        try {
-          const isLiveKey = squadKey.startsWith("sk_");
-          const squadBase = isLiveKey ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
-          const merchantId = process.env.SQUAD_MERCHANT_ID ?? "TSIA";
-          const squadRef   = `${merchantId}_${txRef}`.slice(0, 50);
-          const amountKobo = Math.round(netAmountNgn * 100);
-          const sRes = await fetch(`${squadBase}/payout/transfer`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              transaction_reference: squadRef,
-              amount: String(amountKobo),
-              bank_code: bankCode,
-              account_number: accountNumber,
-              account_name: accountName,
-              currency_id: "NGN",
-              remark: narration || `TSIA Payout | ${txRef}`,
-            }),
-            signal: AbortSignal.timeout(25000),
-          });
-          const sData = await sRes.json() as any;
-          console.log(`[SQUAD PAYOUT] ref=${squadRef} | HTTP ${sRes.status} | success=${sData.success} | msg="${sData.message}"`);
-          if (sData.success) { gatewaySuccess = true; usedGateway = "squad"; }
-          else if (sRes.status === 424) {
-            // Timeout — re-query to confirm actual status
-            try {
-              const reqRes = await fetch(`${squadBase}/payout/requery`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ transaction_reference: squadRef }),
-                signal: AbortSignal.timeout(15000),
-              });
-              const reqData = await reqRes.json() as any;
-              if (reqData.success) { gatewaySuccess = true; usedGateway = "squad"; }
-              else gatewayMsg = sData.message ?? "Squad transfer failed";
-            } catch { gatewayMsg = sData.message ?? "Squad timed out"; }
-          } else {
-            gatewayMsg = sData.message ?? "Squad transfer declined";
-          }
-        } catch (e: any) {
-          gatewayMsg = `Squad: ${e.message ?? "network error"}`;
-        }
-      }
-
-      // 2) Korapay fallback
-      if (!gatewaySuccess && koraKey) {
-        console.warn(`[PAYOUT] Squad failed (${gatewayMsg || "not configured"}) — trying Korapay fallback`);
-        try {
-          const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reference: `${txRef}-K`,
-              destination: {
-                type: "bank_account",
-                amount: netAmountNgn,
-                currency: "NGN",
-                bank_account: { bank: bankCode, account: accountNumber },
-                customer: { name: accountName, email: "transfers@tsiforafrica.com" },
-              },
-              description: narration || `TSIA Bank Transfer to ${accountName} | Ref: ${txRef}`,
-            }),
-            signal: AbortSignal.timeout(30000),
-          });
-          const kData = await kRes.json() as any;
-          console.log(`[KORAPAY DISBURSE] ref=${txRef} | HTTP ${kRes.status} | status=${kData.status} | msg="${kData.message}"`);
-          if (kData.status) { gatewaySuccess = true; usedGateway = "korapay"; }
-          else gatewayMsg = kData.message ?? "Korapay transfer declined";
-        } catch (e: any) {
-          gatewayMsg = `Korapay: ${e.message ?? "network error"}`;
-        }
-      }
-
-      if (!gatewaySuccess) {
-        // Log the raw gateway error for ops visibility, but show a friendly
-        // message to the user — never expose cryptic gateway internals.
-        console.warn(`[BANK TRANSFER] All gateways failed for user ${userId} amount $${transferAmount} — raw="${gatewayMsg}"`);
-        return res.status(502).json({ message: "Network error. Please try again later. Your wallet was not debited." });
-      }
-
-      // ── Gateway confirmed — now debit wallet and record ─────────────────────
+      // ── Queue as pending — admin manually makes the bank transfer then approves ─
+      // Wallet is debited immediately; funds are held until admin approves or
+      // rejects (reject refunds the full amount back to the user's wallet).
       await storage.updateWalletBalance(userId, (balance - transferAmount).toFixed(2));
 
-      const transferDetails = JSON.stringify({ bankCode, bankName, accountNumber, accountName, narration, netAmountNgn, vatAmount, txRef, gateway: usedGateway });
-      const bill = await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: transferDetails, status: "completed" });
+      const transferDetails = JSON.stringify({ bankCode, bankName, accountNumber, accountName, narration, netAmountNgn, vatAmount, txRef });
+      const bill = await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: transferDetails, status: "pending" });
 
-      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: `bank_transfer_${usedGateway}`, description: `Bank transfer sent via ${usedGateway} — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) | Ref: ${txRef}` });
+      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer_pending", description: `Bank transfer pending — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} | Ref: ${txRef}` });
 
-      const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) has been sent successfully. Ref: ${txRef}`;
-      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Sent ✓", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
+      const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) is pending. Admin will process it within 24 hours. Ref: ${txRef}`;
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Pending ⏳", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
 
       invalidateCacheKey(`wallet:${userId}`);
       invalidateCacheKey(`transactions:${userId}`);
       invalidateCacheKey(`wallet_bills:${userId}`);
 
-      // Send receipt email in background
+      // Send pending-confirmation email in background
       storage.getUser(userId).then(u => {
         if (!u) return;
         sendTransactionReceiptEmail(u.email, u.firstName, {
-          title: "Bank Transfer Sent",
-          status: "success",
+          title: "Bank Transfer Pending",
+          status: "pending",
           amount: `₦${netAmountNgn.toLocaleString()}`,
           amountLabel: `$${transferAmount.toFixed(2)}`,
           reference: txRef,
@@ -6316,13 +6228,14 @@ export async function registerRoutes(
             { label: "Amount (NGN)",    value: `₦${netAmountNgn.toLocaleString()}`, color: "green" },
             { label: "Amount (USD)",    value: `$${transferAmount.toFixed(2)}` },
             { label: "VAT (7.5%)",      value: `$${vatAmount.toFixed(2)}` },
+            { label: "Status",          value: "Pending admin approval", color: "orange" },
             ...(narration ? [{ label: "Narration", value: narration }] : []),
           ],
         }).catch(() => {});
       }).catch(() => {});
 
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ success: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, gateway: usedGateway });
+      res.json({ success: true, pending: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, billId: bill.id });
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 

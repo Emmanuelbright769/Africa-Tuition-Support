@@ -556,7 +556,7 @@ export default function FinancialHub() {
   const cryptoDepositMutation = useMutation({
     mutationFn: async () => {
       const amount = parseFloat(cryptoAmount);
-      if (!amount || amount <= 5) throw new Error("Crypto deposit must be above $5");
+      if (!amount || amount <= 2) throw new Error("Crypto deposit must be above $2");
       if (!cryptoTxHash.trim()) throw new Error("Transaction hash is required");
       const res = await apiRequest("POST", "/api/wallet/deposit", {
         amountUsd: amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,
@@ -640,7 +640,7 @@ export default function FinancialHub() {
       setView("home"); resetSend();
       showReceipt({
         title: "Bank Transfer",
-        status: "success",
+        status: "pending",
         amount: `$${amt.toFixed(2)}`,
         rows: [
           { label: "Reference",      value: data.reference,                     mono: true },
@@ -648,15 +648,14 @@ export default function FinancialHub() {
           { label: "Beneficiary",    value: resolvedName || acctNumber },
           { label: "Account No",     value: acctNumber },
           { label: "Bank",           value: selectedBank?.name || "—" },
-          { label: "Gateway",        value: bankGateway === "squad" ? "Primary" : "Alternative" },
           { label: "Amount",         value: `$${amt.toFixed(2)}` },
           { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                red: true },
           { label: "Beneficiary Receives", value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
           { label: "Narration",      value: note || "None" },
-          { label: "Status",         value: "Sent Successfully ✓",              green: true, bold: true },
+          { label: "Status",         value: "Pending — Admin will process within 24 hrs", bold: true },
         ] as ReceiptRow[],
         referenceRow: data.reference,
-        footerNote: `Transfer processed instantly. The recipient should receive funds within minutes.`,
+        footerNote: `Your wallet has been debited. Admin will manually process this transfer and approve it within 24 hours. You will receive a notification once it is sent.`,
         onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
         newTxLabel: "New Transfer",
       });
@@ -1647,7 +1646,7 @@ export default function FinancialHub() {
             </div>
             <div>
               <Label className="text-sm font-semibold">Amount (USD)</Label>
-              <Input type="number" min={5.01} step={0.01} placeholder="Above $5.00"
+              <Input type="number" min={2.01} step={0.01} placeholder="Above $2.00"
                 value={cryptoAmount} onChange={e => setCryptoAmount(e.target.value)}
                 className="mt-1.5 text-lg font-bold h-12" data-testid="input-crypto-amount" />
               {parseFloat(cryptoAmount) > 0 && (
@@ -1671,10 +1670,10 @@ export default function FinancialHub() {
             </div>
             <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
               <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700 dark:text-amber-300">Crypto deposits are auto-verified on-chain. Processing typically takes up to 30 minutes. Minimum deposit is $5.01. A 5% affiliate pool applies; 95% is credited to your wallet.</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300">Crypto deposits are auto-verified on-chain. Processing typically takes up to 30 minutes. Minimum deposit is $2.01. A 5% affiliate pool applies; 95% is credited to your wallet.</p>
             </div>
             <Button onClick={() => cryptoDepositMutation.mutate()}
-              disabled={cryptoDepositMutation.isPending || !cryptoTxHash.trim() || parseFloat(cryptoAmount) <= 5}
+              disabled={cryptoDepositMutation.isPending || !cryptoTxHash.trim() || parseFloat(cryptoAmount) <= 2}
               className="w-full h-12 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-2xl"
               data-testid="btn-submit-crypto">
               {cryptoDepositMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</> : <><Coins className="w-4 h-4 mr-2" />Submit Crypto Deposit</>}

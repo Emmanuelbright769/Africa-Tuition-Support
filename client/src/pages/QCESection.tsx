@@ -252,7 +252,7 @@ export default function QCESection() {
             <p className="text-xs text-muted-foreground">
               {isActivated
                 ? `Balance: $${qceBalance.toFixed(2)} · Eligibility: ${eligibilityPct.toFixed(1)}%`
-                : "Deposit above $5 → 30% credit eligibility activates instantly across V-Connect, Tenancy, Loans & more. No waiting, no admin approval."}
+                : "Deposit above $2 → 30% credit eligibility activates instantly across V-Connect, Tenancy, Loans & more. No waiting, no admin approval."}
             </p>
           </div>
 
@@ -425,7 +425,7 @@ export default function QCESection() {
 
             {!isActivated && (
               <Button onClick={() => setContributeOpen(true)} className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-activate-qce">
-                <Zap className="w-4 h-4 mr-2" /> Activate QCE SwiftVault — above $5
+                <Zap className="w-4 h-4 mr-2" /> Activate QCE SwiftVault — above $2
               </Button>
             )}
 
@@ -609,7 +609,7 @@ export default function QCESection() {
             {!isActivated && (
               <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-xl p-3 flex items-start gap-2 text-xs text-purple-700 dark:text-purple-300">
                 <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                <p>Calculator preview — deposit above $5 to activate your vault and unlock your actual 30% credit limit.</p>
+                <p>Calculator preview — deposit above $2 to activate your vault and unlock your actual 30% credit limit.</p>
               </div>
             )}
             <QceCreditCalculator qceBalance={qceBalance} eligibilityPct={eligibilityPct} />

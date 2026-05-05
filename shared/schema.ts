@@ -850,7 +850,7 @@ export function censorOffPlatform(text: string): { censored: string; flagged: bo
 
 // ─── QCE (QUICK CREDIT ELIGIBILITY) ──────────────────────────────────────────
 export const QCE = {
-  MIN_ACTIVATION: 5,      // $5 minimum to activate wallet and QCE
+  MIN_ACTIVATION: 2,      // $2 minimum to activate wallet and QCE
   MIN_BALANCE: 2,         // $2 minimum balance must always remain
   PERIOD_DAYS: 90,        // 90-day savings period
   MAX_ELIGIBILITY: 30,    // Up to 30% credit eligibility

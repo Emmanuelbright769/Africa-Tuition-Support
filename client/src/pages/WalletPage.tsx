@@ -262,7 +262,7 @@ export default function WalletPage() {
   const cryptoDepositMutation = useMutation({
     mutationFn: async () => {
       const amount = parseFloat(cryptoAmount);
-      if (!amount || amount <= 5) throw new Error("Crypto deposit must be above $5");
+      if (!amount || amount <= 2) throw new Error("Crypto deposit must be above $2");
       if (!cryptoTxHash.trim()) throw new Error("Transaction hash is required");
       const res = await apiRequest("POST", "/api/wallet/deposit", {
         amountUsd: amount, txHash: cryptoTxHash.trim(), walletType: cryptoNetwork,
@@ -622,13 +622,13 @@ export default function WalletPage() {
                       </div>
                       <div>
                         <Label htmlFor="fund-amount">Amount (USD)</Label>
-                        <Input id="fund-amount" type="number" min={5.01} step={0.01} placeholder="Above $5.00"
+                        <Input id="fund-amount" type="number" min={2.01} step={0.01} placeholder="Above $2.00"
                           value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                           className="mt-1 text-lg font-bold" data-testid="input-fund-amount" />
-                        {parseFloat(fundAmount) > 0 && parseFloat(fundAmount) <= 5 && (
-                          <p className="text-xs text-red-500 mt-1 font-medium">Amount must be above $5.00</p>
+                        {parseFloat(fundAmount) > 0 && parseFloat(fundAmount) <= 2 && (
+                          <p className="text-xs text-red-500 mt-1 font-medium">Amount must be above $2.00</p>
                         )}
-                        {parseFloat(fundAmount) > 5 && (
+                        {parseFloat(fundAmount) > 2 && (
                           <p className="text-xs text-muted-foreground mt-1">
                             ≈ ₦{(parseFloat(fundAmount) * 1480).toLocaleString()} NGN &nbsp;·&nbsp; {formatAmount(parseFloat(fundAmount))} {rateLabel()}
                           </p>
@@ -642,7 +642,7 @@ export default function WalletPage() {
                       </div>
                       <Button className="w-full h-12 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold"
                         onClick={openSquadModal}
-                        disabled={squadLoading || !fundAmount || parseFloat(fundAmount) <= 5}
+                        disabled={squadLoading || !fundAmount || parseFloat(fundAmount) <= 2}
                         data-testid="btn-pay-squad">
                         {squadLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CreditCard className="w-4 h-4 mr-2" />}
                         {squadLoading ? "Opening secure checkout…" : `Pay ${parseFloat(fundAmount) > 0 ? `$${parseFloat(fundAmount).toFixed(2)}` : "Now"}`}
@@ -664,13 +664,13 @@ export default function WalletPage() {
                       </div>
                       <div>
                         <Label htmlFor="korapay-fund-amount">Amount (USD)</Label>
-                        <Input id="korapay-fund-amount" type="number" min={5.01} step={0.01} placeholder="Above $5.00"
+                        <Input id="korapay-fund-amount" type="number" min={2.01} step={0.01} placeholder="Above $2.00"
                           value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                           className="mt-1 text-lg font-bold" data-testid="input-korapay-fund-amount" />
-                        {parseFloat(fundAmount) > 0 && parseFloat(fundAmount) <= 5 && (
-                          <p className="text-xs text-red-500 mt-1 font-medium">Amount must be above $5.00</p>
+                        {parseFloat(fundAmount) > 0 && parseFloat(fundAmount) <= 2 && (
+                          <p className="text-xs text-red-500 mt-1 font-medium">Amount must be above $2.00</p>
                         )}
-                        {parseFloat(fundAmount) > 5 && (
+                        {parseFloat(fundAmount) > 2 && (
                           <p className="text-xs text-muted-foreground mt-1">
                             ≈ ₦{(parseFloat(fundAmount) * 1480).toLocaleString()} NGN &nbsp;·&nbsp; {formatAmount(parseFloat(fundAmount))} {rateLabel()}
                           </p>
@@ -690,7 +690,7 @@ export default function WalletPage() {
                       )}
                       <Button className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                         onClick={openKorapayCheckout}
-                        disabled={koraLoading || !fundAmount || parseFloat(fundAmount) <= 5}
+                        disabled={koraLoading || !fundAmount || parseFloat(fundAmount) <= 2}
                         data-testid="btn-pay-korapay">
                         {koraLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
                         {koraLoading ? "Awaiting payment…" : `Pay ${parseFloat(fundAmount) > 0 ? `$${parseFloat(fundAmount).toFixed(2)}` : "Now"} via Korapay`}
@@ -733,7 +733,7 @@ export default function WalletPage() {
                       {/* Amount */}
                       <div>
                         <Label htmlFor="crypto-amount">Amount Sent (USD)</Label>
-                        <Input id="crypto-amount" type="number" min={5.01} step={0.01} placeholder="Above $5.00"
+                        <Input id="crypto-amount" type="number" min={2.01} step={0.01} placeholder="Above $2.00"
                           value={cryptoAmount} onChange={e => setCryptoAmount(e.target.value)}
                           className="mt-1 text-lg font-bold" data-testid="input-crypto-amount" />
                         {parseFloat(cryptoAmount) > 0 && (
@@ -742,7 +742,7 @@ export default function WalletPage() {
                       </div>
 
                       {/* Fee / distribution breakdown */}
-                      {parseFloat(cryptoAmount) > 5 && (() => {
+                      {parseFloat(cryptoAmount) > 2 && (() => {
                         const gross = parseFloat(cryptoAmount);
                         const reserve = parseFloat((gross * 0.20).toFixed(2));
                         const pool    = parseFloat((gross * 0.05).toFixed(2));
@@ -781,11 +781,11 @@ export default function WalletPage() {
 
                       <div className="flex items-start gap-2 bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3">
                         <Shield className="w-4 h-4 text-tsia-green shrink-0 mt-0.5" />
-                        <p className="text-xs text-tsia-green">Above <strong>$5 USDT</strong>. Accepted via BYBIT, BINANCE, Coinbase and any compatible exchange.</p>
+                        <p className="text-xs text-tsia-green">Above <strong>$2 USDT</strong>. Accepted via BYBIT, BINANCE, Coinbase and any compatible exchange.</p>
                       </div>
 
                       <Button onClick={() => cryptoDepositMutation.mutate()}
-                        disabled={cryptoDepositMutation.isPending || !cryptoAmount || parseFloat(cryptoAmount) <= 5 || !cryptoTxHash.trim()}
+                        disabled={cryptoDepositMutation.isPending || !cryptoAmount || parseFloat(cryptoAmount) <= 2 || !cryptoTxHash.trim()}
                         className="w-full h-12 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold" data-testid="btn-submit-crypto">
                         {cryptoDepositMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Coins className="w-4 h-4 mr-2" />}
                         Submit Crypto Deposit

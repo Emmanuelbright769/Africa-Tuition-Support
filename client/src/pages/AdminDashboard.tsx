@@ -17,7 +17,7 @@ import {
   ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
   Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight, GitBranch,
   Banknote, Copy, Phone, ThumbsUp, ThumbsDown, Settings, Save, Percent,
-  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info, Mail, Film
+  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info, Mail, Film, RotateCcw
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -613,9 +613,21 @@ export default function AdminDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-bank-transfers"] });
-      toast({ title: "Transfer Rejected", description: "Funds refunded to user's wallet." });
+      toast({ title: "Refunded ✓", description: "Transfer rejected and funds returned to user's wallet." });
     },
-    onError: (e: any) => toast({ title: "Rejection Failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Refund Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const declineBankTransferMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      const res = await apiRequest("POST", `/api/admin/pending-bank-transfer/${id}/decline`, { reason });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-bank-transfers"] });
+      toast({ title: "Declined", description: "Transfer declined. No refund was issued." });
+    },
+    onError: (e: any) => toast({ title: "Decline Failed", description: e.message, variant: "destructive" }),
   });
 
   // ─── Auth guard ────────────────────────────────────────────────────────────
@@ -1944,12 +1956,15 @@ export default function AdminDashboard() {
                               <TableCell className="font-semibold text-sm text-tsia-green">₦{(details.netAmountNgn || 0).toLocaleString()}</TableCell>
                               <TableCell className="text-xs text-slate-500">{fmtDate(t.createdAt)}</TableCell>
                               <TableCell className="text-right px-6">
-                                <div className="flex items-center justify-end gap-1">
-                                  <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" disabled={approveBankTransferMutation.isPending} onClick={() => { if (window.confirm(`Approve bank transfer of ₦${(details.netAmountNgn||0).toLocaleString()} to ${details.accountName}? This will call Squad API and send the funds.`)) approveBankTransferMutation.mutate(t.id); }} data-testid={`button-approve-bt-${t.id}`}>
-                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Approve & Send
+                                <div className="flex flex-col gap-1 items-end">
+                                  <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90 w-full" disabled={approveBankTransferMutation.isPending} onClick={() => { if (window.confirm(`Mark this transfer as done?\n\nRecipient: ${details.accountName}\nAccount: ${details.accountNumber}\nAmount: ₦${(details.netAmountNgn||0).toLocaleString()}\n\nOnly click OK after you have made the manual bank transfer.`)) approveBankTransferMutation.mutate(t.id); }} data-testid={`button-approve-bt-${t.id}`}>
+                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Approve ✓
                                   </Button>
-                                  <Button size="sm" variant="outline" className="h-7 text-xs border-red-400 text-red-600 hover:bg-red-50" disabled={rejectBankTransferMutation.isPending} onClick={() => { const reason = window.prompt("Reason for rejection (shown to user):", "Transfer could not be completed."); if (reason !== null) rejectBankTransferMutation.mutate({ id: t.id, reason }); }} data-testid={`button-reject-bt-${t.id}`}>
-                                    <XCircle className="w-3 h-3 mr-1" /> Reject & Refund
+                                  <Button size="sm" variant="outline" className="h-7 text-xs border-amber-400 text-amber-700 hover:bg-amber-50 w-full" disabled={declineBankTransferMutation.isPending} onClick={() => { const reason = window.prompt("Reason for declining (shown to user, NO refund):", "Transfer could not be completed."); if (reason !== null) declineBankTransferMutation.mutate({ id: t.id, reason }); }} data-testid={`button-decline-bt-${t.id}`}>
+                                    <XCircle className="w-3 h-3 mr-1" /> Decline
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="h-7 text-xs border-red-400 text-red-600 hover:bg-red-50 w-full" disabled={rejectBankTransferMutation.isPending} onClick={() => { const reason = window.prompt("Reason for refund (shown to user, wallet will be credited back):", "Transfer could not be completed."); if (reason !== null) rejectBankTransferMutation.mutate({ id: t.id, reason }); }} data-testid={`button-reject-bt-${t.id}`}>
+                                    <RotateCcw className="w-3 h-3 mr-1" /> Refund
                                   </Button>
                                 </div>
                               </TableCell>

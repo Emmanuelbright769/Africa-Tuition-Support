@@ -6859,88 +6859,7 @@ export async function registerRoutes(
 
       const { bankCode, bankName, accountNumber, accountName, narration, gateway = "squad", netAmountNgn, vatAmount, txRef } = details;
 
-      let transferSuccess = false, transferMsg = "";
-      let usedGateway = gateway;
-
-      // ── Helper: try Squad payout (primary gateway) ──────────────────────────
-      const trySquad = async (): Promise<boolean> => {
-        const squadKey = process.env.SQUAD_SECRET_KEY;
-        if (!squadKey) { transferMsg = "Squad not configured"; return false; }
-        try {
-          const isLiveKey = squadKey.startsWith("sk_");
-          const squadBase = isLiveKey ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
-          // Squad requires transaction_reference to be prefixed with merchant ID
-          const merchantId = process.env.SQUAD_MERCHANT_ID ?? "TSIA";
-          const squadRef = `${merchantId}_${txRef}`.slice(0, 50);
-          const amountKobo = Math.round(Number(netAmountNgn) * 100); // NGN → kobo
-          const sRes = await fetch(`${squadBase}/payout/transfer`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              transaction_reference: squadRef,
-              amount: String(amountKobo),
-              bank_code: bankCode,
-              account_number: accountNumber,
-              account_name: accountName,
-              currency_id: "NGN",
-              remark: narration || `TSIA Payout | ${txRef}`,
-            }),
-            signal: AbortSignal.timeout(25000),
-          });
-          const sData = await sRes.json() as any;
-          if (sData.success) { usedGateway = "squad"; return true; }
-          // 424 = Gateway timeout — re-query to check actual status
-          if (sRes.status === 424) {
-            console.warn(`[PAYOUT/Squad] 424 Timeout for ${squadRef} — re-querying…`);
-            try {
-              const reqRes = await fetch(`${squadBase}/payout/requery`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${squadKey}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ transaction_reference: squadRef }),
-                signal: AbortSignal.timeout(15000),
-              });
-              const reqData = await reqRes.json() as any;
-              if (reqData.success) { usedGateway = "squad"; return true; }
-            } catch { /* requery failed, fall through */ }
-          }
-          transferMsg = sData.message ?? "Squad transfer failed";
-          return false;
-        } catch (e: any) { transferMsg = e.message ?? "Squad network error"; return false; }
-      };
-
-      // ── Helper: try Korapay disburse (fallback) ─────────────────────────────
-      const tryKorapay = async (): Promise<boolean> => {
-        const koraKey = process.env.KORAPAY_SECRET_KEY;
-        if (!koraKey) { transferMsg = "Korapay not configured"; return false; }
-        try {
-          const kRes = await fetch(`${KORA_BASE}/transactions/disburse`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reference: `${txRef}-K`,
-              destination: { type: "bank_account", amount: netAmountNgn, currency: "NGN", bank_account: { bank: bankCode, account: accountNumber }, customer: { name: accountName, email: "noreply@tsia.com" } },
-              description: narration || `TSIA Bank Transfer | Ref: ${txRef}`,
-            }),
-            signal: AbortSignal.timeout(20000),
-          });
-          const kData = await kRes.json() as any;
-          if (kData.status) { usedGateway = "korapay"; return true; }
-          transferMsg = kData.message ?? "Korapay transfer failed";
-          return false;
-        } catch (e: any) { transferMsg = e.message ?? "Network error"; return false; }
-      };
-
-      // Squad first, Korapay as automatic fallback
-      transferSuccess = await trySquad();
-      if (!transferSuccess) {
-        console.warn(`[PAYOUT] Squad failed (${transferMsg}) — trying Korapay fallback`);
-        transferSuccess = await tryKorapay();
-      }
-
-      if (!transferSuccess) {
-        return res.status(502).json({ message: `Bank transfer failed: ${transferMsg}. Funds remain held — reject to refund.` });
-      }
-
+      // Admin has already made the manual bank transfer — just mark as completed.
       await storage.updateBillPaymentStatus(id, "completed");
       const msg = `Your bank transfer of ₦${Number(netAmountNgn).toLocaleString()} to ${accountName} (${accountNumber}) has been approved and sent. Ref: ${txRef}`;
       const notif = await storage.createNotification({ userId: bill.userId, type: "wallet_credit", title: "Bank Transfer Approved ✓", message: msg, data: { billId: id, ref: txRef }, isRead: false });
@@ -6982,6 +6901,35 @@ export async function registerRoutes(
       invalidateCacheKey(`transactions:${bill.userId}`);
       invalidateCacheKey(`wallet_bills:${bill.userId}`);
       res.json({ success: true, message: "Transfer rejected and funds refunded to user." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Decline (no refund) — admin already sent money or consciously forfeits refund
+  app.post("/api/admin/pending-bank-transfer/:id/decline", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const adminUser = await storage.getUser(userId);
+    if (adminUser?.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const id = parseInt(req.params.id);
+      const [bill] = await db.select().from(billPayments).where(eq(billPayments.id, id));
+      if (!bill) return res.status(404).json({ message: "Transfer not found" });
+      if (bill.status !== "pending") return res.status(400).json({ message: `Cannot decline a ${bill.status} transfer` });
+
+      const { reason = "Declined by admin" } = req.body;
+      let details: any = {};
+      try { details = JSON.parse(bill.reference); } catch { /* ok */ }
+      const txRef = details.txRef || `bill-${id}`;
+      const refundAmt = parseFloat(bill.amount);
+
+      await storage.updateBillPaymentStatus(id, "rejected");
+      await storage.createTransaction({ userId: bill.userId, type: "withdrawal", amount: (-refundAmt).toFixed(2), fee: "0.00", paymentMethod: "admin_decline", description: `Bank transfer declined (no refund) — Reason: ${reason} | Ref: ${txRef}` });
+      const msg = `Your bank transfer request ($${refundAmt.toFixed(2)}) has been declined. Reason: ${reason}`;
+      const notif = await storage.createNotification({ userId: bill.userId, type: "wallet_credit", title: "Bank Transfer Declined", message: msg, data: { billId: id }, isRead: false });
+      pushToUser(bill.userId, "notification", notif);
+      invalidateCacheKey(`transactions:${bill.userId}`);
+      invalidateCacheKey(`wallet_bills:${bill.userId}`);
+      res.json({ success: true, message: "Transfer declined (no refund issued)." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

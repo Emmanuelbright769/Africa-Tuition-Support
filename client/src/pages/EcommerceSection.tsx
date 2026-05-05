@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -251,38 +252,75 @@ function CountdownBadge() {
   );
 }
 
-// ─── Hero category tile grid (4-up with mini product thumbnails) ────────────
+// ─── Hero category tile grid ─────────────────────────────────────────────────
+const HERO_TILES = [
+  { cat: "phones",     emoji: "📱", gradient: "linear-gradient(135deg,#1a73e8,#0d47a1)", label: "Phones & Tablets",      sub: "Smartphones, tablets & accessories" },
+  { cat: "computers",  emoji: "💻", gradient: "linear-gradient(135deg,#1a5c38,#0e3d25)", label: "Computers & Laptops",   sub: "Laptops, desktops & peripherals" },
+  { cat: "fashion",    emoji: "👗", gradient: "linear-gradient(135deg,#c2185b,#880e4f)", label: "Fashion & Style",        sub: "Clothing, shoes & accessories" },
+  { cat: "beauty",     emoji: "💄", gradient: "linear-gradient(135deg,#e65100,#bf360c)", label: "Beauty & Personal Care", sub: "Skincare, makeup & wellness" },
+  { cat: "electronics",emoji: "🔌", gradient: "linear-gradient(135deg,#4a148c,#311b92)", label: "Electronics & Gadgets",  sub: "Cameras, audio & smart devices" },
+  { cat: "gaming",     emoji: "🎮", gradient: "linear-gradient(135deg,#00695c,#004d40)", label: "Gaming & Consoles",      sub: "Games, consoles & controllers" },
+  { cat: "home",       emoji: "🏠", gradient: "linear-gradient(135deg,#795548,#4e342e)", label: "Home & Living",          sub: "Furniture, décor & kitchen" },
+  { cat: "sports",     emoji: "⚽", gradient: "linear-gradient(135deg,#0277bd,#01579b)", label: "Sports & Fitness",       sub: "Equipment, apparel & outdoor gear" },
+];
+
 function HeroCategoryTiles({ products, onPick }: { products: Product[]; onPick: (cat: string) => void }) {
-  const tiles = [
-    { cat: "electronics", title: "Top picks in Electronics" },
-    { cat: "fashion",     title: "Refresh your wardrobe" },
-    { cat: "home",        title: "Spruce up your space" },
-    { cat: "health",      title: "Health & beauty deals" },
-  ];
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {tiles.map(t => {
-        const items = products.filter(p => p.category === t.cat).slice(0, 4);
+      {HERO_TILES.slice(0, 4).map(t => {
+        const items = products.filter(p => p.category === t.cat || (t.cat === "fashion" && ["fashion_women","fashion_men","fashion_kids"].includes(p.category))).slice(0, 1);
+        const heroImg = items[0]?.images?.[0];
         return (
-          <div key={t.cat} style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-3" data-testid={`hero-tile-${t.cat}`}>
-            <h4 style={{ color: AMZ.text }} className="font-black text-sm mb-2 line-clamp-1">{t.title}</h4>
-            <div className="grid grid-cols-2 gap-1.5 mb-2">
-              {[0,1,2,3].map(i => {
-                const p = items[i];
-                const img = p?.images?.[0];
-                return (
-                  <div key={i} className="aspect-square bg-gray-50 rounded overflow-hidden flex items-center justify-center text-2xl">
-                    {img ? <img src={img} alt="" className="w-full h-full object-cover" /> : <span className="opacity-50">{CATEGORY_ICONS[t.cat]}</span>}
-                  </div>
-                );
-              })}
+          <button
+            key={t.cat}
+            onClick={() => onPick(t.cat)}
+            style={{ background: "white", border: `1px solid ${AMZ.border}`, textAlign: "left" }}
+            className="rounded p-0 overflow-hidden hover:shadow-md transition-shadow"
+            data-testid={`hero-tile-${t.cat}`}
+          >
+            {/* Gradient header with emoji */}
+            <div style={{ background: heroImg ? "none" : t.gradient, position: "relative", overflow: "hidden" }} className="h-28 flex items-center justify-center">
+              {heroImg ? (
+                <img src={heroImg} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <>
+                  <div style={{ position: "absolute", inset: 0, background: t.gradient, opacity: 0.9 }} />
+                  <span style={{ fontSize: 56, position: "relative", zIndex: 1, lineHeight: 1 }}>{t.emoji}</span>
+                </>
+              )}
             </div>
-            <button onClick={() => onPick(t.cat)} style={{ color: AMZ.link }} className="text-[11px] font-semibold hover:underline" data-testid={`btn-shop-${t.cat}`}>
-              Shop {CATEGORY_LABELS[t.cat]} →
-            </button>
-          </div>
+            {/* Label */}
+            <div className="p-2.5">
+              <p style={{ color: AMZ.text }} className="font-black text-[12px] leading-tight">{t.label}</p>
+              <p style={{ color: AMZ.muted }} className="text-[10px] mt-0.5 leading-tight line-clamp-1">{t.sub}</p>
+              <span style={{ color: AMZ.link }} className="text-[11px] font-semibold mt-1 block">Shop now →</span>
+            </div>
+          </button>
         );
       })}
+    </div>
+  );
+}
+
+// ─── Extended category shelf (scrollable row) ─────────────────────────────────
+function CategoryShelf({ onPick }: { onPick: (cat: string) => void }) {
+  return (
+    <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 style={{ color: AMZ.text }} className="font-bold text-sm">Browse by Category</h3>
+      </div>
+      <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+        {HERO_TILES.map(t => (
+          <button key={t.cat} onClick={() => onPick(t.cat)} className="flex flex-col items-center gap-1.5 shrink-0 min-w-[60px]" data-testid={`shelf-cat-${t.cat}`}>
+            <div style={{ background: t.gradient }} className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-sm">
+              {t.emoji}
+            </div>
+            <span style={{ color: AMZ.text }} className="text-[10px] font-semibold text-center leading-tight max-w-[64px]">
+              {t.label.split(" & ")[0].split(" ")[0]}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -317,6 +355,9 @@ function SellerStories({ products }: { products: Product[] }) {
 }
 
 // ─── Image Lightbox ────────────────────────────────────────────────────────
+// Uses createPortal to render directly onto document.body, completely outside
+// any Radix Dialog stacking context or overflow-hidden ancestor — this is the
+// only 100% reliable fix for the "lightbox is offset / black area" bug on mobile.
 function ImageLightbox({ images, startIndex = 0, open, onClose }: {
   images: string[]; startIndex?: number; open: boolean; onClose: () => void;
 }) {
@@ -326,79 +367,87 @@ function ImageLightbox({ images, startIndex = 0, open, onClose }: {
   useEffect(() => { setIdx(startIndex); }, [startIndex, open]);
   useEffect(() => { if (open) setImgLoaded(false); }, [open, idx]);
 
-  if (!images.length) return null;
+  // Lock body scroll while open
+  useEffect(() => {
+    if (open) { document.body.style.overflow = "hidden"; }
+    else { document.body.style.overflow = ""; }
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
 
-  // Use a nested Radix Dialog so the outer product-detail Dialog's focus trap
-  // is automatically paused — this is the only reliable fix for the "lightbox
-  // doesn't open / freezes on mobile" issue caused by the Radix focus scope.
-  return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent
-        data-testid="image-lightbox"
-        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, transform: "none", maxWidth: "100vw", width: "100vw", height: "100vh", maxHeight: "100vh", margin: 0, padding: 0, borderRadius: 0, border: "none", backgroundColor: "rgba(0,0,0,0.97)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", overflow: "hidden", touchAction: "none" }}
-        onPointerDownOutside={e => e.preventDefault()}
-        onInteractOutside={e => e.preventDefault()}
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
+  if (!images.length || !open) return null;
+
+  return createPortal(
+    <div
+      data-testid="image-lightbox"
+      style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.97)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", touchAction: "none" }}
+      onClick={onClose}
+    >
+      {/* Close */}
+      <button
+        style={{ position: "absolute", top: 16, right: 16, zIndex: 2, width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+        onClick={e => { e.stopPropagation(); onClose(); }} data-testid="btn-lightbox-close"
       >
-        <DialogTitle className="sr-only">Product image viewer</DialogTitle>
+        <X className="w-5 h-5 text-white" />
+      </button>
 
-        {/* Close */}
-        <button
-          className="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors z-10"
-          onClick={onClose} data-testid="btn-lightbox-close"
-        >
-          <X className="w-5 h-5 text-white" />
-        </button>
+      {/* Counter */}
+      {images.length > 1 && (
+        <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 2, background: "rgba(0,0,0,0.4)", color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: 500, padding: "4px 14px", borderRadius: 20 }}>
+          {idx + 1} / {images.length}
+        </div>
+      )}
 
-        {/* Counter */}
-        {images.length > 1 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium bg-black/40 px-3 py-1 rounded-full z-10">
-            {idx + 1} / {images.length}
-          </div>
-        )}
+      {/* Loading spinner */}
+      {!imgLoaded && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+          <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+        </div>
+      )}
 
-        {/* Loading spinner */}
-        {!imgLoaded && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin" />
-          </div>
-        )}
+      {/* Image */}
+      <img
+        key={idx}
+        src={images[idx]}
+        alt={`Image ${idx + 1}`}
+        style={{ maxWidth: "95vw", maxHeight: "80vh", objectFit: "contain", borderRadius: 12, userSelect: "none", opacity: imgLoaded ? 1 : 0, transition: "opacity 0.15s" }}
+        onLoad={() => setImgLoaded(true)}
+        draggable={false}
+        decoding="async"
+        onClick={e => e.stopPropagation()}
+      />
 
-        {/* Image */}
-        <img
-          key={idx}
-          src={images[idx]}
-          alt={`Image ${idx + 1}`}
-          className="max-w-[95vw] max-h-[80vh] object-contain rounded-xl select-none transition-opacity duration-150"
-          style={{ opacity: imgLoaded ? 1 : 0 }}
-          onLoad={() => setImgLoaded(true)}
-          draggable={false}
-          decoding="async"
-        />
+      {/* Arrows */}
+      {images.length > 1 && (
+        <>
+          <button
+            onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i => (i - 1 + images.length) % images.length); }}
+            style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", zIndex: 2, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            data-testid="btn-lightbox-prev"
+          >
+            <ChevronLeft className="w-6 h-6 text-white" />
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i => (i + 1) % images.length); }}
+            style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", zIndex: 2, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            data-testid="btn-lightbox-next"
+          >
+            <ChevronRight className="w-6 h-6 text-white" />
+          </button>
+        </>
+      )}
 
-        {/* Arrows */}
-        {images.length > 1 && (
-          <>
-            <button
-              onClick={() => { setImgLoaded(false); setIdx(i => (i - 1 + images.length) % images.length); }}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
-              data-testid="btn-lightbox-prev"
-            >
-              <ChevronLeft className="w-6 h-6 text-white" />
-            </button>
-            <button
-              onClick={() => { setImgLoaded(false); setIdx(i => (i + 1) % images.length); }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-white/10 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors"
-              data-testid="btn-lightbox-next"
-            >
-              <ChevronRight className="w-6 h-6 text-white" />
-            </button>
-          </>
-        )}
-
-        {/* Dot strip */}
-        {images.length > 1 && (
-          <div className="absolute bottom-6 flex items-center gap-2 z-10">
-            {images.map((_, i) => (
+      {/* Dot strip */}
+      {images.length > 1 && (
+        <div style={{ position: "absolute", bottom: 24, display: "flex", alignItems: "center", gap: 8, zIndex: 2 }}>
+          {images.map((_, i) => (
               <button
                 key={i}
                 onClick={() => { setImgLoaded(false); setIdx(i); }}
@@ -410,20 +459,21 @@ function ImageLightbox({ images, startIndex = 0, open, onClose }: {
 
         {/* Thumbnail strip */}
         {images.length > 1 && (
-          <div className="absolute bottom-14 flex gap-2 overflow-x-auto max-w-[90vw] px-2 z-10">
+          <div style={{ position: "absolute", bottom: 56, display: "flex", gap: 8, overflowX: "auto", maxWidth: "90vw", padding: "0 8px", zIndex: 2 }}
+            onClick={e => e.stopPropagation()}>
             {images.map((src, i) => (
               <button
                 key={i}
-                onClick={() => { setImgLoaded(false); setIdx(i); }}
-                className={`shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${i === idx ? "border-white" : "border-white/20 opacity-60 hover:opacity-90"}`}
+                onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i); }}
+                style={{ flexShrink: 0, width: 48, height: 48, borderRadius: 8, overflow: "hidden", border: i === idx ? "2px solid white" : "2px solid rgba(255,255,255,0.2)", opacity: i === idx ? 1 : 0.6, cursor: "pointer", padding: 0, background: "none" }}
               >
-                <img src={src} className="w-full h-full object-cover" alt="" draggable={false} />
+                <img src={src} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" draggable={false} />
               </button>
             ))}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+    </div>,
+    document.body
   );
 }
 
@@ -1602,7 +1652,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   ];
 
   return (
-    <div className="relative pb-24 overflow-x-hidden w-full max-w-full" style={{ background: AMZ.bg, margin: "-16px", padding: "0" }}>
+    <div className="relative pb-24 w-full" style={{ background: AMZ.bg, margin: "-16px", padding: "0", width: "calc(100% + 32px)", maxWidth: "none", overflowX: "clip" }}>
 
       {/* ── Amazon-style header ──────────────────────────────────────────── */}
       <div style={{ background: AMZ.navy }} className="px-4 pt-4 pb-2">
@@ -1860,9 +1910,14 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
           {/* Promo Banner — hidden during active search */}
           {!activeSearch && <PromoBanner />}
 
-          {/* Hero category tiles */}
-          {!activeSearch && (products as Product[]).length > 0 && (
+          {/* Hero category tiles — always visible, fall back to gradient emoji when no products */}
+          {!activeSearch && (
             <HeroCategoryTiles products={products as Product[]} onPick={(c) => setActiveCategory(c)} />
+          )}
+
+          {/* Category shelf — scrollable row of all categories */}
+          {!activeSearch && (
+            <CategoryShelf onPick={(c) => setActiveCategory(c)} />
           )}
 
           {/* Today's Deals — with live countdown */}

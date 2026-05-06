@@ -254,8 +254,11 @@ export type TradeTransaction = typeof tradeTransactions.$inferSelect;
 export type WalletRecord = typeof wallets.$inferSelect;
 
 export const WAEC_GRADE_WEIGHTS: Record<string, number> = {
-  A1: 20, B2: 12, B3: 11.5, C4: 11, C5: 10.5, C6: 10, D7: 10, E8: 9, F9: 8.5,
+  A1: 12, B2: 11.5, B3: 11, C4: 10.5, C5: 10, C6: 9.5, D7: 9, E8: 8.5, F9: 8,
 };
+
+export const WAEC_GRADE_KEYS = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9"] as const;
+export type WaecGrade = typeof WAEC_GRADE_KEYS[number];
 
 export const CURRENCY_RATES = {
   USD_TO_NGN_PAYMENT: 1480,
@@ -274,10 +277,15 @@ export const WAEC_ELECTIVE_SUBJECTS = [
   "Visual Arts", "Music", "Health Education",
 ];
 
-export function calculateWaecPercentage(grades: string[]): number {
-  const weights = grades.map(g => WAEC_GRADE_WEIGHTS[g.toUpperCase()] || 0);
-  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-  const maxPossible = grades.length * 20;
+export function calculateWaecPercentage(
+  grades: string[],
+  customWeights?: Record<string, number>,
+): number {
+  const weights = customWeights ?? WAEC_GRADE_WEIGHTS;
+  const gradePoints = grades.map(g => weights[g.toUpperCase()] ?? 0);
+  const totalWeight = gradePoints.reduce((sum, w) => sum + w, 0);
+  const maxPoint = Math.max(...Object.values(weights), 1);
+  const maxPossible = grades.length * maxPoint;
   if (maxPossible === 0) return 0;
   return Math.round((totalWeight / maxPossible) * 100 * 100) / 100;
 }

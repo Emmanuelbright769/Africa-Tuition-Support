@@ -26,7 +26,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -740,7 +740,9 @@ export async function registerRoutes(
         }
       }
 
-      const percentage = calculateWaecPercentage(grades);
+      const gradeScaleRaw = await storage.getPlatformSetting("waec_grade_scale");
+      const gradeScale = gradeScaleRaw ? JSON.parse(gradeScaleRaw) : undefined;
+      const percentage = calculateWaecPercentage(grades, gradeScale);
       const tierPayouts = await storage.getTierPayouts();
       const payoutInfo = (() => {
         if (percentage >= 75) return { min: tierPayouts.platinum.min, max: tierPayouts.platinum.max, label: "platinum" };
@@ -1155,7 +1157,9 @@ export async function registerRoutes(
         }
       }
 
-      const percentage = calculateWaecPercentage(gradesArray);
+      const gradeScaleRaw2 = await storage.getPlatformSetting("waec_grade_scale");
+      const gradeScale2 = gradeScaleRaw2 ? JSON.parse(gradeScaleRaw2) : undefined;
+      const percentage = calculateWaecPercentage(gradesArray, gradeScale2);
       const tierPayoutsAlt = await storage.getTierPayouts();
       const payoutInfo = (() => {
         if (percentage >= 75) return { min: tierPayoutsAlt.platinum.min, max: tierPayoutsAlt.platinum.max, label: "platinum" };
@@ -3562,6 +3566,46 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+  });
+
+  // ── Admin: WAEC grade scale — GET ─────────────────────────────────────────
+  app.get("/api/admin/waec-grade-scale", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const raw = await storage.getPlatformSetting("waec_grade_scale");
+      const scale: Record<string, number> = raw ? JSON.parse(raw) : { ...WAEC_GRADE_WEIGHTS };
+      // Fill in any missing keys with defaults
+      for (const k of WAEC_GRADE_KEYS) { if (scale[k] === undefined) scale[k] = WAEC_GRADE_WEIGHTS[k]; }
+      res.json({ scale });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Admin: WAEC grade scale — PUT ─────────────────────────────────────────
+  app.put("/api/admin/waec-grade-scale", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const { scale } = req.body as { scale: Record<string, number> };
+      if (!scale || typeof scale !== "object") return res.status(400).json({ message: "scale object is required" });
+      const validated: Record<string, number> = {};
+      for (const k of WAEC_GRADE_KEYS) {
+        const v = parseFloat(scale[k] as any);
+        if (isNaN(v) || v < 0 || v > 100) return res.status(400).json({ message: `Invalid point value for grade ${k}` });
+        validated[k] = v;
+      }
+      // Enforce descending order (A1 must be highest)
+      const vals = WAEC_GRADE_KEYS.map(k => validated[k]);
+      for (let i = 1; i < vals.length; i++) {
+        if (vals[i] > vals[i - 1]) return res.status(400).json({ message: `Points must be in descending order (${WAEC_GRADE_KEYS[i]} cannot exceed ${WAEC_GRADE_KEYS[i-1]})` });
+      }
+      await storage.setPlatformSetting("waec_grade_scale", JSON.stringify(validated));
+      res.json({ message: "WAEC grade scale updated successfully", scale: validated });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ── Admin: get trade market settings ──────────────────────────────────────

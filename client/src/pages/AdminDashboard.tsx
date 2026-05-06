@@ -17,7 +17,7 @@ import {
   ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
   Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight, GitBranch,
   Banknote, Copy, Phone, ThumbsUp, ThumbsDown, Settings, Save, Percent,
-  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info, Mail, Film, RotateCcw
+  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info, Mail, Film, RotateCcw, GraduationCap
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -157,6 +157,8 @@ export default function AdminDashboard() {
   const [wdNote, setWdNote]               = useState("");
   const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "", silverMin: "", silverMax: "", goldMin: "", goldMax: "", platinumMin: "", platinumMax: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [waecScaleForm, setWaecScaleForm] = useState<Record<string, string>>({});
+  const [waecScaleSaved, setWaecScaleSaved] = useState(false);
   const [tradeForm, setTradeForm] = useState({ feeExchangeWithdraw: "", feeBankWithdraw: "", reserveRate: "", affiliateShareRate: "", minDeposit: "", minWithdraw: "", coAffiliatePoolRate: "", botFullRate: "" });
   const [bankTransfersEnabled, setBankTransfersEnabled] = useState<boolean>(true);
   const [bankWeekendOverrideUntil, setBankWeekendOverrideUntil] = useState<number>(0);
@@ -206,6 +208,7 @@ export default function AdminDashboard() {
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 600_000 });
   const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
+  const { data: waecScaleData, refetch: refetchWaecScale } = useQuery<{ scale: Record<string, number> }>({ queryKey: ["/api/admin/waec-grade-scale"], enabled: activeTab === "settings" });
   const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number; bankTransfersEnabled: boolean; bankTransfersWeekendOverrideUntil: number }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" || activeTab === "bank_transfers" });
   const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
 
@@ -439,6 +442,22 @@ export default function AdminDashboard() {
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
       toast({ title: "Plan Prices Updated ✓", description: "New prices are live for all students immediately." });
+    },
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+
+  const saveWaecScaleMutation = useMutation({
+    mutationFn: async (scale: Record<string, number>) => {
+      const res = await apiRequest("PUT", "/api/admin/waec-grade-scale", { scale });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/waec-grade-scale"] });
+      setWaecScaleSaved(true);
+      setTimeout(() => setWaecScaleSaved(false), 3000);
+      toast({ title: "Grade Scale Updated ✓", description: "All future WAEC applications will use the new point values." });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
@@ -3238,6 +3257,121 @@ export default function AdminDashboard() {
                       ))}
                     </CardContent>
                   </Card>
+
+                  {/* ── WAEC Grade Scale ────────────────────────────────── */}
+                  {(() => {
+                    const GRADE_KEYS = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9"];
+                    const DEFAULT_WEIGHTS: Record<string, number> = { A1: 12, B2: 11.5, B3: 11, C4: 10.5, C5: 10, C6: 9.5, D7: 9, E8: 8.5, F9: 8 };
+                    const liveScale = waecScaleData?.scale ?? DEFAULT_WEIGHTS;
+                    const getValue = (k: string) => waecScaleForm[k] ?? String(liveScale[k] ?? DEFAULT_WEIGHTS[k]);
+                    const handleChange = (k: string, v: string) => setWaecScaleForm(f => ({ ...f, [k]: v }));
+                    const handleSave = () => {
+                      const scale: Record<string, number> = {};
+                      for (const k of GRADE_KEYS) {
+                        const v = parseFloat(getValue(k));
+                        if (isNaN(v)) { toast({ variant: "destructive", title: "Invalid input", description: `Enter a valid number for ${k}` }); return; }
+                        scale[k] = v;
+                      }
+                      saveWaecScaleMutation.mutate(scale);
+                    };
+                    const handleReset = () => {
+                      setWaecScaleForm({});
+                      refetchWaecScale();
+                    };
+                    const gradeColors: Record<string, string> = {
+                      A1: "text-emerald-700 bg-emerald-50 border-emerald-200",
+                      B2: "text-tsia-green bg-green-50 border-green-200",
+                      B3: "text-tsia-green bg-green-50 border-green-200",
+                      C4: "text-amber-700 bg-amber-50 border-amber-200",
+                      C5: "text-amber-700 bg-amber-50 border-amber-200",
+                      C6: "text-amber-600 bg-amber-50 border-amber-200",
+                      D7: "text-orange-600 bg-orange-50 border-orange-200",
+                      E8: "text-red-500 bg-red-50 border-red-200",
+                      F9: "text-red-700 bg-red-100 border-red-300",
+                    };
+                    const isDirty = Object.keys(waecScaleForm).length > 0;
+                    return (
+                      <Card className="border-0 shadow-sm">
+                        <CardHeader className="border-b pb-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+                              <GraduationCap className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                              <CardTitle className="text-base">WAEC Grade Point Scale</CardTitle>
+                              <CardDescription>
+                                Set the point value assigned to each WAEC grade. These values determine each student's score percentage and tier during application.
+                                Points must be in descending order (A1 highest → F9 lowest).
+                              </CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-6 space-y-4">
+                          <div className="grid grid-cols-3 gap-3">
+                            {GRADE_KEYS.map(k => (
+                              <div key={k} className="space-y-1">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${gradeColors[k] ?? "text-slate-600 bg-slate-50 border-slate-200"}`}>{k}</span>
+                                </div>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.5"
+                                  className="h-10 bg-muted/30 font-semibold text-center text-base"
+                                  value={getValue(k)}
+                                  onChange={e => handleChange(k, e.target.value)}
+                                  data-testid={`input-waec-grade-${k}`}
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="bg-slate-50 rounded-xl border p-4">
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Score Preview</p>
+                            <p className="text-xs text-slate-500">
+                              A student with 5 A1s would score{" "}
+                              <strong className="text-tsia-green">
+                                {(() => {
+                                  const a1 = parseFloat(getValue("A1")) || 0;
+                                  const maxP = Math.max(...GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0), 1);
+                                  return ((a1 / maxP) * 100).toFixed(1);
+                                })()}%
+                              </strong>
+                              . A student with 5 F9s would score{" "}
+                              <strong className="text-red-500">
+                                {(() => {
+                                  const f9 = parseFloat(getValue("F9")) || 0;
+                                  const maxP = Math.max(...GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0), 1);
+                                  return ((f9 / maxP) * 100).toFixed(1);
+                                })()}%
+                              </strong>.
+                            </p>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Button
+                              className="flex-1 h-11 font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                              disabled={saveWaecScaleMutation.isPending}
+                              onClick={handleSave}
+                              data-testid="button-save-waec-scale"
+                            >
+                              {saveWaecScaleMutation.isPending
+                                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Saving...</>
+                                : waecScaleSaved
+                                  ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Saved!</>
+                                  : <><Save className="w-4 h-4 mr-2" /> Save Grade Scale</>}
+                            </Button>
+                            {isDirty && (
+                              <Button variant="outline" className="h-11" onClick={handleReset} data-testid="button-reset-waec-scale">
+                                Reset
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
 
                   {/* ── Fintech Hub Kill-Switches ───────────────────────── */}
                   <Card className={`border-0 shadow-sm border-l-4 ${bankTransfersEnabled ? "border-l-emerald-500" : "border-l-red-500"}`}>

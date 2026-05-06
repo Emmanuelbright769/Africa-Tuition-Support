@@ -980,16 +980,9 @@ export default function AffiliateDashboard() {
     onError: (err: any) => toast({ title: "Withdrawal Failed", description: err.message, variant: "destructive" }),
   });
 
-  const tradeAccountLookup = async () => {
-    if (!tradeBankCode || tradeAcctNumber.length !== 10) return;
-    setTradeLookupLoading(true); setTradeAcctName("");
-    try {
-      const res = await apiRequest("POST", "/api/bank/lookup", { bankCode: tradeBankCode, accountNumber: tradeAcctNumber });
-      const data = await res.json();
-      if (res.ok && data.accountName) { setTradeAcctName(data.accountName); setTradeBankStep("amount"); }
-      else toast({ title: "Account Not Found", description: data.message || "Check account number and bank.", variant: "destructive" });
-    } catch { toast({ title: "Lookup Failed", description: "Network error. Try again.", variant: "destructive" }); }
-    finally { setTradeLookupLoading(false); }
+  const tradeAccountLookup = () => {
+    if (!tradeBankCode || tradeAcctNumber.length !== 10 || !tradeAcctName.trim()) return;
+    setTradeBankStep("amount");
   };
 
   const connectMutation = useMutation({
@@ -3064,18 +3057,16 @@ export default function AffiliateDashboard() {
                 <div className="space-y-2">
                   <Label>Account Number</Label>
                   <Input maxLength={10} placeholder="10-digit NUBAN" value={tradeAcctNumber}
-                    onChange={e => { setTradeAcctNumber(e.target.value.replace(/\D/g, "").slice(0, 10)); setTradeAcctName(""); }}
+                    onChange={e => setTradeAcctNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
                     data-testid="input-trade-acct-number" />
                 </div>
-                {tradeAcctName && (
-                  <div className="flex items-center gap-2 bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-3">
-                    <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">Account verified</p>
-                      <p className="font-bold text-sm">{tradeAcctName}</p>
-                    </div>
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <Label>Account Name</Label>
+                  <Input placeholder="Enter your account name" value={tradeAcctName}
+                    onChange={e => setTradeAcctName(e.target.value)}
+                    data-testid="input-trade-acct-name" />
+                  <p className="text-xs text-muted-foreground">Type the exact name on the bank account</p>
+                </div>
               </>
             )}
 
@@ -3151,8 +3142,8 @@ export default function AffiliateDashboard() {
             <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
             {/* Step 1 for bank: verify account */}
             {withdrawType === "withdraw_bank" && tradeBankStep === "bank" && (
-              <Button onClick={tradeAccountLookup} disabled={tradeLookupLoading || !tradeBankCode || tradeAcctNumber.length !== 10} data-testid="button-verify-trade-account">
-                {tradeLookupLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />} Verify Account
+              <Button onClick={tradeAccountLookup} disabled={!tradeBankCode || tradeAcctNumber.length !== 10 || !tradeAcctName.trim()} data-testid="button-verify-trade-account">
+                <ChevronRight className="w-4 h-4 mr-2" /> Continue
               </Button>
             )}
             {/* Transfer to wallet */}

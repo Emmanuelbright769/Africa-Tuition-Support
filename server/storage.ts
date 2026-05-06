@@ -200,6 +200,7 @@ export interface IStorage {
   // Wallet Deposits (student/user funding)
   createWalletDeposit(data: InsertWalletDeposit): Promise<WalletDeposit>;
   getWalletDepositsByUser(userId: number): Promise<WalletDeposit[]>;
+  getWalletDepositByTxHash(txHash: string): Promise<WalletDeposit | null>;
   getPendingWalletDeposits(): Promise<(WalletDeposit & { user: User })[]>;
   updateWalletDeposit(id: number, data: Partial<WalletDeposit>): Promise<WalletDeposit>;
   getCryptoDepositsNeedingVerification(): Promise<WalletDeposit[]>;
@@ -1369,6 +1370,11 @@ export class DatabaseStorage implements IStorage {
 
   async getWalletDepositsByUser(userId: number): Promise<WalletDeposit[]> {
     return db.select().from(walletDeposits).where(eq(walletDeposits.userId, userId)).orderBy(desc(walletDeposits.createdAt));
+  }
+
+  async getWalletDepositByTxHash(txHash: string): Promise<WalletDeposit | null> {
+    const [d] = await db.select().from(walletDeposits).where(eq(walletDeposits.txHash, txHash)).limit(1);
+    return d ?? null;
   }
 
   async getPendingWalletDeposits(): Promise<(WalletDeposit & { user: User })[]> {

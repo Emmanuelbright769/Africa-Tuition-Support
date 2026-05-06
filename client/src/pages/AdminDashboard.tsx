@@ -499,6 +499,20 @@ export default function AdminDashboard() {
     onError: (e: any) => { toast({ variant: "destructive", title: "Error", description: e.message }); },
   });
 
+  const forceCreditMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/admin/deposit/${id}/force-credit`);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: (d) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/wallet-deposits"] });
+      toast({ title: "Wallet Credited ✓", description: d.message });
+    },
+    onError: (e: any) => { toast({ variant: "destructive", title: "Credit Failed", description: e.message }); },
+  });
+
   const updateTrustFunderStatusMutation = useMutation({
     mutationFn: async ({ userId, status }: { userId: number; status: string }) => {
       const res = await apiRequest("PATCH", `/api/admin/co-affiliate/${userId}/status`, { status });
@@ -1832,6 +1846,11 @@ export default function AdminDashboard() {
                                 <span className={`text-xs font-medium mr-1 ${d.status === "completed" ? "text-emerald-600" : d.status === "declined" ? "text-red-500" : "text-amber-600"}`} data-testid={`status-deposit-${d.id}`}>
                                   {d.status === "completed" ? "Auto-confirmed" : d.status === "declined" ? "Declined" : "Processing…"}
                                 </span>
+                                {d.status !== "completed" && (
+                                  <Button size="sm" variant="ghost" className="h-7 text-xs text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50" disabled={forceCreditMutation.isPending} onClick={() => { if (window.confirm(`Force-credit $${parseFloat(d.amountUsd).toFixed(2)} to ${d.userName} (ID: ${d.id})? This will immediately credit their wallet.`)) forceCreditMutation.mutate(d.id); }} data-testid={`button-credit-deposit-${d.id}`}>
+                                    <Coins className="w-3 h-3 mr-1" /> Credit
+                                  </Button>
+                                )}
                                 <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50" disabled={deleteDepositMutation.isPending} onClick={() => { if (window.confirm(`Delete this deposit record (ID: ${d.id})? This cannot be undone.`)) deleteDepositMutation.mutate(d.id); }} data-testid={`button-delete-deposit-${d.id}`}>
                                   <Trash2 className="w-3 h-3 mr-1" /> Delete
                                 </Button>

@@ -3949,6 +3949,32 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Admin: Force-credit a specific pending deposit ────────────────────────
+  app.post("/api/admin/deposit/:id/force-credit", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const depId = parseInt(req.params.id);
+      if (isNaN(depId)) return res.status(400).json({ message: "Invalid deposit ID" });
+      // Fetch by id using raw pool
+      const { Pool: FcPool } = await import("pg");
+      const fcPool = new FcPool({ connectionString: process.env.DATABASE_URL });
+      const fcRow = await fcPool.query("SELECT * FROM wallet_deposits WHERE id=$1 LIMIT 1", [depId]);
+      await fcPool.end();
+      const dep = fcRow.rows[0];
+      if (!dep) return res.status(404).json({ message: "Deposit not found" });
+      if (dep.status === "completed") return res.status(400).json({ message: "Already credited" });
+      const userId = dep.user_id;
+      const gross  = parseFloat(dep.amount_usd);
+      const txHash = dep.tx_hash;
+      await creditWalletWithSplit(userId, gross, dep.wallet_type ?? "manual", txHash ?? `admin-credit-${depId}`, { id: depId, amountUsd: dep.amount_usd, status: dep.status });
+      console.log(`[ADMIN] Force-credited deposit #${depId} — user ${userId} $${gross}`);
+      res.json({ message: `$${gross.toFixed(2)} credited to user #${userId}` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── ADMIN: Withdrawal Requests ──────────────────────────────────────────────
   app.get("/api/admin/withdrawals", async (req, res) => {
     try {
@@ -5225,8 +5251,12 @@ export async function registerRoutes(
       const ref = (TransactionRef ?? Body?.transaction_ref ?? (req.body as any).data?.transaction_ref) as string;
       const txStatus = Body?.transaction_status ?? (req.body as any).data?.transaction_status;
       if ((Event === "charge_successful" || Event === "charge_completed") && txStatus === "Success" && ref) {
-        // Find the pending deposit by txHash
-        const allDeposits = await (storage as any).db?.query?.walletDeposits?.findFirst?.({ where: (t: any, { eq }: any) => eq(t.txHash, ref) });
+        // Find the pending deposit by txHash — use raw Pool query for reliability
+        const { Pool: SquadPool } = await import("pg");
+        const squadPool = new SquadPool({ connectionString: process.env.DATABASE_URL });
+        const squadRow = await squadPool.query("SELECT * FROM wallet_deposits WHERE tx_hash=$1 LIMIT 1", [ref]);
+        await squadPool.end();
+        const allDeposits = squadRow.rows[0] ?? null;
         if (allDeposits && allDeposits.status !== "completed") {
           const secretKey = process.env.SQUAD_SECRET_KEY ?? "";
           const isLive = secretKey.startsWith("sk_");
@@ -8254,6 +8284,53 @@ export async function registerRoutes(
       console.error("[REFERRAL BACKFILL] Error:", e.message);
     }
   });
+
+  // ── Background job: re-verify stuck Korapay/Squad pending deposits ──────────
+  // Runs every 10 minutes. Finds all pending fiat deposits and calls the
+  // respective gateway verify API. Credits wallet if the payment is confirmed.
+  setInterval(async () => {
+    try {
+      const pending = await storage.getPendingWalletDeposits();
+      const fiat = pending.filter((d: any) => d.walletType === "korapay" || d.walletType === "squad");
+      if (fiat.length === 0) return;
+      console.log(`[DEPOSIT-REVERIFY] Checking ${fiat.length} pending fiat deposit(s)…`);
+      const koraSecret  = process.env.KORAPAY_SECRET_KEY ?? "";
+      const squadSecret = process.env.SQUAD_SECRET_KEY ?? "";
+      const squadBase   = squadSecret.startsWith("sk_") ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+      for (const dep of fiat) {
+        const userId  = (dep as any).user_id ?? dep.userId;
+        const txHash  = (dep as any).tx_hash ?? dep.txHash;
+        const depId   = dep.id;
+        const gross   = parseFloat((dep as any).amount_usd ?? dep.amountUsd);
+        if (!txHash || !userId || !(gross > 0)) continue;
+        try {
+          let confirmed = false;
+          if (dep.walletType === "korapay" && koraSecret) {
+            const r = await fetch(`${KORA_BASE}/charges/${encodeURIComponent(txHash)}`, {
+              headers: { Authorization: `Bearer ${koraSecret}` },
+              signal: AbortSignal.timeout(10000),
+            });
+            const d = await r.json() as any;
+            confirmed = d.status === true && d.data?.status === "success";
+          } else if (dep.walletType === "squad" && squadSecret) {
+            const r = await fetch(`${squadBase}/transaction/verify/${encodeURIComponent(txHash)}`, {
+              headers: { Authorization: `Bearer ${squadSecret}` },
+              signal: AbortSignal.timeout(10000),
+            });
+            const d = await r.json() as any;
+            confirmed = d.success === true && d.data?.transaction_status === "Success";
+          }
+          if (confirmed) {
+            console.log(`[DEPOSIT-REVERIFY] Crediting user ${userId} $${gross} for ${dep.walletType} ref ${txHash}`);
+            await creditWalletWithSplit(userId, gross, dep.walletType, txHash, { id: depId, amountUsd: String(gross), status: "pending" });
+          }
+        } catch { /* skip this deposit, try next time */ }
+      }
+    } catch (e: any) {
+      console.error("[DEPOSIT-REVERIFY] Job error:", e.message);
+    }
+  }, 10 * 60 * 1000); // every 10 minutes
+  console.log("[DEPOSIT-REVERIFY] Background re-verify job started — checks pending fiat deposits every 10 min");
 
   return httpServer;
 }

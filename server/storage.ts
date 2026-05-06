@@ -1465,7 +1465,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(billPayments)
       .leftJoin(users, eq(billPayments.userId, users.id))
-      .where(and(eq(billPayments.service, "bank_transfer"), eq(billPayments.status, "pending")))
+      .where(eq(billPayments.service, "bank_transfer"))
       .orderBy(desc(billPayments.createdAt));
     return rows as any[];
   }

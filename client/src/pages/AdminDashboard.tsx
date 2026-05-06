@@ -717,7 +717,7 @@ export default function AdminDashboard() {
     pendingLoans: (allLoans as any[]).filter((l: any) => l.status === "pending").length,
     pendingWithdrawals: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && (w.type === "bank" || w.type === "trade_bank")).length,
     pendingCryptoWd: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && w.type === "crypto").length,
-    pendingBankTransfers: (pendingBankTransfers as any[]).length,
+    pendingBankTransfers: (pendingBankTransfers as any[]).filter((t: any) => t.status === "pending").length,
   };
 
   // ─── Sidebar nav ───────────────────────────────────────────────────────────
@@ -1929,9 +1929,9 @@ export default function AdminDashboard() {
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <Banknote className="w-4 h-4 text-tsia-green" /> Pending Bank Transfers
+                      <Banknote className="w-4 h-4 text-tsia-green" /> Bank Transfers
                     </CardTitle>
-                    <CardDescription>Fintech bank transfer requests awaiting your approval. Approve to send funds via Squad, or reject to refund the user.</CardDescription>
+                    <CardDescription>All fintech bank transfer requests. Pending transfers need your approval — approve after making the manual transfer, or reject to refund the user.</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
@@ -1943,17 +1943,27 @@ export default function AdminDashboard() {
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Bank</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount (NGN)</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Date</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
                           <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {(pendingBankTransfers as any[]).length === 0 ? (
-                          <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-500">No pending bank transfers.</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={8} className="text-center py-10 text-slate-500">No bank transfers yet.</TableCell></TableRow>
                         ) : (pendingBankTransfers as any[]).map((t: any) => {
                           let details: any = {};
                           try { details = JSON.parse(t.reference); } catch { /* ok */ }
+                          const isPending = t.status === "pending";
+                          const statusMeta: Record<string, { label: string; cls: string }> = {
+                            pending:   { label: "Pending",   cls: "bg-amber-100 text-amber-800 border-amber-300" },
+                            completed: { label: "Approved",  cls: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+                            rejected:  { label: "Refunded",  cls: "bg-blue-100 text-blue-800 border-blue-300" },
+                            declined:  { label: "Declined",  cls: "bg-red-100 text-red-700 border-red-300" },
+                            failed:    { label: "Failed",    cls: "bg-slate-100 text-slate-600 border-slate-300" },
+                          };
+                          const sm = statusMeta[t.status] ?? { label: t.status, cls: "bg-slate-100 text-slate-600 border-slate-300" };
                           return (
-                            <TableRow key={t.id} className="hover:bg-slate-50/50">
+                            <TableRow key={t.id} className={`hover:bg-slate-50/50 ${!isPending ? "opacity-80" : ""}`}>
                               <TableCell className="px-6">
                                 <div className="font-medium text-sm text-slate-900">{t.userName}</div>
                                 <div className="text-xs text-slate-500">{t.userEmail}</div>
@@ -1974,18 +1984,27 @@ export default function AdminDashboard() {
                               <TableCell className="text-sm">{details.bankName || details.bankCode || "—"}</TableCell>
                               <TableCell className="font-semibold text-sm text-tsia-green">₦{(details.netAmountNgn || 0).toLocaleString()}</TableCell>
                               <TableCell className="text-xs text-slate-500">{fmtDate(t.createdAt)}</TableCell>
+                              <TableCell>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${sm.cls}`}>
+                                  {sm.label}
+                                </span>
+                              </TableCell>
                               <TableCell className="text-right px-6">
-                                <div className="flex flex-col gap-1 items-end">
-                                  <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90 w-full" disabled={approveBankTransferMutation.isPending} onClick={() => { if (window.confirm(`Mark this transfer as done?\n\nRecipient: ${details.accountName}\nAccount: ${details.accountNumber}\nAmount: ₦${(details.netAmountNgn||0).toLocaleString()}\n\nOnly click OK after you have made the manual bank transfer.`)) approveBankTransferMutation.mutate(t.id); }} data-testid={`button-approve-bt-${t.id}`}>
-                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Approve ✓
-                                  </Button>
-                                  <Button size="sm" variant="outline" className="h-7 text-xs border-amber-400 text-amber-700 hover:bg-amber-50 w-full" disabled={declineBankTransferMutation.isPending} onClick={() => { const reason = window.prompt("Reason for declining (shown to user, NO refund):", "Transfer could not be completed."); if (reason !== null) declineBankTransferMutation.mutate({ id: t.id, reason }); }} data-testid={`button-decline-bt-${t.id}`}>
-                                    <XCircle className="w-3 h-3 mr-1" /> Decline
-                                  </Button>
-                                  <Button size="sm" variant="outline" className="h-7 text-xs border-red-400 text-red-600 hover:bg-red-50 w-full" disabled={rejectBankTransferMutation.isPending} onClick={() => { const reason = window.prompt("Reason for refund (shown to user, wallet will be credited back):", "Transfer could not be completed."); if (reason !== null) rejectBankTransferMutation.mutate({ id: t.id, reason }); }} data-testid={`button-reject-bt-${t.id}`}>
-                                    <RotateCcw className="w-3 h-3 mr-1" /> Refund
-                                  </Button>
-                                </div>
+                                {isPending ? (
+                                  <div className="flex flex-col gap-1 items-end">
+                                    <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90 w-full" disabled={approveBankTransferMutation.isPending} onClick={() => { if (window.confirm(`Mark this transfer as done?\n\nRecipient: ${details.accountName}\nAccount: ${details.accountNumber}\nAmount: ₦${(details.netAmountNgn||0).toLocaleString()}\n\nOnly click OK after you have made the manual bank transfer.`)) approveBankTransferMutation.mutate(t.id); }} data-testid={`button-approve-bt-${t.id}`}>
+                                      <CheckCircle2 className="w-3 h-3 mr-1" /> Approve ✓
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="h-7 text-xs border-amber-400 text-amber-700 hover:bg-amber-50 w-full" disabled={declineBankTransferMutation.isPending} onClick={() => { const reason = window.prompt("Reason for declining (shown to user, NO refund):", "Transfer could not be completed."); if (reason !== null) declineBankTransferMutation.mutate({ id: t.id, reason }); }} data-testid={`button-decline-bt-${t.id}`}>
+                                      <XCircle className="w-3 h-3 mr-1" /> Decline
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="h-7 text-xs border-red-400 text-red-600 hover:bg-red-50 w-full" disabled={rejectBankTransferMutation.isPending} onClick={() => { const reason = window.prompt("Reason for refund (shown to user, wallet will be credited back):", "Transfer could not be completed."); if (reason !== null) rejectBankTransferMutation.mutate({ id: t.id, reason }); }} data-testid={`button-reject-bt-${t.id}`}>
+                                      <RotateCcw className="w-3 h-3 mr-1" /> Refund
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400 italic">No actions</span>
+                                )}
                               </TableCell>
                             </TableRow>
                           );

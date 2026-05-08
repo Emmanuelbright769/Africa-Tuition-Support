@@ -1150,10 +1150,12 @@ function ListProductModal({ open, onClose, editProduct }: { open: boolean; onClo
   });
 
   const compressImage = (file: File): Promise<string> =>
-    new Promise(resolve => {
+    new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
+      reader.onerror = () => reject(new Error(`Cannot read file: ${file.name}`));
       reader.onload = ev => {
         const img = new Image();
+        img.onerror = () => reject(new Error(`Cannot decode image: ${file.name}. Try a JPEG or PNG file.`));
         img.onload = () => {
           const MAX = 900;
           let { width, height } = img;
@@ -1163,7 +1165,9 @@ function ListProductModal({ open, onClose, editProduct }: { open: boolean; onClo
           }
           const canvas = document.createElement("canvas");
           canvas.width = width; canvas.height = height;
-          canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { reject(new Error("Canvas not supported")); return; }
+          ctx.drawImage(img, 0, 0, width, height);
           resolve(canvas.toDataURL("image/jpeg", 0.75));
         };
         img.src = ev.target?.result as string;
@@ -1173,12 +1177,15 @@ function ListProductModal({ open, onClose, editProduct }: { open: boolean; onClo
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []).slice(0, ECOMMERCE.MAX_IMAGES - images.length);
-    files.forEach(f => {
-      compressImage(f).then(dataUrl =>
-        setImages(prev => [...prev, dataUrl].slice(0, ECOMMERCE.MAX_IMAGES))
-      );
-    });
     e.target.value = "";
+    files.forEach(f => {
+      compressImage(f)
+        .then(dataUrl => setImages(prev => [...prev, dataUrl].slice(0, ECOMMERCE.MAX_IMAGES)))
+        .catch(err => {
+          console.warn("[image upload]", err.message);
+          toast({ title: "Image error", description: err.message, variant: "destructive" });
+        });
+    });
   };
 
   const commission = parseFloat(form.price || "0") * ECOMMERCE.COMMISSION_RATE;
@@ -1471,6 +1478,9 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
     },
     enabled: !!product?.id && open,
   });
+
+  // Close lightbox whenever the parent dialog closes so body scroll is never left locked
+  useEffect(() => { if (!open) setLightboxOpen(false); }, [open]);
 
   useEffect(() => {
     if (myRating) {

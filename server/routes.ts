@@ -5276,17 +5276,18 @@ export async function registerRoutes(
     // Squad sends: { Event: "charge_successful", TransactionRef: "...", Body: { transaction_ref, transaction_status, ... } }
     // Also validates x-squad-encrypted-body header (HMAC-SHA512 of body using secret key)
     try {
-      // ── Signature validation (security: prevent spoofed webhooks) ─────────
+      // ── Signature validation — use raw body so HMAC matches what Squad sent ──
       const squadSecret = process.env.SQUAD_SECRET_KEY ?? "";
       const encryptedBodyHeader = req.headers["x-squad-encrypted-body"] as string | undefined;
-      if (encryptedBodyHeader) {
+      if (encryptedBodyHeader && squadSecret) {
         const { createHmac } = await import("crypto");
+        const rawBody = (req as any).rawBody?.toString() ?? JSON.stringify(req.body);
         const computed = createHmac("sha512", squadSecret)
-          .update(JSON.stringify(req.body))
+          .update(rawBody)
           .digest("hex");
         if (computed !== encryptedBodyHeader) {
-          console.error("[WEBHOOK/Squad] Signature mismatch — ignoring request");
-          return res.sendStatus(200); // Return 200 to stop Squad retrying; just don't process
+          // Log but do NOT block — we re-verify with Squad's API before crediting anyway
+          console.warn("[WEBHOOK/Squad] Signature mismatch — proceeding to gateway re-verify");
         }
       }
       // ── Squad webhook structure: { Event, TransactionRef, Body } ─────────
@@ -5310,8 +5311,9 @@ export async function registerRoutes(
           });
           const verData = await verRes.json() as any;
           if (verData.success && verData.data?.transaction_status === "Success") {
-            const userId = allDeposits.userId;
-            const wkGross = parseFloat(allDeposits.amountUsd);
+            // raw Pool rows are snake_case — use user_id and amount_usd
+            const userId = allDeposits.user_id ?? allDeposits.userId;
+            const wkGross = parseFloat(allDeposits.amount_usd ?? allDeposits.amountUsd);
             // Credit 100% to wallet — service fees apply on transactions, not deposits
             const wkUserCredit = wkGross;
             const wl = await storage.getOrCreateWallet(userId);
@@ -5584,8 +5586,8 @@ export async function registerRoutes(
           }
           if (fallbackUserId) {
             // Amount: prefer metadata, fall back to Korapay's reported NGN amount
-            // data.amount is in NGN kobo (smallest unit), so divide by 100 for NGN, then by 1480 for USD
-            const grossFromKora = data.amount ? parseFloat((data.amount / 100 / 1480).toFixed(2)) : 0;
+            // Korapay data.amount is in NGN (not kobo), so divide by 1480 for USD
+            const grossFromKora = data.amount ? parseFloat((data.amount / 1480).toFixed(2)) : 0;
             const gross = metaAmountUsd ? parseFloat(metaAmountUsd) : grossFromKora;
             if (gross > 0) {
               console.log(`[KORAPAY WEBHOOK] No deposit record found for ref ${ref} — crediting user ${fallbackUserId} $${gross} via fallback`);
@@ -8330,9 +8332,8 @@ export async function registerRoutes(
   });
 
   // ── Background job: re-verify stuck Korapay/Squad pending deposits ──────────
-  // Runs every 10 minutes. Finds all pending fiat deposits and calls the
-  // respective gateway verify API. Credits wallet if the payment is confirmed.
-  setInterval(async () => {
+  // Runs every 2 minutes and immediately on startup.
+  async function runDepositReverify() {
     try {
       const pending = await storage.getPendingWalletDeposits();
       const fiat = pending.filter((d: any) => d.walletType === "korapay" || d.walletType === "squad");
@@ -8346,15 +8347,20 @@ export async function registerRoutes(
         const txHash  = (dep as any).tx_hash ?? dep.txHash;
         const depId   = dep.id;
         const gross   = parseFloat((dep as any).amount_usd ?? dep.amountUsd);
-        if (!txHash || !userId || !(gross > 0)) continue;
+        if (!txHash || !userId || !(gross > 0)) {
+          console.warn(`[DEPOSIT-REVERIFY] Skipping deposit ${dep.id} — missing userId/txHash/amount`);
+          continue;
+        }
         try {
           let confirmed = false;
+          let gatewayStatus = "unknown";
           if (dep.walletType === "korapay" && koraSecret) {
             const r = await fetch(`${KORA_BASE}/charges/${encodeURIComponent(txHash)}`, {
               headers: { Authorization: `Bearer ${koraSecret}` },
               signal: AbortSignal.timeout(10000),
             });
             const d = await r.json() as any;
+            gatewayStatus = d.data?.status ?? (d.status === false ? "api_error" : "unknown");
             confirmed = d.status === true && d.data?.status === "success";
           } else if (dep.walletType === "squad" && squadSecret) {
             const r = await fetch(`${squadBase}/transaction/verify/${encodeURIComponent(txHash)}`, {
@@ -8362,19 +8368,28 @@ export async function registerRoutes(
               signal: AbortSignal.timeout(10000),
             });
             const d = await r.json() as any;
+            gatewayStatus = d.data?.transaction_status ?? (d.success === false ? d.message ?? "api_error" : "unknown");
             confirmed = d.success === true && d.data?.transaction_status === "Success";
           }
           if (confirmed) {
-            console.log(`[DEPOSIT-REVERIFY] Crediting user ${userId} $${gross} for ${dep.walletType} ref ${txHash}`);
+            console.log(`[DEPOSIT-REVERIFY] ✓ Crediting user ${userId} $${gross} for ${dep.walletType} ref ${txHash}`);
             await creditWalletWithSplit(userId, gross, dep.walletType, txHash, { id: depId, amountUsd: String(gross), status: "pending" });
+          } else {
+            console.log(`[DEPOSIT-REVERIFY] ✗ Deposit ${depId} not confirmed yet — gateway status: ${gatewayStatus} (ref: ${txHash})`);
           }
-        } catch { /* skip this deposit, try next time */ }
+        } catch (err: any) {
+          console.error(`[DEPOSIT-REVERIFY] Error checking deposit ${depId} (${txHash}):`, err.message ?? err);
+        }
       }
     } catch (e: any) {
       console.error("[DEPOSIT-REVERIFY] Job error:", e.message);
     }
-  }, 10 * 60 * 1000); // every 10 minutes
-  console.log("[DEPOSIT-REVERIFY] Background re-verify job started — checks pending fiat deposits every 10 min");
+  }
+
+  // Run immediately on startup, then every 2 minutes
+  setTimeout(() => runDepositReverify(), 15_000); // 15 s delay to let server fully init
+  setInterval(runDepositReverify, 2 * 60 * 1000);
+  console.log("[DEPOSIT-REVERIFY] Background re-verify job started — checks pending fiat deposits every 2 min (first run in 15 s)");
 
   return httpServer;
 }

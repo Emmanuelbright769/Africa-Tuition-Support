@@ -5630,8 +5630,10 @@ export async function registerRoutes(
       await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affCount, perAff.toFixed(6));
     } catch { /* non-critical */ }
     if (existingDeposit?.id) await storage.updateWalletDeposit(existingDeposit.id, { status: "completed" });
-    const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${userCredit.toFixed(2)} credited to your TSIA SwiftWallet (5% affiliate pool: $${affiliateCut.toFixed(2)})`, data: { ref }, isRead: false });
-    pushToUser(userId, "notification", notif);
+    try {
+      const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${userCredit.toFixed(2)} credited to your TSIA SwiftWallet (5% affiliate pool: $${affiliateCut.toFixed(2)})`, data: { ref }, isRead: false });
+      pushToUser(userId, "notification", notif);
+    } catch (notifErr: any) { console.error(`[CREDIT] Notification failed (non-critical) for user ${userId}:`, notifErr?.message); }
     const u = await storage.getUser(userId);
     if (u) sendAdminDepositConfirmedEmail({ name: `${u.firstName} ${u.lastName}`, email: u.email, gross: gross.toFixed(2), credited: userCredit.toFixed(2), reserveCut: "0.00", affiliateCut: affiliateCut.toFixed(2), newBalance: newBal, walletType: method, txHash: ref, userId })
       .catch((err: any) => console.error(`[EMAIL] ${method} deposit email failed:`, err?.message ?? err));

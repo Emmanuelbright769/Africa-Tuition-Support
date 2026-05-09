@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ComponentProps } from "react";
+import { useState, useEffect, useCallback, useRef, type ComponentProps } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -318,6 +318,8 @@ export default function FinancialHub() {
   const [fundAmount, setFundAmount]     = useState("");
   const [squadLoading, setSquadLoading] = useState(false);
   const [koraLoading, setKoraLoading]   = useState(false);
+  const [koraReference, setKoraReference] = useState<string | null>(null);
+  const koraPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [cryptoNetwork, setCryptoNetwork] = useState<"trc20" | "bep20">("trc20");
   const [cryptoAmount, setCryptoAmount]   = useState("");
   const [cryptoTxHash, setCryptoTxHash]   = useState("");
@@ -505,7 +507,9 @@ export default function FinancialHub() {
             queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
             setFundAmount(""); setView("home");
           } catch {
-            toast({ title: "Payment received — verifying", description: "Your funds will be credited shortly.", variant: "destructive" });
+            toast({ title: "Payment received — verifying", description: "Your funds will be credited within 2 minutes automatically." });
+          } finally {
+            setSquadLoading(false);
           }
         },
       });
@@ -518,6 +522,29 @@ export default function FinancialHub() {
   }, [fundAmount, loadSquadScript, toast, refetchDeposits, refetchBalances]);
 
   // ── Korapay: open checkout in new tab + poll ──────────────────────────────
+  const stopKoraPoll = useCallback(() => {
+    if (koraPollRef.current) { clearInterval(koraPollRef.current); koraPollRef.current = null; }
+    setKoraLoading(false);
+    setKoraReference(null);
+  }, []);
+
+  const verifyKoraPayment = useCallback(async (reference: string) => {
+    try {
+      const vRes = await apiRequest("POST", "/api/wallet/korapay/verify", { reference });
+      const vd = await vRes.json();
+      if (vRes.ok) {
+        if (koraPollRef.current) { clearInterval(koraPollRef.current); koraPollRef.current = null; }
+        toast({ title: "Wallet funded! 🎉", description: vd.message, className: "border-tsia-green" });
+        queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+        refetchDeposits(); refetchBalances();
+        queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+        setFundAmount(""); setKoraLoading(false); setKoraReference(null); setView("home");
+        return true;
+      }
+    } catch { /* keep polling */ }
+    return false;
+  }, [toast, refetchDeposits, refetchBalances]);
+
   const openKorapayCheckout = useCallback(async () => {
     const amount = parseFloat(fundAmount);
     if (!amount || amount <= 2) { toast({ title: "Enter a valid amount", description: "Minimum deposit is above $2.00.", variant: "destructive" }); return; }
@@ -527,31 +554,22 @@ export default function FinancialHub() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.message ?? "Could not start payment");
       const { checkoutUrl, reference } = d as { checkoutUrl: string; reference: string };
+      setKoraReference(reference);
       const win = window.open(checkoutUrl, "_blank", "noopener,noreferrer");
       if (!win) { window.location.href = checkoutUrl; return; }
       toast({ title: "Korapay checkout opened", description: "Complete payment in the new tab, then return here.", className: "border-tsia-green" });
       let attempts = 0;
-      const poll = setInterval(async () => {
+      koraPollRef.current = setInterval(async () => {
         attempts++;
-        if (attempts > 60) { clearInterval(poll); setKoraLoading(false); return; }
-        try {
-          const vRes = await apiRequest("POST", "/api/wallet/korapay/verify", { reference });
-          const vd = await vRes.json();
-          if (vRes.ok) {
-            clearInterval(poll);
-            toast({ title: "Wallet funded! 🎉", description: vd.message, className: "border-tsia-green" });
-            queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
-            refetchDeposits(); refetchBalances();
-            queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-            setFundAmount(""); setKoraLoading(false); setView("home");
-          }
-        } catch { /* keep polling */ }
+        if (attempts > 60) { stopKoraPoll(); return; }
+        await verifyKoraPayment(reference);
       }, 5000);
     } catch (e: any) {
       setKoraLoading(false);
+      setKoraReference(null);
       toast({ title: "Payment error", description: e.message, variant: "destructive" });
     }
-  }, [fundAmount, toast, refetchDeposits, refetchBalances]);
+  }, [fundAmount, toast, refetchDeposits, refetchBalances, stopKoraPoll, verifyKoraPayment]);
 
   const cryptoDepositMutation = useMutation({
     mutationFn: async () => {
@@ -1600,10 +1618,21 @@ export default function FinancialHub() {
               <Shield className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
               <p className="text-xs text-orange-700 dark:text-orange-300">Opens in a new tab. Payment is auto-verified when complete.</p>
             </div>
-            {koraLoading && (
-              <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3 flex items-center gap-3">
-                <Loader2 className="w-5 h-5 text-tsia-green animate-spin shrink-0" />
-                <p className="text-xs font-semibold text-tsia-green">Waiting for payment confirmation…</p>
+            {koraLoading && koraReference && (
+              <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 text-tsia-green animate-spin shrink-0" />
+                  <p className="text-xs font-semibold text-tsia-green">Waiting for payment confirmation…</p>
+                </div>
+                <p className="text-[11px] text-muted-foreground">Completed payment? Tap below to confirm instantly.</p>
+                <div className="flex gap-2">
+                  <Button size="sm" className="flex-1 h-8 text-xs bg-tsia-green text-white rounded-xl" onClick={() => verifyKoraPayment(koraReference)} data-testid="btn-kora-i-have-paid">
+                    ✓ I've Paid — Check Now
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground rounded-xl" onClick={stopKoraPoll} data-testid="btn-kora-cancel">
+                    Cancel
+                  </Button>
+                </div>
               </div>
             )}
             <Button onClick={openKorapayCheckout}

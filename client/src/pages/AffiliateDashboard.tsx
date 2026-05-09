@@ -1241,8 +1241,8 @@ export default function AffiliateDashboard() {
           <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
 
-            {/* ── WALLET GATE: blocks all sections except overview when wallet not yet funded ── */}
-            {!walletActivated && activeSection !== "overview" && (
+            {/* ── WALLET GATE: blocks all sections except overview & fintech when wallet not yet funded ── */}
+            {!walletActivated && activeSection !== "overview" && activeSection !== "fintech" && (
               <motion.div variants={itemVariants} className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
                 <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
                   <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />

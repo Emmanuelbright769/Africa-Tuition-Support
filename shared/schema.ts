@@ -110,6 +110,7 @@ export const disbursements = pgTable("disbursements", {
   userId: integer("user_id").notNull().references(() => users.id),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   status: disbursementStatusEnum("status").notNull().default("pending"),
+  semesterNum: integer("semester_num").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   processedAt: timestamp("processed_at"),
 });

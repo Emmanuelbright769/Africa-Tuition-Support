@@ -18,6 +18,7 @@ import {
   sendAdminSponsorshipEmail, sendStudentPlanReceiptEmail, sendAdminKycEmail, sendAdminOrderEmail,
   sendAdminCommissionWithdrawalEmail, sendAdminDepositConfirmedEmail,
   sendDisbursementProcessedEmail, sendDisbursementDeclinedEmail, sendDisbursementEditedEmail,
+  sendAdminWalletTransferEmail,
   sendWithdrawalOtpEmail,
   sendTransferOtpEmail,
   sendTransactionReceiptEmail,
@@ -1754,8 +1755,11 @@ export async function registerRoutes(
         active: true,
       });
 
-      // ── 9. Create pending disbursement ────────────────────────────────────
-      await storage.createDisbursement({ userId, amount: totalPayout, status: "pending" });
+      // ── 9. Create pending disbursements — split 50/50 across two semesters ──
+      const semester1Amount = (parseFloat(totalPayout) / 2).toFixed(2);
+      const semester2Amount = (parseFloat(totalPayout) - parseFloat(semester1Amount)).toFixed(2);
+      await storage.createDisbursement({ userId, amount: semester1Amount, status: "pending", semesterNum: 1 });
+      await storage.createDisbursement({ userId, amount: semester2Amount, status: "pending", semesterNum: 2 });
 
       // ── 10. Credit 5% referral commission to referrer ─────────────────────
       const planReferralResult = await creditReferrerCommission(userId, baseCost, "sponsorship plan payment");
@@ -3432,8 +3436,9 @@ export async function registerRoutes(
       try {
         const student = await storage.getUser(disbursement.userId);
         if (student) {
-          await sendDisbursementProcessedEmail({ to: student.email, firstName: student.firstName, amount: parseFloat(disbursement.amount).toFixed(2), newBalance });
-          await storage.createNotification({ userId: disbursement.userId, type: "wallet_credit", title: "Payout Processed ✓", message: `$${parseFloat(disbursement.amount).toFixed(2)} has been credited to your TSIA SwiftWallet.`, data: { amount: disbursement.amount, newBalance }, isRead: false });
+          const semLabel = disbursement.semesterNum === 2 ? "Semester 2" : "Semester 1";
+          await sendDisbursementProcessedEmail({ to: student.email, firstName: student.firstName, amount: parseFloat(disbursement.amount).toFixed(2), newBalance, semesterNum: disbursement.semesterNum ?? 1 });
+          await storage.createNotification({ userId: disbursement.userId, type: "wallet_credit", title: `Payout Processed ✓ (${semLabel})`, message: `$${parseFloat(disbursement.amount).toFixed(2)} (${semLabel}) has been credited to your TSIA SwiftWallet.`, data: { amount: disbursement.amount, newBalance, semesterNum: disbursement.semesterNum }, isRead: false });
         }
       } catch { /* non-critical */ }
 
@@ -6148,6 +6153,20 @@ export async function registerRoutes(
         note ?? undefined,
       ).catch((err: any) => console.error("[EMAIL] Wallet received email failed:", err?.message ?? err));
 
+      // Alert admin on every peer-to-peer transfer
+      sendAdminWalletTransferEmail({
+        senderName,
+        senderEmail: sender?.email ?? "",
+        recipientName: recipientFullName,
+        recipientEmail: recipient.email,
+        amount: amount.toFixed(2),
+        recipientCredit: recipientCredit.toFixed(2),
+        fee: totalFee.toFixed(2),
+        txRef,
+        txDate,
+        note: note ?? undefined,
+      }).catch((err: any) => console.error("[EMAIL] Admin transfer alert failed:", err?.message ?? err));
+
       res.json({
         message: `$${recipientCredit.toFixed(2)} delivered to ${recipientFullName}'s ${walletLabel} (25% platform service fee applied)`,
         receipt: {
@@ -7063,7 +7082,7 @@ export async function registerRoutes(
                 relatedId: prod.id,
               });
               pushToUser(u.id, "notification", notif);
-              sendNewArrivalEmail(u.email, u.firstName, cat, prod.title, prod.id).catch((err: any) => console.error("[EMAIL] TS-Mart new listing email failed:", err?.message ?? err));
+              sendNewArrivalEmail(u.email, u.firstName, cat, prod.title, prod.id, prod.images ?? []).catch((err: any) => console.error("[EMAIL] TS-Mart new listing email failed:", err?.message ?? err));
             } catch (_) {}
           }
         } catch (err: any) { console.error("[TS-MART] Broadcast notification error:", err?.message ?? err); }

@@ -1075,7 +1075,12 @@ export default function AdminDashboard() {
                               <div className="font-medium text-sm text-slate-900">{d.user?.firstName} {d.user?.lastName}</div>
                               <div className="text-xs text-slate-500">{d.user?.email}</div>
                             </TableCell>
-                            <TableCell className="font-bold text-slate-900">{fmtUSD(d.amount)}</TableCell>
+                            <TableCell>
+                              <div className="font-bold text-slate-900">{fmtUSD(d.amount)}</div>
+                              <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${d.semesterNum === 2 ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                                Semester {d.semesterNum ?? 1}
+                              </span>
+                            </TableCell>
                             <TableCell className="text-sm text-slate-600">{fmtDate(d.createdAt)}</TableCell>
                             <TableCell className="text-right px-6">
                               <div className="flex gap-1.5 justify-end">

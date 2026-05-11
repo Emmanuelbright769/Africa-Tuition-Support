@@ -739,11 +739,20 @@ export async function sendQceWithdrawalEmail(to: string, firstName: string, amou
 
 // ─── New Arrival Alert ────────────────────────────────────────────────────────
 
-export async function sendNewArrivalEmail(to: string, firstName: string, category: string, productTitle: string, productId: number): Promise<void> {
+export async function sendNewArrivalEmail(to: string, firstName: string, category: string, productTitle: string, productId: number, images?: string[]): Promise<void> {
   const subject = `🛍️ New Listing on TS-Mart Online Stores: "${productTitle}"`;
+  const validImages = (images ?? []).filter(Boolean).slice(0, 3);
+  const imageBlock = validImages.length > 0
+    ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 24px;">${
+        validImages.map(src =>
+          `<img src="${src}" alt="${productTitle}" style="width:${validImages.length === 1 ? "100%" : "calc(50% - 4px)"};max-width:${validImages.length === 1 ? "100%" : "220px"};height:160px;object-fit:cover;border-radius:12px;display:block;" />`
+        ).join("")
+      }</div>`
+    : "";
   const html = baseTemplate(`
     <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🛍️ New Listing — TS-Mart Online Stores</h2>
-    <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName}, a new item just went live on the TS-Mart Online Stores marketplace.</p>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;">Hi ${firstName}, a new item just went live on the TS-Mart Online Stores marketplace.</p>
+    ${imageBlock}
     <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
       <p style="color:#6b7c72;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px;">${category}</p>
       <p style="color:#1a1a1a;font-weight:700;font-size:16px;margin:0;">${productTitle}</p>
@@ -1082,16 +1091,22 @@ export async function sendStudentPlanReceiptEmail(data: {
 // ─── Disbursement outcome emails (to student) ─────────────────────────────────
 
 export async function sendDisbursementProcessedEmail(data: {
-  to: string; firstName: string; amount: string; newBalance: string;
+  to: string; firstName: string; amount: string; newBalance: string; semesterNum?: number;
 }): Promise<void> {
-  const subject = `Your TSIA Sponsorship Payout Has Been Processed — $${data.amount}`;
+  const semLabel = data.semesterNum === 2 ? "Semester 2" : "Semester 1";
+  const subject = `Your TSIA Sponsorship Payout Has Been Processed — $${data.amount} (${semLabel})`;
   const html = baseTemplate(`
     <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">💸 Payout Processed!</h2>
     <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;line-height:1.6;">
-      Hi <strong>${data.firstName}</strong>, great news — your sponsorship disbursement has been approved and credited to your TSIA SwiftWallet.
+      Hi <strong>${data.firstName}</strong>, great news — your <strong>${semLabel}</strong> sponsorship disbursement has been approved and credited to your TSIA SwiftWallet.
     </p>
     <div style="background:#f0f8f4;border:1px solid #c3e0ce;border-radius:16px;padding:24px;margin:0 0 20px;">
       <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#6b7c72;font-size:14px;padding-bottom:10px;">Semester</td>
+          <td style="color:#1a6b3c;font-size:14px;font-weight:700;text-align:right;padding-bottom:10px;">${semLabel}</td>
+        </tr>
+        <tr><td colspan="2" style="border-top:1px dashed #c3e0ce;padding-bottom:10px;"></td></tr>
         <tr>
           <td style="color:#6b7c72;font-size:14px;padding-bottom:10px;">Amount Credited</td>
           <td style="color:#1a6b3c;font-size:22px;font-weight:900;text-align:right;padding-bottom:10px;">$${data.amount}</td>
@@ -1103,6 +1118,17 @@ export async function sendDisbursementProcessedEmail(data: {
         </tr>
       </table>
     </div>
+    ${data.semesterNum === 1 ? `
+    <div style="background:#e8f4fd;border-left:4px solid #3b82f6;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
+      <p style="color:#1e40af;font-size:13px;margin:0;line-height:1.6;">
+        This is your <strong>Semester 1</strong> payout (50% of your total disbursement). Your <strong>Semester 2</strong> payout will be processed separately in the next semester.
+      </p>
+    </div>` : `
+    <div style="background:#f0fff4;border-left:4px solid #22c55e;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
+      <p style="color:#14532d;font-size:13px;margin:0;line-height:1.6;">
+        This is your final <strong>Semester 2</strong> payout — your full sponsorship disbursement is now complete. Congratulations!
+      </p>
+    </div>`}
     <div style="background:#fff8e1;border-left:4px solid #c9a227;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
       <p style="color:#92400e;font-size:13px;margin:0;line-height:1.6;">
         Funds are now available in your wallet. You can use them for platform services or request a withdrawal.
@@ -1214,6 +1240,28 @@ export async function sendAdminOrderEmail(data: {
 }
 
 // ─── Admin: Commission Withdrawal (Affiliate / Co-Affiliate) ──────────────────
+
+export async function sendAdminWalletTransferEmail(data: {
+  senderName: string; senderEmail: string; recipientName: string; recipientEmail: string;
+  amount: string; recipientCredit: string; fee: string; txRef: string; txDate: string; note?: string;
+}): Promise<void> {
+  const subject = `💸 Wallet Transfer — ${data.senderName} sent $${data.amount}`;
+  const html = adminActionTemplate(
+    "💸", "Peer-to-Peer Wallet Transfer",
+    "Transfer", "#1a6b3c",
+    [
+      ["Reference",    data.txRef],
+      ["Date & Time",  data.txDate],
+      ["Sender",       `${data.senderName} (${data.senderEmail})`],
+      ["Recipient",    `${data.recipientName} (${data.recipientEmail})`],
+      ["Amount Sent",  `$${data.amount}`],
+      ["Fee Deducted", `$${data.fee}`],
+      ["Delivered",    `$${data.recipientCredit}`],
+      ...(data.note ? [["Note", data.note] as [string, string]] : []),
+    ],
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
 
 export async function sendAdminCommissionWithdrawalEmail(data: {
   name: string; email: string; amount: string; type: string; userId: number;

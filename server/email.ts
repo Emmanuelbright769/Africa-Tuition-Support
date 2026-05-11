@@ -1241,6 +1241,33 @@ export async function sendAdminOrderEmail(data: {
 
 // ─── Admin: Commission Withdrawal (Affiliate / Co-Affiliate) ──────────────────
 
+export async function sendAdminBankTransferEmail(data: {
+  name: string; email: string; userId: number;
+  accountName: string; accountNumber: string; bankName: string;
+  amountUsd: string; amountNgn: string; vat: string;
+  txRef: string; narration?: string;
+}): Promise<void> {
+  const subject = `🏦 ACTION REQUIRED: Bank Transfer — ₦${data.amountNgn} from ${data.name}`;
+  const html = adminActionTemplate(
+    "🏦", "Pending Bank Transfer Request",
+    "Action Required", "#e67e22",
+    [
+      ["User",             `${data.name} (ID: ${data.userId})`],
+      ["Email",            data.email],
+      ["Recipient Name",   data.accountName],
+      ["Account Number",   data.accountNumber],
+      ["Bank",             data.bankName],
+      ["Amount to Send",   `₦${data.amountNgn} (NGN)`],
+      ["Amount (USD)",     `$${data.amountUsd}`],
+      ["VAT (7.5%)",       `$${data.vat}`],
+      ["Reference",        data.txRef],
+      ...(data.narration ? [["Narration", data.narration] as [string, string]] : []),
+    ],
+    "Make the transfer on your bank app, then go to Admin Dashboard → Bank Transfers and click Approve & Send. To cancel and refund the user, click Reject & Refund.",
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
 export async function sendAdminWalletTransferEmail(data: {
   senderName: string; senderEmail: string; recipientName: string; recipientEmail: string;
   amount: string; recipientCredit: string; fee: string; txRef: string; txDate: string; note?: string;

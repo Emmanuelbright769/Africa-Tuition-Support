@@ -1692,8 +1692,8 @@ export default function AffiliateDashboard() {
 
                 {/* ── P&L Chart — weekly profit / loss breakdown ── */}
                 {(() => {
-                  // Filter to bot_earning sessions only
-                  const botSessions = (tradeTxs as any[]).filter(t => t.type === "bot_earning");
+                  // Filter to actual bot earning sessions only (exclude referral commissions — those go to commission wallet)
+                  const botSessions = (tradeTxs as any[]).filter(t => t.type === "bot_earning" && !String(t.note ?? "").startsWith("Referral commission"));
                   if (botSessions.length === 0) return null;
 
                   // Helper: ISO week key "YYYY-Www"

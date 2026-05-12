@@ -2812,11 +2812,11 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      // Weekend check: block activations on Saturday (after 1AM) and all of Sunday (UK time)
+      // Weekend check: block activations on ALL of Saturday and Sunday (UK time)
       const ukNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" }));
       const ukDay  = ukNow.getDay();   // 0=Sun, 1=Mon … 6=Sat
       const ukHour = ukNow.getHours();
-      const isWeekend = ukDay === 0 || (ukDay === 6 && ukHour >= 1);
+      const isWeekend = ukDay === 0 || ukDay === 6;
       const isBeforeOpen = ukHour < 13 && !(ukDay >= 2 && ukDay <= 6 && ukHour < 1);
       if (isWeekend) return res.status(400).json({ message: "The market is closed on weekends. Trading resumes Monday at 1:00 PM GMT." });
       if (isBeforeOpen) return res.status(400).json({ message: "The activation window opens at 1:00 PM GMT (Mon–Fri)." });
@@ -6082,7 +6082,9 @@ export async function registerRoutes(
 
       const senderWallet    = await storage.getOrCreateWallet(userId);
       const senderBalance   = parseFloat(senderWallet.balance);
+      const WALLET_MIN_BALANCE = 2;
       if (senderBalance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${senderBalance.toFixed(2)}` });
+      if (senderBalance - amount < WALLET_MIN_BALANCE) return res.status(400).json({ message: `A minimum of $${WALLET_MIN_BALANCE}.00 must remain in your wallet at all times. You can send up to $${Math.max(0, senderBalance - WALLET_MIN_BALANCE).toFixed(2)}.` });
       const recipient = await storage.getUser(resolvedId);
       if (!recipient) return res.status(404).json({ message: "Recipient not found" });
       const sender = await storage.getUser(userId);
@@ -6212,6 +6214,7 @@ export async function registerRoutes(
     const wallet = await storage.getOrCreateWallet(userId);
     const balance = parseFloat(wallet.balance);
     if (balance < amountUsd) throw Object.assign(new Error(`Insufficient balance. You have $${balance.toFixed(2)}`), { status: 400 });
+    if (balance - amountUsd < 2) throw Object.assign(new Error(`A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.`), { status: 400 });
     await storage.updateWalletBalance(userId, (balance - amountUsd).toFixed(2));
     await storage.createBillPayment({ userId, service, amount: amountUsd, reference });
     await storage.createTransaction({ userId, type: "bill", amount: (-amountUsd).toFixed(2), fee: "0.00", paymentMethod: "wallet", description });
@@ -6286,6 +6289,7 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
       if (balance < transferAmount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+      if (balance - transferAmount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can transfer up to $${Math.max(0, balance - 2).toFixed(2)}.` });
 
       const vatAmount   = parseFloat((transferAmount * 0.075).toFixed(2));
       const netAmountUsd = parseFloat((transferAmount - vatAmount).toFixed(2));
@@ -6689,6 +6693,7 @@ export async function registerRoutes(
       const wallet  = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
       if (balance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+      if (balance - amount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
       await storage.updateWalletBalance(userId, (balance - amount).toFixed(2));
       const reference = `TSIA-BILL-${service.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
       await storage.createBillPayment({ userId, service, amount, reference });

@@ -884,6 +884,8 @@ export default function FinancialHub() {
 
       resetBill();
       setView("home");
+      setActiveTab("bills");
+      setBillPage(0);
       showReceipt({
         title:       titleMap[sid] || "Bill Payment",
         status:      "success",
@@ -1354,7 +1356,11 @@ export default function FinancialHub() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm capitalize">{svc.label}</p>
-                      <p className="text-xs text-muted-foreground truncate">{b.reference}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {b.reference.includes(" | Ref: ")
+                          ? b.reference.split(" | Ref: ")[0]
+                          : b.reference}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>

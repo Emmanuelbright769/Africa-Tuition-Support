@@ -100,6 +100,22 @@ function Watermark() {
   );
 }
 
+// ─── Open a blob/dataURL in a new tab (share-without-download fallback) ────────
+function openInTab(url: string, revokeAfterMs = 30_000) {
+  const tab = window.open(url, "_blank");
+  if (!tab) {
+    // Browsers sometimes block window.open — create a hidden link and click it
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  if (revokeAfterMs > 0) setTimeout(() => URL.revokeObjectURL(url), revokeAfterMs);
+}
+
 // ─── Main receipt component ───────────────────────────────────────────────────
 export function TransactionReceipt({
   open, onClose, status = "success",
@@ -127,36 +143,187 @@ export function TransactionReceipt({
     });
   };
 
-  // ── Capture receipt as PNG data URL ────────────────────────────────────────
+  const now = timestamp ?? new Date().toLocaleString("en-GB", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+
+  const words = amtWords ?? amountInWords(amount.replace(/[^0-9.]/g, ""));
+
+  // ── Capture receipt as PNG (pixelRatio 2 = sharp but half the size of 3) ──
   const captureImage = async (): Promise<string> => {
     if (!receiptRef.current) throw new Error("No receipt element");
     return toPng(receiptRef.current, {
-      quality: 1,
-      pixelRatio: 3,
+      quality: 0.92,
+      pixelRatio: 2,
       backgroundColor: "white",
     });
   };
 
-  // ── Save as PNG ────────────────────────────────────────────────────────────
+  // ── Build a compact text/vector PDF (no image embedding) ──────────────────
+  // This produces files ~20–80 KB instead of 1–3 MB
+  const buildTextPdf = (): { pdfBlob: Blob; filename: string } => {
+    const PAGE_W = 148; // A5 width in mm
+    const MARGIN = 10;
+    const CONTENT_W = PAGE_W - MARGIN * 2;
+
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
+
+    // ── Header green banner ──
+    pdf.setFillColor(22, 101, 52);
+    pdf.rect(0, 0, PAGE_W, 58, "F");
+
+    // Decorative circle accents
+    pdf.setFillColor(255, 255, 255, 0.05);
+    pdf.circle(PAGE_W + 2, -4, 22, "F");
+    pdf.circle(PAGE_W - 6, 2, 14, "F");
+
+    // Branding label
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7);
+    pdf.setTextColor(255, 255, 255);
+    pdf.setGState(new (pdf as any).GState({ opacity: 0.5 }));
+    pdf.text("POWERED BY", MARGIN, 10);
+    pdf.setGState(new (pdf as any).GState({ opacity: 1 }));
+    pdf.setFontSize(9);
+    pdf.text("TSIA SWIFT WALLET", MARGIN, 15);
+
+    // Status pill (drawn as filled rounded rect manually)
+    const statusLabel = status === "success" ? "SUCCESSFUL" : status === "pending" ? "PENDING" : "PROCESSING";
+    pdf.setFillColor(status === "success" ? 134 : status === "pending" ? 217 : 96,
+                     status === "success" ? 239 : status === "pending" ? 119 : 165,
+                     status === "success" ? 172 : status === "pending" ?   6 : 250);
+    pdf.roundedRect(MARGIN, 20, 36, 6, 1.5, 1.5, "F");
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(6.5);
+    pdf.setTextColor(status === "success" ? 21 : status === "pending" ? 120 : 37,
+                     status === "success" ? 128 : status === "pending" ?  53 : 99,
+                     status === "success" ?  61 : status === "pending" ?   7 : 235);
+    pdf.text(statusLabel, MARGIN + 2.5, 24.4);
+
+    // Title
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(200, 240, 220);
+    pdf.text((title || "Transaction Receipt").toUpperCase(), MARGIN, 32);
+
+    // Amount
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(22);
+    pdf.setTextColor(255, 255, 255);
+    pdf.text(amount, MARGIN, 46);
+
+    // Amount label
+    if (amountLabel) {
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(200, 200, 200);
+      pdf.text(amountLabel, MARGIN, 51.5);
+    }
+
+    // Timestamp (top-right of header)
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(6.5);
+    pdf.setTextColor(255, 255, 255);
+    pdf.setGState(new (pdf as any).GState({ opacity: 0.55 }));
+    pdf.text(now, PAGE_W - MARGIN, 54, { align: "right" });
+    pdf.setGState(new (pdf as any).GState({ opacity: 1 }));
+
+    // ── Perforated divider line ──
+    pdf.setDrawColor(200, 200, 200);
+    pdf.setLineDashPattern([1.5, 1.5], 0);
+    pdf.line(MARGIN + 4, 62, PAGE_W - MARGIN - 4, 62);
+    pdf.setLineDashPattern([], 0);
+
+    // ── Receipt rows ──
+    let y = 70;
+    const ROW_H = 9;
+
+    rows.forEach((row, i) => {
+      // Alternating row background
+      pdf.setFillColor(i % 2 === 0 ? 248 : 255, i % 2 === 0 ? 250 : 255, i % 2 === 0 ? 249 : 255);
+      pdf.rect(MARGIN - 2, y - 5.5, CONTENT_W + 4, ROW_H, "F");
+
+      // Label
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7);
+      pdf.setTextColor(row.gold ? 180 : 100, row.gold ? 130 : 100, row.gold ? 0 : 100);
+      pdf.text(row.label.toUpperCase(), MARGIN, y);
+
+      // Value — right-aligned
+      const isGreen = row.green;
+      const isRed = row.red;
+      pdf.setFont(row.mono ? "courier" : "helvetica", row.bold ? "bold" : "normal");
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(
+        isGreen ? 22 : isRed ? 185 : 30,
+        isGreen ? 101 : isRed ? 28 : 30,
+        isGreen ? 52 : isRed ? 28 : 30,
+      );
+
+      const valText = pdf.splitTextToSize(row.value, CONTENT_W * 0.55);
+      pdf.text(valText, PAGE_W - MARGIN, y, { align: "right" });
+      if (valText.length > 1) y += (valText.length - 1) * 4;
+
+      // Separator
+      if (i < rows.length - 1) {
+        pdf.setDrawColor(230, 230, 230);
+        pdf.setLineDashPattern([0.8, 0.8], 0);
+        pdf.line(MARGIN, y + 2.5, PAGE_W - MARGIN, y + 2.5);
+        pdf.setLineDashPattern([], 0);
+      }
+
+      y += ROW_H;
+    });
+
+    y += 4;
+
+    // ── Footer box ──
+    pdf.setFillColor(245, 247, 246);
+    pdf.setDrawColor(220, 230, 225);
+    pdf.roundedRect(MARGIN, y, CONTENT_W, 16, 2, 2, "FD");
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(6.5);
+    pdf.setTextColor(140, 140, 140);
+    const note = footerNote ?? "Keep this receipt for your records. For disputes or enquiries, contact support@tsiforafrica.com or visit tsiforafrica.com.";
+    const noteLines = pdf.splitTextToSize(note, CONTENT_W - 6);
+    pdf.text(noteLines, PAGE_W / 2, y + 5, { align: "center" });
+
+    y += 20;
+
+    // ── Branding footer ──
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7);
+    pdf.setTextColor(22, 101, 52);
+    pdf.text("TSIA · tsiforafrica.com", PAGE_W / 2, y, { align: "center" });
+
+    const pdfBlob = pdf.output("blob");
+    return { pdfBlob, filename: `TSIA-Receipt-${Date.now()}.pdf` };
+  };
+
+  // ── Save as PNG (download) ─────────────────────────────────────────────────
   const handleSaveImage = async () => {
     if (busy) return;
     setBusy("save-img");
     try {
       const dataUrl = await captureImage();
-      const link = document.createElement("a");
-      link.download = `TSIA-Receipt-${Date.now()}.png`;
-      link.href = dataUrl;
-      link.click();
+      const a = document.createElement("a");
+      a.download = `TSIA-Receipt-${Date.now()}.png`;
+      a.href = dataUrl;
+      a.click();
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 
-  // ── Share as PNG ───────────────────────────────────────────────────────────
+  // ── Share as PNG — native share sheet or open in new tab ──────────────────
   const handleShareImage = async () => {
     if (busy) return;
     setBusy("share-img");
     try {
       const dataUrl = await captureImage();
       const filename = `TSIA-Receipt-${Date.now()}.png`;
+
+      // 1. Try native Web Share API (mobile browsers)
       if (navigator.canShare && navigator.share) {
         const res = await fetch(dataUrl);
         const blob = await res.blob();
@@ -166,90 +333,50 @@ export function TransactionReceipt({
           return;
         }
       }
-      // Fallback: download
-      const link = document.createElement("a");
-      link.download = filename;
-      link.href = dataUrl;
-      link.click();
+
+      // 2. Fallback: open in new tab — user can long-press (mobile) or right-click (desktop) to save/share
+      openInTab(dataUrl, 0); // data URLs don't need revoking
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 
-  // ── Build PDF from captured image ──────────────────────────────────────────
-  const buildPdf = async (): Promise<{ pdfBlob: Blob; filename: string }> => {
-    const dataUrl = await captureImage();
-    const img = new Image();
-    img.src = dataUrl;
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Image load failed"));
-      // Timeout safety
-      setTimeout(() => resolve(), 3000);
-    });
-    // Receipt width ≈ 320px logical; scale to A4-like size in pt (1px = 0.75pt at 96dpi)
-    const pxW = img.naturalWidth / 3; // captured at pixelRatio 3
-    const pxH = img.naturalHeight / 3;
-    const ptW = pxW * 0.75;
-    const ptH = pxH * 0.75;
-    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: [ptW, ptH] });
-    pdf.addImage(dataUrl, "PNG", 0, 0, ptW, ptH);
-    const pdfBlob = pdf.output("blob");
-    return { pdfBlob, filename: `TSIA-Receipt-${Date.now()}.pdf` };
-  };
-
-  // ── Save as PDF ────────────────────────────────────────────────────────────
-  const handleSavePDF = async () => {
+  // ── Save as PDF (download) ─────────────────────────────────────────────────
+  const handleSavePDF = () => {
     if (busy) return;
     setBusy("save-pdf");
     try {
-      const { pdfBlob, filename } = await buildPdf();
+      const { pdfBlob, filename } = buildTextPdf();
       const url = URL.createObjectURL(pdfBlob);
-      // Use window.open so it works on mobile (link.click doesn't reliably work)
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setTimeout(() => URL.revokeObjectURL(url), 5_000);
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 
-  // ── Share as PDF ───────────────────────────────────────────────────────────
+  // ── Share as PDF — native share sheet or open in new tab ──────────────────
   const handleSharePDF = async () => {
     if (busy) return;
     setBusy("share-pdf");
     try {
-      const { pdfBlob, filename } = await buildPdf();
-      const file = new File([pdfBlob], filename, { type: "application/pdf" });
+      const { pdfBlob, filename } = buildTextPdf();
 
-      // Try native share with PDF file
-      if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: "TSIA Transaction Receipt" });
-        return;
+      // 1. Try native Web Share API with file (works on Android Chrome, iOS Safari)
+      if (navigator.canShare && navigator.share) {
+        const file = new File([pdfBlob], filename, { type: "application/pdf" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: "TSIA Transaction Receipt" });
+          return;
+        }
       }
 
-      // Fallback: open PDF in new tab — user can save/share from there
+      // 2. Fallback: open PDF in new tab — browser PDF viewer lets user save/share without downloading
       const url = URL.createObjectURL(pdfBlob);
-      const tab = window.open(url, "_blank");
-      if (!tab) {
-        // If popup blocked, trigger download instead
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      openInTab(url, 30_000);
     } catch { /* ignore */ } finally { setBusy(null); }
   };
-
-  const now = timestamp ?? new Date().toLocaleString("en-GB", {
-    day: "2-digit", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
-
-  const words = amtWords ?? amountInWords(amount.replace(/[^0-9.]/g, ""));
 
   const isBusy = busy !== null;
 
@@ -383,7 +510,7 @@ export function TransactionReceipt({
               {busy === "save-img"
                 ? <RefreshCw className="w-4 h-4 animate-spin" />
                 : <ImageDown className="w-4 h-4" />}
-              Save as Image
+              Save Image
             </Button>
             <Button
               variant="outline"
@@ -396,7 +523,7 @@ export function TransactionReceipt({
               {busy === "save-pdf"
                 ? <RefreshCw className="w-4 h-4 animate-spin" />
                 : <FileDown className="w-4 h-4" />}
-              Save as PDF
+              Save PDF
             </Button>
           </div>
 

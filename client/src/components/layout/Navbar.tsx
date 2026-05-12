@@ -30,16 +30,18 @@ export function Navbar() {
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/">
-          <a className="flex items-center gap-2">
-            <Logo variant="horizontal" height={36} />
-          </a>
+        <Link href="/" className="flex items-center gap-2">
+          <Logo variant="horizontal" height={36} />
         </Link>
 
         <div className="hidden md:flex gap-6 items-center">
           {navLinks.map((link) => (
-            <Link key={link.href} href={link.href}>
-              <a className={`text-sm font-medium transition-colors hover:text-primary ${location === link.href ? 'text-primary' : 'text-muted-foreground'}`}>{link.label}</a>
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`text-sm font-medium transition-colors hover:text-primary ${location === link.href ? "text-primary" : "text-muted-foreground"}`}
+            >
+              {link.label}
             </Link>
           ))}
 
@@ -50,7 +52,7 @@ export function Navbar() {
               <button
                 key={opt.value}
                 onClick={() => setMode(opt.value)}
-                className={`p-1.5 rounded-full transition-all ${mode === opt.value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`p-1.5 rounded-full transition-all ${mode === opt.value ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 title={opt.label}
                 data-testid={`theme-${opt.value}`}
               >
@@ -83,7 +85,7 @@ export function Navbar() {
               <button
                 key={opt.value}
                 onClick={() => setMode(opt.value)}
-                className={`p-1.5 rounded-full transition-all ${mode === opt.value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`p-1.5 rounded-full transition-all ${mode === opt.value ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 title={opt.label}
               >
                 <opt.icon className="w-3.5 h-3.5" />
@@ -112,36 +114,34 @@ export function Navbar() {
           >
             <div className="container mx-auto px-4 py-4 space-y-2">
               {navLinks.map((link) => (
-                <Link key={link.href} href={link.href}>
-                  <a
-                    onClick={() => setMobileOpen(false)}
-                    className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${location === link.href ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-accent'}`}
-                    data-testid={`mobile-nav-${link.label.toLowerCase().replace(/\s/g, '-')}`}
-                  >
-                    {link.label}
-                  </a>
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${location === link.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"}`}
+                  data-testid={`mobile-nav-${link.label.toLowerCase().replace(/\s/g, "-")}`}
+                >
+                  {link.label}
                 </Link>
               ))}
 
               <div className="border-t my-2"></div>
 
               {user ? (
-                <Link href={user.role === "admin" ? "/admin" : user.role === "affiliate" ? "/affiliate-dashboard" : "/dashboard"}>
-                  <a onClick={() => setMobileOpen(false)} className="block">
-                    <Button className="w-full" data-testid="mobile-nav-dashboard">Dashboard</Button>
-                  </a>
+                <Link
+                  href={user.role === "admin" ? "/admin" : user.role === "affiliate" ? "/affiliate-dashboard" : "/dashboard"}
+                  onClick={() => setMobileOpen(false)}
+                  className="block"
+                >
+                  <Button className="w-full" data-testid="mobile-nav-dashboard">Dashboard</Button>
                 </Link>
               ) : (
                 <>
-                  <Link href="/login">
-                    <a onClick={() => setMobileOpen(false)} className="block">
-                      <Button variant="outline" className="w-full" data-testid="mobile-nav-login">Log in</Button>
-                    </a>
+                  <Link href="/login" onClick={() => setMobileOpen(false)} className="block">
+                    <Button variant="outline" className="w-full" data-testid="mobile-nav-login">Log in</Button>
                   </Link>
-                  <Link href="/signup">
-                    <a onClick={() => setMobileOpen(false)} className="block">
-                      <Button className="w-full bg-primary text-primary-foreground" data-testid="mobile-nav-signup">Apply for Support</Button>
-                    </a>
+                  <Link href="/signup" onClick={() => setMobileOpen(false)} className="block">
+                    <Button className="w-full bg-primary text-primary-foreground" data-testid="mobile-nav-signup">Apply for Support</Button>
                   </Link>
                 </>
               )}

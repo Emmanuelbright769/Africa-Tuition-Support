@@ -1111,7 +1111,7 @@ export default function AffiliateDashboard() {
             >
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
-            <Link href="/"><a className="flex items-center gap-2"><Logo variant="badge" height={32} /></a></Link>
+            <Link href="/" className="flex items-center gap-2"><Logo variant="badge" height={32} /></Link>
             <span className="text-xl font-bold tracking-tight hidden sm:block">Affiliate Portal</span>
             <span className="text-sm text-muted-foreground hidden sm:flex items-center gap-1">
               <ChevronRight className="w-3.5 h-3.5" />

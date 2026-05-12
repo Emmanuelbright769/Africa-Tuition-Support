@@ -5,6 +5,10 @@ import { storage } from "./storage";
 import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import { getCached, setCached, invalidateCacheKey, invalidateCachePrefix } from "./cache";
 import {
+  vtuBuyAirtime, vtuBuyData, vtuBuyElectricity, vtuBuyTv, vtuFundBetting,
+  vtuGetDataVariations, vtuGetTvVariations, vtuVerifyCustomer, vtuGetBalance,
+} from "./vtuNg";
+import {
   sendEmail, ADMIN_EMAIL,
   sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail, sendWalletReceivedEmail, sendWalletSentEmail,
   sendOrderUpdateEmail, sendLoanUpdateEmail, sendVerificationUpdateEmail,
@@ -6356,7 +6360,7 @@ export async function registerRoutes(
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
-  // ── POST /api/fintech/airtime — Korapay VAS airtime purchase ─────────────────
+  // ── POST /api/fintech/airtime — VTU.ng airtime purchase ─────────────────────
   app.post("/api/fintech/airtime", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -6369,47 +6373,24 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
       if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
 
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
-      const txRef = `TSIA-AIR-${userId}-${Date.now()}`;
-      const NETWORK_MAP: Record<string, string> = { mtn: "MTN", airtel: "AIRTEL", glo: "GLO", "9mobile": "9MOBILE", etisalat: "9MOBILE" };
-      const networkCode = NETWORK_MAP[network.toLowerCase()] || network.toUpperCase();
+      // VTU.ng service_id must be lowercase: mtn, airtel, glo, 9mobile
+      const serviceId = network.toLowerCase() === "etisalat" ? "9mobile" : network.toLowerCase();
 
-      // ── Try Squad VAS first, fall back to Korapay ─────────────────────────
-      let provider = "squad", providerRef = txRef, gatewayOk = false, gatewayMsg = "";
-      const sq = await squadVendAirtime(phone, amountNgn);
-      if (sq.ok) {
-        gatewayOk = true; providerRef = sq.ref ?? txRef;
-        console.log(`[SQUAD AIRTIME] ref=${providerRef} | phone=${phone} | ₦${amountNgn} | OK`);
-      } else {
-        console.log(`[SQUAD AIRTIME] FAILED: ${sq.msg} — falling back to Korapay`);
-        const koraKey = process.env.KORAPAY_SECRET_KEY;
-        if (koraKey) {
-          try {
-            const r = await fetch(`${KORA_BASE}/bills`, {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ type: "mobile_airtime", customer_identifier: phone, amount: amountNgn, reference: txRef, telco: networkCode }),
-              signal: AbortSignal.timeout(20000),
-            });
-            const d = await r.json() as any;
-            if (d.status) { gatewayOk = true; provider = "korapay"; }
-            else gatewayMsg = d.message ?? "Airtime purchase failed";
-          } catch (e: any) { gatewayMsg = e.message ?? "Network error"; }
-        } else {
-          gatewayMsg = sq.msg ?? "Both providers unavailable";
-        }
+      const result = await vtuBuyAirtime(phone, serviceId, amountNgn);
+      if (!result.ok) {
+        console.log(`[VTUNG AIRTIME] FAILED: ${result.msg}`);
+        return res.status(502).json({ message: `Airtime purchase failed: ${result.msg}. Please try again.` });
       }
+      console.log(`[VTUNG AIRTIME] ref=${result.ref} orderId=${result.orderId} | phone=${phone} | ₦${amountNgn} | status=${result.status}`);
 
-      if (!gatewayOk) {
-        return res.status(502).json({ message: `Airtime purchase failed: ${gatewayMsg}. Please try again.` });
-      }
-
-      const ref = `${networkCode} | ${phone} | ₦${amountNgn.toLocaleString()} | Ref: ${providerRef} | via ${provider}`;
-      const desc = `Airtime ₦${amountNgn.toLocaleString()} → ${phone} (${networkCode}) | Ref: ${providerRef}`;
-      const msg = `₦${amountNgn.toLocaleString()} airtime delivered to ${phone} (${networkCode}).`;
-      await fintechDebitWallet(userId, amountUsd, "airtime", ref, desc, "Airtime Delivered ✓", msg, { ref: providerRef, provider });
-      res.json({ success: true, reference: providerRef, localReference: txRef, provider, amountNgn, message: msg });
+      const ref = `${serviceId.toUpperCase()} | ${phone} | ₦${amountNgn.toLocaleString()} | Ref: ${result.ref}`;
+      const desc = `Airtime ₦${amountNgn.toLocaleString()} → ${phone} (${serviceId.toUpperCase()}) via VTU.ng | Ref: ${result.ref}`;
+      const msg = `₦${amountNgn.toLocaleString()} airtime delivered to ${phone} (${serviceId.toUpperCase()}).`;
+      await fintechDebitWallet(userId, amountUsd, "airtime", ref, desc, "Airtime Delivered ✓", msg, { ref: result.ref });
+      res.json({ success: true, reference: result.ref, amountNgn, message: msg });
       storage.getUser(userId).then(u => {
         if (!u) return;
         sendTransactionReceiptEmail(u.email, u.firstName, {
@@ -6417,74 +6398,51 @@ export async function registerRoutes(
           status: "success",
           amount: `₦${amountNgn.toLocaleString()}`,
           amountLabel: `$${amountUsd.toFixed(2)}`,
-          reference: txRef,
+          reference: result.ref,
           rows: [
-            { label: "Network", value: networkCode },
+            { label: "Network", value: serviceId.toUpperCase() },
             { label: "Phone", value: phone },
             { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" },
             { label: "Amount (USD)", value: `$${amountUsd.toFixed(2)}` },
+            { label: "Provider", value: "VTU.ng" },
           ],
         }).catch(() => {});
       }).catch(() => {});
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
-  // ── POST /api/fintech/data — Korapay VAS data bundle purchase ───────────────
+  // ── POST /api/fintech/data — VTU.ng data bundle purchase ─────────────────────
   app.post("/api/fintech/data", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { network, phone, amount, planLabel, planValidity, planCode } = req.body;
-      if (!network || !phone || !amount) return res.status(400).json({ message: "network, phone, and amount required" });
+      const { network, phone, amount, planLabel, planValidity, variationId } = req.body;
+      if (!network || !phone || !variationId) return res.status(400).json({ message: "network, phone, and variationId required" });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
       if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
 
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
-      const txRef = `TSIA-DATA-${userId}-${Date.now()}`;
-      const NETWORK_MAP: Record<string, string> = { mtn: "MTN", airtel: "AIRTEL", glo: "GLO", "9mobile": "9MOBILE", etisalat: "9MOBILE" };
-      const networkCode = NETWORK_MAP[network.toLowerCase()] || network.toUpperCase();
+      const serviceId = network.toLowerCase() === "etisalat" ? "9mobile" : network.toLowerCase();
 
-      // ── Try Squad VAS first (only if planCode given), then Korapay ──────────
-      let provider = "korapay", providerRef = txRef, gatewayOk = false, gatewayMsg = "";
-      if (planCode) {
-        const sq = await squadVendData(phone, planCode);
-        if (sq.ok) {
-          gatewayOk = true; provider = "squad"; providerRef = sq.ref ?? txRef;
-          console.log(`[SQUAD DATA] ref=${providerRef} | phone=${phone} | plan=${planCode} | OK`);
-        } else {
-          console.log(`[SQUAD DATA] FAILED: ${sq.msg} — falling back to Korapay`);
-        }
+      const result = await vtuBuyData(phone, serviceId, variationId);
+      if (!result.ok) {
+        console.log(`[VTUNG DATA] FAILED: ${result.msg}`);
+        return res.status(502).json({ message: `Data purchase failed: ${result.msg}. Please try again.` });
       }
-      if (!gatewayOk) {
-        const koraKey = process.env.KORAPAY_SECRET_KEY;
-        if (!koraKey) return res.status(500).json({ message: "Payment gateway not configured. Contact support." });
-        try {
-          const r = await fetch(`${KORA_BASE}/bills`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ type: "mobile_data", customer_identifier: phone, amount: amountNgn, reference: txRef, telco: networkCode }),
-            signal: AbortSignal.timeout(20000),
-          });
-          const d = await r.json() as any;
-          if (d.status) gatewayOk = true;
-          else gatewayMsg = d.message ?? "Data purchase failed";
-        } catch (e: any) { gatewayMsg = e.message ?? "Network error"; }
-      }
+      console.log(`[VTUNG DATA] ref=${result.ref} orderId=${result.orderId} | phone=${phone} | plan=${variationId} | status=${result.status}`);
 
-      if (!gatewayOk) {
-        return res.status(502).json({ message: `Data purchase failed: ${gatewayMsg}. Please try again.` });
-      }
-
-      const planInfo = planLabel ? `${planLabel}${planValidity ? ` (${planValidity})` : ""}` : `₦${amountNgn.toLocaleString()} data`;
-      const ref = `${networkCode} | ${planInfo} | ${phone} | Ref: ${providerRef} | via ${provider}`;
-      const desc = `Data ${planInfo} ₦${amountNgn.toLocaleString()} → ${phone} (${networkCode}) | Ref: ${providerRef}`;
-      const msg = `${planInfo} data bundle activated on ${phone} (${networkCode}).`;
-      await fintechDebitWallet(userId, amountUsd, "internet", ref, desc, "Data Bundle Activated ✓", msg, { ref: providerRef, provider });
-      res.json({ success: true, reference: providerRef, localReference: txRef, provider, amountNgn, message: msg });
+      const planInfo = result.planName || planLabel || `₦${amountNgn.toLocaleString()} data`;
+      const planDisplay = planValidity ? `${planInfo} (${planValidity})` : planInfo;
+      const ref = `${serviceId.toUpperCase()} | ${planDisplay} | ${phone} | Ref: ${result.ref}`;
+      const desc = `Data ${planDisplay} → ${phone} (${serviceId.toUpperCase()}) via VTU.ng | Ref: ${result.ref}`;
+      const msg = `${planDisplay} data bundle activated on ${phone} (${serviceId.toUpperCase()}).`;
+      await fintechDebitWallet(userId, amountUsd, "internet", ref, desc, "Data Bundle Activated ✓", msg, { ref: result.ref });
+      res.json({ success: true, reference: result.ref, amountNgn, message: msg });
       storage.getUser(userId).then(u => {
         if (!u) return;
         sendTransactionReceiptEmail(u.email, u.firstName, {
@@ -6492,25 +6450,26 @@ export async function registerRoutes(
           status: "success",
           amount: `₦${amountNgn.toLocaleString()}`,
           amountLabel: `$${amountUsd.toFixed(2)}`,
-          reference: txRef,
+          reference: result.ref,
           rows: [
-            { label: "Network", value: networkCode },
-            { label: "Plan", value: planInfo },
+            { label: "Network", value: serviceId.toUpperCase() },
+            { label: "Plan", value: planDisplay },
             { label: "Phone", value: phone },
             { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" },
             { label: "Amount (USD)", value: `$${amountUsd.toFixed(2)}` },
+            { label: "Provider", value: "VTU.ng" },
           ],
         }).catch(() => {});
       }).catch(() => {});
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
-  // ── POST /api/fintech/electricity — Korapay VAS electricity payment ──────────
+  // ── POST /api/fintech/electricity — VTU.ng electricity payment ────────────────
   app.post("/api/fintech/electricity", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { discoCode, meterType, meterNumber, amount, phone } = req.body;
+      const { discoCode, meterType, meterNumber, amount } = req.body;
       if (!discoCode || !meterType || !meterNumber || !amount) {
         return res.status(400).json({ message: "discoCode, meterType, meterNumber, and amount required" });
       }
@@ -6520,104 +6479,102 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
       if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
 
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
-      const txRef = `TSIA-ELEC-${userId}-${Date.now()}`;
 
-      const koraKey = process.env.KORAPAY_SECRET_KEY;
-      if (!koraKey) return res.status(500).json({ message: "Payment gateway not configured. Contact support." });
-      let koraSuccess = false, koraMsg = "", token = "";
-      try {
-        const r = await fetch(`${KORA_BASE}/bills`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${koraKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "electricity", customer_identifier: meterNumber,
-            amount: amountNgn, reference: txRef,
-            disco_code: discoCode, meter_type: meterType,
-            ...(phone ? { phone } : {}),
-          }),
-          signal: AbortSignal.timeout(25000),
-        });
-        const d = await r.json() as any;
-        koraSuccess = !!d.status;
-        token = d.data?.token ?? d.data?.meter_token ?? d.data?.vending_token ?? "";
-        if (!koraSuccess) koraMsg = d.message ?? "Electricity payment failed";
-      } catch (e: any) { koraMsg = e.message ?? "Network error"; }
-
-      if (!koraSuccess) {
-        return res.status(502).json({ message: `Electricity payment failed: ${koraMsg}. Please try again.` });
+      const result = await vtuBuyElectricity(meterNumber, discoCode, meterType as "prepaid" | "postpaid", amountNgn);
+      if (!result.ok) {
+        console.log(`[VTUNG ELEC] FAILED: ${result.msg}`);
+        return res.status(502).json({ message: `Electricity payment failed: ${result.msg}. Please try again.` });
       }
+      console.log(`[VTUNG ELEC] ref=${result.ref} orderId=${result.orderId} token=${result.token} | meter=${meterNumber} | ₦${amountNgn} | status=${result.status}`);
 
-      const noteRef = token ? `Token: ${token} | Ref: ${txRef}` : `Ref: ${txRef}`;
+      const token = result.token ?? "";
+      const noteRef = token ? `Token: ${token} | Ref: ${result.ref}` : `Ref: ${result.ref}`;
       const ref = `${discoCode} | ${meterType} | ${meterNumber} | ₦${amountNgn.toLocaleString()} | ${noteRef}`;
-      const desc = `Electricity ₦${amountNgn.toLocaleString()} → ${meterNumber} (${discoCode}, ${meterType}) | ${noteRef}`;
+      const desc = `Electricity ₦${amountNgn.toLocaleString()} → ${meterNumber} (${discoCode}, ${meterType}) via VTU.ng | ${noteRef}`;
       const msg = token
         ? `₦${amountNgn.toLocaleString()} electricity credited. Meter: ${meterNumber}. Token: ${token}`
         : `₦${amountNgn.toLocaleString()} electricity submitted for ${meterNumber} (${discoCode}).`;
-      await fintechDebitWallet(userId, amountUsd, "electricity", ref, desc, "Electricity Credited ✓", msg, { ref: txRef, token });
-      res.json({ success: true, reference: txRef, amountNgn, token, message: msg });
+      await fintechDebitWallet(userId, amountUsd, "electricity", ref, desc, "Electricity Credited ✓", msg, { ref: result.ref, token });
+      res.json({ success: true, reference: result.ref, amountNgn, token, customerName: result.customerName, message: msg });
       storage.getUser(userId).then(u => {
         if (!u) return;
         const rows: import("./email").ReceiptEmailRow[] = [
-          { label: "Disco Code", value: discoCode },
+          { label: "Provider", value: discoCode },
           { label: "Meter Type", value: meterType },
           { label: "Meter Number", value: meterNumber, mono: true },
-          { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" },
+          ...(result.customerName ? [{ label: "Customer", value: result.customerName }] : []),
+          { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" as const },
           { label: "Amount (USD)", value: `$${amountUsd.toFixed(2)}` },
         ];
-        if (token) rows.push({ label: "Token", value: token, mono: true, color: "gold" });
+        if (token) rows.push({ label: "Prepaid Token", value: token, mono: true, color: "gold" as const });
         sendTransactionReceiptEmail(u.email, u.firstName, {
           title: "Electricity Payment",
           status: "success",
           amount: `₦${amountNgn.toLocaleString()}`,
           amountLabel: `$${amountUsd.toFixed(2)}`,
-          reference: txRef,
+          reference: result.ref,
           rows,
         }).catch(() => {});
       }).catch(() => {});
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
-  // ── GET /api/fintech/data-bundles?network=MTN — proxy Squad data plans ───
-  app.get("/api/fintech/data-bundles", async (req, res) => {
-    const network = String(req.query.network || "MTN").toUpperCase();
-    const valid = ["MTN", "GLO", "AIRTEL", "9MOBILE"];
-    if (!valid.includes(network)) return res.status(400).json({ message: "Invalid network" });
-    const key = process.env.SQUAD_SECRET_KEY;
-    if (!key) return res.json({ plans: [], message: "Live plans unavailable" });
+  // ── POST /api/fintech/cable-tv — VTU.ng cable TV subscription ────────────────
+  app.post("/api/fintech/cable-tv", async (req, res) => {
     try {
-      const r = await fetch(`${SQUAD_BASE}/vending/data-bundles?network=${network}`, {
-        method: "GET",
-        headers: { "Authorization": `Bearer ${key}` },
-        signal: AbortSignal.timeout(15000),
-      });
-      let d: any = {};
-      try { d = await r.json(); } catch { d = {}; }
-      if (!d || typeof d !== "object") d = {};
-      const raw = Array.isArray(d?.data) ? d.data : (Array.isArray(d?.data?.plans) ? d.data.plans : []);
-      const plans = raw.map((p: any) => ({
-        code: String(p.plan_code ?? p.code ?? ""),
-        label: String(p.plan_name ?? p.name ?? p.bundle ?? "Bundle"),
-        validity: String(p.validity ?? p.duration ?? ""),
-        amountNgn: Number(p.amount ?? p.price ?? 0),
-      })).filter((p: any) => p.code && p.amountNgn > 0);
-      res.json({ network, plans, source: "squad" });
-    } catch (e: any) {
-      res.json({ plans: [], message: e.message ?? "Network error" });
-    }
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { serviceId, smartcardNumber, variationId, packageName, subscriptionType, amount } = req.body;
+      if (!serviceId || !smartcardNumber || !variationId) {
+        return res.status(400).json({ message: "serviceId, smartcardNumber, and variationId required" });
+      }
+      const amountUsd = parseFloat(amount);
+      if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+
+      const wallet = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(wallet.balance);
+      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
+
+      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const result = await vtuBuyTv(smartcardNumber, serviceId, variationId, subscriptionType, amount ? amountNgn : undefined);
+      if (!result.ok) {
+        console.log(`[VTUNG TV] FAILED: ${result.msg}`);
+        return res.status(502).json({ message: `Cable TV subscription failed: ${result.msg}. Please try again.` });
+      }
+      console.log(`[VTUNG TV] ref=${result.ref} orderId=${result.orderId} | card=${smartcardNumber} | ${serviceId} | status=${result.status}`);
+
+      const ref = `${serviceId.toUpperCase()} | ${packageName || variationId} | Card: ${smartcardNumber} | ₦${amountNgn.toLocaleString()} | Ref: ${result.ref}`;
+      const desc = `Cable TV ${serviceId.toUpperCase()} ${packageName || ""} → ${smartcardNumber} via VTU.ng | Ref: ${result.ref}`;
+      const msg = `${serviceId.toUpperCase()} ${packageName || "subscription"} activated for smartcard ${smartcardNumber}.`;
+      await fintechDebitWallet(userId, amountUsd, "cable-tv", ref, desc, "Cable TV Activated ✓", msg, { ref: result.ref });
+      res.json({ success: true, reference: result.ref, amountNgn, customerName: result.customerName, message: msg });
+      storage.getUser(userId).then(u => {
+        if (!u) return;
+        sendTransactionReceiptEmail(u.email, u.firstName, {
+          title: "Cable TV Subscription",
+          status: "success",
+          amount: `₦${amountNgn.toLocaleString()}`,
+          amountLabel: `$${amountUsd.toFixed(2)}`,
+          reference: result.ref,
+          rows: [
+            { label: "Provider", value: serviceId.toUpperCase() },
+            { label: "Package", value: packageName || String(variationId) },
+            { label: "Smartcard", value: smartcardNumber, mono: true },
+            ...(result.customerName ? [{ label: "Customer", value: result.customerName }] : []),
+            { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" as const },
+            { label: "Amount (USD)", value: `$${amountUsd.toFixed(2)}` },
+          ],
+        }).catch(() => {});
+      }).catch(() => {});
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
-  // ── POST /api/fintech/betting — Betting wallet funding (Coming Soon) ─────
-  app.post("/api/fintech/betting", async (_req, res) => {
-    return res.status(503).json({
-      message: "Betting wallet top-up is coming soon. We're working with a licensed VAS provider to enable direct funding to Bet9ja, SportyBet, and others.",
-      comingSoon: true,
-    });
-  });
-
-  // ── (legacy betting handler retained but unreachable; kept to avoid disrupting other refs) ──
-  app.post("/api/fintech/betting-legacy-disabled", async (req, res) => {
+  // ── POST /api/fintech/betting — VTU.ng betting account funding ────────────────
+  app.post("/api/fintech/betting", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -6626,13 +6583,25 @@ export async function registerRoutes(
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
+      const wallet = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(wallet.balance);
+      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
+      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
+
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
-      const txRef = `TSIA-BET-${userId}-${Date.now()}`;
-      const ref = `${platform} | ID: ${bettingUserId} | ₦${amountNgn.toLocaleString()} | Ref: ${txRef}`;
-      const desc = `Betting wallet fund ${platform} ID: ${bettingUserId} | ₦${amountNgn.toLocaleString()} | Ref: ${txRef}`;
+      // VTU.ng service_id must match exactly: Bet9ja, 1xBet, BetKing, etc.
+      const result = await vtuFundBetting(bettingUserId, platform, amountNgn);
+      if (!result.ok) {
+        console.log(`[VTUNG BET] FAILED: ${result.msg}`);
+        return res.status(502).json({ message: `Betting wallet funding failed: ${result.msg}. Please try again.` });
+      }
+      console.log(`[VTUNG BET] ref=${result.ref} orderId=${result.orderId} | platform=${platform} id=${bettingUserId} | ₦${amountNgn} | status=${result.status}`);
+
+      const ref = `${platform} | ID: ${bettingUserId} | ₦${amountNgn.toLocaleString()} | Ref: ${result.ref}`;
+      const desc = `Betting fund ${platform} ID: ${bettingUserId} | ₦${amountNgn.toLocaleString()} via VTU.ng | Ref: ${result.ref}`;
       const msg = `₦${amountNgn.toLocaleString()} funded to ${platform} wallet (ID: ${bettingUserId}).`;
-      await fintechDebitWallet(userId, amountUsd, "betting", ref, desc, "Betting Wallet Funded ✓", msg, { ref: txRef });
-      res.json({ success: true, reference: txRef, amountNgn, message: msg });
+      await fintechDebitWallet(userId, amountUsd, "betting", ref, desc, "Betting Wallet Funded ✓", msg, { ref: result.ref });
+      res.json({ success: true, reference: result.ref, amountNgn, customerName: result.customerName, message: msg });
       storage.getUser(userId).then(u => {
         if (!u) return;
         sendTransactionReceiptEmail(u.email, u.firstName, {
@@ -6640,16 +6609,83 @@ export async function registerRoutes(
           status: "success",
           amount: `₦${amountNgn.toLocaleString()}`,
           amountLabel: `$${amountUsd.toFixed(2)}`,
-          reference: txRef,
+          reference: result.ref,
           rows: [
             { label: "Platform", value: platform },
             { label: "User ID", value: bettingUserId, mono: true },
-            { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" },
+            ...(result.customerName ? [{ label: "Customer", value: result.customerName }] : []),
+            { label: "Amount (NGN)", value: `₦${amountNgn.toLocaleString()}`, color: "green" as const },
             { label: "Amount (USD)", value: `$${amountUsd.toFixed(2)}` },
+            { label: "Provider", value: "VTU.ng" },
           ],
         }).catch(() => {});
       }).catch(() => {});
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // ── GET /api/fintech/data-plans?network=mtn — VTU.ng live data plans ─────────
+  app.get("/api/fintech/data-plans", async (req, res) => {
+    const serviceId = String(req.query.network || "mtn").toLowerCase();
+    const valid = ["mtn", "airtel", "glo", "9mobile", "smile"];
+    if (!valid.includes(serviceId)) return res.status(400).json({ message: "Invalid network" });
+    const cacheKey = `vtung_data_plans:${serviceId}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+    try {
+      const d = await vtuGetDataVariations(serviceId);
+      const plans = (Array.isArray(d?.data) ? d.data : [])
+        .filter((p: any) => p.availability === "Available")
+        .map((p: any) => ({
+          variationId: String(p.variation_id),
+          label: String(p.data_plan),
+          priceNgn: Number(p.price),
+        }));
+      const result = { network: serviceId, plans };
+      setCached(cacheKey, result, 10 * 60_000); // 10 min cache
+      res.json(result);
+    } catch (e: any) {
+      res.json({ network: serviceId, plans: [], message: e.message ?? "Network error" });
+    }
+  });
+
+  // ── GET /api/fintech/tv-plans?service=dstv — VTU.ng live cable TV plans ──────
+  app.get("/api/fintech/tv-plans", async (req, res) => {
+    const serviceId = String(req.query.service || "").toLowerCase();
+    const valid = ["dstv", "gotv", "startimes", "showmax"];
+    if (serviceId && !valid.includes(serviceId)) return res.status(400).json({ message: "Invalid service" });
+    const cacheKey = `vtung_tv_plans:${serviceId || "all"}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+    try {
+      const d = await vtuGetTvVariations(serviceId || undefined);
+      const plans = (Array.isArray(d?.data) ? d.data : [])
+        .filter((p: any) => p.availability === "Available")
+        .map((p: any) => ({
+          variationId: String(p.variation_id),
+          serviceId: String(p.service_id),
+          serviceName: String(p.service_name),
+          label: String(p.package_bouquet),
+          priceNgn: Number(p.price),
+        }));
+      const result = { service: serviceId || "all", plans };
+      setCached(cacheKey, result, 10 * 60_000);
+      res.json(result);
+    } catch (e: any) {
+      res.json({ service: serviceId || "all", plans: [], message: e.message ?? "Network error" });
+    }
+  });
+
+  // ── POST /api/fintech/verify-customer — VTU.ng customer lookup ───────────────
+  app.post("/api/fintech/verify-customer", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { customerId, serviceId, variationId } = req.body;
+      if (!customerId || !serviceId) return res.status(400).json({ message: "customerId and serviceId required" });
+      const d = await vtuVerifyCustomer(customerId, serviceId, variationId);
+      if (d.code !== "success") return res.status(400).json({ message: d.message ?? "Verification failed" });
+      res.json({ success: true, data: d.data });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ── POST /api/fintech/request-money — Notify TSIA member of money request ───

@@ -166,7 +166,8 @@ const SERVICES = [
   { id: "electricity", label: "Electricity", icon: Zap,      color: "from-yellow-400 to-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20" },
   { id: "internet",    label: "Internet",    icon: Wifi,      color: "from-blue-400 to-indigo-500",   bg: "bg-blue-50 dark:bg-blue-900/20" },
   { id: "airtime",     label: "Airtime",     icon: Phone,     color: "from-emerald-400 to-teal-500",  bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-  { id: "betting",     label: "Betting",     icon: Gamepad2,  color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20", comingSoon: true } as any,
+  { id: "cable-tv",    label: "Cable TV",    icon: Smartphone, color: "from-rose-400 to-pink-600",   bg: "bg-rose-50 dark:bg-rose-900/20" },
+  { id: "betting",     label: "Betting",     icon: Gamepad2,  color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
 ];
 
 // ─── Nigerian Networks ────────────────────────────────────────────────────────
@@ -211,27 +212,44 @@ const DATA_PLANS: Record<string, { id: string; label: string; validity: string; 
   ],
 };
 
-// ─── Electricity Discos ───────────────────────────────────────────────────────
+// ─── Electricity Discos — VTU.ng service_id format ────────────────────────────
 const DISCOS = [
-  { id: "EKEDC",  label: "Eko Electric",       area: "Lagos South" },
-  { id: "IKEDC",  label: "Ikeja Electric",      area: "Lagos North" },
-  { id: "AEDC",   label: "Abuja Electric",      area: "FCT & environs" },
-  { id: "KEDCO",  label: "Kano Electric",       area: "Kano, Jigawa, Katsina" },
-  { id: "PHEDC",  label: "Port Harcourt Elec.", area: "Rivers, Bayelsa" },
-  { id: "IBEDC",  label: "Ibadan Electric",     area: "Oyo, Ogun, Osun, Kwara" },
-  { id: "JEDC",   label: "Jos Electric",        area: "Plateau, Nassarawa, Benue" },
-  { id: "BEDC",   label: "Benin Electric",      area: "Edo, Delta, Ekiti, Ondo" },
-  { id: "EEDC",   label: "Enugu Electric",      area: "Enugu, Anambra, Imo, Ebonyi, Abia" },
-  { id: "YEDC",   label: "Yola Electric",       area: "Adamawa, Taraba" },
-  { id: "KAEDCO", label: "Kaduna Electric",     area: "Kaduna, Kebbi, Sokoto, Zamfara" },
+  { id: "eko-electric",          label: "Eko Electric",        area: "Lagos South (Apapa, Lekki, Ojo, Island)" },
+  { id: "ikeja-electric",        label: "Ikeja Electric",      area: "Lagos North (Ikeja, Ikorodu, Oshodi)" },
+  { id: "abuja-electric",        label: "Abuja Electric",      area: "FCT, Kogi, Niger, Nassarawa" },
+  { id: "kano-electric",         label: "Kano Electric",       area: "Kano, Katsina, Jigawa" },
+  { id: "portharcourt-electric", label: "Port Harcourt Elec.", area: "Rivers, Akwa Ibom, Bayelsa, Cross River" },
+  { id: "ibadan-electric",       label: "Ibadan Electric",     area: "Oyo, Ogun, Osun, Kwara" },
+  { id: "jos-electric",          label: "Jos Electric",        area: "Plateau, Bauchi, Benue, Gombe" },
+  { id: "benin-electric",        label: "Benin Electric",      area: "Edo, Delta, Ekiti, Ondo" },
+  { id: "enugu-electric",        label: "Enugu Electric",      area: "Enugu, Anambra, Imo, Ebonyi" },
+  { id: "aba-electric",          label: "Aba Electric",        area: "Abia State" },
+  { id: "yola-electric",         label: "Yola Electric",       area: "Adamawa, Taraba, Borno, Yobe" },
+  { id: "kaduna-electric",       label: "Kaduna Electric",     area: "Kaduna, Kebbi, Sokoto, Zamfara" },
 ];
 
-// ─── Betting Platforms ────────────────────────────────────────────────────────
+// ─── Betting Platforms — VTU.ng exact service_id values ──────────────────────
 const BETTING_PLATFORMS = [
-  { id: "bet9ja",    label: "Bet9ja",    color: "bg-green-800",  text: "text-white" },
-  { id: "sportybet", label: "SportyBet", color: "bg-blue-700",   text: "text-white" },
-  { id: "1xbet",     label: "1xBet",     color: "bg-slate-800",  text: "text-white" },
-  { id: "parimatch", label: "Parimatch", color: "bg-yellow-500", text: "text-black" },
+  { id: "Bet9ja",      label: "Bet9ja",       color: "bg-green-800",   text: "text-white" },
+  { id: "BetKing",     label: "BetKing",      color: "bg-orange-600",  text: "text-white" },
+  { id: "1xBet",       label: "1xBet",        color: "bg-slate-800",   text: "text-white" },
+  { id: "BetWay",      label: "BetWay",       color: "bg-green-600",   text: "text-white" },
+  { id: "NairaBet",    label: "NairaBet",     color: "bg-blue-700",    text: "text-white" },
+  { id: "MerryBet",    label: "MerryBet",     color: "bg-red-700",     text: "text-white" },
+  { id: "NaijaBet",    label: "NaijaBet",     color: "bg-purple-700",  text: "text-white" },
+  { id: "BangBet",     label: "BangBet",      color: "bg-amber-600",   text: "text-white" },
+  { id: "BetLion",     label: "BetLion",      color: "bg-yellow-600",  text: "text-black" },
+  { id: "LiveScoreBet",label: "LiveScore",    color: "bg-sky-600",     text: "text-white" },
+  { id: "SupaBet",     label: "SupaBet",      color: "bg-indigo-700",  text: "text-white" },
+  { id: "CloudBet",    label: "CloudBet",     color: "bg-cyan-700",    text: "text-white" },
+];
+
+// ─── Cable TV Providers ───────────────────────────────────────────────────────
+const TV_PROVIDERS = [
+  { id: "dstv",      label: "DStv",      color: "bg-blue-800",   text: "text-white" },
+  { id: "gotv",      label: "GOtv",      color: "bg-orange-500", text: "text-white" },
+  { id: "startimes", label: "StarTimes", color: "bg-red-700",    text: "text-white" },
+  { id: "showmax",   label: "Showmax",   color: "bg-pink-700",   text: "text-white" },
 ];
 
 const AVATAR_COLORS = ["bg-rose-500","bg-purple-500","bg-teal-500","bg-amber-500","bg-blue-500","bg-pink-500"];
@@ -374,14 +392,23 @@ export default function FinancialHub() {
   const [txResult, setTxResult]               = useState<{ ref: string; amountNgn: number; token?: string; message: string } | null>(null);
   // Airtime
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
-  // Internet
+  // Internet / live data plans
   const [selectedISP, setSelectedISP]         = useState<string | null>(null);
-  const [selectedPlan, setSelectedPlan]       = useState<typeof DATA_PLANS["mtn"][0] | null>(null);
+  const [selectedPlan, setSelectedPlan]       = useState<{ variationId: string; label: string; priceNgn: number } | null>(null);
+  const [livePlans, setLivePlans]             = useState<{ variationId: string; label: string; priceNgn: number }[]>([]);
+  const [livePlansLoading, setLivePlansLoading] = useState(false);
   // Electricity
   const [selectedDisco, setSelectedDisco]     = useState<typeof DISCOS[0] | null>(null);
   const [meterType, setMeterType]             = useState<"prepaid" | "postpaid" | null>(null);
   const [discoSearch, setDiscoSearch]         = useState("");
   const [elecPhone, setElecPhone]             = useState("");
+  const [elecCustomerName, setElecCustomerName] = useState("");
+  // Cable TV
+  const [selectedTvProvider, setSelectedTvProvider] = useState<typeof TV_PROVIDERS[0] | null>(null);
+  const [tvPackages, setTvPackages]           = useState<{ variationId: string; label: string; priceNgn: number }[]>([]);
+  const [tvPackagesLoading, setTvPackagesLoading] = useState(false);
+  const [selectedTvPackage, setSelectedTvPackage] = useState<{ variationId: string; label: string; priceNgn: number } | null>(null);
+  const [tvCustomerName, setTvCustomerName]   = useState("");
   // Betting
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
 
@@ -606,6 +633,36 @@ export default function FinancialHub() {
   const filteredBanks = (banks as Bank[]).filter(b => b.name.toLowerCase().includes(bankSearch.toLowerCase()));
   const filteredDiscos = DISCOS.filter(d => d.label.toLowerCase().includes(discoSearch.toLowerCase()) || d.area.toLowerCase().includes(discoSearch.toLowerCase()));
 
+  // ── Fetch live data plans when ISP selected ───────────────────────────────
+  useEffect(() => {
+    if (!selectedISP) { setLivePlans([]); return; }
+    let cancelled = false;
+    setLivePlansLoading(true);
+    setSelectedPlan(null);
+    setLivePlans([]);
+    apiRequest("GET", `/api/fintech/data-plans?network=${selectedISP}`)
+      .then(r => r.json())
+      .then((d: any) => { if (!cancelled) setLivePlans(d.plans ?? []); })
+      .catch(() => { if (!cancelled) setLivePlans([]); })
+      .finally(() => { if (!cancelled) setLivePlansLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedISP]);
+
+  // ── Fetch live TV packages when provider selected ──────────────────────────
+  useEffect(() => {
+    if (!selectedTvProvider) { setTvPackages([]); return; }
+    let cancelled = false;
+    setTvPackagesLoading(true);
+    setSelectedTvPackage(null);
+    setTvPackages([]);
+    apiRequest("GET", `/api/fintech/tv-plans?service=${selectedTvProvider.id}`)
+      .then(r => r.json())
+      .then((d: any) => { if (!cancelled) setTvPackages(d.plans ?? []); })
+      .catch(() => { if (!cancelled) setTvPackages([]); })
+      .finally(() => { if (!cancelled) setTvPackagesLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedTvProvider]);
+
   // ── Auto-resolve bank account ────────────────────────────────────────────
   useEffect(() => {
     if (!selectedBank || acctNumber.length !== 10) {
@@ -766,11 +823,16 @@ export default function FinancialHub() {
         endpoint = "/api/fintech/airtime";
         payload = { network: selectedNetwork, phone: billRef, amount: parseFloat(amount) };
       } else if (selectedService.id === "internet") {
+        if (!selectedPlan?.variationId) throw new Error("No data plan selected");
         endpoint = "/api/fintech/data";
-        payload = { network: selectedISP, phone: billRef, amount: parseFloat(amount), planLabel: selectedPlan?.label, planValidity: selectedPlan?.validity };
+        payload = { network: selectedISP, phone: billRef, amount: parseFloat(amount), variationId: selectedPlan.variationId, planLabel: selectedPlan.label };
       } else if (selectedService.id === "electricity") {
         endpoint = "/api/fintech/electricity";
-        payload = { discoCode: selectedDisco?.id, meterType, meterNumber: billRef, amount: parseFloat(amount), phone: elecPhone || undefined };
+        payload = { discoCode: selectedDisco?.id, meterType, meterNumber: billRef, amount: parseFloat(amount) };
+      } else if (selectedService.id === "cable-tv") {
+        if (!selectedTvPackage) throw new Error("No TV package selected");
+        endpoint = "/api/fintech/cable-tv";
+        payload = { serviceId: selectedTvProvider?.id, smartcardNumber: billRef, variationId: selectedTvPackage.variationId, packageName: selectedTvPackage.label, amount: parseFloat(amount) };
       } else if (selectedService.id === "betting") {
         endpoint = "/api/fintech/betting";
         payload = { platform: selectedPlatform, bettingUserId: billRef, amount: parseFloat(amount) };
@@ -788,7 +850,7 @@ export default function FinancialHub() {
       const sid = selectedService?.id ?? "bill";
       const titleMap: Record<string, string> = {
         airtime: "Airtime Purchase", internet: "Data Bundle",
-        electricity: "Electricity Bill", betting: "Betting Top-up",
+        electricity: "Electricity Bill", "cable-tv": "Cable TV Subscription", betting: "Betting Top-up",
       };
       const rows: ReceiptRow[] = [
         { label: "Reference",   value: data.reference || "—",     mono: true },
@@ -802,16 +864,22 @@ export default function FinancialHub() {
       } else if (sid === "internet") {
         rows.push({ label: "Network", value: selectedISP?.toUpperCase() || "—" });
         rows.push({ label: "Plan",    value: selectedPlan?.label || "—" });
-        rows.push({ label: "Validity",value: selectedPlan?.validity || "—" });
         rows.push({ label: "Phone",   value: billRef });
       } else if (sid === "electricity") {
         rows.push({ label: "Provider", value: selectedDisco?.label || "—" });
         rows.push({ label: "Meter",    value: billRef,   mono: true });
         rows.push({ label: "Type",     value: meterType ?? "prepaid" });
+        if (data.customerName) rows.push({ label: "Customer", value: data.customerName });
         if (data.token) rows.push({ label: "PREPAID TOKEN", value: data.token, mono: true, gold: true, bold: true });
+      } else if (sid === "cable-tv") {
+        rows.push({ label: "Provider",    value: selectedTvProvider?.label || "—" });
+        rows.push({ label: "Package",     value: selectedTvPackage?.label || "—" });
+        rows.push({ label: "Smartcard",   value: billRef, mono: true });
+        if (data.customerName) rows.push({ label: "Customer", value: data.customerName });
       } else if (sid === "betting") {
         rows.push({ label: "Platform", value: selectedPlatform || "—" });
         rows.push({ label: "User ID",  value: billRef });
+        if (data.customerName) rows.push({ label: "Customer", value: data.customerName });
       }
 
       resetBill();
@@ -847,8 +915,11 @@ export default function FinancialHub() {
   const resetBill = () => {
     setAmount("0"); setBillRef(""); setSelectedService(null); setBillStep("details");
     setSelectedNetwork(null); setSelectedISP(null); setSelectedPlan(null);
-    setSelectedDisco(null); setMeterType(null); setSelectedPlatform(null);
-    setElecPhone(""); setTxResult(null);
+    setLivePlans([]); setLivePlansLoading(false);
+    setSelectedDisco(null); setMeterType(null); setElecPhone(""); setElecCustomerName("");
+    setSelectedTvProvider(null); setTvPackages([]); setSelectedTvPackage(null); setTvCustomerName("");
+    setSelectedPlatform(null);
+    setTxResult(null);
   };
 
   const lookupTsia = async () => {
@@ -2464,21 +2535,32 @@ export default function FinancialHub() {
             {selectedISP && (
               <div>
                 <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Select Data Plan</label>
-                <div className="space-y-2">
-                  {DATA_PLANS[selectedISP]?.map(plan => (
-                    <button key={plan.id} onClick={() => setSelectedPlan(plan)}
-                      className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border-2 transition-all ${selectedPlan?.id === plan.id ? "border-tsia-green bg-green-50 dark:bg-green-900/20" : "border-border bg-card hover:border-tsia-green/40"}`}>
-                      <div className="text-left">
-                        <p className="font-bold">{plan.label}</p>
-                        <p className="text-xs text-muted-foreground">{plan.validity}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-tsia-green">${plan.price.toFixed(2)}</span>
-                        {selectedPlan?.id === plan.id && <CheckCircle2 className="w-4 h-4 text-tsia-green" />}
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                {livePlansLoading ? (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground text-sm gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading live plans…
+                  </div>
+                ) : livePlans.length > 0 ? (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {livePlans.map(plan => {
+                      const priceUsd = plan.priceNgn / 1600;
+                      return (
+                        <button key={plan.variationId} onClick={() => setSelectedPlan(plan)}
+                          className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border-2 transition-all ${selectedPlan?.variationId === plan.variationId ? "border-tsia-green bg-green-50 dark:bg-green-900/20" : "border-border bg-card hover:border-tsia-green/40"}`}>
+                          <div className="text-left">
+                            <p className="font-bold text-sm">{plan.label}</p>
+                            <p className="text-xs text-muted-foreground">₦{plan.priceNgn.toLocaleString()}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-tsia-green">${priceUsd.toFixed(2)}</span>
+                            {selectedPlan?.variationId === plan.variationId && <CheckCircle2 className="w-4 h-4 text-tsia-green" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center py-4">No plans available. Try a different network.</p>
+                )}
               </div>
             )}
 
@@ -2494,7 +2576,11 @@ export default function FinancialHub() {
 
             <Button className="w-full h-12 bg-blue-600 text-white font-bold rounded-2xl"
               disabled={!selectedPlan || billRef.length < 10}
-              onClick={() => { setAmount(String(selectedPlan!.price)); setBillStep("amount"); }}>
+              onClick={() => {
+                const priceUsd = (selectedPlan!.priceNgn / 1600).toFixed(2);
+                setAmount(priceUsd);
+                setBillStep("amount");
+              }}>
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </>) : billStep === "success" && txResult ? (<>
@@ -2503,7 +2589,6 @@ export default function FinancialHub() {
               <div><h3 className="font-black text-xl text-blue-600">Data Bundle Activated ✓</h3><p className="text-muted-foreground text-sm mt-1">{selectedISP?.toUpperCase()} • {selectedPlan?.label} • {billRef}</p></div>
               <div className="w-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-2xl p-4 space-y-2">
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Validity</span><span className="font-semibold">{selectedPlan?.validity}</span></div>
                 <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
               </div>
               <Button className="w-full h-12 bg-blue-600 text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>Done</Button>
@@ -2512,7 +2597,6 @@ export default function FinancialHub() {
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-3xl p-5 text-center">
               <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedISP?.toUpperCase()} Data</p>
               <p className="text-4xl font-black text-blue-700">{selectedPlan?.label}</p>
-              <p className="text-sm text-muted-foreground mt-1">{selectedPlan?.validity} validity</p>
               <p className="text-2xl font-black text-tsia-green mt-2">${fmt(amount)}</p>
               <p className="text-xs text-muted-foreground mt-1 font-mono">{billRef}</p>
             </div>
@@ -2654,6 +2738,113 @@ export default function FinancialHub() {
                 Fund ${fmt(amount)}
               </Button>
             </div>
+          </>)}
+        </motion.div>
+      </AnimatePresence>
+    );
+
+    // ── CABLE TV ─────────────────────────────────────────────────────────
+    if (selectedService.id === "cable-tv") return (
+      <AnimatePresence mode="wait">
+        <motion.div key="cable-tv" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+          <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Cable TV" sub={billStep === "details" ? "Select provider & package" : billStep === "success" ? "Subscription Complete" : "Confirm subscription"} />
+
+          {billStep === "details" ? (<>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">TV Provider</label>
+              <div className="grid grid-cols-2 gap-3">
+                {TV_PROVIDERS.map(p => (
+                  <button key={p.id} onClick={() => { setSelectedTvProvider(p); setSelectedTvPackage(null); setBillRef(""); setTvCustomerName(""); }}
+                    className={`py-3.5 rounded-2xl font-bold text-sm transition-all ${p.color} ${p.text} ${selectedTvProvider?.id === p.id ? "ring-2 ring-offset-2 ring-tsia-green scale-105" : "opacity-70 hover:opacity-90"}`}
+                    data-testid={`btn-tv-${p.id}`}>{p.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {selectedTvProvider && (<>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Select Package</label>
+                {tvPackagesLoading ? (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground text-sm gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading packages…
+                  </div>
+                ) : tvPackages.length > 0 ? (
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {tvPackages.map(pkg => {
+                      const priceUsd = (pkg.priceNgn / 1600).toFixed(2);
+                      return (
+                        <button key={pkg.variationId} onClick={() => setSelectedTvPackage(pkg)}
+                          className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border-2 transition-all ${selectedTvPackage?.variationId === pkg.variationId ? "border-tsia-green bg-green-50 dark:bg-green-900/20" : "border-border bg-card hover:border-tsia-green/40"}`}
+                          data-testid={`btn-tv-pkg-${pkg.variationId}`}>
+                          <div className="text-left">
+                            <p className="font-bold text-sm">{pkg.label}</p>
+                            <p className="text-xs text-muted-foreground">₦{pkg.priceNgn.toLocaleString()}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-tsia-green">${priceUsd}</span>
+                            {selectedTvPackage?.variationId === pkg.variationId && <CheckCircle2 className="w-4 h-4 text-tsia-green" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center py-4">No packages found. Try a different provider.</p>
+                )}
+              </div>
+
+              {selectedTvPackage && (
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Smartcard / IUC Number</label>
+                  <input type="tel" placeholder="Enter your smartcard number" value={billRef} onChange={e => setBillRef(e.target.value.replace(/\D/g,""))}
+                    className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-xl font-mono tracking-widest focus:outline-none focus:border-tsia-green bg-background"
+                    data-testid="input-tv-smartcard" />
+                  {tvCustomerName && (
+                    <div className="mt-2 flex items-center gap-2 text-xs text-tsia-green font-semibold bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-xl">
+                      <CheckCircle2 className="w-4 h-4 shrink-0" /> {tvCustomerName}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>)}
+
+            <Button className="w-full h-12 bg-rose-600 text-white font-bold rounded-2xl"
+              disabled={!selectedTvPackage || billRef.length < 5}
+              onClick={() => {
+                const priceUsd = (selectedTvPackage!.priceNgn / 1600).toFixed(2);
+                setAmount(priceUsd);
+                setBillStep("amount");
+              }}>
+              Continue <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </>) : billStep === "success" && txResult ? (<>
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-20 h-20 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center"><CheckCircle2 className="w-10 h-10 text-rose-600" /></div>
+              <div><h3 className="font-black text-xl text-rose-600">Subscription Activated ✓</h3><p className="text-muted-foreground text-sm mt-1">{selectedTvProvider?.label} • {selectedTvPackage?.label}</p></div>
+              <div className="w-full bg-rose-50 dark:bg-rose-900/20 border border-rose-300 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Smartcard</span><span className="font-mono">{billRef}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
+              </div>
+              <Button className="w-full h-12 bg-rose-600 text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>Done</Button>
+            </div>
+          </>) : (<>
+            <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 rounded-3xl p-5 text-center">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedTvProvider?.label}</p>
+              <p className="text-4xl font-black text-rose-700">{selectedTvPackage?.label}</p>
+              <p className="text-2xl font-black text-tsia-green mt-2">${fmt(amount)}</p>
+              <p className="text-xs text-muted-foreground mt-1 font-mono">Smartcard: {billRef}</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+              <Button className="flex-1 h-12 bg-rose-600 text-white font-bold rounded-2xl"
+                disabled={billMutation.isPending || parseFloat(amount) > balance}
+                onClick={() => billMutation.mutate()} data-testid="btn-confirm-cable-tv">
+                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Smartphone className="w-5 h-5 mr-2" />}
+                Subscribe ${fmt(amount)}
+              </Button>
+            </div>
+            {parseFloat(amount) > balance && <p className="text-xs text-center text-red-500">Insufficient balance</p>}
           </>)}
         </motion.div>
       </AnimatePresence>

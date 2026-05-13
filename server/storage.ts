@@ -98,6 +98,8 @@ export interface IStorage {
 
   createDisbursement(d: InsertDisbursement): Promise<Disbursement>;
   getPendingDisbursements(): Promise<(Disbursement & { user: User })[]>;
+  getAllDisbursements(): Promise<(Disbursement & { user: User })[]>;
+  getDisbursementsByUser(userId: number): Promise<Disbursement[]>;
   updateDisbursement(id: number, data: Partial<Disbursement>): Promise<Disbursement>;
 
   createLeadershipInquiry(inquiry: InsertLeadershipInquiry): Promise<LeadershipInquiry>;
@@ -637,8 +639,22 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(disbursements)
       .innerJoin(users, eq(disbursements.userId, users.id))
-      .where(eq(disbursements.status, "pending"));
+      .where(eq(disbursements.status, "pending"))
+      .orderBy(desc(disbursements.createdAt));
     return results.map(r => ({ ...r.disbursements, user: r.users }));
+  }
+
+  async getAllDisbursements(): Promise<(Disbursement & { user: User })[]> {
+    const results = await db
+      .select()
+      .from(disbursements)
+      .innerJoin(users, eq(disbursements.userId, users.id))
+      .orderBy(desc(disbursements.createdAt));
+    return results.map(r => ({ ...r.disbursements, user: r.users }));
+  }
+
+  async getDisbursementsByUser(userId: number): Promise<Disbursement[]> {
+    return db.select().from(disbursements).where(eq(disbursements.userId, userId)).orderBy(disbursements.semesterNum);
   }
 
   async updateDisbursement(id: number, data: Partial<Disbursement>): Promise<Disbursement> {

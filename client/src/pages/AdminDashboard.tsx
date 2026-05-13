@@ -191,6 +191,7 @@ export default function AdminDashboard() {
   const { data: pendingVerifications = [] } = useQuery({ queryKey: ["/api/admin/pending-verifications"] });
   const { data: allVerifications = [] }    = useQuery({ queryKey: ["/api/admin/all-verifications"], enabled: activeTab === "applications" });
   const { data: pendingDisbursements = [] } = useQuery({ queryKey: ["/api/admin/pending-disbursements"] });
+  const { data: allDisbursements = [] }     = useQuery({ queryKey: ["/api/admin/all-disbursements"], enabled: activeTab === "payouts" });
   const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: activeTab === "users" });
   const { data: allAffiliates = [] }       = useQuery({ queryKey: ["/api/admin/affiliates-all"], enabled: activeTab === "affiliates" });
   const { data: allLoans = [] }            = useQuery({ queryKey: ["/api/admin/loans-all"], enabled: activeTab === "loans" });
@@ -237,6 +238,7 @@ export default function AdminDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-disbursements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-disbursements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
       setDisburseDialog(null);
       toast({ title: "Payout Processed ✓", description: "Funds credited to student wallet. Confirmation email sent." });
@@ -265,6 +267,7 @@ export default function AdminDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-disbursements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-disbursements"] });
       setEditDisburseDialog(null); setEditDisburseAmount(""); setEditDisburseNote("");
       toast({ title: "Amount Updated ✓", description: "Disbursement amount adjusted. Student notified by email." });
     },
@@ -279,6 +282,7 @@ export default function AdminDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-disbursements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-disbursements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
       setDeclineDisburseDialog(null); setDeclineReason("");
       toast({ title: "Disbursement Declined", description: "Student notified by email.", variant: "destructive" });
@@ -1107,6 +1111,63 @@ export default function AdminDashboard() {
                     </Table>
                   </div>
                 </Card>
+
+                {/* ── Disbursement History ───────────────────────────── */}
+                {(() => {
+                  const history = (allDisbursements as any[]).filter((d: any) => d.status !== "pending");
+                  const filtered = history.filter((d: any) =>
+                    !q || `${d.user?.firstName} ${d.user?.lastName} ${d.user?.email}`.toLowerCase().includes(q)
+                  );
+                  if (filtered.length === 0) return null;
+                  return (
+                    <Card className="border-0 shadow-sm overflow-hidden">
+                      <CardHeader className="border-b bg-white py-4 px-6">
+                        <CardTitle className="text-base">Disbursement History</CardTitle>
+                        <CardDescription>{filtered.length} processed — full record of all completed, declined &amp; adjusted payouts</CardDescription>
+                      </CardHeader>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader className="bg-slate-50">
+                            <TableRow>
+                              <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Ref</TableHead>
+                              <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
+                              <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
+                              <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Status</TableHead>
+                              <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Processed</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filtered.map((d: any) => (
+                              <TableRow key={d.id} className="hover:bg-slate-50/50">
+                                <TableCell className="px-6 font-mono text-xs text-slate-400">DIS-{String(d.id).padStart(5, "0")}</TableCell>
+                                <TableCell>
+                                  <div className="font-medium text-sm text-slate-900">{d.user?.firstName} {d.user?.lastName}</div>
+                                  <div className="text-xs text-slate-500">{d.user?.email}</div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="font-bold text-slate-900">{fmtUSD(d.amount)}</div>
+                                  <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${d.semesterNum === 2 ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                                    Semester {d.semesterNum ?? 1}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                    d.status === "completed" ? "bg-green-100 text-green-700" :
+                                    d.status === "rejected"  ? "bg-red-100 text-red-700"   :
+                                    "bg-slate-100 text-slate-600"
+                                  }`}>
+                                    {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-sm text-slate-600">{d.processedAt ? fmtDate(d.processedAt) : fmtDate(d.createdAt)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </Card>
+                  );
+                })()}
               </motion.div>
             )}
 

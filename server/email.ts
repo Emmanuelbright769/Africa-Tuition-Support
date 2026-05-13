@@ -1007,6 +1007,35 @@ export async function sendNewArrivalEmail(
   await sendEmail(to, subject, html);
 }
 
+// ─── Monthly Maintenance Fee ──────────────────────────────────────────────────
+
+export async function sendMaintenanceFeeEmail(to: string, firstName: string, deducted: string, newBalance: string, monthLabel: string): Promise<void> {
+  const subject = `💳 Monthly Maintenance Fee Deducted — ${monthLabel}`;
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">💳 Monthly Maintenance Fee</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;">Hi ${firstName}, your monthly platform maintenance fee has been processed.</p>
+    <div style="background:#f0f8f4;border:1px solid #c8e6d4;border-radius:16px;padding:20px 24px;margin:0 0 20px;">
+      <table width="100%" cellpadding="0" cellspacing="6">
+        <tr>
+          <td style="color:#6b7c72;font-size:12px;font-weight:600;width:130px;">Month</td>
+          <td style="color:#1a1a1a;font-size:14px;font-weight:700;">${monthLabel}</td>
+        </tr>
+        <tr>
+          <td style="color:#6b7c72;font-size:12px;font-weight:600;">Fee Deducted</td>
+          <td style="color:#d9534f;font-size:14px;font-weight:700;">−$${deducted}</td>
+        </tr>
+        <tr>
+          <td style="color:#6b7c72;font-size:12px;font-weight:600;">New Balance</td>
+          <td style="color:#1a6b3c;font-size:16px;font-weight:900;">$${newBalance}</td>
+        </tr>
+      </table>
+    </div>
+    <p style="color:#4a5e50;font-size:13px;line-height:1.7;margin:0 0 24px;">This is an automatic monthly maintenance charge to keep your TSIA SwiftWallet account active and in good standing. The fee is $0.50 per month and is deducted on the 1st of each month.</p>
+    ${btn("https://tsiforafrica.com/dashboard", "View My Wallet")}
+  `);
+  await sendEmail(to, subject, html);
+}
+
 // ─── Support Contact (admin notification + user confirmation) ─────────────────
 
 export async function sendSupportContactToAdmin(

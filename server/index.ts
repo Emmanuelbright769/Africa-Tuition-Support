@@ -6,7 +6,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
-import { sendEmail, sendTradeWindowOpenEmail, sendTradeWindowCloseEmail } from "./email";
+import { sendEmail, sendTradeWindowOpenEmail, sendTradeWindowCloseEmail, sendMaintenanceFeeEmail } from "./email";
 import { pushToUser } from "./realtime";
 
 const app = express();
@@ -108,6 +108,8 @@ async function runMigrations() {
       )
     `);
     // Seed default plan prices and tier payouts (skip if already set)
+    // Add maintenance_fee to the transaction_type enum (safe to re-run; skipped if already exists)
+    await db.execute(sql`ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'maintenance_fee'`);
     await db.execute(sql`
       INSERT INTO platform_settings (key, value) VALUES
         ('plan_1yr_base',            '35'),
@@ -475,6 +477,83 @@ async function startCryptoDepositVerifierJob() {
   console.log("[CRYPTO-VERIFY] Background on-chain verifier started — checks confirmed crypto deposits every 5 min");
 }
 
+async function startMaintenanceFeeJob() {
+  const MAINTENANCE_FEE = 0.50;
+  const SETTING_KEY = "maintenance_fee_last_run";
+
+  const runDeduction = async () => {
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+    const monthLabel = now.toLocaleString("en-US", { month: "long", year: "numeric" });
+
+    // Check if already run this month
+    const lastRun = await storage.getPlatformSetting(SETTING_KEY);
+    if (lastRun === monthKey) {
+      console.log(`[MAINTENANCE-FEE] Already collected for ${monthLabel} — skipping.`);
+      return;
+    }
+
+    const allUsers = await db.select({ id: users.id, email: users.email, firstName: users.firstName, role: users.role }).from(users);
+    const targets = allUsers.filter(u => u.role !== "admin");
+    let deducted = 0;
+
+    for (const u of targets) {
+      try {
+        const wallet = await storage.getOrCreateWallet(u.id);
+        const currentBalance = parseFloat(wallet.balance as string);
+        if (currentBalance <= 0) continue;
+
+        // Deduct up to $0.50 — can dip below the $2 floor (intentional per product spec)
+        const feeAmount = Math.min(MAINTENANCE_FEE, currentBalance);
+        const newBalance = Math.max(0, currentBalance - feeAmount).toFixed(2);
+
+        await storage.updateWalletBalance(u.id, newBalance);
+        await storage.createTransaction({
+          userId: u.id,
+          type: "maintenance_fee",
+          amount: (-feeAmount).toFixed(2),
+          fee: "0.00",
+          paymentMethod: "wallet",
+          description: `Monthly maintenance fee — ${monthLabel}`,
+        });
+        const notif = await storage.createNotification({
+          userId: u.id,
+          type: "wallet_credit",
+          title: "Monthly Maintenance Fee",
+          message: `$${feeAmount.toFixed(2)} has been deducted from your TSIA SwiftWallet as the monthly maintenance fee (${monthLabel}). New balance: $${newBalance}.`,
+          data: { fee: feeAmount.toFixed(2), newBalance, month: monthLabel },
+          isRead: false,
+        });
+        try { pushToUser(u.id, "notification", notif); } catch {}
+        try { pushToUser(u.id, "wallet:updated", { balance: newBalance }); } catch {}
+        sendMaintenanceFeeEmail(u.email, u.firstName, feeAmount.toFixed(2), newBalance, monthLabel).catch(() => {});
+        deducted++;
+      } catch (e: any) {
+        console.error(`[MAINTENANCE-FEE] Failed for user ${u.id}: ${e?.message ?? e}`);
+      }
+    }
+
+    await storage.setPlatformSetting(SETTING_KEY, monthKey);
+    console.log(`[MAINTENANCE-FEE] ${monthLabel} — deducted $${MAINTENANCE_FEE} from ${deducted}/${targets.length} users.`);
+  };
+
+  // Run immediately (catches any month whose 1st has already passed)
+  await runDeduction();
+
+  // Schedule future runs: fire at 00:05 on the 1st of every subsequent month
+  const scheduleNext = () => {
+    const now = new Date();
+    const next1st = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 5, 0));
+    const delay = next1st.getTime() - Date.now();
+    setTimeout(async () => {
+      await runDeduction();
+      scheduleNext();
+    }, delay);
+    console.log(`[MAINTENANCE-FEE] Next collection scheduled: ${next1st.toUTCString()}`);
+  };
+  scheduleNext();
+}
+
 (async () => {
   await runMigrations();
   await registerRoutes(httpServer, app);
@@ -483,6 +562,7 @@ async function startCryptoDepositVerifierJob() {
   startWalletFundPurgeJob();
   startTradeWindowBroadcastJob();
   startCryptoDepositVerifierJob();
+  startMaintenanceFeeJob();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

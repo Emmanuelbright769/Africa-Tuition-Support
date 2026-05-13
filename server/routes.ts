@@ -3416,6 +3416,15 @@ export async function registerRoutes(
     res.json(pending);
   });
 
+  app.get("/api/admin/all-disbursements", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    const all = await storage.getAllDisbursements();
+    res.json(all);
+  });
+
   app.post("/api/admin/process-disbursement/:disbursementId", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -3436,6 +3445,18 @@ export async function registerRoutes(
         paymentMethod: "wallet",
         description: `Sponsorship payout $${disbursement.amount} (₦${(parseFloat(disbursement.amount) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()})`,
       });
+
+      // If Semester 1 just processed, ensure Semester 2 exists (backward-compat: older enrollments may only have Sem 1)
+      if ((disbursement.semesterNum ?? 1) === 1) {
+        try {
+          const existing = await storage.getDisbursementsByUser(disbursement.userId);
+          const hasSem2 = existing.some(d => d.semesterNum === 2);
+          if (!hasSem2) {
+            // Create Semester 2 as the same amount (equal split assumed)
+            await storage.createDisbursement({ userId: disbursement.userId, amount: disbursement.amount, status: "pending", semesterNum: 2 });
+          }
+        } catch { /* non-critical */ }
+      }
 
       // Notify student
       try {

@@ -7098,7 +7098,16 @@ export async function registerRoutes(
       setImmediate(async () => {
         try {
           const cat = prod.category || "other";
-          const allUsers = await db.select({ id: users.id, email: users.email, firstName: users.firstName }).from(users);
+          const [allUsers, recentProducts] = await Promise.all([
+            db.select({ id: users.id, email: users.email, firstName: users.firstName }).from(users),
+            storage.getProducts({ status: "active" }),
+          ]);
+          // Other recently listed products to fill the email grid (exclude the new one)
+          const otherProducts = recentProducts
+            .filter(p => p.id !== prod.id)
+            .slice(0, 6)
+            .map(p => ({ id: p.id, title: p.title, price: p.price, category: p.category, images: (p.images ?? []) as string[], condition: p.condition, location: p.location }));
+          const newProductData = { id: prod.id, title: prod.title, price: prod.price, category: cat, images: (prod.images ?? []) as string[], condition: prod.condition, location: prod.location };
           for (const u of allUsers) {
             if (u.id === userId) continue;
             try {
@@ -7110,7 +7119,7 @@ export async function registerRoutes(
                 relatedId: prod.id,
               });
               pushToUser(u.id, "notification", notif);
-              sendNewArrivalEmail(u.email, u.firstName, cat, prod.title, prod.id, prod.images ?? []).catch((err: any) => console.error("[EMAIL] TS-Mart new listing email failed:", err?.message ?? err));
+              sendNewArrivalEmail(u.email, u.firstName, newProductData, otherProducts).catch((err: any) => console.error("[EMAIL] TS-Mart new listing email failed:", err?.message ?? err));
             } catch (_) {}
           }
         } catch (err: any) { console.error("[TS-MART] Broadcast notification error:", err?.message ?? err); }

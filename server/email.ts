@@ -739,27 +739,271 @@ export async function sendQceWithdrawalEmail(to: string, firstName: string, amou
 
 // ─── New Arrival Alert ────────────────────────────────────────────────────────
 
-export async function sendNewArrivalEmail(to: string, firstName: string, category: string, productTitle: string, productId: number, images?: string[]): Promise<void> {
-  const subject = `🛍️ New Listing on TS-Mart Online Stores: "${productTitle}"`;
-  const validImages = (images ?? []).filter(Boolean).slice(0, 3);
-  const imageBlock = validImages.length > 0
-    ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 24px;">${
-        validImages.map(src =>
-          `<img src="${src}" alt="${productTitle}" style="width:${validImages.length === 1 ? "100%" : "calc(50% - 4px)"};max-width:${validImages.length === 1 ? "100%" : "220px"};height:160px;object-fit:cover;border-radius:12px;display:block;" />`
-        ).join("")
-      }</div>`
-    : "";
-  const html = baseTemplate(`
-    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">🛍️ New Listing — TS-Mart Online Stores</h2>
-    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;">Hi ${firstName}, a new item just went live on the TS-Mart Online Stores marketplace.</p>
-    ${imageBlock}
-    <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
-      <p style="color:#6b7c72;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px;">${category}</p>
-      <p style="color:#1a1a1a;font-weight:700;font-size:16px;margin:0;">${productTitle}</p>
-    </div>
-    <p style="color:#4a5e50;font-size:13px;margin:0 0 24px;">Pay directly from your TSIA SwiftWallet — secure, instant, and hassle-free.</p>
-    ${btn(`https://tsiforafrica.com/dashboard`, "Shop on TS-Mart")}
-  `);
+type NewArrivalProduct = {
+  id: number;
+  title: string;
+  price: string;
+  category: string;
+  images: string[];
+  condition?: string;
+  location?: string;
+};
+
+function tsMarketplaceTemplate(content: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TS-Mart Online Stores</title>
+</head>
+<body style="margin:0;padding:0;background:#f0f4f0;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f0;padding:20px 0;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:600px;border-radius:20px;overflow:hidden;box-shadow:0 6px 32px rgba(0,0,0,0.12);">
+        <!-- TS-Mart Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#0f3d25 0%,#1a6b3c 60%,#2d9d5c 100%);padding:18px 28px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="width:38px;height:38px;background:#c9a227;border-radius:50%;text-align:center;vertical-align:middle;">
+                        <span style="color:#fff;font-weight:900;font-size:18px;line-height:38px;display:block;">T</span>
+                      </td>
+                      <td style="padding-left:10px;vertical-align:middle;">
+                        <span style="color:#fff;font-size:17px;font-weight:900;letter-spacing:-0.3px;">TS-Mart Online Stores</span>
+                        <br/>
+                        <span style="color:rgba(255,255,255,0.6);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;">by TSIA</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td align="right" style="vertical-align:middle;">
+                  <span style="color:rgba(255,255,255,0.55);font-size:10px;">tsiforafrica.com</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        ${content}
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f7f9f7;padding:20px 28px 18px;text-align:center;border-top:1px solid #e5ede8;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px;">
+              <tr>
+                <td align="center">
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="padding:0 5px;"><a href="https://www.facebook.com/tsiforafrica" style="display:inline-block;width:30px;height:30px;background:#1877f2;border-radius:50%;text-align:center;line-height:30px;color:#fff;font-weight:900;font-size:14px;text-decoration:none;">f</a></td>
+                      <td style="padding:0 5px;"><a href="https://www.instagram.com/tsiforafrica" style="display:inline-block;width:30px;height:30px;background:#e1306c;border-radius:50%;text-align:center;line-height:30px;color:#fff;font-weight:900;font-size:11px;text-decoration:none;">IG</a></td>
+                      <td style="padding:0 5px;"><a href="https://x.com/tsiforafrica" style="display:inline-block;width:30px;height:30px;background:#000;border-radius:50%;text-align:center;line-height:30px;color:#fff;font-weight:900;font-size:12px;text-decoration:none;">𝕏</a></td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            <p style="color:#9caa9f;font-size:11px;margin:0 0 4px;">© ${new Date().getFullYear()} TSIA – Tuition Support Initiative for Africa</p>
+            <p style="color:#b5c0b8;font-size:10px;margin:0;">You're receiving this because you're a member of tsiforafrica.com</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+export async function sendNewArrivalEmail(
+  to: string,
+  firstName: string,
+  newProduct: NewArrivalProduct,
+  otherProducts?: NewArrivalProduct[],
+): Promise<void> {
+  const subject = `🛍️ New on TS-Mart: "${newProduct.title}"`;
+  const prodUrl = `https://tsiforafrica.com/dashboard`;
+  const cap = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + "…" : s;
+  const capCat = (c: string) => c.charAt(0).toUpperCase() + c.slice(1).replace(/-/g, " ");
+
+  // ── Featured product hero image ───────────────────────────────────────────
+  const heroImg = (newProduct.images ?? []).filter(Boolean)[0];
+  const heroBlock = heroImg
+    ? `<tr>
+        <td style="padding:0;line-height:0;">
+          <img src="${heroImg}" alt="${newProduct.title}"
+            style="width:100%;max-width:600px;height:300px;object-fit:cover;display:block;" />
+        </td>
+      </tr>`
+    : `<tr>
+        <td style="background:linear-gradient(135deg,#e8f5ee,#d0ead8);height:140px;text-align:center;vertical-align:middle;">
+          <span style="font-size:52px;">🛍️</span>
+        </td>
+      </tr>`;
+
+  // ── Featured product detail block ─────────────────────────────────────────
+  const extras = [
+    newProduct.condition ? capCat(newProduct.condition) : null,
+    newProduct.location || null,
+  ].filter(Boolean).join(" &nbsp;·&nbsp; ");
+
+  const featuredBlock = `
+    <tr>
+      <td style="background:#fff;padding:0 28px 4px;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding:16px 0 6px;">
+              <span style="display:inline-block;background:#e8f5ee;color:#1a6b3c;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border-radius:20px;">${capCat(newProduct.category)}</span>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <p style="color:#1a1a1a;font-size:20px;font-weight:900;margin:0 0 8px;line-height:1.3;">${newProduct.title}</p>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right:14px;">
+                    <span style="color:#1a6b3c;font-size:26px;font-weight:900;">$${parseFloat(newProduct.price).toFixed(2)}</span>
+                  </td>
+                  ${extras ? `<td style="vertical-align:middle;"><span style="color:#8a9e92;font-size:12px;">${extras}</span></td>` : ""}
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 0 20px;">
+              <a href="${prodUrl}" style="display:inline-block;background:#1a6b3c;color:#fff;font-weight:800;font-size:14px;text-decoration:none;padding:12px 28px;border-radius:50px;">
+                View Product &rarr;
+              </a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`;
+
+  // ── "More on TS-Mart" divider ─────────────────────────────────────────────
+  const others = (otherProducts ?? []).filter(p => p.id !== newProduct.id).slice(0, 6);
+
+  const moreDivider = others.length > 0 ? `
+    <tr>
+      <td style="background:#f8faf9;padding:14px 28px;border-top:2px solid #e5ede8;border-bottom:1px solid #e5ede8;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td>
+              <p style="color:#1a1a1a;font-size:14px;font-weight:800;margin:0;">More on TS-Mart 🏪</p>
+              <p style="color:#6b7c72;font-size:11px;margin:2px 0 0;">Browse the latest from our sellers</p>
+            </td>
+            <td align="right" style="vertical-align:middle;">
+              <a href="${prodUrl}" style="color:#1a6b3c;font-size:12px;font-weight:700;text-decoration:none;">See all &rarr;</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>` : "";
+
+  // ── Product grid (3 columns, up to 2 rows = 6 products) ──────────────────
+  function productCell(p: NewArrivalProduct): string {
+    const img = (p.images ?? []).filter(Boolean)[0];
+    const imgBlock = img
+      ? `<img src="${img}" alt="${cap(p.title, 40)}" width="160" height="160"
+            style="width:160px;height:160px;object-fit:cover;border-radius:10px;display:block;" />`
+      : `<div style="width:160px;height:160px;background:linear-gradient(135deg,#e8f5ee,#d0ead8);border-radius:10px;display:table-cell;text-align:center;vertical-align:middle;font-size:32px;">🛍️</div>`;
+    return `
+      <td width="33%" style="width:33%;padding:8px;vertical-align:top;text-align:center;">
+        <a href="${prodUrl}" style="text-decoration:none;display:block;">
+          <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+            <tr><td style="line-height:0;">${imgBlock}</td></tr>
+            <tr>
+              <td style="padding-top:8px;text-align:left;width:160px;">
+                <p style="color:#1a1a1a;font-size:12px;font-weight:700;margin:0 0 3px;line-height:1.4;overflow:hidden;">${cap(p.title, 38)}</p>
+                <p style="color:#1a6b3c;font-size:13px;font-weight:900;margin:0;">$${parseFloat(p.price).toFixed(2)}</p>
+                <p style="color:#a0aaa4;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin:2px 0 0;">${capCat(p.category)}</p>
+              </td>
+            </tr>
+          </table>
+        </a>
+      </td>`;
+  }
+
+  let gridRows = "";
+  if (others.length > 0) {
+    // Split into rows of 3
+    for (let i = 0; i < others.length; i += 3) {
+      const row = others.slice(i, i + 3);
+      // Pad to 3 cells if last row is incomplete
+      while (row.length < 3) row.push(null as any);
+      gridRows += `<tr>${row.map(p => p ? productCell(p) : `<td width="33%" style="width:33%;padding:8px;"></td>`).join("")}</tr>`;
+    }
+  }
+
+  const gridBlock = others.length > 0 ? `
+    <tr>
+      <td style="background:#fff;padding:12px 16px 20px;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          ${gridRows}
+        </table>
+      </td>
+    </tr>` : "";
+
+  // ── Popular categories strip ──────────────────────────────────────────────
+  const CATS = [
+    { label: "Electronics", emoji: "📱" },
+    { label: "Fashion",     emoji: "👗" },
+    { label: "Books",       emoji: "📚" },
+    { label: "Home",        emoji: "🏠" },
+    { label: "Sports",      emoji: "⚽" },
+    { label: "Beauty",      emoji: "💄" },
+  ];
+  const catCells = CATS.map(c =>
+    `<td style="text-align:center;padding:0 4px;">
+      <a href="${prodUrl}" style="text-decoration:none;display:block;">
+        <div style="width:72px;height:72px;background:#f0f8f4;border-radius:16px;margin:0 auto 5px;display:table-cell;text-align:center;vertical-align:middle;font-size:26px;">${c.emoji}</div>
+        <p style="color:#3a5442;font-size:10px;font-weight:700;margin:0;">${c.label}</p>
+      </a>
+    </td>`
+  ).join("");
+
+  const catsBlock = `
+    <tr>
+      <td style="background:#f8faf9;padding:16px 20px 20px;border-top:1px solid #e5ede8;">
+        <p style="color:#1a1a1a;font-size:13px;font-weight:800;margin:0 0 12px 8px;">Popular Categories</p>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>${catCells}</tr>
+        </table>
+      </td>
+    </tr>`;
+
+  // ── Main CTA ──────────────────────────────────────────────────────────────
+  const ctaBlock = `
+    <tr>
+      <td style="background:#fff;padding:24px 28px 28px;text-align:center;border-top:1px solid #e5ede8;">
+        <a href="${prodUrl}"
+          style="display:inline-block;background:linear-gradient(135deg,#1a6b3c,#2d9d5c);color:#fff;font-weight:800;font-size:16px;text-decoration:none;padding:15px 44px;border-radius:50px;letter-spacing:0.2px;">
+          Shop on TS-Mart &rarr;
+        </a>
+        <p style="color:#9caa9f;font-size:11px;margin:14px 0 0;">
+          Hi ${firstName} — pay instantly from your TSIA SwiftWallet. Secure &amp; free.
+        </p>
+      </td>
+    </tr>`;
+
+  // ── Hero announcement banner ──────────────────────────────────────────────
+  const heroBanner = `
+    <tr>
+      <td style="background:linear-gradient(135deg,#0f3d25,#1a5c34);padding:20px 28px;text-align:center;">
+        <p style="color:rgba(255,255,255,0.65);font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin:0 0 4px;">New Arrival</p>
+        <p style="color:#fff;font-size:22px;font-weight:900;margin:0 0 2px;line-height:1.2;">Something new just landed! 🛍️</p>
+        <p style="color:rgba(255,255,255,0.6);font-size:13px;margin:0;">Check out what's fresh on TS-Mart today</p>
+      </td>
+    </tr>`;
+
+  const html = tsMarketplaceTemplate(
+    heroBanner + heroBlock + featuredBlock + moreDivider + gridBlock + catsBlock + ctaBlock
+  );
+
   await sendEmail(to, subject, html);
 }
 

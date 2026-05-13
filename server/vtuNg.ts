@@ -65,15 +65,12 @@ async function vtuGet(path: string): Promise<any> {
 // ── Public (no auth) ────────────────────────────────────────────────────────
 
 export async function vtuGetDataVariations(serviceId?: string): Promise<any> {
-  const url = `${VTU_BASE}/api/v2/variations/data${serviceId ? `?service_id=${serviceId}` : ""}`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-  return r.json();
+  // Use authenticated endpoint for better coverage (all networks including Glo)
+  return vtuGet(`/api/v2/variations/data${serviceId ? `?service_id=${serviceId}` : ""}`);
 }
 
 export async function vtuGetTvVariations(serviceId?: string): Promise<any> {
-  const url = `${VTU_BASE}/api/v2/variations/tv${serviceId ? `?service_id=${serviceId}` : ""}`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-  return r.json();
+  return vtuGet(`/api/v2/variations/tv${serviceId ? `?service_id=${serviceId}` : ""}`);
 }
 
 // ── Customer verification ────────────────────────────────────────────────────

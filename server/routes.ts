@@ -6697,14 +6697,14 @@ export async function registerRoutes(
     try {
       const d = await vtuGetDataVariations(serviceId);
       const plans = (Array.isArray(d?.data) ? d.data : [])
-        .filter((p: any) => p.availability === "Available")
+        .filter((p: any) => String(p.availability ?? "").toLowerCase() === "available")
         .map((p: any) => ({
           variationId: String(p.variation_id),
-          label: String(p.data_plan),
+          label: String(p.data_plan ?? p.name ?? p.variation_id),
           priceNgn: Number(p.price),
         }));
       const result = { network: serviceId, plans };
-      setCached(cacheKey, result, 10 * 60_000); // 10 min cache
+      if (plans.length > 0) setCached(cacheKey, result, 10 * 60_000); // only cache non-empty
       res.json(result);
     } catch (e: any) {
       res.json({ network: serviceId, plans: [], message: e.message ?? "Network error" });

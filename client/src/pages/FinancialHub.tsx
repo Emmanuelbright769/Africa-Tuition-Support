@@ -178,37 +178,72 @@ const NETWORKS = [
   { id: "9mobile", label: "9mobile", color: "bg-emerald-700", text: "text-white" },
 ];
 
-// ─── Data Plans per network ───────────────────────────────────────────────────
+// ─── Data Plans per network (fallback when live API unavailable) ──────────────
 const DATA_PLANS: Record<string, { id: string; label: string; validity: string; price: number }[]> = {
   mtn: [
-    { id: "mtn_500mb", label: "500MB",  validity: "1 day",   price: 0.50 },
-    { id: "mtn_1gb",   label: "1GB",    validity: "30 days", price: 1.00 },
-    { id: "mtn_2gb",   label: "2GB",    validity: "30 days", price: 2.00 },
-    { id: "mtn_5gb",   label: "5GB",    validity: "30 days", price: 4.50 },
-    { id: "mtn_10gb",  label: "10GB",   validity: "30 days", price: 8.00 },
-    { id: "mtn_20gb",  label: "20GB",   validity: "30 days", price: 14.00 },
+    { id: "mtn_50mb",   label: "50MB",   validity: "1 day",    price: 0.10 },
+    { id: "mtn_200mb",  label: "200MB",  validity: "5 days",   price: 0.25 },
+    { id: "mtn_500mb",  label: "500MB",  validity: "7 days",   price: 0.50 },
+    { id: "mtn_1gb",    label: "1GB",    validity: "30 days",  price: 1.00 },
+    { id: "mtn_1gb_n",  label: "1GB",    validity: "7 days",   price: 0.80 },
+    { id: "mtn_2gb",    label: "2GB",    validity: "30 days",  price: 2.00 },
+    { id: "mtn_3gb",    label: "3GB",    validity: "30 days",  price: 2.80 },
+    { id: "mtn_5gb",    label: "5GB",    validity: "30 days",  price: 4.50 },
+    { id: "mtn_10gb",   label: "10GB",   validity: "30 days",  price: 8.00 },
+    { id: "mtn_15gb",   label: "15GB",   validity: "30 days",  price: 11.00 },
+    { id: "mtn_20gb",   label: "20GB",   validity: "30 days",  price: 14.00 },
+    { id: "mtn_30gb",   label: "30GB",   validity: "30 days",  price: 19.00 },
+    { id: "mtn_50gb",   label: "50GB",   validity: "30 days",  price: 28.00 },
+    { id: "mtn_75gb",   label: "75GB",   validity: "30 days",  price: 38.00 },
+    { id: "mtn_100gb",  label: "100GB",  validity: "30 days",  price: 50.00 },
   ],
   airtel: [
-    { id: "airtel_500mb", label: "500MB",  validity: "1 day",   price: 0.50 },
-    { id: "airtel_1gb",   label: "1.5GB",  validity: "30 days", price: 1.00 },
-    { id: "airtel_2gb",   label: "3GB",    validity: "30 days", price: 2.00 },
-    { id: "airtel_5gb",   label: "6GB",    validity: "30 days", price: 4.50 },
-    { id: "airtel_10gb",  label: "10GB",   validity: "30 days", price: 8.00 },
-    { id: "airtel_15gb",  label: "15GB",   validity: "30 days", price: 12.00 },
+    { id: "airtel_100mb",  label: "100MB",  validity: "1 day",    price: 0.12 },
+    { id: "airtel_300mb",  label: "300MB",  validity: "7 days",   price: 0.30 },
+    { id: "airtel_500mb",  label: "500MB",  validity: "7 days",   price: 0.50 },
+    { id: "airtel_1gb",    label: "1GB",    validity: "30 days",  price: 0.90 },
+    { id: "airtel_1_5gb",  label: "1.5GB",  validity: "30 days",  price: 1.00 },
+    { id: "airtel_2gb",    label: "2GB",    validity: "30 days",  price: 1.80 },
+    { id: "airtel_3gb",    label: "3GB",    validity: "30 days",  price: 2.50 },
+    { id: "airtel_6gb",    label: "6GB",    validity: "30 days",  price: 4.50 },
+    { id: "airtel_10gb",   label: "10GB",   validity: "30 days",  price: 7.50 },
+    { id: "airtel_15gb",   label: "15GB",   validity: "30 days",  price: 10.50 },
+    { id: "airtel_20gb",   label: "20GB",   validity: "30 days",  price: 13.50 },
+    { id: "airtel_30gb",   label: "30GB",   validity: "30 days",  price: 18.00 },
+    { id: "airtel_40gb",   label: "40GB",   validity: "30 days",  price: 22.00 },
+    { id: "airtel_50gb",   label: "50GB",   validity: "30 days",  price: 27.00 },
+    { id: "airtel_100gb",  label: "100GB",  validity: "30 days",  price: 45.00 },
   ],
   glo: [
-    { id: "glo_1gb",   label: "1GB",    validity: "30 days", price: 0.70 },
-    { id: "glo_2gb",   label: "2.5GB",  validity: "30 days", price: 1.50 },
-    { id: "glo_5gb",   label: "5GB",    validity: "30 days", price: 3.50 },
-    { id: "glo_10gb",  label: "10GB",   validity: "30 days", price: 7.00 },
-    { id: "glo_15gb",  label: "15GB",   validity: "30 days", price: 10.00 },
+    { id: "glo_100mb",  label: "100MB",  validity: "1 day",    price: 0.12 },
+    { id: "glo_350mb",  label: "350MB",  validity: "7 days",   price: 0.35 },
+    { id: "glo_500mb",  label: "500MB",  validity: "14 days",  price: 0.50 },
+    { id: "glo_1gb",    label: "1GB",    validity: "30 days",  price: 0.70 },
+    { id: "glo_1_5gb",  label: "1.5GB",  validity: "30 days",  price: 1.00 },
+    { id: "glo_2gb",    label: "2GB",    validity: "30 days",  price: 1.40 },
+    { id: "glo_2_5gb",  label: "2.5GB",  validity: "30 days",  price: 1.60 },
+    { id: "glo_5gb",    label: "5GB",    validity: "30 days",  price: 3.00 },
+    { id: "glo_7_5gb",  label: "7.5GB",  validity: "30 days",  price: 4.50 },
+    { id: "glo_10gb",   label: "10GB",   validity: "30 days",  price: 5.80 },
+    { id: "glo_15gb",   label: "15GB",   validity: "30 days",  price: 8.00 },
+    { id: "glo_20gb",   label: "20GB",   validity: "30 days",  price: 10.00 },
+    { id: "glo_30gb",   label: "30GB",   validity: "30 days",  price: 13.50 },
+    { id: "glo_50gb",   label: "50GB",   validity: "30 days",  price: 20.00 },
+    { id: "glo_100gb",  label: "100GB",  validity: "30 days",  price: 35.00 },
   ],
   "9mobile": [
-    { id: "9m_500mb", label: "500MB",  validity: "30 days", price: 0.50 },
-    { id: "9m_1gb",   label: "1GB",    validity: "30 days", price: 1.00 },
-    { id: "9m_2gb",   label: "2GB",    validity: "30 days", price: 1.80 },
-    { id: "9m_5gb",   label: "5GB",    validity: "30 days", price: 4.00 },
-    { id: "9m_10gb",  label: "10GB",   validity: "30 days", price: 7.50 },
+    { id: "9m_150mb",  label: "150MB",  validity: "7 days",   price: 0.18 },
+    { id: "9m_500mb",  label: "500MB",  validity: "30 days",  price: 0.50 },
+    { id: "9m_1gb",    label: "1GB",    validity: "30 days",  price: 1.00 },
+    { id: "9m_1_5gb",  label: "1.5GB",  validity: "30 days",  price: 1.40 },
+    { id: "9m_2gb",    label: "2GB",    validity: "30 days",  price: 1.80 },
+    { id: "9m_3gb",    label: "3GB",    validity: "30 days",  price: 2.60 },
+    { id: "9m_5gb",    label: "5GB",    validity: "30 days",  price: 4.00 },
+    { id: "9m_10gb",   label: "10GB",   validity: "30 days",  price: 7.50 },
+    { id: "9m_15gb",   label: "15GB",   validity: "30 days",  price: 11.00 },
+    { id: "9m_20gb",   label: "20GB",   validity: "30 days",  price: 14.00 },
+    { id: "9m_30gb",   label: "30GB",   validity: "30 days",  price: 19.50 },
+    { id: "9m_40gb",   label: "40GB",   validity: "30 days",  price: 25.00 },
   ],
 };
 
@@ -230,18 +265,30 @@ const DISCOS = [
 
 // ─── Betting Platforms — VTU.ng exact service_id values ──────────────────────
 const BETTING_PLATFORMS = [
-  { id: "Bet9ja",      label: "Bet9ja",       color: "bg-green-800",   text: "text-white" },
-  { id: "BetKing",     label: "BetKing",      color: "bg-orange-600",  text: "text-white" },
-  { id: "1xBet",       label: "1xBet",        color: "bg-slate-800",   text: "text-white" },
-  { id: "BetWay",      label: "BetWay",       color: "bg-green-600",   text: "text-white" },
-  { id: "NairaBet",    label: "NairaBet",     color: "bg-blue-700",    text: "text-white" },
-  { id: "MerryBet",    label: "MerryBet",     color: "bg-red-700",     text: "text-white" },
-  { id: "NaijaBet",    label: "NaijaBet",     color: "bg-purple-700",  text: "text-white" },
-  { id: "BangBet",     label: "BangBet",      color: "bg-amber-600",   text: "text-white" },
-  { id: "BetLion",     label: "BetLion",      color: "bg-yellow-600",  text: "text-black" },
-  { id: "LiveScoreBet",label: "LiveScore",    color: "bg-sky-600",     text: "text-white" },
-  { id: "SupaBet",     label: "SupaBet",      color: "bg-indigo-700",  text: "text-white" },
-  { id: "CloudBet",    label: "CloudBet",     color: "bg-cyan-700",    text: "text-white" },
+  { id: "Bet9ja",        label: "Bet9ja",        color: "bg-green-800",    text: "text-white" },
+  { id: "SportyBet",     label: "SportyBet",     color: "bg-blue-900",     text: "text-white" },
+  { id: "BetKing",       label: "BetKing",       color: "bg-orange-600",   text: "text-white" },
+  { id: "1xBet",         label: "1xBet",         color: "bg-slate-800",    text: "text-white" },
+  { id: "BetWay",        label: "Betway",        color: "bg-green-600",    text: "text-white" },
+  { id: "MSport",        label: "Msport",        color: "bg-red-600",      text: "text-white" },
+  { id: "Melbet",        label: "Melbet",        color: "bg-yellow-500",   text: "text-black" },
+  { id: "NairaBet",      label: "NairaBet",      color: "bg-blue-700",     text: "text-white" },
+  { id: "MerryBet",      label: "MerryBet",      color: "bg-red-700",      text: "text-white" },
+  { id: "BetPawa",       label: "BetPawa",       color: "bg-lime-600",     text: "text-white" },
+  { id: "Parimatch",     label: "Parimatch",     color: "bg-yellow-600",   text: "text-black" },
+  { id: "NaijaBet",      label: "NaijaBet",      color: "bg-purple-700",   text: "text-white" },
+  { id: "BangBet",       label: "BangBet",       color: "bg-amber-600",    text: "text-white" },
+  { id: "BetLion",       label: "BetLion",       color: "bg-yellow-600",   text: "text-black" },
+  { id: "LiveScoreBet",  label: "LiveScore",     color: "bg-sky-600",      text: "text-white" },
+  { id: "SupaBet",       label: "SupaBet",       color: "bg-indigo-700",   text: "text-white" },
+  { id: "WBet",          label: "WBet",          color: "bg-teal-700",     text: "text-white" },
+  { id: "Surebet247",    label: "Surebet247",    color: "bg-green-700",    text: "text-white" },
+  { id: "Betfarm",       label: "Betfarm",       color: "bg-emerald-700",  text: "text-white" },
+  { id: "YangaBet",      label: "YangaBet",      color: "bg-pink-700",     text: "text-white" },
+  { id: "AccessBet",     label: "AccessBet",     color: "bg-rose-800",     text: "text-white" },
+  { id: "Mybet",         label: "MyBet",         color: "bg-cyan-700",     text: "text-white" },
+  { id: "CloudBet",      label: "CloudBet",      color: "bg-cyan-800",     text: "text-white" },
+  { id: "iLot",          label: "iLot",          color: "bg-violet-700",   text: "text-white" },
 ];
 
 // ─── Cable TV Providers ───────────────────────────────────────────────────────
@@ -2545,28 +2592,45 @@ export default function FinancialHub() {
                   <div className="flex items-center justify-center py-8 text-muted-foreground text-sm gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" /> Loading live plans…
                   </div>
-                ) : livePlans.length > 0 ? (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {livePlans.map(plan => {
-                      const priceUsd = plan.priceNgn / 1600;
-                      return (
-                        <button key={plan.variationId} onClick={() => setSelectedPlan(plan)}
-                          className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border-2 transition-all ${selectedPlan?.variationId === plan.variationId ? "border-tsia-green bg-green-50 dark:bg-green-900/20" : "border-border bg-card hover:border-tsia-green/40"}`}>
-                          <div className="text-left">
-                            <p className="font-bold text-sm">{plan.label}</p>
-                            <p className="text-xs text-muted-foreground">₦{plan.priceNgn.toLocaleString()}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-black text-tsia-green">${priceUsd.toFixed(2)}</span>
-                            {selectedPlan?.variationId === plan.variationId && <CheckCircle2 className="w-4 h-4 text-tsia-green" />}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center py-4">No plans available. Try a different network.</p>
-                )}
+                ) : (() => {
+                  // Use live plans if available, otherwise fall back to hardcoded plans
+                  const fallbackPlans = (DATA_PLANS[selectedISP!] ?? []).map(p => ({
+                    variationId: p.id,
+                    label: `${p.label} — ${p.validity}`,
+                    priceNgn: Math.round(p.price * 1600),
+                  }));
+                  const displayPlans = livePlans.length > 0 ? livePlans : fallbackPlans;
+                  const usingFallback = livePlans.length === 0 && fallbackPlans.length > 0;
+                  return displayPlans.length > 0 ? (
+                    <>
+                      {usingFallback && (
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400 mb-2 flex items-center gap-1">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" /> Showing estimated plans — live pricing loads on purchase
+                        </p>
+                      )}
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {displayPlans.map(plan => {
+                          const priceUsd = plan.priceNgn / 1600;
+                          return (
+                            <button key={plan.variationId} onClick={() => setSelectedPlan(plan)}
+                              className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border-2 transition-all ${selectedPlan?.variationId === plan.variationId ? "border-tsia-green bg-green-50 dark:bg-green-900/20" : "border-border bg-card hover:border-tsia-green/40"}`}>
+                              <div className="text-left">
+                                <p className="font-bold text-sm">{plan.label}</p>
+                                <p className="text-xs text-muted-foreground">₦{plan.priceNgn.toLocaleString()}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-tsia-green">${priceUsd.toFixed(2)}</span>
+                                {selectedPlan?.variationId === plan.variationId && <CheckCircle2 className="w-4 h-4 text-tsia-green" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-4">No plans available for this network right now. Try again shortly.</p>
+                  );
+                })()}
               </div>
             )}
 
@@ -2694,10 +2758,10 @@ export default function FinancialHub() {
           {billStep === "details" ? (<>
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Platform</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
                 {BETTING_PLATFORMS.map(p => (
                   <button key={p.id} onClick={() => setSelectedPlatform(p.id)}
-                    className={`py-3.5 rounded-2xl font-bold text-sm transition-all ${p.color} ${p.text} ${selectedPlatform === p.id ? "ring-2 ring-offset-2 ring-tsia-green scale-105" : "opacity-70 hover:opacity-90"}`}
+                    className={`py-3 rounded-2xl font-bold text-xs transition-all ${p.color} ${p.text} ${selectedPlatform === p.id ? "ring-2 ring-offset-2 ring-tsia-green scale-105" : "opacity-70 hover:opacity-90"}`}
                     data-testid={`btn-betting-${p.id}`}>{p.label}</button>
                 ))}
               </div>

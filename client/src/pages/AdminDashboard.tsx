@@ -98,6 +98,7 @@ const NAV = [
   { id: "transactions",  icon: ArrowLeftRight, label: "Transactions" },
   { id: "ecommerce",     icon: ShoppingBag,    label: "TS-Mart Online Stores" },
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
+  { id: "trade_withdrawals", icon: ArrowUpRight, label: "Trade W/D" },
   { id: "deposits",      icon: Coins,          label: "Deposit History" },
   { id: "withdrawals",  icon: Banknote,       label: "Bank W/D",      badgeKey: "pendingWithdrawals" },
   { id: "crypto_withdrawals", icon: Coins,    label: "Crypto W/D",    badgeKey: "pendingCryptoWd" },
@@ -200,6 +201,7 @@ export default function AdminDashboard() {
   const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade", refetchInterval: 30_000, staleTime: 15_000 });
   const { data: tradeUsers = [] }          = useQuery<any[]>({ queryKey: ["/api/admin/trade-users"], enabled: activeTab === "trade", refetchInterval: 30_000 });
   const { data: tradeUserSessions = [] }   = useQuery<any[]>({ queryKey: ["/api/admin/trade-users", tradeExpandedUser, "sessions"], queryFn: async () => { if (!tradeExpandedUser) return []; const r = await fetch(`/api/admin/trade-users/${tradeExpandedUser}/sessions`, { credentials: "include" }); return r.json(); }, enabled: activeTab === "trade" && !!tradeExpandedUser });
+  const { data: tradeWithdrawals = [] }    = useQuery<any[]>({ queryKey: ["/api/admin/trade-withdrawals"], enabled: activeTab === "trade_withdrawals", refetchInterval: 30_000 });
   const { data: allDeposits = [] }         = useQuery({ queryKey: ["/api/admin/wallet-deposits"], enabled: activeTab === "deposits" });
   const { data: pendingBankTransfers = [], refetch: refetchBankTransfers } = useQuery<any[]>({ queryKey: ["/api/admin/pending-bank-transfers"], enabled: activeTab === "bank_transfers", refetchInterval: 30_000 });
   const { data: allMessages = [] }         = useQuery({ queryKey: ["/api/admin/messages"], enabled: activeTab === "messages" });
@@ -2496,6 +2498,64 @@ export default function AdminDashboard() {
                     </Dialog>
                   </>);
                 })()}
+              </motion.div>
+            )}
+
+            {/* ═══════════════════════════ TRADE WITHDRAWALS ═══════════════════════════ */}
+            {activeTab === "trade_withdrawals" && (
+              <motion.div key="trade_withdrawals" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: "Total Transfers", value: (tradeWithdrawals as any[]).length, color: "text-slate-700" },
+                    { label: "Total Withdrawn (gross)", value: `$${(tradeWithdrawals as any[]).reduce((s: number, r: any) => s + parseFloat(r.gross_usd ?? 0), 0).toFixed(2)}`, color: "text-blue-600" },
+                    { label: "Reserve Collected (20%)", value: `$${(tradeWithdrawals as any[]).reduce((s: number, r: any) => s + parseFloat(r.reserve_usd ?? 0), 0).toFixed(2)}`, color: "text-tsia-green" },
+                  ].map(s => (
+                    <Card key={s.label} className="p-3 text-center">
+                      <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+                    </Card>
+                  ))}
+                </div>
+
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <ArrowUpRight className="w-4 h-4 text-tsia-green" /> Trade → Fintech Wallet Transfers
+                    </CardTitle>
+                    <CardDescription>All Trade Market withdrawals transferred to users' Fintech (SwiftWallet) accounts. 80% is credited to the user; 20% goes to the strategic reserve.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {(tradeWithdrawals as any[]).length === 0 ? (
+                      <p className="text-center text-muted-foreground py-10 text-sm">No trade withdrawals yet.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50 dark:bg-slate-800/50 border-b">
+                            <tr>
+                              {["User", "Email", "Gross (USD)", "Reserve (20%)", "Net Credited", "Date"].map(h => (
+                                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {(tradeWithdrawals as any[]).map((row: any) => (
+                              <tr key={row.id} className="hover:bg-muted/30 transition-colors">
+                                <td className="px-4 py-3 font-semibold whitespace-nowrap">{row.user_name}</td>
+                                <td className="px-4 py-3 text-muted-foreground text-xs">{row.email}</td>
+                                <td className="px-4 py-3 font-bold text-blue-600">${parseFloat(row.gross_usd).toFixed(2)}</td>
+                                <td className="px-4 py-3 text-red-500 text-xs">−${parseFloat(row.reserve_usd).toFixed(2)}</td>
+                                <td className="px-4 py-3 font-bold text-tsia-green">${parseFloat(row.net_usd).toFixed(2)}</td>
+                                <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                                  {new Date(row.created_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </motion.div>
             )}
 

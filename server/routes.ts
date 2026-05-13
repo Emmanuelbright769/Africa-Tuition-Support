@@ -3438,6 +3438,35 @@ export async function registerRoutes(
     res.json(all);
   });
 
+  // ── Trade-to-Fintech-Wallet withdrawals for admin visibility ─────────────────
+  app.get("/api/admin/trade-withdrawals", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const rows = await db.execute(sql`
+        SELECT
+          tt.id,
+          tt.user_id,
+          u.first_name || ' ' || u.last_name AS user_name,
+          u.email,
+          CAST(tt.amount_usd AS numeric)       AS gross_usd,
+          CAST(tt.reserve_fund_deduction AS numeric) AS reserve_usd,
+          CAST(tt.net_amount AS numeric)       AS net_usd,
+          tt.note,
+          tt.created_at
+        FROM trade_transactions tt
+        JOIN users u ON u.id = tt.user_id
+        WHERE tt.type = 'withdraw_exchange'
+          AND tt.note LIKE 'Transferred to SwiftWallet%'
+        ORDER BY tt.created_at DESC
+        LIMIT 500
+      `);
+      res.json(rows.rows ?? rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/admin/process-disbursement/:disbursementId", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

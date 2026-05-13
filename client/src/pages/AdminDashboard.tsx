@@ -17,7 +17,7 @@ import {
   ChevronDown, Menu, X, Send, Eye, UserCheck, Clock, BadgeCheck, Package,
   Trash2, Edit, MessageSquare, Coins, PlusCircle, ShieldCheck, Award, ToggleLeft, ToggleRight, GitBranch,
   Banknote, Copy, Phone, ThumbsUp, ThumbsDown, Settings, Save, Percent,
-  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info, Mail, Film, RotateCcw, GraduationCap
+  LockOpen, Lock, UserPlus, Users2, CheckCheck, Info, Mail, Film, RotateCcw, GraduationCap, ArrowUpRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";

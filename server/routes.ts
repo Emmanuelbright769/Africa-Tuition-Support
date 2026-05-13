@@ -2736,9 +2736,15 @@ export async function registerRoutes(
 
   // ── 120-day cycle helpers ────────────────────────────────────────────────────
   const TRADE_CYCLE_DAYS = 120;
-  const TRADE_CYCLE_LOSS_DAYS = 16;
+  const TRADE_WEEK_DAYS  = 5;   // Mon–Fri trading days per week
+  const TRADE_WEEKS      = TRADE_CYCLE_DAYS / TRADE_WEEK_DAYS; // 24 weeks
+  const LOSS_DAYS_PER_WEEK = 2; // exactly 2 loss days every week
 
-  /** Generate 16 unique random loss day numbers (1–120) for a new trading cycle */
+  /**
+   * Generate the loss-day schedule for a new 120-day cycle.
+   * Each trading week (5 consecutive cycle days) gets exactly 2 random loss days
+   * and 3 profit days — guaranteeing the 2-loss / 3-profit weekly pattern.
+   */
   /** Returns true if current London time is Monday–Friday (any hour). */
   function isWeekdayLondon(): boolean {
     const londonDay = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" })).getDay();
@@ -2796,12 +2802,19 @@ export async function registerRoutes(
   }
 
   function generateLossDays(): number[] {
-    const pool = Array.from({ length: TRADE_CYCLE_DAYS }, (_, i) => i + 1); // [1..120]
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
+    const lossDays: number[] = [];
+    for (let week = 0; week < TRADE_WEEKS; week++) {
+      // Days in this week (1-indexed cycle days): e.g. week 0 → [1,2,3,4,5]
+      const weekStart = week * TRADE_WEEK_DAYS + 1;
+      const weekDays  = Array.from({ length: TRADE_WEEK_DAYS }, (_, i) => weekStart + i);
+      // Fisher-Yates shuffle the 5-day pool, then take the first 2 as loss days
+      for (let i = weekDays.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [weekDays[i], weekDays[j]] = [weekDays[j], weekDays[i]];
+      }
+      lossDays.push(...weekDays.slice(0, LOSS_DAYS_PER_WEEK));
     }
-    return pool.slice(0, TRADE_CYCLE_LOSS_DAYS).sort((a, b) => a - b);
+    return lossDays.sort((a, b) => a - b);
   }
 
   /** Loss rate for a given day: deterministic 0.5%–2.0% based on day number */

@@ -827,7 +827,8 @@ export async function sendNewArrivalEmail(
   const capCat = (c: string) => c.charAt(0).toUpperCase() + c.slice(1).replace(/-/g, " ");
 
   // ── Featured product hero image ───────────────────────────────────────────
-  const heroImg = (newProduct.images ?? []).filter(Boolean)[0];
+  // Email clients block base64 data URIs — only use proper http(s) URLs
+  const heroImg = (newProduct.images ?? []).filter(img => img && img.startsWith("http"))[0];
   const heroBlock = heroImg
     ? `<tr>
         <td style="padding:0;line-height:0;">
@@ -906,7 +907,7 @@ export async function sendNewArrivalEmail(
 
   // ── Product grid (3 columns, up to 2 rows = 6 products) ──────────────────
   function productCell(p: NewArrivalProduct): string {
-    const img = (p.images ?? []).filter(Boolean)[0];
+    const img = (p.images ?? []).filter(img => img && img.startsWith("http"))[0];
     const imgBlock = img
       ? `<img src="${img}" alt="${cap(p.title, 40)}" width="160" height="160"
             style="width:160px;height:160px;object-fit:cover;border-radius:10px;display:block;" />`

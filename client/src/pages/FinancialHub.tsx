@@ -530,6 +530,7 @@ export default function FinancialHub() {
   }>({ queryKey: ["/api/wallet/balances"], staleTime: 30_000 });
 
   const bookBalance   = parseFloat(balances?.bookBalance   ?? "0");
+  const lockedBalance = parseFloat(balances?.lockedBalance  ?? "0");
   const pendingAmount = parseFloat(balances?.pendingAmount  ?? "0");
 
   // ── Squad: load widget script ─────────────────────────────────────────────
@@ -1051,7 +1052,10 @@ export default function FinancialHub() {
               <div className="flex items-center gap-1.5 mb-2" data-testid="text-ledger-balance">
                 <BookMarked className="w-3 h-3 text-amber-300/90" />
                 <p className="text-amber-300/90 text-[11px] font-semibold">
-                  Ledger balance: ${bookBalance.toFixed(2)}
+                  Ledger: ${bookBalance.toFixed(2)}
+                  {lockedBalance > 0 && (
+                    <span className="text-amber-300/60 font-medium"> · 🔒 ${lockedBalance.toFixed(2)} reserve</span>
+                  )}
                   {pendingAmount > 0 && (
                     <span className="text-amber-300/70 font-medium"> · +${pendingAmount.toFixed(2)} pending</span>
                   )}
@@ -2541,7 +2545,11 @@ export default function FinancialHub() {
               <div className="text-right"><p className="text-xs text-muted-foreground">{selectedDisco?.label}</p><p className="text-xs text-muted-foreground capitalize">{meterType}</p></div>
             </div>
 
-            <div className="text-center py-1"><div className="text-5xl font-black">${fmt(amount)}</div><p className="text-xs text-muted-foreground mt-1">Balance: ${balance.toFixed(2)}</p></div>
+            <div className="text-center py-1">
+              <div className="text-5xl font-black">${fmt(amount)}</div>
+              <p className="text-xs text-tsia-green font-semibold mt-0.5">≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Balance: ${balance.toFixed(2)}</p>
+            </div>
 
             <div className="grid grid-cols-4 gap-2">
               {["5","10","20","50"].map(v => (
@@ -2668,6 +2676,7 @@ export default function FinancialHub() {
               <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedISP?.toUpperCase()} Data</p>
               <p className="text-4xl font-black text-blue-700">{selectedPlan?.label}</p>
               <p className="text-2xl font-black text-tsia-green mt-2">${fmt(amount)}</p>
+              <p className="text-xs text-tsia-green font-semibold mt-0.5">≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code}</p>
               <p className="text-xs text-muted-foreground mt-1 font-mono">{billRef}</p>
             </div>
 
@@ -2727,7 +2736,11 @@ export default function FinancialHub() {
               <div><p className="text-xs text-muted-foreground">Phone</p><p className="font-bold font-mono">{billRef}</p></div>
               <div className="text-right"><p className="text-xs text-muted-foreground">Network</p><p className="font-bold uppercase">{selectedNetwork}</p></div>
             </div>
-            <div className="text-center py-1"><div className="text-5xl font-black">${fmt(amount)}</div><p className="text-xs text-muted-foreground mt-1">Balance: ${balance.toFixed(2)}</p></div>
+            <div className="text-center py-1">
+              <div className="text-5xl font-black">${fmt(amount)}</div>
+              <p className="text-xs text-tsia-green font-semibold mt-0.5">≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Balance: ${balance.toFixed(2)}</p>
+            </div>
             <div className="grid grid-cols-4 gap-2">
               {["1","2","5","10"].map(v => (
                 <button key={v} onClick={() => setAmount(v)}
@@ -2791,7 +2804,11 @@ export default function FinancialHub() {
               <div><p className="text-xs text-muted-foreground">User ID</p><p className="font-bold">{billRef}</p></div>
               <div className="text-right"><p className="text-xs text-muted-foreground">Platform</p><p className="font-bold capitalize">{selectedPlatform}</p></div>
             </div>
-            <div className="text-center py-1"><div className="text-5xl font-black">${fmt(amount)}</div><p className="text-xs text-muted-foreground mt-1">Balance: ${balance.toFixed(2)}</p></div>
+            <div className="text-center py-1">
+              <div className="text-5xl font-black">${fmt(amount)}</div>
+              <p className="text-xs text-tsia-green font-semibold mt-0.5">≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Balance: ${balance.toFixed(2)}</p>
+            </div>
             <div className="grid grid-cols-4 gap-2">
               {["5","10","20","50"].map(v => (
                 <button key={v} onClick={() => setAmount(v)}
@@ -2903,6 +2920,7 @@ export default function FinancialHub() {
               <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedTvProvider?.label}</p>
               <p className="text-4xl font-black text-rose-700">{selectedTvPackage?.label}</p>
               <p className="text-2xl font-black text-tsia-green mt-2">${fmt(amount)}</p>
+              <p className="text-xs text-tsia-green font-semibold mt-0.5">≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code}</p>
               <p className="text-xs text-muted-foreground mt-1 font-mono">Smartcard: {billRef}</p>
             </div>
             <div className="flex gap-3">

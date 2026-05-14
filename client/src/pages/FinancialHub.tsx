@@ -1052,10 +1052,7 @@ export default function FinancialHub() {
               <div className="flex items-center gap-1.5 mb-2" data-testid="text-ledger-balance">
                 <BookMarked className="w-3 h-3 text-amber-300/90" />
                 <p className="text-amber-300/90 text-[11px] font-semibold">
-                  Ledger: ${bookBalance.toFixed(2)}
-                  {lockedBalance > 0 && (
-                    <span className="text-amber-300/60 font-medium"> · 🔒 ${lockedBalance.toFixed(2)} reserve</span>
-                  )}
+                  🔒 Ledger: ${lockedBalance.toFixed(2)} reserve
                   {pendingAmount > 0 && (
                     <span className="text-amber-300/70 font-medium"> · +${pendingAmount.toFixed(2)} pending</span>
                   )}

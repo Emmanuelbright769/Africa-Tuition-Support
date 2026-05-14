@@ -67,7 +67,9 @@ export interface IStorage {
   updateUserCountry(userId: number, country: string): Promise<void>;
   updateUserActiveSession(userId: number, sessionId: string | null): Promise<void>;
   updateUserPassword(userId: number, passwordHash: string): Promise<void>;
+  updateUserEmail(userId: number, email: string): Promise<void>;
   updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; phone?: string }): Promise<void>;
+  updateUserProfileAdmin(userId: number, updates: { email?: string; firstName?: string; lastName?: string; passwordHash?: string }): Promise<void>;
   setWalletFundDeadline(userId: number, deadline: Date | null): Promise<void>;
   getStudentsPastFundDeadline(): Promise<User[]>;
   resetStudentEnrollment(userId: number): Promise<void>;
@@ -488,6 +490,21 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserPassword(userId: number, passwordHash: string): Promise<void> {
     await db.update(users).set({ password: passwordHash }).where(eq(users.id, userId));
+  }
+
+  async updateUserEmail(userId: number, email: string): Promise<void> {
+    await db.update(users).set({ email }).where(eq(users.id, userId));
+  }
+
+  async updateUserProfileAdmin(userId: number, updates: { email?: string; firstName?: string; lastName?: string; passwordHash?: string }): Promise<void> {
+    const fields: Record<string, any> = {};
+    if (updates.email) fields.email = updates.email;
+    if (updates.firstName) fields.firstName = updates.firstName;
+    if (updates.lastName) fields.lastName = updates.lastName;
+    if (updates.passwordHash) fields.password = updates.passwordHash;
+    if (Object.keys(fields).length > 0) {
+      await db.update(users).set(fields).where(eq(users.id, userId));
+    }
   }
 
   async updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; phone?: string }): Promise<void> {

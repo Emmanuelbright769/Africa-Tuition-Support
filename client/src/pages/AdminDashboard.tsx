@@ -143,6 +143,11 @@ export default function AdminDashboard() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
   const [deleteUserDialog, setDeleteUserDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
+  const [editUserDialog, setEditUserDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
+  const [editUserEmail, setEditUserEmail] = useState("");
+  const [editUserFirst, setEditUserFirst] = useState("");
+  const [editUserLast, setEditUserLast] = useState("");
+  const [editUserPassword, setEditUserPassword] = useState("");
   const [setReferrerDialog, setSetReferrerDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [referrerCode, setReferrerCode] = useState("");
   const [manualCreditOpen, setManualCreditOpen] = useState(false);
@@ -413,6 +418,22 @@ export default function AdminDashboard() {
       setSetReferrerDialog({ open: false, user: null });
       setReferrerCode("");
       toast({ title: "Referral Source Set", description: data.message });
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
+  });
+
+  const editUserMutation = useMutation({
+    mutationFn: async ({ id, email, firstName, lastName, newPassword }: { id: number; email?: string; firstName?: string; lastName?: string; newPassword?: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${id}/account`, { email, firstName, lastName, newPassword });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to update user");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
+      setEditUserDialog({ open: false, user: null });
+      setEditUserEmail(""); setEditUserFirst(""); setEditUserLast(""); setEditUserPassword("");
+      toast({ title: "User Updated ✓", description: "Account details have been changed." });
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
   });
@@ -1288,6 +1309,9 @@ export default function AdminDashboard() {
                               <div className="flex items-center justify-end gap-1">
                                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setNotifyTarget(u); setNotifyDialog(true); }} data-testid={`button-notify-user-${u.id}`}>
                                   <Bell className="w-3 h-3 mr-1" /> Notify
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-green-600 border-green-200 hover:bg-green-50" onClick={() => { setEditUserDialog({ open: true, user: u }); setEditUserEmail(u.email || ""); setEditUserFirst(u.firstName || ""); setEditUserLast(u.lastName || ""); setEditUserPassword(""); }} data-testid={`button-edit-user-${u.id}`}>
+                                  <Edit className="w-3 h-3 mr-1" /> Edit
                                 </Button>
                                 <Button size="sm" variant="outline" className="h-7 text-xs text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => { setEditBalanceDialog({ open: true, user: u }); setEditBalanceAmount(u.wallet?.balance || "0"); setEditBalanceNote(""); }} data-testid={`button-edit-wallet-${u.id}`}>
                                   <Edit className="w-3 h-3 mr-1" /> Wallet
@@ -4130,6 +4154,59 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => { setCreditAffiliateDialog({ open: false, affiliate: null }); setCreditAmount(""); setCreditNote(""); }}>Cancel</Button>
             <Button className="bg-tsia-green hover:bg-tsia-green/90" disabled={!creditAmount || parseFloat(creditAmount) <= 0 || creditAffiliateMutation.isPending} onClick={() => creditAffiliateMutation.mutate({ id: creditAffiliateDialog.affiliate?.id, amount: creditAmount, note: creditNote })} data-testid="button-confirm-credit">
               {creditAffiliateMutation.isPending ? "Crediting..." : <><PlusCircle className="w-4 h-4 mr-2" /> Credit Wallet</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit user account dialog */}
+      <Dialog open={editUserDialog.open} onOpenChange={open => { if (!open) { setEditUserDialog({ open: false, user: null }); setEditUserEmail(""); setEditUserFirst(""); setEditUserLast(""); setEditUserPassword(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User Account</DialogTitle>
+            <DialogDescription>Update the user's name, email, or set a new password. Leave fields unchanged to keep their current values.</DialogDescription>
+          </DialogHeader>
+          {editUserDialog.user && (
+            <div className="space-y-4 py-2">
+              <div className="bg-slate-50 border rounded-xl p-3 text-sm">
+                <strong>{editUserDialog.user.firstName} {editUserDialog.user.lastName}</strong>
+                <p className="text-slate-500 text-xs mt-0.5">{editUserDialog.user.email} · <span className="capitalize">{editUserDialog.user.role}</span></p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="font-semibold text-sm">First Name</Label>
+                  <Input placeholder="First name" className="h-10 bg-muted/30" value={editUserFirst} onChange={e => setEditUserFirst(e.target.value)} data-testid="input-edit-user-first" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="font-semibold text-sm">Last Name</Label>
+                  <Input placeholder="Last name" className="h-10 bg-muted/30" value={editUserLast} onChange={e => setEditUserLast(e.target.value)} data-testid="input-edit-user-last" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-sm">Email Address</Label>
+                <Input type="email" placeholder="user@email.com" className="h-10 bg-muted/30" value={editUserEmail} onChange={e => setEditUserEmail(e.target.value)} data-testid="input-edit-user-email" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-sm">New Password <span className="text-slate-400 font-normal text-xs">(leave blank to keep unchanged)</span></Label>
+                <Input type="password" placeholder="Min. 8 characters" className="h-10 bg-muted/30" value={editUserPassword} onChange={e => setEditUserPassword(e.target.value)} data-testid="input-edit-user-password" />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setEditUserDialog({ open: false, user: null }); setEditUserEmail(""); setEditUserFirst(""); setEditUserLast(""); setEditUserPassword(""); }}>Cancel</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              disabled={editUserMutation.isPending}
+              onClick={() => editUserMutation.mutate({
+                id: editUserDialog.user?.id,
+                email: editUserEmail || undefined,
+                firstName: editUserFirst || undefined,
+                lastName: editUserLast || undefined,
+                newPassword: editUserPassword || undefined,
+              })}
+              data-testid="button-confirm-edit-user"
+            >
+              {editUserMutation.isPending ? "Saving..." : <><Edit className="w-4 h-4 mr-2" /> Save Changes</>}
             </Button>
           </DialogFooter>
         </DialogContent>

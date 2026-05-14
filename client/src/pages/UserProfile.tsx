@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { queryClient } from "@/lib/queryClient";
 
 type SecurityStep = "idle" | "sending" | "otp" | "newpass" | "saving";
+type EmailStep = "idle" | "sending" | "otp" | "newemail" | "saving";
 
 export default function UserProfile() {
   const { user } = useAuth();
@@ -29,6 +30,11 @@ export default function UserProfile() {
   const [editLast, setEditLast] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [savingInfo, setSavingInfo] = useState(false);
+
+  /* ─── Change email ─── */
+  const [emailStep, setEmailStep] = useState<EmailStep>("idle");
+  const [emailOtpDigits, setEmailOtpDigits] = useState(["", "", "", "", "", ""]);
+  const [newEmail, setNewEmail] = useState("");
 
   /* ─── Security / change password ─── */
   const [secStep, setSecStep] = useState<SecurityStep>("idle");
@@ -79,6 +85,67 @@ export default function UserProfile() {
     } finally {
       setSavingInfo(false);
     }
+  };
+
+  /* ─── Email change handlers ─── */
+  const handleRequestEmailOtp = async () => {
+    setEmailStep("sending");
+    try {
+      const res = await apiRequest("POST", "/api/auth/request-email-change-otp", {});
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      setEmailOtpDigits(["", "", "", "", "", ""]);
+      setEmailStep("otp");
+      toast({ title: "Code sent", description: "Enter the 6-digit code sent to your current email." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+      setEmailStep("idle");
+    }
+  };
+
+  const handleEmailOtpChange = (i: number, v: string) => {
+    if (v.length > 1) v = v.slice(-1);
+    if (v && !/^\d$/.test(v)) return;
+    const d = [...emailOtpDigits]; d[i] = v; setEmailOtpDigits(d);
+    if (v && i < 5) (document.getElementById(`email-otp-${i + 1}`) as HTMLInputElement)?.focus();
+  };
+
+  const handleEmailOtpKeyDown = (i: number, e: React.KeyboardEvent) => {
+    if (e.key === "Backspace" && !emailOtpDigits[i] && i > 0)
+      (document.getElementById(`email-otp-${i - 1}`) as HTMLInputElement)?.focus();
+  };
+
+  const handleEmailOtpContinue = () => {
+    if (emailOtpDigits.join("").length !== 6) return;
+    setNewEmail("");
+    setEmailStep("newemail");
+  };
+
+  const handleChangeEmail = async () => {
+    const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRx.test(newEmail.trim())) {
+      toast({ title: "Invalid email", description: "Please enter a valid email address.", variant: "destructive" });
+      return;
+    }
+    setEmailStep("saving");
+    try {
+      const res = await apiRequest("POST", "/api/auth/change-email", {
+        otpCode: emailOtpDigits.join(""),
+        newEmail: newEmail.trim(),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to change email"); }
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "Email updated!", description: "Your email address has been changed." });
+      setEmailStep("idle");
+      setEmailOtpDigits(["", "", "", "", "", ""]); setNewEmail("");
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+      setEmailStep("newemail");
+    }
+  };
+
+  const resetEmailFlow = () => {
+    setEmailStep("idle");
+    setEmailOtpDigits(["", "", "", "", "", ""]); setNewEmail("");
   };
 
   /* ─── Request OTP for password change ─── */
@@ -233,7 +300,7 @@ export default function UserProfile() {
                       placeholder="+234 800 000 0000" className="h-10 bg-muted/30" data-testid="input-edit-phone" />
                   </div>
                   <p className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-2.5">
-                    Email address and country cannot be changed from here. Contact support if needed.
+                    To change your email address, use the <strong>Email Address</strong> card below.
                   </p>
                   <div className="flex gap-2 pt-1">
                     <Button variant="outline" size="sm" onClick={cancelEdit} disabled={savingInfo} data-testid="button-cancel-edit">
@@ -244,6 +311,101 @@ export default function UserProfile() {
                       {savingInfo ? "Saving…" : <><Save className="w-4 h-4 mr-1" /> Save Changes</>}
                     </Button>
                   </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </CardContent>
+        </Card>
+
+        {/* ── Change Email Card ── */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Email Address</CardTitle>
+                <CardDescription className="text-xs">Change your sign-in email</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 border">
+              <Mail className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate" data-testid="text-current-email">{user.email}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Current email — used for sign-in and notifications</p>
+              </div>
+            </div>
+            <AnimatePresence mode="wait">
+              {emailStep === "idle" && (
+                <motion.div key="email-idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <Button variant="outline" onClick={handleRequestEmailOtp} data-testid="button-change-email" className="w-full h-10">
+                    <Mail className="w-4 h-4 mr-2" /> Change Email Address
+                  </Button>
+                </motion.div>
+              )}
+              {emailStep === "sending" && (
+                <motion.div key="email-sending" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-4">
+                  <p className="text-sm text-muted-foreground">Sending verification code…</p>
+                </motion.div>
+              )}
+              {emailStep === "otp" && (
+                <motion.div key="email-otp" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium mb-1">Verify it's you</p>
+                    <p className="text-xs text-muted-foreground">Enter the 6-digit code sent to <strong>{user.email}</strong></p>
+                  </div>
+                  <div className="flex justify-center gap-2">
+                    {emailOtpDigits.map((d, i) => (
+                      <Input key={i} id={`email-otp-${i}`}
+                        className="w-11 h-13 text-center text-lg font-bold bg-muted/30 focus:bg-background"
+                        maxLength={1} value={d}
+                        onChange={e => handleEmailOtpChange(i, e.target.value)}
+                        onKeyDown={e => handleEmailOtpKeyDown(i, e)}
+                        data-testid={`input-email-otp-${i}`} />
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={resetEmailFlow} data-testid="button-cancel-email-otp">Cancel</Button>
+                    <Button size="sm" onClick={handleEmailOtpContinue} disabled={emailOtpDigits.join("").length !== 6}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700" data-testid="button-email-otp-continue">
+                      Continue
+                    </Button>
+                  </div>
+                  <button type="button" className="text-xs text-primary hover:underline w-full text-center"
+                    onClick={handleRequestEmailOtp}>Resend code</button>
+                </motion.div>
+              )}
+              {emailStep === "newemail" && (
+                <motion.div key="email-newemail" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-email">New Email Address</Label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input id="new-email" type="email" value={newEmail}
+                        onChange={e => setNewEmail(e.target.value)}
+                        placeholder="your@newemail.com"
+                        className="h-10 pl-9 bg-muted/30" data-testid="input-new-email" />
+                    </div>
+                  </div>
+                  {newEmail.trim() && newEmail.trim() === user.email && (
+                    <p className="text-xs text-amber-600">That's already your current email.</p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={resetEmailFlow} data-testid="button-cancel-new-email">Cancel</Button>
+                    <Button size="sm" onClick={handleChangeEmail}
+                      disabled={!newEmail.trim() || newEmail.trim() === user.email}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700" data-testid="button-save-new-email">
+                      Update Email
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+              {emailStep === "saving" && (
+                <motion.div key="email-saving" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-4">
+                  <p className="text-sm text-muted-foreground">Updating your email…</p>
                 </motion.div>
               )}
             </AnimatePresence>

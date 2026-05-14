@@ -440,6 +440,43 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Request OTP for email change ────────────────────────────────────────────
+  app.post("/api/auth/request-email-change-otp", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const code = generateOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await storage.createOtp({ email: user.email, code, expiresAt, used: false });
+      console.log(`[OTP] Email change code for ${user.email}: ${code}`);
+      sendOtpEmail(user.email, code, false).catch(() => {});
+      res.json({ message: "OTP sent to your current email", otpSent: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Change email (requires valid OTP, new email must be free) ───────────────
+  app.post("/api/auth/change-email", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { otpCode, newEmail } = req.body;
+      if (!otpCode || !newEmail) return res.status(400).json({ message: "OTP and new email are required" });
+      const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRx.test(newEmail.trim())) return res.status(400).json({ message: "Invalid email address" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const otp = await storage.getValidOtp(user.email, otpCode.trim());
+      if (!otp) return res.status(401).json({ message: "Invalid or expired OTP code" });
+      const existing = await storage.getUserByEmail(newEmail.trim().toLowerCase());
+      if (existing && existing.id !== userId) return res.status(409).json({ message: "That email is already in use by another account" });
+      await storage.markOtpUsed(otp.id);
+      await storage.updateUserEmail(userId, newEmail.trim().toLowerCase());
+      res.json({ message: "Email updated successfully" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── User profile ────────────────────────────────────────────────────────────
   app.get("/api/user/profile", async (req, res) => {
     try {
@@ -3983,6 +4020,35 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Edit user account (email, name, password) ───────────────────────
+  app.patch("/api/admin/users/:id/account", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const targetId = parseInt(req.params.id);
+      if (isNaN(targetId)) return res.status(400).json({ message: "Invalid id" });
+      const { email, firstName, lastName, newPassword } = req.body;
+      if (email) {
+        const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRx.test(email.trim())) return res.status(400).json({ message: "Invalid email address" });
+        const existing = await storage.getUserByEmail(email.trim().toLowerCase());
+        if (existing && existing.id !== targetId) return res.status(409).json({ message: "That email is already in use by another account" });
+      }
+      if (newPassword && newPassword.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
+      await storage.updateUserProfileAdmin(targetId, {
+        ...(email ? { email: email.trim().toLowerCase() } : {}),
+        ...(firstName ? { firstName: firstName.trim() } : {}),
+        ...(lastName ? { lastName: lastName.trim() } : {}),
+        ...(newPassword ? { passwordHash: hashPassword(newPassword) } : {}),
+      });
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── ADMIN: Delete user by ID (admin-only) ──────────────────────────────────
   app.delete("/api/admin/users/:id", async (req, res) => {
     try {
@@ -7161,16 +7227,7 @@ export async function registerRoutes(
       setImmediate(async () => {
         try {
           const cat = prod.category || "other";
-          const [allUsers, recentProducts] = await Promise.all([
-            db.select({ id: users.id, email: users.email, firstName: users.firstName }).from(users),
-            storage.getProducts({ status: "active" }),
-          ]);
-          // Other recently listed products to fill the email grid (exclude the new one)
-          const otherProducts = recentProducts
-            .filter(p => p.id !== prod.id)
-            .slice(0, 6)
-            .map(p => ({ id: p.id, title: p.title, price: p.price, category: p.category, images: (p.images ?? []) as string[], condition: p.condition, location: p.location }));
-          const newProductData = { id: prod.id, title: prod.title, price: prod.price, category: cat, images: (prod.images ?? []) as string[], condition: prod.condition, location: prod.location };
+          const allUsers = await db.select({ id: users.id, email: users.email, firstName: users.firstName }).from(users);
           for (const u of allUsers) {
             if (u.id === userId) continue;
             try {
@@ -7182,7 +7239,6 @@ export async function registerRoutes(
                 relatedId: prod.id,
               });
               pushToUser(u.id, "notification", notif);
-              sendNewArrivalEmail(u.email, u.firstName, newProductData, otherProducts).catch((err: any) => console.error("[EMAIL] TS-Mart new listing email failed:", err?.message ?? err));
             } catch (_) {}
           }
         } catch (err: any) { console.error("[TS-MART] Broadcast notification error:", err?.message ?? err); }
@@ -8511,6 +8567,57 @@ export async function registerRoutes(
   setTimeout(() => runDepositReverify(), 15_000); // 15 s delay to let server fully init
   setInterval(runDepositReverify, 2 * 60 * 1000);
   console.log("[DEPOSIT-REVERIFY] Background re-verify job started — checks pending fiat deposits every 2 min (first run in 15 s)");
+
+  // ── Weekly TS-Mart digest — every Monday at 08:00 WAT (UTC+1) ───────────────
+  async function sendWeeklyMartDigest() {
+    try {
+      console.log("[TS-MART-DIGEST] Running weekly digest job…");
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const allProducts = await storage.getProducts({ status: "active" });
+      const newListings = allProducts.filter(p => p.createdAt && new Date(p.createdAt) >= since);
+      if (newListings.length === 0) {
+        console.log("[TS-MART-DIGEST] No new listings this week — skipping digest.");
+        return;
+      }
+      const digestProducts = newListings.slice(0, 9).map(p => ({
+        id: p.id, title: p.title, price: p.price,
+        category: p.category, images: (p.images ?? []) as string[],
+        condition: p.condition, location: p.location,
+      }));
+      const featured = digestProducts[0];
+      const rest = digestProducts.slice(1);
+      const allUsers = await db.select({ id: users.id, email: users.email, firstName: users.firstName }).from(users);
+      let sent = 0;
+      for (const u of allUsers) {
+        try {
+          sendNewArrivalEmail(u.email, u.firstName, featured, rest).catch(() => {});
+          sent++;
+        } catch (_) {}
+      }
+      console.log(`[TS-MART-DIGEST] Weekly digest sent to ${sent} users (${newListings.length} new listings).`);
+    } catch (err: any) {
+      console.error("[TS-MART-DIGEST] Error:", err.message ?? err);
+    }
+  }
+
+  function msUntilNextMondayAt8WAT() {
+    // WAT = UTC+1
+    const now = new Date();
+    const nowWAT = new Date(now.getTime() + 60 * 60 * 1000); // shift to WAT
+    const day = nowWAT.getUTCDay(); // 0=Sun,1=Mon,...
+    const daysUntilMonday = day === 1 ? 7 : (8 - day) % 7 || 7;
+    const nextMonday = new Date(nowWAT);
+    nextMonday.setUTCDate(nowWAT.getUTCDate() + daysUntilMonday);
+    nextMonday.setUTCHours(7, 0, 0, 0); // 07:00 UTC = 08:00 WAT
+    return nextMonday.getTime() - now.getTime();
+  }
+
+  const msToFirst = msUntilNextMondayAt8WAT();
+  setTimeout(() => {
+    sendWeeklyMartDigest();
+    setInterval(sendWeeklyMartDigest, 7 * 24 * 60 * 60 * 1000);
+  }, msToFirst);
+  console.log(`[TS-MART-DIGEST] Weekly digest scheduled — first run in ${Math.round(msToFirst / 3600000)}h.`);
 
   return httpServer;
 }

@@ -1096,27 +1096,6 @@ export default function FinancialHub() {
         ))}
       </div>
 
-      {/* Recent Recipients */}
-      {recentRecipients.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-sm">Recent</h3>
-            <button className="text-xs text-tsia-green font-semibold flex items-center gap-0.5">View all <ChevronRight className="w-3 h-3" /></button>
-          </div>
-          <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
-            {recentRecipients.map((t, i) => (
-              <button key={t.recipientId} onClick={() => { resetSend(); setSendMode("tsia"); setTsiaUser({ id: t.recipientId, firstName: t.recipientName?.split(" ")[0] || "User", lastName: t.recipientName?.split(" ")[1] || "", email: "" }); setView("tsia-amount"); }}
-                className="flex flex-col items-center gap-1.5 shrink-0">
-                <div className={`w-14 h-14 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold text-xl ring-2 ring-offset-2 ring-tsia-green/30`}>
-                  {(t.recipientName ?? "?")[0].toUpperCase()}
-                </div>
-                <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[56px]">{t.recipientName?.split(" ")[0]}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Services */}
       <div>
         <h3 className="font-bold text-sm mb-3">Quick Services</h3>
@@ -1231,6 +1210,27 @@ export default function FinancialHub() {
           </div>
         )}
       </div>
+
+      {/* Recent Recipients */}
+      {recentRecipients.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-sm">Recent</h3>
+            <button className="text-xs text-tsia-green font-semibold flex items-center gap-0.5">View all <ChevronRight className="w-3 h-3" /></button>
+          </div>
+          <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
+            {recentRecipients.map((t, i) => (
+              <button key={t.recipientId} onClick={() => { resetSend(); setSendMode("tsia"); setTsiaUser({ id: t.recipientId, firstName: t.recipientName?.split(" ")[0] || "User", lastName: t.recipientName?.split(" ")[1] || "", email: "" }); setView("tsia-amount"); }}
+                className="flex flex-col items-center gap-1.5 shrink-0">
+                <div className={`w-14 h-14 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold text-xl ring-2 ring-offset-2 ring-tsia-green/30`}>
+                  {(t.recipientName ?? "?")[0].toUpperCase()}
+                </div>
+                <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[56px]">{t.recipientName?.split(" ")[0]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* History */}
       <div>

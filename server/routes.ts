@@ -6288,21 +6288,7 @@ export async function registerRoutes(
       const senderName = `${sender?.firstName ?? "A member"} ${sender?.lastName ?? ""}`.trim();
       const recipientFullName = `${recipient.firstName} ${recipient.lastName}`;
 
-      // Email receipt to sender (debit receipt)
-      if (sender) {
-        sendWalletSentEmail(
-          sender.email,
-          sender.firstName,
-          amount.toFixed(2),
-          recipientFullName,
-          senderNewBalance,
-          txRef,
-          txDate,
-          note ?? undefined,
-        ).catch((err: any) => console.error("[EMAIL] Wallet sent email failed:", err?.message ?? err));
-      }
-
-      // Email notification to recipient (credit alert)
+      // Email notification to recipient (credit alert) — no debit receipt to sender
       sendWalletReceivedEmail(
         recipient.email,
         recipient.firstName,
@@ -6470,26 +6456,9 @@ export async function registerRoutes(
       invalidateCacheKey(`transactions:${userId}`);
       invalidateCacheKey(`wallet_bills:${userId}`);
 
-      // Send pending-confirmation email in background
+      // No email to sender on bank transfers — only notify admin
       storage.getUser(userId).then(u => {
         if (!u) return;
-        sendTransactionReceiptEmail(u.email, u.firstName, {
-          title: "Bank Transfer Pending",
-          status: "pending",
-          amount: `₦${netAmountNgn.toLocaleString()}`,
-          amountLabel: `$${transferAmount.toFixed(2)}`,
-          reference: txRef,
-          rows: [
-            { label: "Recipient",       value: accountName },
-            { label: "Account Number",  value: accountNumber, mono: true },
-            { label: "Bank",            value: bankName || bankCode },
-            { label: "Amount (NGN)",    value: `₦${netAmountNgn.toLocaleString()}`, color: "green" },
-            { label: "Amount (USD)",    value: `$${transferAmount.toFixed(2)}` },
-            { label: "VAT (7.5%)",      value: `$${vatAmount.toFixed(2)}` },
-            { label: "Status",          value: "Pending admin approval", color: "orange" },
-            ...(narration ? [{ label: "Narration", value: narration }] : []),
-          ],
-        }).catch(() => {});
 
         // Notify admin so the transfer is attended to promptly
         sendAdminBankTransferEmail({

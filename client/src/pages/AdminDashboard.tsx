@@ -2571,7 +2571,7 @@ export default function AdminDashboard() {
                     <CardTitle className="text-base flex items-center gap-2">
                       <ArrowUpRight className="w-4 h-4 text-tsia-green" /> Trade → Fintech Wallet Transfers
                     </CardTitle>
-                    <CardDescription>All Trade Market withdrawals transferred to users' Fintech (SwiftWallet) accounts. 80% is credited to the user; 20% goes to the strategic reserve.</CardDescription>
+                    <CardDescription>All Trade Market earnings transferred to users' Fintech (SwiftWallet) accounts. Full amount is credited — no fee on wallet-to-wallet transfers.</CardDescription>
                   </CardHeader>
                   <CardContent className="p-0">
                     {(tradeWithdrawals as any[]).length === 0 ? (

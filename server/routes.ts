@@ -2644,31 +2644,27 @@ export async function registerRoutes(
         }
         return res.status(400).json({ message: `Insufficient trade balance. Available: $${twWithdrawable.toFixed(2)}` });
       }
-      // 20% reserve deduction on trade→Fintech transfer; no affiliate pool
-      const twReserveCut  = parseFloat((amount * 0.20).toFixed(2));
-      const twUserCredit  = parseFloat((amount * 0.80).toFixed(2));
-
+      // Wallet-to-wallet: no reserve deduction — full amount credited
+      // (Reserve/fees only apply on bank and crypto withdrawals)
       // Deduct full amount from trade wallet
       await storage.updateTradeBalance(userId, (-amount).toFixed(6));
       await storage.createTradeTransaction({
         userId, type: "withdraw_exchange", walletType: null,
         amountUsd: amount.toFixed(6), feeUsd: "0.000000",
-        reserveFundDeduction: twReserveCut.toFixed(6), affiliateShareDeduction: "0.000000",
-        netAmount: twUserCredit.toFixed(6), txHash: null, status: "completed",
-        note: `Transferred to SwiftWallet — 20% reserve ($${twReserveCut.toFixed(2)}), 80% credited ($${twUserCredit.toFixed(2)})`,
+        reserveFundDeduction: "0.000000", affiliateShareDeduction: "0.000000",
+        netAmount: amount.toFixed(6), txHash: null, status: "completed",
+        note: `Transferred to SwiftWallet — full amount credited ($${amount.toFixed(2)}, no fee)`,
       });
-      // Route reserve cut to reserve fund
-      await storage.addToReserveFund(twReserveCut.toFixed(2));
-      // Credit 80% to personal wallet
+      // Credit full amount to personal wallet
       const personalWallet = await storage.getOrCreateWallet(userId);
-      const newPersonalBal = (parseFloat(personalWallet.balance) + twUserCredit).toFixed(2);
+      const newPersonalBal = (parseFloat(personalWallet.balance) + amount).toFixed(2);
       await storage.updateWalletBalance(userId, newPersonalBal);
       if (!personalWallet.activated && parseFloat(newPersonalBal) > 2) await storage.activateWallet(userId);
-      await storage.createTransaction({ userId, type: "deposit", amount: twUserCredit.toFixed(2), fee: twReserveCut.toFixed(2), paymentMethod: "internal", description: `Transfer from Trade Wallet — $${twUserCredit.toFixed(2)} credited (80%), $${twReserveCut.toFixed(2)} reserve (20%)` });
-      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Trade Transfer Complete ✓", message: `$${twUserCredit.toFixed(2)} credited to your SwiftWallet (80% of $${amount.toFixed(2)} — 20% reserve applied).`, data: {}, isRead: false });
+      await storage.createTransaction({ userId, type: "deposit", amount: amount.toFixed(2), fee: "0.00", paymentMethod: "internal", description: `Transfer from Trade Wallet — $${amount.toFixed(2)} credited in full (no fee)` });
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Trade Transfer Complete ✓", message: `$${amount.toFixed(2)} credited to your SwiftWallet in full — no deductions on wallet-to-wallet transfers.`, data: {}, isRead: false });
       pushToUser(userId, "notification", notif);
       const updatedTrade = await storage.getOrCreateTradeWallet(userId);
-      res.json({ newTradeBalance: updatedTrade.tradeBalance, newPersonalBalance: newPersonalBal, transferred: twUserCredit.toFixed(2), reserveDeducted: twReserveCut.toFixed(2) });
+      res.json({ newTradeBalance: updatedTrade.tradeBalance, newPersonalBalance: newPersonalBal, transferred: amount.toFixed(2), reserveDeducted: "0.00" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

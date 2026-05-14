@@ -3012,8 +3012,8 @@ export default function AffiliateDashboard() {
                 <p className="text-xs text-muted-foreground">Funds land instantly in your Fintech Hub — withdraw, pay bills, or transfer from there.</p>
               </div>
             </div>
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-200 font-medium">
-              A <strong>20% reserve</strong> is deducted on transfer — <strong>80%</strong> is credited to your SwiftWallet. Only trade <strong>earnings</strong> can be transferred.
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-3 text-xs text-green-800 dark:text-green-200 font-medium">
+              No fees on wallet-to-wallet transfers — <strong>100%</strong> is credited to your SwiftWallet. Only trade <strong>earnings</strong> can be transferred.
             </div>
             <div className="space-y-2">
               <Label>Amount (USD)</Label>
@@ -3023,8 +3023,8 @@ export default function AffiliateDashboard() {
             {withdrawAmt && parseFloat(withdrawAmt) >= 5 && parseFloat(withdrawAmt) <= withdrawableAmt && (
               <div className="border border-border rounded-xl px-3 py-2 bg-muted/30 text-xs space-y-1" data-testid="transfer-fee-breakdown">
                 <p className="font-semibold mb-1">Transfer Breakdown</p>
-                <div className="flex justify-between text-muted-foreground"><span>Reserve fund (20%)</span><span className="text-red-500">-${(parseFloat(withdrawAmt) * 0.20).toFixed(2)}</span></div>
-                <div className="flex justify-between font-bold text-tsia-green"><span>Credited to SwiftWallet</span><span>+${(parseFloat(withdrawAmt) * 0.80).toFixed(2)}</span></div>
+                <div className="flex justify-between text-muted-foreground"><span>Platform fee</span><span className="text-muted-foreground">$0.00</span></div>
+                <div className="flex justify-between font-bold text-tsia-green"><span>Credited to SwiftWallet</span><span>+${parseFloat(withdrawAmt).toFixed(2)}</span></div>
               </div>
             )}
             <TermsCheckbox checked={withdrawTradeTermsAccepted} onCheckedChange={setWithdrawTradeTermsAccepted} context="withdrawal" />

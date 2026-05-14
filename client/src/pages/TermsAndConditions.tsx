@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, Shield, AlertTriangle, Globe, Scale, Lock, CreditCard, Users, TrendingUp, ShoppingBag, Home, Plane, Handshake } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 
-const EFFECTIVE_DATE = "1 May 2026";
+const EFFECTIVE_DATE = "14 May 2026";
 const COMPANY = "SMAKEMGGOLD Ltd";
 const RC = "1359954";
 const CONTACT_EMAIL = "legal@tsia.org";
@@ -274,8 +274,11 @@ export default function TermsAndConditions() {
               <Clause num="7.9" title="Netflix Streaming Access">
                 <p>TSIA offers access to Netflix streaming through a platform-managed subscription at a subsidised rate of <strong>$5.00/month</strong>, billed from your TSIA SwiftWallet. This service is provided for convenience and is subject to Netflix's own Terms of Service. TSIA cannot guarantee uninterrupted access to Netflix content, which may vary by region. Subscription fees are non-refundable once the monthly access period has commenced.</p>
               </Clause>
-              <Clause num="7.10" title="Deposit Allocation (Wallet Deposits)">
-                <p>Funds deposited into your TSIA SwiftWallet are credited <strong>in full (100%)</strong> to your active wallet balance — no deductions are made at the point of deposit. Platform service fees of <strong>20%</strong> (operational reserve) and <strong>5%</strong> (affiliate rewards pool) apply only when transactions are made within the app (e.g. wallet-to-wallet transfers). Service charges (airtime, data, bills) are processed at face value with <strong>no additional platform fee</strong>. Bank transfers attract a 7.5% VAT as set out in clause 7.2.</p>
+              <Clause num="7.10" title="Peer-to-Peer Transfer Fee">
+                <p>Sending money directly to another TSIA member via the Swift Hub (wallet-to-wallet peer transfer) attracts a <strong>25% platform service fee</strong> — comprising <strong>20%</strong> allocated to the operational reserve fund and <strong>5%</strong> to the Co-Affiliate rewards pool. This fee is deducted from the amount you enter; the recipient receives 75% of the gross amount. Trade Market → SwiftWallet transfers carry <strong>no fee</strong> (see clause 8.4). Deposits to your wallet are credited in full with no deductions at the point of deposit. Bill payments (airtime, data, electricity, cable TV, betting) are processed at face value with <strong>no additional platform fee</strong>. Bank transfers attract a 7.5% VAT as set out in clause 7.2.</p>
+              </Clause>
+              <Clause num="7.11" title="Monthly Wallet Maintenance Fee">
+                <p>A monthly maintenance fee of <strong>$0.50</strong> is automatically deducted from your TSIA SwiftWallet on the <strong>1st of each calendar month</strong>. This fee applies to all active wallet holders and is collected to cover account maintenance, platform infrastructure, and operational costs. You will receive an in-app notification and email confirmation when the fee is collected. The deduction may reduce your balance below the usual $2 minimum reserve. If your balance is insufficient to cover the full $0.50, the available balance will be deducted instead.</p>
               </Clause>
             </Section>
 

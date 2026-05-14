@@ -1076,6 +1076,31 @@ export default function AdminDashboard() {
                     <p className="text-xs text-blue-700 mt-0.5">All approved disbursements must be processed within <strong>24–48 hours</strong>.</p>
                   </div>
                 </div>
+
+                {/* Semester 2 backfill tool */}
+                <Card className="border border-purple-200 bg-purple-50/60 dark:bg-purple-900/10">
+                  <CardContent className="flex items-center justify-between p-4">
+                    <div>
+                      <p className="font-semibold text-sm text-purple-800 dark:text-purple-200">Ensure Semester 2 Exists for All Students</p>
+                      <p className="text-xs text-purple-700 dark:text-purple-300 mt-0.5">Creates missing Semester 2 pending disbursements for students enrolled before the two-semester split was added.</p>
+                    </div>
+                    <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white shrink-0 ml-4" data-testid="btn-backfill-semester2"
+                      onClick={async () => {
+                        try {
+                          const res = await apiRequest("POST", "/api/admin/backfill-semester2", {});
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data.message);
+                          queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-disbursements"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/admin/all-disbursements"] });
+                          toast({ title: "Semester 2 Backfill ✓", description: data.message });
+                        } catch (e: any) {
+                          toast({ title: "Backfill failed", description: e.message, variant: "destructive" });
+                        }
+                      }}>
+                      Run Backfill
+                    </Button>
+                  </CardContent>
+                </Card>
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white py-4 px-6">
                     <CardTitle className="text-base">Pending Disbursements</CardTitle>

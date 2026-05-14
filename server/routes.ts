@@ -3553,6 +3553,33 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Backfill Semester 2 disbursements ────────────────────────────
+  app.post("/api/admin/backfill-semester2", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const allDisbursements = await storage.getAllDisbursements();
+      // Find all users who have a Semester 1 disbursement but no Semester 2
+      const userIds = [...new Set(allDisbursements.map(d => d.userId))];
+      let created = 0;
+      for (const uid of userIds) {
+        const userDisbs = allDisbursements.filter(d => d.userId === uid);
+        const sem1 = userDisbs.find(d => (d.semesterNum ?? 1) === 1);
+        const sem2 = userDisbs.find(d => d.semesterNum === 2);
+        if (sem1 && !sem2) {
+          await storage.createDisbursement({ userId: uid, amount: sem1.amount, status: "pending", semesterNum: 2 });
+          created++;
+        }
+      }
+      res.json({ success: true, created, message: created > 0 ? `Created ${created} Semester 2 disbursement(s).` : "All students already have Semester 2 disbursements." });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── ADMIN: Edit disbursement amount ──────────────────────────────────────
   app.patch("/api/admin/edit-disbursement/:disbursementId", async (req, res) => {
     try {
@@ -8505,6 +8532,28 @@ export async function registerRoutes(
       }
     } catch (e: any) {
       console.error("[REFERRAL BACKFILL] Error:", e.message);
+    }
+  });
+
+  // ── Startup: backfill missing Semester 2 disbursements ──────────────────────
+  setImmediate(async () => {
+    try {
+      const allDisbs = await storage.getAllDisbursements();
+      const userIds = [...new Set(allDisbs.map((d: any) => d.userId))];
+      let created = 0;
+      for (const uid of userIds) {
+        const userDisbs = allDisbs.filter((d: any) => d.userId === uid);
+        const sem1 = userDisbs.find((d: any) => (d.semesterNum ?? 1) === 1);
+        const sem2 = userDisbs.find((d: any) => d.semesterNum === 2);
+        if (sem1 && !sem2) {
+          await storage.createDisbursement({ userId: uid, amount: sem1.amount, status: "pending", semesterNum: 2 });
+          created++;
+        }
+      }
+      if (created > 0) console.log(`[SEM2-BACKFILL] Created ${created} missing Semester 2 disbursement(s).`);
+      else console.log(`[SEM2-BACKFILL] All students already have Semester 2 disbursements.`);
+    } catch (e: any) {
+      console.error("[SEM2-BACKFILL] Error:", e.message);
     }
   });
 

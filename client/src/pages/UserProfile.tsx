@@ -127,7 +127,7 @@ export default function UserProfile() {
     try {
       const res = await apiRequest("POST", "/api/auth/set-password", {
         email: user.email,
-        code: otpDigits.join(""),
+        otpCode: otpDigits.join(""),
         newPassword,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to set password"); }

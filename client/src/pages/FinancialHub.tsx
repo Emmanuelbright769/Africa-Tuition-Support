@@ -1121,8 +1121,8 @@ export default function FinancialHub() {
         </div>
       </div>
 
-      {/* Virtual Card */}
-      <div>
+      {/* Virtual Card — hidden until live */}
+      {false && <div>
         <h3 className="font-bold text-sm mb-3">Virtual US Mastercard <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wide">Coming Soon</span></h3>
         {false && vcData?.card ? (
           <div className="relative rounded-3xl overflow-hidden shadow-xl" style={{ background: "linear-gradient(135deg, #1a472a 0%, #2d6a4f 50%, #b8860b 100%)" }}>
@@ -1207,7 +1207,7 @@ export default function FinancialHub() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Recent Recipients */}
       {recentRecipients.length > 0 && (

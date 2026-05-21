@@ -989,109 +989,175 @@ export default function FinancialHub() {
   // HOME VIEW
   // ═════════════════════════════════════════════════════════════════════════
   if (view === "home") return (
-    <div className="space-y-6">
-      {/* Swift Hub branded header */}
-      <div className="w-full">
-        <div className="flex items-baseline gap-1.5 leading-none">
-          <span className="text-2xl font-medium text-foreground tracking-tight">TSIA</span>
-          <span className="text-2xl font-black text-foreground tracking-tight">SWIFT HUB</span>
+    <div className="space-y-5">
+
+      {/* ── TOP HEADER ── */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-tsia-green to-tsia-gold flex items-center justify-center shadow-md shadow-tsia-green/20 shrink-0">
+            <span className="text-white font-black text-lg">{(user?.firstName?.[0] ?? "U").toUpperCase()}</span>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground font-medium leading-none mb-0.5">Hello,</p>
+            <h2 className="text-lg font-black leading-tight">{user?.firstName ?? "User"} 👋</h2>
+          </div>
         </div>
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.18em] mt-1 leading-relaxed">
-          Fintech for Educational Empowerment in Africa
-        </p>
+        <div className="flex items-center gap-2">
+          <WalletAccountSwitcher />
+          <button onClick={() => setShowLocalBalance(v => !v)}
+            className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors"
+            data-testid="btn-switch-currency"
+            title={showLocalBalance ? "Show USD" : `Show ${currency?.code ?? "local"}`}>
+            <RefreshCcw className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <button onClick={toggleHidden}
+            className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors"
+            data-testid="btn-toggle-balance">
+            {balanceHidden ? <EyeOff className="w-4 h-4 text-muted-foreground" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
+          </button>
+        </div>
       </div>
 
-      {/* Greeting — only on home */}
-      <div className="bg-gradient-to-r from-tsia-green/10 via-tsia-green/5 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-5 py-4 flex items-center gap-4">
-        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-tsia-green to-tsia-gold flex items-center justify-center shrink-0 shadow-md shadow-tsia-green/20">
-          <span className="text-white font-black text-base">{(user?.firstName?.[0] ?? "U").toUpperCase()}</span>
-        </div>
-        <div>
-          <h2 className="text-xl font-bold leading-tight">Hello, {user?.firstName} 👋</h2>
-          <p className="text-muted-foreground text-xs mt-0.5">Send money, pay bills &amp; manage transfers</p>
-        </div>
-      </div>
+      {/* ── BALANCE CARD ── */}
+      <div className="rounded-3xl overflow-hidden shadow-xl shadow-tsia-green/20">
+        <div className="bg-gradient-to-br from-[#1a5c38] via-[#1e6b42] to-[#0e3d25] relative">
+          {/* Decorative circles */}
+          <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
+          <div className="absolute top-6 right-6 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
+          <div className="absolute -bottom-10 left-20 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
 
-      {/* Balance Card */}
-      <div className="relative rounded-3xl overflow-hidden">
-        <div className="bg-gradient-to-br from-[#1a5c38] via-[#1e6b42] to-[#0e3d25] p-6 pr-20">
-          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/5" />
-          <div className="absolute top-4 right-16 w-20 h-20 rounded-full bg-white/5" />
-          <div className="absolute -bottom-6 left-24 w-28 h-28 rounded-full bg-white/5" />
-          <div className="relative z-10">
-            {/* Label row with currency + wallet switchers */}
-            <div className="flex items-center justify-between mb-0.5 gap-2">
-              <p className="text-white/60 text-[10px] font-medium uppercase tracking-widest truncate">TSIA Bank • Wallet Balance</p>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <WalletAccountSwitcher />
-                <button onClick={() => setShowLocalBalance(v => !v)}
-                  className="flex items-center gap-1 bg-white/10 hover:bg-white/20 transition-colors rounded-full px-2 py-0.5"
-                  data-testid="btn-switch-currency">
-                  <RefreshCcw className="w-2.5 h-2.5 text-white/60" />
-                  <span className="text-[9px] font-bold text-white/60">{showLocalBalance ? "USD" : (currency?.code ?? "NGN")}</span>
-                </button>
-              </div>
-            </div>
-            {/* Balance amount */}
-            <div className="flex items-end gap-2 mb-1">
-              <p className="text-4xl font-black text-white tracking-tight">
-                {balanceHidden ? "••••••" : showLocalBalance ? formatAmount(balance) : `$${balance.toFixed(2)}`}
-              </p>
-              <button onClick={toggleHidden} className="mb-1 text-white/60 hover:text-white transition-colors" data-testid="btn-toggle-balance">
-                {balanceHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          <div className="relative p-5 pb-4">
+            {/* Label row */}
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-white/60 text-[10px] font-semibold uppercase tracking-widest">Wallet Balance</p>
+              <button onClick={() => { setActiveTab("transfers"); setTransferPage(0); }}
+                className="flex items-center gap-0.5 text-white/60 hover:text-white/90 transition-colors">
+                <span className="text-[11px] font-semibold">Transaction History</span>
+                <ChevronRight className="w-3 h-3" />
               </button>
             </div>
-            {/* Conversational rate hint */}
+
+            {/* Balance amount */}
+            <p className="text-4xl font-black text-white tracking-tight leading-none mb-1">
+              {balanceHidden ? "••••••" : showLocalBalance ? formatAmount(balance) : `$${balance.toFixed(2)}`}
+            </p>
+
+            {/* Local equiv */}
             {!balanceHidden && !showLocalBalance && currency?.code !== "USD" && (
-              <p className="text-white/50 text-[10px] mb-2">≈ {formatAmount(balance)} {currency?.code}</p>
+              <p className="text-white/50 text-[11px] mb-1">≈ {formatAmount(balance)} {currency?.code}</p>
             )}
-            {/* Ledger / Book balance */}
+
+            {/* Ledger line */}
             {!balanceHidden && (
-              <div className="flex items-center gap-1.5 mb-2" data-testid="text-ledger-balance">
-                <BookMarked className="w-3 h-3 text-amber-300/90" />
-                <p className="text-amber-300/90 text-[11px] font-semibold">
-                  🔒 Ledger: ${(balance >= 2 ? 2 : Math.max(0, balance)).toFixed(2)} reserve
-                  {pendingAmount > 0 && (
-                    <span className="text-amber-300/70 font-medium"> · +${pendingAmount.toFixed(2)} pending</span>
-                  )}
+              <div className="flex items-center gap-1.5 mb-4" data-testid="text-ledger-balance">
+                <BookMarked className="w-3 h-3 text-amber-300/80 shrink-0" />
+                <p className="text-amber-300/80 text-[10px] font-semibold">
+                  Ledger: ${(balance >= 2 ? 2 : Math.max(0, balance)).toFixed(2)} reserve
+                  {pendingAmount > 0 && <span className="text-amber-300/60"> · +${pendingAmount.toFixed(2)} pending</span>}
                 </p>
               </div>
             )}
-            <div className="flex gap-6">
+
+            {/* Income / Expense stats */}
+            <div className="flex gap-5">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center"><TrendingDown className="w-4 h-4 text-white" /></div>
-                <div><p className="text-white/60 text-[10px]">Income</p><p className="text-white font-bold text-sm">{balanceHidden ? "••••" : `$${totalIn.toFixed(2)}`}</p></div>
+                <div className="w-8 h-8 bg-white/15 rounded-full flex items-center justify-center shrink-0">
+                  <TrendingDown className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-white/50 text-[9px] uppercase tracking-wide font-semibold">Income</p>
+                  <p className="text-white font-bold text-sm leading-none">{balanceHidden ? "••••" : `$${totalIn.toFixed(2)}`}</p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center"><TrendingUp className="w-4 h-4 text-white" /></div>
-                <div><p className="text-white/60 text-[10px]">Expense</p><p className="text-white font-bold text-sm">{balanceHidden ? "••••" : `$${totalOut.toFixed(2)}`}</p></div>
+                <div className="w-8 h-8 bg-white/15 rounded-full flex items-center justify-center shrink-0">
+                  <TrendingUp className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-white/50 text-[9px] uppercase tracking-wide font-semibold">Expense</p>
+                  <p className="text-white font-bold text-sm leading-none">{balanceHidden ? "••••" : `$${totalOut.toFixed(2)}`}</p>
+                </div>
               </div>
             </div>
           </div>
+
+          {/* ── Action buttons strip inside card ── */}
+          <div className="grid grid-cols-4 divide-x divide-white/10 border-t border-white/10">
+            {[
+              { icon: ArrowDownLeft, label: "Add Money", action: () => { setFundStep("method"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); } },
+              { icon: Send,          label: "Transfer",  action: () => { resetSend(); setView("send"); } },
+              { icon: Bell,          label: "Request",   action: () => setView("request") },
+              { icon: Receipt,       label: "Pay Bill",  action: () => { resetBill(); setView("pay-bill"); } },
+            ].map(({ icon: Icon, label, action }) => (
+              <button key={label} onClick={action}
+                className="flex flex-col items-center gap-1.5 py-4 hover:bg-white/10 active:bg-white/20 transition-colors"
+                data-testid={`btn-quick-${label.toLowerCase().replace(/\s+/g,"-")}`}>
+                <Icon className="w-5 h-5 text-white" />
+                <span className="text-[9px] font-bold text-white/75 text-center leading-tight">{label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-        <button onClick={() => { setFundStep("method"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); }}
-          className="absolute right-0 top-0 h-full w-16 flex flex-col items-center justify-center gap-2 border-l-2 border-dashed border-white/30 bg-white/10 hover:bg-white/20 transition-colors"
-          data-testid="btn-add-money">
-          <span className="text-white text-2xl font-black">+</span>
-          <p className="text-white text-[9px] font-bold tracking-wider" style={{ writingMode: "vertical-rl" }}>ADD MONEY</p>
-        </button>
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-4 gap-2">
-        {[
-          { icon: ArrowDownLeft, label: "Fund",     color: "bg-emerald-600", action: () => { setFundStep("method"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); } },
-          { icon: Send,          label: "Send",     color: "bg-tsia-green",  action: () => { resetSend(); setView("send"); } },
-          { icon: Bell,          label: "Request",  color: "bg-violet-500",  action: () => setView("request") },
-          { icon: Receipt,       label: "Pay Bill", color: "bg-amber-500",   action: () => { resetBill(); setView("pay-bill"); } },
-        ].map(({ icon: Icon, label, color, action }) => (
-          <button key={label} onClick={action} className="flex flex-col items-center gap-2 group" data-testid={`btn-quick-${label.toLowerCase().replace(" ","-")}`}>
-            <div className={`w-14 h-14 rounded-2xl ${color} flex items-center justify-center shadow-md group-hover:scale-105 transition-transform group-active:scale-95`}>
-              <Icon className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+      {/* ── PAYMENT / SWIFT HUB SERVICES ── */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black text-base">Payment</h3>
+          <button onClick={() => { resetBill(); setView("pay-bill"); }}
+            className="text-tsia-green text-xs font-bold flex items-center gap-0.5 hover:underline">
+            More <ChevronRight className="w-3.5 h-3.5" />
           </button>
-        ))}
+        </div>
+        <div className="grid grid-cols-4 gap-y-5 gap-x-2">
+          {SERVICES.map((svc: any) => {
+            const cs = !!svc.comingSoon;
+            return (
+              <button key={svc.id}
+                onClick={() => {
+                  if (cs) { toast({ title: `${svc.label} coming soon`, description: "We're integrating a licensed provider. Stay tuned." }); return; }
+                  resetBill(); setSelectedService(svc); setView("service");
+                }}
+                className={`relative flex flex-col items-center gap-2 transition-all active:scale-95 ${cs ? "opacity-50" : "hover:opacity-80"}`}
+                data-testid={`btn-service-${svc.id}`}>
+                <div className={`w-14 h-14 rounded-full border-2 flex items-center justify-center transition-all ${cs ? "border-border bg-muted/30" : "border-tsia-green/40 bg-tsia-green/8 dark:bg-tsia-green/15 hover:border-tsia-green hover:bg-tsia-green/15"}`}>
+                  <svc.icon className={`w-6 h-6 ${cs ? "text-muted-foreground" : "text-tsia-green"}`} />
+                </div>
+                <span className="text-[10px] font-semibold text-foreground text-center leading-tight">{svc.label}</span>
+                {cs && (
+                  <span className="absolute -top-0.5 right-2 px-1 py-px rounded-full bg-amber-400/90 text-[7px] font-black text-white tracking-wide">SOON</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── PROMO / FEATURE CARDS ── */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-4 bg-tsia-green/8 dark:bg-tsia-green/15 border border-tsia-green/25 rounded-2xl p-4 cursor-pointer hover:bg-tsia-green/12 transition-colors">
+          <div className="w-11 h-11 rounded-full bg-tsia-green/20 flex items-center justify-center shrink-0">
+            <Gift className="w-5 h-5 text-tsia-green" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm">Refer &amp; Earn</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Invite friends to TSIA and earn cashback rewards</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-tsia-green shrink-0" />
+        </div>
+        <div className="flex items-center gap-4 bg-amber-50 dark:bg-amber-900/15 border border-amber-200/60 dark:border-amber-700/30 rounded-2xl p-4">
+          <div className="w-11 h-11 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+            <Zap className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm">Pay bills instantly</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Airtime, data, electricity — 100% instant delivery</p>
+          </div>
+          <button onClick={() => { resetBill(); setView("pay-bill"); }}
+            className="shrink-0 text-xs font-bold text-amber-600 dark:text-amber-400 border border-amber-400/60 rounded-lg px-3 py-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
+            Pay now
+          </button>
+        </div>
       </div>
 
       {/* Virtual Card — hidden until live */}
@@ -1186,17 +1252,19 @@ export default function FinancialHub() {
       {recentRecipients.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-sm">Recent</h3>
-            <button className="text-xs text-tsia-green font-semibold flex items-center gap-0.5">View all <ChevronRight className="w-3 h-3" /></button>
+            <h3 className="font-black text-sm">Recent Recipients</h3>
+            <button onClick={() => { resetSend(); setView("send"); }} className="text-tsia-green text-xs font-bold flex items-center gap-0.5 hover:underline">
+              Send <ChevronRight className="w-3 h-3" />
+            </button>
           </div>
           <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
             {recentRecipients.map((t, i) => (
               <button key={t.recipientId} onClick={() => { resetSend(); setSendMode("tsia"); setTsiaUser({ id: t.recipientId, firstName: t.recipientName?.split(" ")[0] || "User", lastName: t.recipientName?.split(" ")[1] || "", email: "" }); setView("tsia-amount"); }}
-                className="flex flex-col items-center gap-1.5 shrink-0">
-                <div className={`w-14 h-14 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold text-xl ring-2 ring-offset-2 ring-tsia-green/30`}>
+                className="flex flex-col items-center gap-2 shrink-0 hover:opacity-80 active:scale-95 transition-all">
+                <div className={`w-14 h-14 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold text-xl shadow-md`}>
                   {(t.recipientName ?? "?")[0].toUpperCase()}
                 </div>
-                <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[56px]">{t.recipientName?.split(" ")[0]}</span>
+                <span className="text-[10px] text-muted-foreground font-semibold truncate max-w-[56px] text-center">{t.recipientName?.split(" ")[0]}</span>
               </button>
             ))}
           </div>
@@ -1206,11 +1274,14 @@ export default function FinancialHub() {
       {/* History */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-sm">History</h3>
-          <div className="flex bg-muted/40 rounded-xl p-0.5 text-xs">
-            <button onClick={() => { setActiveTab("transfers"); setTransferPage(0); }}      className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "transfers"      ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Transfers</button>
-            <button onClick={() => { setActiveTab("bank-transfers"); setBankTxPage(0); }} className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bank-transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bank</button>
-            <button onClick={() => { setActiveTab("bills"); setBillPage(0); }}            className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bills"          ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bills</button>
+          <h3 className="font-black text-sm">Transaction History</h3>
+          <div className="flex bg-muted/50 rounded-xl p-0.5 text-xs">
+            <button onClick={() => { setActiveTab("transfers"); setTransferPage(0); }}
+              className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Transfers</button>
+            <button onClick={() => { setActiveTab("bank-transfers"); setBankTxPage(0); }}
+              className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bank-transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bank</button>
+            <button onClick={() => { setActiveTab("bills"); setBillPage(0); }}
+              className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bills" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bills</button>
           </div>
         </div>
         <div className="space-y-2">
@@ -2461,19 +2532,49 @@ export default function FinancialHub() {
   // ═════════════════════════════════════════════════════════════════════════
   if (view === "pay-bill") return (
     <AnimatePresence mode="wait">
-      <motion.div key="pay-bill" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-        <BackHeader onBack={() => setView("home")} title="Pay a Bill" />
+      <motion.div key="pay-bill" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-6">
+        <BackHeader onBack={() => setView("home")} title="Payment" sub="Select a service to continue" />
 
-        <div className="grid grid-cols-2 gap-3">
-          {SERVICES.map(svc => (
-            <button key={svc.id} onClick={() => { setSelectedService(svc); setBillStep("details"); setView("service"); }}
-              className={`flex items-center gap-3 p-4 rounded-2xl ${svc.bg} border hover:shadow-md transition-shadow`} data-testid={`btn-bill-${svc.id}`}>
-              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center shrink-0`}>
-                <svc.icon className="w-5 h-5 text-white" />
-              </div>
-              <span className="font-semibold text-sm">{svc.label}</span>
-            </button>
-          ))}
+        {/* Balance pill */}
+        <div className="flex items-center justify-between bg-gradient-to-r from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-4 py-3">
+          <span className="text-sm text-muted-foreground font-medium">Wallet Balance</span>
+          <span className="text-lg font-black text-tsia-green">${balance.toFixed(2)}</span>
+        </div>
+
+        {/* Active services */}
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">Available Services</p>
+          <div className="grid grid-cols-4 gap-y-6 gap-x-2">
+            {SERVICES.filter(s => !s.comingSoon).map(svc => (
+              <button key={svc.id}
+                onClick={() => { setSelectedService(svc); setBillStep("details"); setView("service"); }}
+                className="flex flex-col items-center gap-2 active:scale-95 transition-all hover:opacity-80"
+                data-testid={`btn-bill-${svc.id}`}>
+                <div className="w-16 h-16 rounded-full border-2 border-tsia-green/40 bg-tsia-green/8 dark:bg-tsia-green/15 flex items-center justify-center hover:border-tsia-green hover:bg-tsia-green/15 transition-all">
+                  <svc.icon className="w-7 h-7 text-tsia-green" />
+                </div>
+                <span className="text-[11px] font-semibold text-foreground text-center leading-tight">{svc.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Coming soon services */}
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">Coming Soon</p>
+          <div className="grid grid-cols-4 gap-y-6 gap-x-2">
+            {SERVICES.filter(s => s.comingSoon).map(svc => (
+              <button key={svc.id}
+                onClick={() => toast({ title: `${svc.label} coming soon`, description: "We're integrating a licensed provider. Stay tuned." })}
+                className="flex flex-col items-center gap-2 opacity-45"
+                data-testid={`btn-bill-${svc.id}`}>
+                <div className="w-16 h-16 rounded-full border-2 border-border bg-muted/30 flex items-center justify-center">
+                  <svc.icon className="w-7 h-7 text-muted-foreground" />
+                </div>
+                <span className="text-[11px] font-semibold text-muted-foreground text-center leading-tight">{svc.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>
@@ -2558,11 +2659,17 @@ export default function FinancialHub() {
     if (selectedService.id === "electricity") return (
       <AnimatePresence mode="wait">
         <motion.div key="electricity" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Electricity" sub={billStep === "details" ? "Select provider & meter" : "Enter amount"} />
+          <div className="flex items-center justify-between">
+            <button onClick={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="font-black text-base">{billStep === "details" ? "Buy Electricity" : "Confirm Payment"}</h2>
+            <button onClick={() => setActiveTab("bills")} className="text-tsia-green text-sm font-bold">History</button>
+          </div>
 
-          <div className="inline-flex items-center gap-2 bg-amber-500 text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
-            <Wallet className="w-4 h-4" />
-            Wallet Balance: ${balance.toFixed(2)}
+          <div className="flex items-center justify-between bg-gradient-to-r from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-4 py-3">
+            <span className="text-sm text-muted-foreground font-medium">Wallet Balance</span>
+            <span className="text-lg font-black text-tsia-green">${balance.toFixed(2)}</span>
           </div>
 
           {billStep === "details" ? (<>
@@ -2664,11 +2771,17 @@ export default function FinancialHub() {
     if (selectedService.id === "internet") return (
       <AnimatePresence mode="wait">
         <motion.div key="internet" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Data" sub={billStep === "details" ? "Select network & plan" : "Confirm purchase"} />
+          <div className="flex items-center justify-between">
+            <button onClick={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="font-black text-base">Buy Data</h2>
+            <button onClick={() => setActiveTab("bills")} className="text-tsia-green text-sm font-bold">History</button>
+          </div>
 
-          <div className="inline-flex items-center gap-2 bg-blue-600 text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
-            <Wallet className="w-4 h-4" />
-            Wallet Balance: ${balance.toFixed(2)}
+          <div className="flex items-center justify-between bg-gradient-to-r from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-4 py-3">
+            <span className="text-sm text-muted-foreground font-medium">Wallet Balance</span>
+            <span className="text-lg font-black text-tsia-green">${balance.toFixed(2)}</span>
           </div>
 
           {billStep === "details" ? (<>
@@ -2742,7 +2855,7 @@ export default function FinancialHub() {
               </div>
             )}
 
-            <Button className="w-full h-12 bg-blue-600 text-white font-bold rounded-2xl"
+            <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
               disabled={!selectedPlan || billRef.length < 10}
               onClick={() => {
                 const priceUsd = (selectedPlan!.priceNgn / 1600).toFixed(2);
@@ -2752,9 +2865,9 @@ export default function FinancialHub() {
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </>) : (<>
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-3xl p-5 text-center">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedISP?.toUpperCase()} Data</p>
-              <p className="text-4xl font-black text-blue-700">{selectedPlan?.label}</p>
+            <div className="bg-tsia-green/8 dark:bg-tsia-green/15 border border-tsia-green/30 rounded-3xl p-5 text-center">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedISP?.toUpperCase()} Data Bundle</p>
+              <p className="text-4xl font-black text-foreground">{selectedPlan?.label}</p>
               <p className="text-2xl font-black text-tsia-green mt-2">${fmt(amount)}</p>
               <p className="text-xs text-tsia-green font-semibold mt-0.5">≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code}</p>
               <p className="text-xs text-muted-foreground mt-1 font-mono">{billRef}</p>
@@ -2762,7 +2875,7 @@ export default function FinancialHub() {
 
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
-              <Button className="flex-1 h-12 bg-blue-600 text-white font-bold rounded-2xl"
+              <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
                 disabled={billMutation.isPending || parseFloat(amount) > balance}
                 onClick={() => billMutation.mutate()} data-testid="btn-confirm-data">
                 {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Wifi className="w-5 h-5 mr-2" />}
@@ -2779,100 +2892,132 @@ export default function FinancialHub() {
     if (selectedService.id === "airtime") {
       const recentAirtime = (bills as BillRecord[]).filter(b => b.service === "airtime").slice(0, 3);
       const canPay = !!selectedNetwork && billRef.length >= 10 && parseFloat(amount) > 0 && parseFloat(amount) <= balance;
+      const AIRTIME_PRESETS = [
+        { usd: "0.50", ngn: "750" }, { usd: "1",    ngn: "1,500" }, { usd: "2",    ngn: "3,000" },
+        { usd: "3",    ngn: "4,500" }, { usd: "5",    ngn: "7,500" }, { usd: "10",   ngn: "15,000" },
+      ];
       return (
         <AnimatePresence mode="wait">
           <motion.div key="airtime" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-            <BackHeader onBack={() => setView("pay-bill")} title="Buy Airtime" sub="Recharge any Nigerian number instantly" />
 
-            {/* Wallet Balance Pill */}
-            <div className="inline-flex items-center gap-2 bg-tsia-green text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
-              <Wallet className="w-4 h-4" />
-              Wallet Balance: ${balance.toFixed(2)}
+            {/* Header with History link */}
+            <div className="flex items-center justify-between">
+              <button onClick={() => setView("pay-bill")} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <h2 className="font-black text-base">Buy Airtime</h2>
+              <button onClick={() => setActiveTab("bills")} className="text-tsia-green text-sm font-bold">History</button>
             </div>
 
-            {/* Network Carrier Selector */}
+            {/* Phone + Network row (OPay style) */}
+            <div className="flex items-center gap-3 bg-muted/30 border border-border rounded-2xl px-4 py-3">
+              {/* Network pill selector */}
+              <div className="flex items-center gap-2 shrink-0">
+                {selectedNetwork ? (
+                  <div className={`w-8 h-8 rounded-full ${NETWORKS.find(n=>n.id===selectedNetwork)?.color ?? "bg-gray-400"} flex items-center justify-center shadow-sm`}>
+                    <span className="text-xs font-black text-white">{NETWORKS.find(n=>n.id===selectedNetwork)?.label.charAt(0) ?? "?"}</span>
+                  </div>
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-muted border-2 border-dashed border-border flex items-center justify-center">
+                    <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                  </div>
+                )}
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              </div>
+              <div className="w-px h-5 bg-border shrink-0" />
+              {/* Phone number input */}
+              <input type="tel" placeholder="e.g. 08012345678" value={billRef}
+                onChange={e => setBillRef(e.target.value.replace(/\D/g,"").slice(0,11))}
+                className="flex-1 bg-transparent text-base font-mono tracking-wider focus:outline-none placeholder:text-muted-foreground/60"
+                data-testid="input-airtime-phone" />
+              {/* Contact avatar */}
+              <div className="w-8 h-8 rounded-full bg-tsia-green/15 border-2 border-tsia-green/30 flex items-center justify-center shrink-0">
+                <Users className="w-3.5 h-3.5 text-tsia-green" />
+              </div>
+            </div>
+
+            {/* Network selector chips */}
+            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+              {NETWORKS.map(n => (
+                <button key={n.id} onClick={() => setSelectedNetwork(n.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 font-bold text-xs shrink-0 transition-all ${selectedNetwork === n.id ? "border-tsia-green bg-tsia-green text-white" : "border-border bg-background text-foreground hover:border-tsia-green/40"}`}
+                  data-testid={`btn-airtime-${n.id}`}>
+                  <div className={`w-4 h-4 rounded-full ${n.color} flex items-center justify-center`}>
+                    <span className="text-[8px] font-black text-white">{n.label.charAt(0)}</span>
+                  </div>
+                  {n.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Top up presets — OPay 3×2 grid */}
             <div>
-              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3 block">Select Network</label>
-              <div className="grid grid-cols-4 gap-3">
-                {NETWORKS.map(n => (
-                  <button key={n.id} onClick={() => setSelectedNetwork(n.id)}
-                    className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${selectedNetwork === n.id ? "border-tsia-green bg-tsia-green/5 scale-105 shadow-sm" : "border-border hover:border-tsia-green/40"}`}
-                    data-testid={`btn-airtime-${n.id}`}>
-                    <div className={`w-12 h-12 rounded-full ${n.color} flex items-center justify-center shadow`}>
-                      <span className="text-sm font-black text-white">{n.label.charAt(0)}</span>
-                    </div>
-                    <span className="text-[11px] font-bold">{n.label}</span>
+              <p className="text-sm font-bold mb-3">Top up</p>
+              <div className="grid grid-cols-3 gap-2.5">
+                {AIRTIME_PRESETS.map(p => (
+                  <button key={p.usd} onClick={() => setAmount(p.usd)}
+                    className={`rounded-2xl px-3 py-3.5 text-left transition-all border ${amount === p.usd ? "border-tsia-green bg-tsia-green/8 dark:bg-tsia-green/15" : "border-border bg-card hover:border-tsia-green/40"}`}
+                    data-testid={`btn-preset-${p.usd}`}>
+                    <p className={`font-black text-sm leading-none mb-0.5 ${amount === p.usd ? "text-tsia-green" : "text-foreground"}`}>${p.usd}</p>
+                    <p className="text-[10px] text-muted-foreground">≈ ₦{p.ngn}</p>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Mobile Number */}
+            {/* Enter Amount row (OPay style) */}
             <div>
-              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Mobile Number</label>
-              <div className="relative">
-                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <input type="tel" placeholder="e.g. 08012345678" value={billRef}
-                  onChange={e => setBillRef(e.target.value.replace(/\D/g,"").slice(0,11))}
-                  className="w-full pl-11 pr-4 py-3.5 border-2 border-border rounded-2xl text-base font-mono tracking-wider focus:outline-none focus:border-tsia-green bg-background"
-                  data-testid="input-airtime-phone" />
+              <p className="text-sm font-bold mb-2">Enter Amount</p>
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">$</span>
+                  <input type="number" min="0" step="0.01" placeholder="0.00 – 500.00"
+                    value={amount === "0" ? "" : amount}
+                    onChange={e => setAmount(e.target.value || "0")}
+                    className="w-full pl-7 pr-3 py-3.5 border-2 border-border rounded-2xl text-base focus:outline-none focus:border-tsia-green bg-background font-semibold"
+                    data-testid="input-airtime-amount" />
+                </div>
+                <Button className="h-12 px-6 bg-tsia-green text-white font-bold rounded-2xl shadow"
+                  disabled={!canPay || billMutation.isPending}
+                  onClick={() => billMutation.mutate()}
+                  data-testid="btn-confirm-airtime">
+                  {billMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pay"}
+                </Button>
               </div>
-            </div>
-
-            {/* Amount & Quick Presets */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Amount</label>
-                <span className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code}</span>
-              </div>
-              <div className="text-4xl font-black text-center py-2">${fmt(amount)}</div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {[["1","$1.00"],["2","$2.00"],["5","$5.00"],["10","$10.00"]].map(([v, label]) => (
-                  <button key={v} onClick={() => setAmount(v)}
-                    className={`py-3 rounded-2xl font-bold text-sm border-2 transition-all ${amount === v ? "border-tsia-green bg-tsia-green text-white" : "border-border bg-muted/30 hover:border-tsia-green/40"}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <Numpad value={amount} onChange={setAmount} />
+              {parseFloat(amount) > balance && <p className="text-xs text-red-500 mt-1.5">Insufficient wallet balance (${balance.toFixed(2)} available)</p>}
+              <p className="text-xs text-muted-foreground mt-1.5">
+                ≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code} · Wallet: ${balance.toFixed(2)}
+              </p>
             </div>
 
             {/* Recent Purchases */}
             {recentAirtime.length > 0 && (
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">Recent Purchases</p>
+                <p className="text-sm font-bold mb-2">Recent Purchases</p>
                 <div className="space-y-2">
                   {recentAirtime.map(b => {
                     const net = NETWORKS.find(n => b.reference?.toLowerCase().includes(n.id)) ?? NETWORKS[0];
                     return (
-                      <div key={b.id} className="flex items-center gap-3 p-3 rounded-2xl bg-muted/40 border border-border/50">
+                      <button key={b.id}
+                        onClick={() => { setBillRef(b.reference.split(" | ")[0] || ""); setSelectedNetwork(net.id); }}
+                        className="w-full flex items-center gap-3 p-3 rounded-2xl bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors text-left">
                         <div className={`w-9 h-9 rounded-full ${net.color} flex items-center justify-center shrink-0`}>
                           <Phone className="w-4 h-4 text-white" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold">{net.label} Airtime</p>
-                          <p className="text-xs text-muted-foreground font-mono truncate">{b.reference}</p>
+                          <p className="text-xs text-muted-foreground font-mono truncate">{b.reference.split(" | ")[0]}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-sm font-bold text-tsia-green">₦{parseFloat(b.amount).toLocaleString()}</p>
-                          <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString()}</p>
+                          <p className="text-sm font-bold text-tsia-green">${parseFloat(b.amount).toFixed(2)}</p>
+                          <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
               </div>
             )}
-
-            {/* Pay Button */}
-            <Button className="w-full h-14 bg-tsia-green text-white font-bold text-lg rounded-2xl shadow-lg"
-              disabled={!canPay || billMutation.isPending}
-              onClick={() => billMutation.mutate()}
-              data-testid="btn-confirm-airtime">
-              {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Phone className="w-5 h-5 mr-2" />}
-              Pay ${fmt(amount)}
-            </Button>
-            {parseFloat(amount) > balance && <p className="text-xs text-center text-red-500">Insufficient wallet balance</p>}
           </motion.div>
         </AnimatePresence>
       );
@@ -2882,16 +3027,22 @@ export default function FinancialHub() {
     if (selectedService.id === "betting") return (
       <AnimatePresence mode="wait">
         <motion.div key="betting" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Fund Betting Wallet" sub={billStep === "details" ? "Select platform & ID" : "Enter amount"} />
+          <div className="flex items-center justify-between">
+            <button onClick={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="font-black text-base">{billStep === "details" ? "Fund Betting Wallet" : "Enter Amount"}</h2>
+            <button onClick={() => setActiveTab("bills")} className="text-tsia-green text-sm font-bold">History</button>
+          </div>
 
-          <div className="inline-flex items-center gap-2 bg-violet-600 text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
-            <Wallet className="w-4 h-4" />
-            Wallet Balance: ${balance.toFixed(2)}
+          <div className="flex items-center justify-between bg-gradient-to-r from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-4 py-3">
+            <span className="text-sm text-muted-foreground font-medium">Wallet Balance</span>
+            <span className="text-lg font-black text-tsia-green">${balance.toFixed(2)}</span>
           </div>
 
           {billStep === "details" ? (<>
             <div>
-              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Platform</label>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Select Platform</label>
               <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
                 {BETTING_PLATFORMS.map(p => (
                   <button key={p.id} onClick={() => setSelectedPlatform(p.id)}
@@ -2903,15 +3054,15 @@ export default function FinancialHub() {
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Betting User ID</label>
               <input placeholder="Your betting platform ID" value={billRef} onChange={e => setBillRef(e.target.value)}
-                className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-base focus:outline-none focus:border-violet-500 bg-background"
+                className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-base focus:outline-none focus:border-tsia-green bg-background"
                 data-testid="input-betting-id" />
             </div>
-            <Button className="w-full h-12 bg-violet-600 text-white font-bold rounded-2xl"
+            <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
               disabled={!selectedPlatform || !billRef.trim()} onClick={() => setBillStep("amount")}>
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </>) : (<>
-            <div className="flex items-center justify-between bg-violet-50 dark:bg-violet-900/20 border border-violet-300 rounded-2xl px-4 py-3">
+            <div className="flex items-center justify-between bg-tsia-green/8 dark:bg-tsia-green/15 border border-tsia-green/30 rounded-2xl px-4 py-3">
               <div><p className="text-xs text-muted-foreground">User ID</p><p className="font-bold">{billRef}</p></div>
               <div className="text-right"><p className="text-xs text-muted-foreground">Platform</p><p className="font-bold capitalize">{selectedPlatform}</p></div>
             </div>
@@ -2923,13 +3074,13 @@ export default function FinancialHub() {
             <div className="grid grid-cols-4 gap-2">
               {["5","10","20","50"].map(v => (
                 <button key={v} onClick={() => setAmount(v)}
-                  className={`py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${amount === v ? "border-violet-500 bg-violet-500/10 text-violet-600" : "border-border bg-muted/40 text-muted-foreground"}`}>${v}</button>
+                  className={`py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${amount === v ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border bg-muted/40 text-muted-foreground"}`}>${v}</button>
               ))}
             </div>
             <Numpad value={amount} onChange={setAmount} />
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
-              <Button className="flex-1 h-12 bg-violet-600 text-white font-bold rounded-2xl"
+              <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
                 disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
                 onClick={() => billMutation.mutate()} data-testid="btn-confirm-betting">
                 {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Gamepad2 className="w-5 h-5 mr-2" />}
@@ -2945,11 +3096,17 @@ export default function FinancialHub() {
     if (selectedService.id === "cable-tv") return (
       <AnimatePresence mode="wait">
         <motion.div key="cable-tv" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Cable TV" sub={billStep === "details" ? "Select provider & package" : "Confirm subscription"} />
+          <div className="flex items-center justify-between">
+            <button onClick={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="font-black text-base">{billStep === "details" ? "Cable TV" : "Confirm Subscription"}</h2>
+            <button onClick={() => setActiveTab("bills")} className="text-tsia-green text-sm font-bold">History</button>
+          </div>
 
-          <div className="inline-flex items-center gap-2 bg-rose-600 text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
-            <Wallet className="w-4 h-4" />
-            Wallet Balance: ${balance.toFixed(2)}
+          <div className="flex items-center justify-between bg-gradient-to-r from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-4 py-3">
+            <span className="text-sm text-muted-foreground font-medium">Wallet Balance</span>
+            <span className="text-lg font-black text-tsia-green">${balance.toFixed(2)}</span>
           </div>
 
           {billStep === "details" ? (<>

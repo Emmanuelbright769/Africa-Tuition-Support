@@ -150,7 +150,7 @@ function LocalEquiv({ usd, country }: { usd: number; country?: string }) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
-type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "receipt";
+type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "receipt" | "history";
 
 // ── TSIA Receiving Wallet Addresses ───────────────────────────────────────────
 const TSIA_WALLETS = {
@@ -181,10 +181,6 @@ const SERVICES = [
   { id: "electricity", label: "Electricity", icon: Zap,       color: "from-yellow-400 to-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20" },
   { id: "cable-tv",  label: "Cable TV",  icon: Tv2,           color: "from-rose-400 to-pink-600",     bg: "bg-rose-50 dark:bg-rose-900/20",   comingSoon: true },
   { id: "betting",   label: "Betting",   icon: Gamepad2,      color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
-  { id: "education", label: "Education", icon: GraduationCap, color: "from-cyan-400 to-blue-500",     bg: "bg-cyan-50 dark:bg-cyan-900/20",   comingSoon: true },
-  { id: "flight",    label: "Flight",    icon: Plane,         color: "from-sky-400 to-blue-600",      bg: "bg-sky-50 dark:bg-sky-900/20",     comingSoon: true },
-  { id: "insurance", label: "Insurance", icon: Shield,        color: "from-teal-400 to-green-500",    bg: "bg-teal-50 dark:bg-teal-900/20",   comingSoon: true },
-  { id: "giftcard",  label: "Gift Card", icon: Gift,          color: "from-pink-400 to-rose-500",     bg: "bg-pink-50 dark:bg-pink-900/20",   comingSoon: true },
 ];
 
 // ─── Nigerian Networks ────────────────────────────────────────────────────────
@@ -1616,7 +1612,7 @@ export default function FinancialHub() {
             {/* Label row */}
             <div className="flex items-center justify-between mb-2">
               <p className="text-white/60 text-[10px] font-semibold uppercase tracking-widest">Wallet Balance</p>
-              <button onClick={() => { setActiveTab("transfers"); setTransferPage(0); }}
+              <button onClick={() => { setActiveTab("transfers"); setTransferPage(0); setView("history"); }}
                 className="flex items-center gap-0.5 text-white/60 hover:text-white/90 transition-colors">
                 <span className="text-[11px] font-semibold">Transaction History</span>
                 <ChevronRight className="w-3 h-3" />
@@ -1668,12 +1664,11 @@ export default function FinancialHub() {
           </div>
 
           {/* ── Action buttons strip inside card ── */}
-          <div className="grid grid-cols-4 divide-x divide-white/10 border-t border-white/10">
+          <div className="grid grid-cols-3 divide-x divide-white/10 border-t border-white/10">
             {[
               { icon: ArrowDownLeft, label: "Add Money", action: () => { setFundStep("method"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); } },
               { icon: Send,          label: "Transfer",  action: () => { resetSend(); setView("send"); } },
               { icon: Bell,          label: "Request",   action: () => setView("request") },
-              { icon: Receipt,       label: "Pay Bill",  action: () => { resetBill(); setView("pay-bill"); } },
             ].map(({ icon: Icon, label, action }) => (
               <button key={label} onClick={action}
                 className="flex flex-col items-center gap-1.5 py-4 hover:bg-white/10 active:bg-white/20 transition-colors"
@@ -1719,32 +1714,6 @@ export default function FinancialHub() {
         </div>
       </div>
 
-      {/* ── PROMO / FEATURE CARDS ── */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-4 bg-tsia-green/8 dark:bg-tsia-green/15 border border-tsia-green/25 rounded-2xl p-4 cursor-pointer hover:bg-tsia-green/12 transition-colors">
-          <div className="w-11 h-11 rounded-full bg-tsia-green/20 flex items-center justify-center shrink-0">
-            <Gift className="w-5 h-5 text-tsia-green" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm">Refer &amp; Earn</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Invite friends to TSIA and earn cashback rewards</p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-tsia-green shrink-0" />
-        </div>
-        <div className="flex items-center gap-4 bg-amber-50 dark:bg-amber-900/15 border border-amber-200/60 dark:border-amber-700/30 rounded-2xl p-4">
-          <div className="w-11 h-11 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
-            <Zap className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm">Pay bills instantly</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Airtime, data, electricity — 100% instant delivery</p>
-          </div>
-          <button onClick={() => { resetBill(); setView("pay-bill"); }}
-            className="shrink-0 text-xs font-bold text-amber-600 dark:text-amber-400 border border-amber-400/60 rounded-lg px-3 py-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
-            Pay now
-          </button>
-        </div>
-      </div>
 
       {/* Virtual Card — hidden until live */}
       {false && <div>
@@ -1833,231 +1802,6 @@ export default function FinancialHub() {
           </div>
         )}
       </div>}
-
-      {/* Recent Recipients */}
-      {recentRecipients.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-black text-sm">Recent Recipients</h3>
-            <button onClick={() => { resetSend(); setView("send"); }} className="text-tsia-green text-xs font-bold flex items-center gap-0.5 hover:underline">
-              Send <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
-            {recentRecipients.map((t, i) => (
-              <button key={t.recipientId} onClick={() => { resetSend(); setSendMode("tsia"); setTsiaUser({ id: t.recipientId, firstName: t.recipientName?.split(" ")[0] || "User", lastName: t.recipientName?.split(" ")[1] || "", email: "" }); setView("tsia-amount"); }}
-                className="flex flex-col items-center gap-2 shrink-0 hover:opacity-80 active:scale-95 transition-all">
-                <div className={`w-14 h-14 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold text-xl shadow-md`}>
-                  {(t.recipientName ?? "?")[0].toUpperCase()}
-                </div>
-                <span className="text-[10px] text-muted-foreground font-semibold truncate max-w-[56px] text-center">{t.recipientName?.split(" ")[0]}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* History */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-black text-sm">Transaction History</h3>
-          <div className="flex bg-muted/50 rounded-xl p-0.5 text-xs">
-            <button onClick={() => { setActiveTab("transfers"); setTransferPage(0); }}
-              className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Transfers</button>
-            <button onClick={() => { setActiveTab("bank-transfers"); setBankTxPage(0); }}
-              className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bank-transfers" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bank</button>
-            <button onClick={() => { setActiveTab("bills"); setBillPage(0); }}
-              className={`px-3 py-1 rounded-lg font-semibold transition-all ${activeTab === "bills" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>Bills</button>
-          </div>
-        </div>
-        <div className="space-y-2">
-          {activeTab === "bank-transfers" ? (
-            (() => {
-              const bankTxs = (bills as BillRecord[]).filter(b => b.service === "bank_transfer");
-              if (bankTxs.length === 0) return <EmptyState icon={Building2} msg="No bank transfers yet" />;
-              const btTotalPages = Math.ceil(bankTxs.length / FH_PAGE_SIZE);
-              const btPageItems = bankTxs.slice(bankTxPage * FH_PAGE_SIZE, (bankTxPage + 1) * FH_PAGE_SIZE);
-              return (<>{btPageItems.map(b => {
-                const btStatus: "success" | "pending" | "processing" =
-                  b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
-                const btDate = new Date(b.createdAt).toLocaleString("en-GB", {
-                  day: "2-digit", month: "short", year: "numeric",
-                  hour: "2-digit", minute: "2-digit", second: "2-digit",
-                });
-                let btDetails: any = {};
-                try { btDetails = JSON.parse(b.reference); } catch { btDetails = { txRef: b.reference }; }
-                const openBtReceipt = () => showReceipt({
-                  status: btStatus,
-                  title: "Bank Transfer",
-                  amount: `₦${Number(btDetails.netAmountNgn ?? 0).toLocaleString()}`,
-                  amountLabel: `$${parseFloat(b.amount).toFixed(2)}`,
-                  timestamp: btDate,
-                  referenceRow: btDetails.txRef || b.reference,
-                  rows: [
-                    { label: "Reference",    value: btDetails.txRef || b.reference, mono: true },
-                    { label: "Recipient",    value: btDetails.accountName || "—" },
-                    { label: "Account No",   value: btDetails.accountNumber || "—", mono: true },
-                    { label: "Bank",         value: btDetails.bankName || "—" },
-                    { label: "Amount (NGN)", value: `₦${Number(btDetails.netAmountNgn ?? 0).toLocaleString()}`, bold: true, green: true },
-                    { label: "Amount (USD)", value: `$${parseFloat(b.amount).toFixed(2)}` },
-                    { label: "Date",         value: btDate },
-                    { label: "Status",       value: btStatus === "success" ? "Completed" : btStatus === "pending" ? "Pending Approval" : "Processing",
-                      green: btStatus === "success", gold: btStatus === "processing", red: btStatus === "pending" },
-                  ],
-                });
-                return (
-                  <button key={b.id} onClick={openBtReceipt}
-                    className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
-                    data-testid={`row-bank-transfer-${b.id}`}>
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                      <Building2 className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm">{btDetails.accountName || "Bank Transfer"}</p>
-                      <p className="text-xs text-muted-foreground truncate">{btDetails.bankName || btDetails.txRef || b.reference}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
-                      <p className={`text-[10px] font-semibold ${btStatus === "success" ? "text-tsia-green" : btStatus === "pending" ? "text-amber-500" : "text-blue-500"}`}>
-                        {btStatus === "success" ? "Sent" : btStatus === "pending" ? "Pending" : "Processing"}
-                      </p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
-                  </button>
-                );
-              })}
-              {btTotalPages > 1 && (
-                <div className="flex items-center justify-between pt-2">
-                  <button onClick={() => setBankTxPage(p => Math.max(0, p - 1))} disabled={bankTxPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
-                  <span className="text-xs text-muted-foreground">Page {bankTxPage + 1} of {btTotalPages}</span>
-                  <button onClick={() => setBankTxPage(p => Math.min(btTotalPages - 1, p + 1))} disabled={bankTxPage >= btTotalPages - 1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
-                </div>
-              )}
-              </>);
-            })()
-          ) : activeTab === "transfers" ? (
-            (() => {
-              const allTx = transfers as TransferRecord[];
-              if (allTx.length === 0) return <EmptyState icon={Send} msg="No transfers yet" />;
-              const txTotalPages = Math.ceil(allTx.length / FH_PAGE_SIZE);
-              const txPageItems = allTx.slice(transferPage * FH_PAGE_SIZE, (transferPage + 1) * FH_PAGE_SIZE);
-              return (<>{txPageItems.map(t => {
-                  const isOut = t.senderId === user?.id;
-                  const txStatus: "success" | "pending" | "processing" =
-                    t.status === "completed" ? "success" : t.status === "pending" ? "pending" : "processing";
-                  const txDate = new Date(t.createdAt).toLocaleString("en-GB", {
-                    day: "2-digit", month: "short", year: "numeric",
-                    hour: "2-digit", minute: "2-digit", second: "2-digit",
-                  });
-                  const openTransferReceipt = () => showReceipt({
-                    status: txStatus,
-                    title: isOut ? "Money Sent" : "Money Received",
-                    amount: `$${parseFloat(t.amount).toFixed(2)}`,
-                    timestamp: txDate,
-                    referenceRow: `TSIA-TX-${t.id}`,
-                    rows: [
-                      { label: "Reference",  value: `TSIA-TX-${t.id}`, mono: true },
-                      { label: "Sender",     value: isOut ? `${user?.firstName} ${user?.lastName} (You)` : (t.senderName || "TSIA Member") },
-                      { label: "Recipient",  value: isOut ? (t.recipientName || "TSIA Member") : `${user?.firstName} ${user?.lastName} (You)` },
-                      { label: "Amount",     value: `$${parseFloat(t.amount).toFixed(2)}`, bold: true },
-                      { label: "Note",       value: t.note || "None" },
-                      { label: "Date",       value: txDate },
-                      { label: "Status",     value: txStatus === "success" ? "Completed" : txStatus === "pending" ? "Pending" : "Processing",
-                        green: txStatus === "success", gold: txStatus === "processing", red: txStatus === "pending" },
-                    ],
-                  });
-                  return (
-                    <button key={t.id} onClick={openTransferReceipt}
-                      className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
-                      data-testid={`row-transfer-${t.id}`}>
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOut ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
-                        {isOut ? <ArrowUpRight className="w-5 h-5 text-red-500" /> : <ArrowDownLeft className="w-5 h-5 text-tsia-green" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm">{isOut ? `To ${t.recipientName || "User"}` : `From ${t.senderName || "User"}`}</p>
-                        <p className="text-xs text-muted-foreground truncate">{t.note || (isOut ? "Money sent" : "Money received")}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-bold text-sm ${isOut ? "text-red-500" : "text-tsia-green"}`}>{isOut ? "−" : "+"}${parseFloat(t.amount).toFixed(2)}</p>
-                        <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
-                    </button>
-                  );
-                })}
-                {txTotalPages > 1 && (
-                  <div className="flex items-center justify-between pt-2">
-                    <button onClick={() => setTransferPage(p => Math.max(0, p - 1))} disabled={transferPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
-                    <span className="text-xs text-muted-foreground">Page {transferPage + 1} of {txTotalPages}</span>
-                    <button onClick={() => setTransferPage(p => Math.min(txTotalPages - 1, p + 1))} disabled={transferPage >= txTotalPages - 1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
-                  </div>
-                )}
-                </>);
-              })()
-          ) : (
-            (() => {
-              const billItems = (bills as BillRecord[]).filter(b => b.service !== "bank_transfer");
-              if (billItems.length === 0) return <EmptyState icon={Receipt} msg="No bill payments yet" />;
-              const blTotalPages = Math.ceil(billItems.length / FH_PAGE_SIZE);
-              const blPageItems = billItems.slice(billPage * FH_PAGE_SIZE, (billPage + 1) * FH_PAGE_SIZE);
-              return (<>{blPageItems.map(b => {
-                const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
-                const billStatus: "success" | "pending" | "processing" =
-                  b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
-                const billDate = new Date(b.createdAt).toLocaleString("en-GB", {
-                  day: "2-digit", month: "short", year: "numeric",
-                  hour: "2-digit", minute: "2-digit", second: "2-digit",
-                });
-                const openBillReceipt = () => showReceipt({
-                  status: billStatus,
-                  title: `${svc.label} Payment`,
-                  amount: `$${parseFloat(b.amount).toFixed(2)}`,
-                  timestamp: billDate,
-                  referenceRow: b.reference,
-                  rows: [
-                    { label: "Reference", value: b.reference, mono: true },
-                    { label: "Service",   value: svc.label },
-                    { label: "Amount",    value: `$${parseFloat(b.amount).toFixed(2)}`, bold: true },
-                    { label: "Date",      value: billDate },
-                    { label: "Status",    value: billStatus === "success" ? "Completed" : billStatus === "pending" ? "Pending" : "Processing",
-                      green: billStatus === "success", gold: billStatus === "processing", red: billStatus === "pending" },
-                  ],
-                });
-                return (
-                  <button key={b.id} onClick={openBillReceipt}
-                    className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
-                    data-testid={`row-bill-${b.id}`}>
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}>
-                      <svc.icon className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm capitalize">{svc.label}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {b.reference.includes(" | Ref: ")
-                          ? b.reference.split(" | Ref: ")[0]
-                          : b.reference}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
-                      <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
-                  </button>
-                );
-              })}
-              {blTotalPages > 1 && (
-                <div className="flex items-center justify-between pt-2">
-                  <button onClick={() => setBillPage(p => Math.max(0, p - 1))} disabled={billPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
-                  <span className="text-xs text-muted-foreground">Page {billPage + 1} of {blTotalPages}</span>
-                  <button onClick={() => setBillPage(p => Math.min(blTotalPages - 1, p + 1))} disabled={billPage >= blTotalPages - 1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
-                </div>
-              )}
-              </>);
-            })()
-          )}
-        </div>
-      </div>
 
       {/* Universal Transaction Receipt Dialog */}
       {txReceiptProps && (
@@ -2234,6 +1978,207 @@ export default function FinancialHub() {
 
       <BottomNavBar />
     </div>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TRANSACTION HISTORY
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "history") return (
+    <AnimatePresence mode="wait">
+      <motion.div key="history" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-4">
+        <BackHeader title="Transaction History" onBack={() => setView("home")} />
+
+        {/* Tab selector */}
+        <div className="flex bg-muted/50 rounded-2xl p-1 text-xs">
+          {(["transfers","bank-transfers","bills"] as const).map(tab => (
+            <button key={tab} onClick={() => { setActiveTab(tab); if (tab==="transfers") setTransferPage(0); if (tab==="bank-transfers") setBankTxPage(0); if (tab==="bills") setBillPage(0); }}
+              className={`flex-1 py-2 rounded-xl font-semibold transition-all ${activeTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
+              {tab === "transfers" ? "Transfers" : tab === "bank-transfers" ? "Bank" : "Bills"}
+            </button>
+          ))}
+        </div>
+
+        {/* Transfers */}
+        {activeTab === "transfers" && (() => {
+          const allTx = transfers as TransferRecord[];
+          if (allTx.length === 0) return <EmptyState icon={Send} msg="No transfers yet" />;
+          const txTotalPages = Math.ceil(allTx.length / FH_PAGE_SIZE);
+          const txPageItems = allTx.slice(transferPage * FH_PAGE_SIZE, (transferPage + 1) * FH_PAGE_SIZE);
+          return (<div className="space-y-2">{txPageItems.map(t => {
+            const isOut = t.senderId === user?.id;
+            const txStatus: "success" | "pending" | "processing" =
+              t.status === "completed" ? "success" : t.status === "pending" ? "pending" : "processing";
+            const txDate = new Date(t.createdAt).toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
+            const openTransferReceipt = () => showReceipt({
+              status: txStatus,
+              title: isOut ? "Money Sent" : "Money Received",
+              amount: `$${parseFloat(t.amount).toFixed(2)}`,
+              timestamp: txDate,
+              referenceRow: `TSIA-TX-${t.id}`,
+              rows: [
+                { label: "Reference", value: `TSIA-TX-${t.id}`, mono: true },
+                { label: "Sender",    value: isOut ? `${user?.firstName} ${user?.lastName} (You)` : (t.senderName || "TSIA Member") },
+                { label: "Recipient", value: isOut ? (t.recipientName || "TSIA Member") : `${user?.firstName} ${user?.lastName} (You)` },
+                { label: "Amount",    value: `$${parseFloat(t.amount).toFixed(2)}`, bold: true },
+                { label: "Note",      value: t.note || "None" },
+                { label: "Date",      value: txDate },
+                { label: "Status",    value: txStatus === "success" ? "Completed" : txStatus === "pending" ? "Pending" : "Processing",
+                  green: txStatus === "success", gold: txStatus === "processing", red: txStatus === "pending" },
+              ],
+            });
+            return (
+              <button key={t.id} onClick={openTransferReceipt}
+                className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
+                data-testid={`row-transfer-${t.id}`}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOut ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}>
+                  {isOut ? <ArrowUpRight className="w-5 h-5 text-red-500" /> : <ArrowDownLeft className="w-5 h-5 text-tsia-green" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">{isOut ? `To ${t.recipientName || "User"}` : `From ${t.senderName || "User"}`}</p>
+                  <p className="text-xs text-muted-foreground truncate">{t.note || (isOut ? "Money sent" : "Money received")}</p>
+                </div>
+                <div className="text-right">
+                  <p className={`font-bold text-sm ${isOut ? "text-red-500" : "text-tsia-green"}`}>{isOut ? "−" : "+"}${parseFloat(t.amount).toFixed(2)}</p>
+                  <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+              </button>
+            );
+          })}
+          {txTotalPages > 1 && (
+            <div className="flex items-center justify-between pt-2">
+              <button onClick={() => setTransferPage(p => Math.max(0, p-1))} disabled={transferPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+              <span className="text-xs text-muted-foreground">Page {transferPage+1} of {txTotalPages}</span>
+              <button onClick={() => setTransferPage(p => Math.min(txTotalPages-1, p+1))} disabled={transferPage >= txTotalPages-1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
+            </div>
+          )}
+          </div>);
+        })()}
+
+        {/* Bank transfers */}
+        {activeTab === "bank-transfers" && (() => {
+          const bankTxs = (bills as BillRecord[]).filter(b => b.service === "bank_transfer");
+          if (bankTxs.length === 0) return <EmptyState icon={Building2} msg="No bank transfers yet" />;
+          const btTotalPages = Math.ceil(bankTxs.length / FH_PAGE_SIZE);
+          const btPageItems = bankTxs.slice(bankTxPage * FH_PAGE_SIZE, (bankTxPage+1) * FH_PAGE_SIZE);
+          return (<div className="space-y-2">{btPageItems.map(b => {
+            const btStatus: "success" | "pending" | "processing" =
+              b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
+            const btDate = new Date(b.createdAt).toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
+            let btDetails: any = {};
+            try { btDetails = JSON.parse(b.reference); } catch { btDetails = { txRef: b.reference }; }
+            const openBtReceipt = () => showReceipt({
+              status: btStatus,
+              title: "Bank Transfer",
+              amount: `₦${Number(btDetails.netAmountNgn ?? 0).toLocaleString()}`,
+              amountLabel: `$${parseFloat(b.amount).toFixed(2)}`,
+              timestamp: btDate,
+              referenceRow: btDetails.txRef || b.reference,
+              rows: [
+                { label: "Reference",    value: btDetails.txRef || b.reference, mono: true },
+                { label: "Recipient",    value: btDetails.accountName || "—" },
+                { label: "Account No",   value: btDetails.accountNumber || "—", mono: true },
+                { label: "Bank",         value: btDetails.bankName || "—" },
+                { label: "Amount (NGN)", value: `₦${Number(btDetails.netAmountNgn ?? 0).toLocaleString()}`, bold: true, green: true },
+                { label: "Amount (USD)", value: `$${parseFloat(b.amount).toFixed(2)}` },
+                { label: "Date",         value: btDate },
+                { label: "Status",       value: btStatus === "success" ? "Completed" : btStatus === "pending" ? "Pending Approval" : "Processing",
+                  green: btStatus === "success", gold: btStatus === "processing", red: btStatus === "pending" },
+              ],
+            });
+            return (
+              <button key={b.id} onClick={openBtReceipt}
+                className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
+                data-testid={`row-bank-transfer-${b.id}`}>
+                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <Building2 className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">{btDetails.accountName || "Bank Transfer"}</p>
+                  <p className="text-xs text-muted-foreground truncate">{btDetails.bankName || btDetails.txRef || b.reference}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
+                  <p className={`text-[10px] font-semibold ${btStatus === "success" ? "text-tsia-green" : btStatus === "pending" ? "text-amber-500" : "text-blue-500"}`}>
+                    {btStatus === "success" ? "Sent" : btStatus === "pending" ? "Pending" : "Processing"}
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+              </button>
+            );
+          })}
+          {btTotalPages > 1 && (
+            <div className="flex items-center justify-between pt-2">
+              <button onClick={() => setBankTxPage(p => Math.max(0, p-1))} disabled={bankTxPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+              <span className="text-xs text-muted-foreground">Page {bankTxPage+1} of {btTotalPages}</span>
+              <button onClick={() => setBankTxPage(p => Math.min(btTotalPages-1, p+1))} disabled={bankTxPage >= btTotalPages-1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
+            </div>
+          )}
+          </div>);
+        })()}
+
+        {/* Bills */}
+        {activeTab === "bills" && (() => {
+          const billItems = (bills as BillRecord[]).filter(b => b.service !== "bank_transfer");
+          if (billItems.length === 0) return <EmptyState icon={Receipt} msg="No bill payments yet" />;
+          const blTotalPages = Math.ceil(billItems.length / FH_PAGE_SIZE);
+          const blPageItems = billItems.slice(billPage * FH_PAGE_SIZE, (billPage+1) * FH_PAGE_SIZE);
+          return (<div className="space-y-2">{blPageItems.map(b => {
+            const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
+            const billStatus: "success" | "pending" | "processing" =
+              b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
+            const billDate = new Date(b.createdAt).toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
+            const openBillReceipt = () => showReceipt({
+              status: billStatus,
+              title: `${svc.label} Payment`,
+              amount: `$${parseFloat(b.amount).toFixed(2)}`,
+              timestamp: billDate,
+              referenceRow: b.reference,
+              rows: [
+                { label: "Reference", value: b.reference, mono: true },
+                { label: "Service",   value: svc.label },
+                { label: "Amount",    value: `$${parseFloat(b.amount).toFixed(2)}`, bold: true },
+                { label: "Date",      value: billDate },
+                { label: "Status",    value: billStatus === "success" ? "Completed" : billStatus === "pending" ? "Pending" : "Processing",
+                  green: billStatus === "success", gold: billStatus === "processing", red: billStatus === "pending" },
+              ],
+            });
+            return (
+              <button key={b.id} onClick={openBillReceipt}
+                className="w-full flex items-center gap-3 bg-card border rounded-2xl p-3 hover:bg-muted/30 active:scale-[0.99] transition-all text-left"
+                data-testid={`row-bill-${b.id}`}>
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}>
+                  <svc.icon className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm capitalize">{svc.label}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {b.reference.includes(" | Ref: ") ? b.reference.split(" | Ref: ")[0] : b.reference}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
+                  <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+              </button>
+            );
+          })}
+          {blTotalPages > 1 && (
+            <div className="flex items-center justify-between pt-2">
+              <button onClick={() => setBillPage(p => Math.max(0, p-1))} disabled={billPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+              <span className="text-xs text-muted-foreground">Page {billPage+1} of {blTotalPages}</span>
+              <button onClick={() => setBillPage(p => Math.min(blTotalPages-1, p+1))} disabled={billPage >= blTotalPages-1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
+            </div>
+          )}
+          </div>);
+        })()}
+
+        {txReceiptProps && (
+          <TransactionReceipt open={txReceiptOpen} onClose={() => { setTxReceiptOpen(false); setTxReceiptProps(null); }} {...txReceiptProps} />
+        )}
+      </motion.div>
+    </AnimatePresence>
   );
 
   // ═════════════════════════════════════════════════════════════════════════

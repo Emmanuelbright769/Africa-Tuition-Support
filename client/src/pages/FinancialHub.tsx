@@ -1094,33 +1094,6 @@ export default function FinancialHub() {
         ))}
       </div>
 
-      {/* Services */}
-      <div>
-        <h3 className="font-bold text-sm mb-3">Quick Services</h3>
-        <div className="grid grid-cols-4 gap-3">
-          {SERVICES.map((svc: any) => {
-            const cs = !!svc.comingSoon;
-            return (
-              <button key={svc.id}
-                onClick={() => {
-                  if (cs) { toast({ title: `${svc.label} coming soon`, description: "We're integrating a licensed provider. Stay tuned." }); return; }
-                  resetBill(); setSelectedService(svc); setView("service");
-                }}
-                className={`relative flex flex-col items-center gap-2 p-3 rounded-2xl ${svc.bg} hover:shadow-md transition-shadow ${cs ? "opacity-60" : ""}`}
-                data-testid={`btn-service-${svc.id}`}>
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}>
-                  <svc.icon className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-[11px] font-semibold text-foreground">{svc.label}</span>
-                {cs && (
-                  <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[8px] font-bold uppercase tracking-wide shadow">Soon</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Virtual Card — hidden until live */}
       {false && <div>
         <h3 className="font-bold text-sm mb-3">Virtual US Mastercard <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wide">Coming Soon</span></h3>

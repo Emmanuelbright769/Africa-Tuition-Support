@@ -128,6 +128,7 @@ export default function QCESection() {
   const [vcSelectedVehicle, setVcSelectedVehicle] = useState<typeof V_CONNECT_VEHICLES[0] | null>(null);
   const [vcInterestOpen, setVcInterestOpen] = useState(false);
   const [vcSuccessOpen, setVcSuccessOpen] = useState(false);
+  const [vcCalcPrice, setVcCalcPrice] = useState("");
 
   // ── Business Loan state ─────────────────────────────────────────────
   const [loanAmount, setLoanAmount] = useState("");
@@ -633,6 +634,101 @@ export default function QCESection() {
               {vcEligibilityOk
                 ? <Badge className="ml-auto bg-tsia-green/10 text-tsia-green border-0 text-[10px] shrink-0"><BadgeCheck className="w-3 h-3 mr-0.5" /> Eligible</Badge>
                 : <Badge className="ml-auto bg-amber-100 text-amber-700 border-0 text-[10px] shrink-0">{eligibilityPct.toFixed(1)}% / 30%</Badge>}
+            </div>
+
+            {/* ── V-Connect Savings Calculator ────────────────────── */}
+            {(() => {
+              const rawPrice = parseFloat(vcCalcPrice.replace(/,/g, "")) || 0;
+              const savingsTarget = rawPrice > 0 ? rawPrice / 0.30 : 0;
+              const dailyNeeded   = savingsTarget / 90;
+              const monthlyNeeded = savingsTarget / 3;
+              const qceBalanceNgn = qceBalance * 1480;
+              const progressToTarget = savingsTarget > 0 ? Math.min((qceBalanceNgn / savingsTarget) * 100, 100) : 0;
+              return (
+                <Card className="shadow-sm border-0 bg-gradient-to-br from-tsia-gold/5 to-amber-50/60 dark:from-tsia-gold/10 dark:to-amber-900/10">
+                  <CardHeader className="pb-2 pt-4">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-tsia-gold" /> V-Connect Savings Calculator
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pb-4 space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Vehicle Price (₦)</Label>
+                      <Input
+                        type="number" min="0" step="100000"
+                        placeholder="e.g. 3000000"
+                        value={vcCalcPrice}
+                        onChange={e => setVcCalcPrice(e.target.value)}
+                        className="h-10 text-sm font-semibold"
+                        data-testid="input-vc-calc-price"
+                      />
+                    </div>
+
+                    {rawPrice > 0 && (
+                      <div className="space-y-2">
+                        <div className="bg-card rounded-xl p-3 space-y-2 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Vehicle Price</span>
+                            <span className="font-semibold">{formatNaira(rawPrice)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Required Savings Target (÷ 0.30)</span>
+                            <span className="font-bold text-tsia-gold">{formatNaira(savingsTarget)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Daily Savings Needed (90 days)</span>
+                            <span className="font-semibold">{formatNaira(dailyNeeded)}/day</span>
+                          </div>
+                          <div className="flex justify-between border-t pt-2">
+                            <span className="text-muted-foreground">Monthly Savings Needed</span>
+                            <span className="font-semibold">{formatNaira(monthlyNeeded)}/mo</span>
+                          </div>
+                        </div>
+
+                        {/* QCE savings progress toward target */}
+                        <div className="bg-card rounded-xl p-3 space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-muted-foreground">Your QCE Savings Progress</span>
+                            <span className="font-bold text-tsia-green">{progressToTarget.toFixed(1)}%</span>
+                          </div>
+                          <Progress value={progressToTarget} className="h-2" />
+                          <p className="text-[10px] text-muted-foreground">
+                            ₦{(qceBalance * 1480).toLocaleString("en-NG", { maximumFractionDigits: 0 })} saved of {formatNaira(savingsTarget)} target
+                          </p>
+                        </div>
+
+                        {/* QCE eligibility progress toward 30% */}
+                        <div className="bg-card rounded-xl p-3 space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-muted-foreground">QCE Eligibility (30% required)</span>
+                            <span className={`font-bold ${vcEligibilityOk ? "text-tsia-green" : "text-amber-600"}`}>{eligibilityPct.toFixed(1)}% / 30%</span>
+                          </div>
+                          <Progress value={Math.min((eligibilityPct / 30) * 100, 100)} className="h-2" />
+                          {!vcEligibilityOk && (
+                            <p className="text-[10px] text-amber-600">Keep saving — {(30 - eligibilityPct).toFixed(1)}% more eligibility needed to unlock V-Connect</p>
+                          )}
+                          {vcEligibilityOk && (
+                            <p className="text-[10px] text-tsia-green font-semibold">✓ You meet the 30% eligibility threshold</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {!rawPrice && (
+                      <p className="text-[11px] text-muted-foreground italic text-center py-1">Enter a vehicle price above to see your savings plan</p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+            {/* ── Terms Notice ─────────────────────────────────────── */}
+            <div className="bg-amber-50 dark:bg-amber-900/15 border border-amber-300 dark:border-amber-700 rounded-2xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs text-amber-800 dark:text-amber-300">
+                <p className="font-bold text-amber-900 dark:text-amber-200">Important — Early Withdrawal Policy</p>
+                <p>If you change or withdraw your QCE savings plan before completing the <strong>90-day target period</strong>, your savings will be returned to your wallet <strong>without profit</strong> and your V-Connect eligibility will <strong>reset to zero</strong>.</p>
+                <p className="mt-1 font-medium">Stay consistent for 90 days to unlock full V-Connect credit benefits.</p>
+              </div>
             </div>
 
             {/* ── Vehicle listings ────────────────────────────────── */}

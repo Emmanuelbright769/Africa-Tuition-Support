@@ -5566,6 +5566,7 @@ export async function registerRoutes(
       const amountNgn = Math.round(amount * 1480); // 1 USD = ₦1,480
       const reference = `TSIA-KORA-${userId}-${Date.now()}`;
       const notifUrl = `${req.protocol}://${req.get("host")}/api/webhook/korapay`;
+      const redirectUrl = `${req.protocol}://${req.get("host")}/student-dashboard`;
       const koraRes = await fetch(`${KORA_BASE}/charges/initialize`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
@@ -5574,6 +5575,7 @@ export async function registerRoutes(
           currency: "NGN",
           reference,
           notification_url: notifUrl,
+          redirect_url: redirectUrl,
           customer: { name: `${user.firstName} ${user.lastName}`, email: user.email },
           channels: ["card", "bank_transfer", "pay_with_bank"],
           metadata: { userId, amountUsd: amount.toFixed(2), platform: "TSIA" },

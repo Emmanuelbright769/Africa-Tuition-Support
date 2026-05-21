@@ -380,6 +380,7 @@ export default function FinancialHub() {
   // ── Fund Account state ────────────────────────────────────────────────────
   type FundMethod = "squad" | "korapay" | "crypto";
   const [fundMethod, setFundMethod]     = useState<FundMethod>("squad");
+  const [fundStep, setFundStep]         = useState<"method" | "amount">("method");
   const [fundAmount, setFundAmount]     = useState("");
   const [squadLoading, setSquadLoading] = useState(false);
   const [koraLoading, setKoraLoading]   = useState(false);
@@ -1071,7 +1072,7 @@ export default function FinancialHub() {
             </div>
           </div>
         </div>
-        <button onClick={() => { setFundMethod("squad"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); }}
+        <button onClick={() => { setFundStep("method"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); }}
           className="absolute right-0 top-0 h-full w-16 flex flex-col items-center justify-center gap-2 border-l-2 border-dashed border-white/30 bg-white/10 hover:bg-white/20 transition-colors"
           data-testid="btn-add-money">
           <span className="text-white text-2xl font-black">+</span>
@@ -1082,7 +1083,7 @@ export default function FinancialHub() {
       {/* Quick Actions */}
       <div className="grid grid-cols-4 gap-2">
         {[
-          { icon: ArrowDownLeft, label: "Fund",     color: "bg-emerald-600", action: () => { setFundMethod("squad"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); } },
+          { icon: ArrowDownLeft, label: "Fund",     color: "bg-emerald-600", action: () => { setFundStep("method"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); } },
           { icon: Send,          label: "Send",     color: "bg-tsia-green",  action: () => { resetSend(); setView("send"); } },
           { icon: Bell,          label: "Request",  color: "bg-violet-500",  action: () => setView("request") },
           { icon: Receipt,       label: "Pay Bill", color: "bg-amber-500",   action: () => { resetBill(); setView("pay-bill"); } },
@@ -1612,7 +1613,14 @@ export default function FinancialHub() {
   if (view === "fund") return (
     <AnimatePresence mode="wait">
       <motion.div key="fund" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-4">
-        <BackHeader onBack={() => { setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("home"); }} title="Fund Account" sub="Add money to your TSIA wallet" />
+        <BackHeader
+          onBack={() => {
+            if (fundStep === "amount") { setFundStep("method"); }
+            else { setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("home"); }
+          }}
+          title={fundStep === "method" ? "Fund Account" : fundMethod === "squad" ? "Pay via Squad" : fundMethod === "korapay" ? "Pay via Korapay" : "Crypto Deposit"}
+          sub={fundStep === "method" ? "Choose how you want to add money" : "Add money to your TSIA wallet"}
+        />
 
         {/* Balance pill */}
         <div className="flex items-center justify-between bg-gradient-to-r from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-4 py-3">
@@ -1620,24 +1628,82 @@ export default function FinancialHub() {
           <span className="text-lg font-black text-tsia-green">${balance.toFixed(2)}</span>
         </div>
 
-        {/* Method tabs */}
-        <div className="flex bg-muted/40 rounded-2xl p-1 gap-1">
-          <button onClick={() => setFundMethod("squad")}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${fundMethod === "squad" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
-            data-testid="btn-fund-method-squad">
-            <CreditCard className="w-3.5 h-3.5" /> Squad
-          </button>
-          <button onClick={() => setFundMethod("korapay")}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${fundMethod === "korapay" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
-            data-testid="btn-fund-method-korapay">
-            <Building2 className="w-3.5 h-3.5" /> Korapay
-          </button>
-          <button onClick={() => setFundMethod("crypto")}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${fundMethod === "crypto" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
-            data-testid="btn-fund-method-crypto">
-            <Coins className="w-3.5 h-3.5" /> Crypto
-          </button>
-        </div>
+        {/* ── STEP 1: Payment method picker ── */}
+        {fundStep === "method" && (
+          <motion.div key="method-picker" initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} className="space-y-3">
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest px-1">Select Payment Method</p>
+            {[
+              {
+                id: "squad" as FundMethod,
+                name: "Squad by GTco",
+                tagline: "Card, Bank Transfer, USSD & Mobile",
+                detail: "Inline checkout — stays on this page",
+                badge: "Recommended",
+                badgeColor: "bg-tsia-green text-white",
+                iconBg: "bg-emerald-50 dark:bg-emerald-900/20",
+                iconColor: "text-tsia-green",
+                border: "border-tsia-green/30 hover:border-tsia-green",
+                accent: "from-tsia-green/10 to-emerald-50/50 dark:from-tsia-green/10 dark:to-emerald-900/10",
+                icons: [CreditCard, Building2, Smartphone, Banknote],
+              },
+              {
+                id: "korapay" as FundMethod,
+                name: "Korapay",
+                tagline: "Card, Bank Transfer, USSD & Virtual Account",
+                detail: "Secure Korapay checkout — auto-returns after payment",
+                badge: "Popular",
+                badgeColor: "bg-orange-500 text-white",
+                iconBg: "bg-orange-50 dark:bg-orange-900/20",
+                iconColor: "text-orange-500",
+                border: "border-orange-200 hover:border-orange-400 dark:border-orange-800",
+                accent: "from-orange-50/60 to-amber-50/40 dark:from-orange-900/10 dark:to-amber-900/10",
+                icons: [CreditCard, Building2, Smartphone, Banknote],
+              },
+              {
+                id: "crypto" as FundMethod,
+                name: "Crypto (USDT)",
+                tagline: "TRC20 (TRON) or BEP20 (BSC)",
+                detail: "Manual hash submission — credited after verification",
+                badge: "No bank needed",
+                badgeColor: "bg-amber-500 text-white",
+                iconBg: "bg-amber-50 dark:bg-amber-900/20",
+                iconColor: "text-amber-500",
+                border: "border-amber-200 hover:border-amber-400 dark:border-amber-800",
+                accent: "from-amber-50/60 to-yellow-50/40 dark:from-amber-900/10 dark:to-yellow-900/10",
+                icons: [Coins],
+              },
+            ].map(opt => {
+              const MainIcon = opt.icons[0];
+              return (
+              <button key={opt.id}
+                data-testid={`btn-fund-method-${opt.id}`}
+                onClick={() => { setFundMethod(opt.id); setFundAmount(""); setFundStep("amount"); }}
+                className={`w-full text-left border-2 rounded-2xl p-4 bg-gradient-to-r ${opt.accent} ${opt.border} transition-all active:scale-[0.99] hover:shadow-md`}>
+                <div className="flex items-start gap-3">
+                  <div className={`w-11 h-11 rounded-xl ${opt.iconBg} flex items-center justify-center shrink-0`}>
+                    <MainIcon className={`w-6 h-6 ${opt.iconColor}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="font-bold text-sm text-foreground">{opt.name}</p>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${opt.badgeColor}`}>{opt.badge}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{opt.tagline}</p>
+                    <p className="text-[11px] text-muted-foreground/70 mt-0.5 italic">{opt.detail}</p>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      {opt.icons.map((Ic, idx) => <Ic key={idx} className={`w-3.5 h-3.5 ${opt.iconColor} opacity-70`} />)}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-muted-foreground/50 shrink-0 mt-1" />
+                </div>
+              </button>
+              );
+            })}
+          </motion.div>
+        )}
+
+        {/* ── STEP 2: Amount + form ── */}
+        {fundStep === "amount" && (<motion.div key="fund-form" initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} className="space-y-4">
 
         {/* ── SQUAD ── */}
         {fundMethod === "squad" && (
@@ -1870,6 +1936,7 @@ export default function FinancialHub() {
             </div>
           );
         })()}
+        </motion.div>)}
       </motion.div>
     </AnimatePresence>
   );

@@ -8616,6 +8616,83 @@ export async function registerRoutes(
     }
   }
 
+  // ── SAVINGS GOALS ────────────────────────────────────────────────────────────
+  app.get("/api/savings/goals", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const goals = await storage.getSavingsGoalsByUser(userId);
+      res.json(goals);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/savings/goals", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { name, type, emoji, targetAmount, targetDate } = req.body;
+      if (!name?.trim()) return res.status(400).json({ message: "Goal name is required" });
+      if (!targetAmount || parseFloat(targetAmount) <= 0) return res.status(400).json({ message: "Target amount must be greater than 0" });
+      const goal = await storage.createSavingsGoal({
+        userId,
+        name: name.trim(),
+        type: type || "flexible",
+        emoji: emoji || "🎯",
+        targetAmount: parseFloat(targetAmount).toFixed(2),
+        targetDate: targetDate ? new Date(targetDate) : null,
+      });
+      res.json(goal);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/savings/goals/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const goalId = parseInt(req.params.id);
+      const goal = await storage.getSavingsGoal(goalId, userId);
+      if (!goal) return res.status(404).json({ message: "Goal not found" });
+      const transactions = await storage.getSavingsTransactions(goalId, userId);
+      res.json({ goal, transactions });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/savings/goals/:id/deposit", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const goalId = parseInt(req.params.id);
+      const amount = parseFloat(req.body.amount);
+      if (!amount || amount <= 0) return res.status(400).json({ message: "Amount must be greater than 0" });
+      const result = await storage.depositToSavings(userId, goalId, amount);
+      invalidateCache(`wallet:${userId}`);
+      res.json(result);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  app.post("/api/savings/goals/:id/withdraw", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const goalId = parseInt(req.params.id);
+      const amount = parseFloat(req.body.amount);
+      if (!amount || amount <= 0) return res.status(400).json({ message: "Amount must be greater than 0" });
+      const result = await storage.withdrawFromSavings(userId, goalId, amount);
+      invalidateCache(`wallet:${userId}`);
+      res.json(result);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  app.delete("/api/savings/goals/:id", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const goalId = parseInt(req.params.id);
+      await storage.deleteSavingsGoal(goalId, userId);
+      res.json({ success: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
   function msUntilNextMondayAt8WAT() {
     // WAT = UTC+1
     const now = new Date();

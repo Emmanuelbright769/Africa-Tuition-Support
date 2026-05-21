@@ -1098,6 +1098,40 @@ export const insertMovieSubscriptionSchema = createInsertSchema(movieSubscriptio
 export type InsertMovieSubscription = z.infer<typeof insertMovieSubscriptionSchema>;
 export type MovieSubscription = typeof movieSubscriptions.$inferSelect;
 
+// ─── SAVINGS GOALS ───────────────────────────────────────────────────────────
+export const savingsGoals = pgTable("savings_goals", {
+  id:            integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:        integer("user_id").notNull().references(() => users.id),
+  name:          text("name").notNull(),
+  type:          text("type").notNull().default("flexible"),
+  emoji:         text("emoji").notNull().default("🎯"),
+  targetAmount:  decimal("target_amount", { precision: 10, scale: 2 }).notNull(),
+  currentAmount: decimal("current_amount", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  targetDate:    timestamp("target_date"),
+  status:        text("status").notNull().default("active"),
+  createdAt:     timestamp("created_at").defaultNow().notNull(),
+  updatedAt:     timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const savingsTransactions = pgTable("savings_transactions", {
+  id:           integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:       integer("user_id").notNull().references(() => users.id),
+  goalId:       integer("goal_id").notNull().references(() => savingsGoals.id),
+  type:         text("type").notNull(),
+  amountUsd:    decimal("amount_usd", { precision: 10, scale: 2 }).notNull(),
+  balanceAfter: decimal("balance_after", { precision: 10, scale: 2 }).notNull(),
+  note:         text("note"),
+  createdAt:    timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSavingsGoalSchema = createInsertSchema(savingsGoals).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSavingsGoal = z.infer<typeof insertSavingsGoalSchema>;
+export type SavingsGoal = typeof savingsGoals.$inferSelect;
+
+export const insertSavingsTransactionSchema = createInsertSchema(savingsTransactions).omit({ id: true, createdAt: true });
+export type InsertSavingsTransaction = z.infer<typeof insertSavingsTransactionSchema>;
+export type SavingsTransaction = typeof savingsTransactions.$inferSelect;
+
 // ─── TRADE BROKERS ────────────────────────────────────────────────────────────
 export const TRADE_BROKERS = [
   { id: "binance",  name: "Binance",  specialty: "Crypto & Futures",    rating: 4.9, minDeposit: 10,  fee: "0.1%",      description: "World's largest crypto exchange with deep liquidity." },

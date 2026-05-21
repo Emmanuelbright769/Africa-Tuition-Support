@@ -16,7 +16,8 @@ import {
   Copy, Search, ChevronDown, AlertCircle, Users, Building2, Clock,
   CreditCard, Shield, Lock, Coins, Smartphone, ExternalLink, Banknote,
   RefreshCcw, BookMarked, GraduationCap, Briefcase, ArrowLeftRight, Check,
-  Plane, Gift, Tv2, Share2, Download
+  Plane, Gift, Tv2, Share2, Download,
+  PiggyBank, Target, Sparkles, Trophy, Trash2, UserCircle, Home as HomeIcon, Star, Plus, CalendarDays
 } from "lucide-react";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 
@@ -161,6 +162,17 @@ type WalletData = { id: number; userId: number; balance: string };
 type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
 type Bank = { code: string; name: string; gateway?: "squad" | "korapay" };
+type SavingsGoalT = { id: number; userId: number; name: string; type: string; emoji: string; targetAmount: string; currentAmount: string; targetDate: string | null; status: string; createdAt: string; updatedAt: string };
+type SavingsTxT  = { id: number; goalId: number; type: string; amountUsd: string; balanceAfter: string; note: string | null; createdAt: string };
+
+const SAVINGS_TYPES = [
+  { id: "target",    label: "Target Savings",   emoji: "🎯", desc: "Save towards a specific goal" },
+  { id: "emergency", label: "Emergency Fund",    emoji: "🛡️", desc: "Safety net for unexpected costs" },
+  { id: "flexible",  label: "Flexible Savings",  emoji: "💰", desc: "Save freely, withdraw anytime" },
+  { id: "education", label: "Education Fund",     emoji: "📚", desc: "Invest in your future" },
+  { id: "vacation",  label: "Travel & Vacation",  emoji: "✈️", desc: "Save for your next adventure" },
+  { id: "business",  label: "Business Capital",   emoji: "💼", desc: "Build your business nest egg" },
+];
 
 // ─── Services ──────────────────────────────────────────────────────────────────
 const SERVICES = [
@@ -361,6 +373,22 @@ export default function FinancialHub() {
     return next;
   });
 
+  // ── Bottom navigation state ───────────────────────────────────────────────
+  const [bottomNav, setBottomNav] = useState<"home" | "rewards" | "finance" | "cards" | "me">("home");
+
+  // ── Savings state ─────────────────────────────────────────────────────────
+  const [savingsView, setSavingsView]       = useState<"list" | "create" | "detail">("list");
+  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null);
+  const [sgName, setSgName]                 = useState("");
+  const [sgType, setSgType]                 = useState("flexible");
+  const [sgEmoji, setSgEmoji]               = useState("💰");
+  const [sgTarget, setSgTarget]             = useState("");
+  const [sgDate, setSgDate]                 = useState("");
+  const [sgActionType, setSgActionType]     = useState<"deposit" | "withdraw" | null>(null);
+  const [sgActionAmount, setSgActionAmount] = useState("");
+  const [sgActionOpen, setSgActionOpen]     = useState(false);
+  const [sgDeleteConfirm, setSgDeleteConfirm] = useState(false);
+
   // ── View state ────────────────────────────────────────────────────────────
   const [view, setView]       = useState<View>("home");
   const [amount, setAmount]   = useState("0");
@@ -530,6 +558,55 @@ export default function FinancialHub() {
   // ── Fund Account: local currency helpers + queries ────────────────────────
   const { formatAmount, formatAmountVAT, rateLabel, rateLabelVAT, currency } = useLocalCurrency();
   const { data: walletDeposits = [], refetch: refetchDeposits } = useQuery<any[]>({ queryKey: ["/api/wallet/deposits"] });
+
+  // ── Savings queries ────────────────────────────────────────────────────────
+  const { data: savingsGoals = [], refetch: refetchGoals } = useQuery<SavingsGoalT[]>({
+    queryKey: ["/api/savings/goals"],
+    enabled: bottomNav === "finance",
+  });
+  const { data: goalDetail, refetch: refetchGoalDetail } = useQuery<{ goal: SavingsGoalT; transactions: SavingsTxT[] }>({
+    queryKey: [`/api/savings/goals/${selectedGoalId}`],
+    enabled: !!selectedGoalId && savingsView === "detail",
+  });
+
+  // ── Savings mutations ─────────────────────────────────────────────────────
+  const createGoalMutation = useMutation({
+    mutationFn: (data: { name: string; type: string; emoji: string; targetAmount: string; targetDate?: string }) =>
+      apiRequest("POST", "/api/savings/goals", data).then(r => r.json()),
+    onSuccess: () => {
+      refetchGoals();
+      setSavingsView("list");
+      setSgName(""); setSgType("flexible"); setSgEmoji("💰"); setSgTarget(""); setSgDate("");
+      toast({ title: "🎯 Goal Created!", description: "Your savings goal is ready. Start saving now!" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+  const savingsActionMutation = useMutation({
+    mutationFn: ({ goalId, type, amount }: { goalId: number; type: "deposit" | "withdraw"; amount: number }) =>
+      apiRequest("POST", `/api/savings/goals/${goalId}/${type}`, { amount }).then(r => r.json()),
+    onSuccess: () => {
+      refetchGoals();
+      if (selectedGoalId) refetchGoalDetail();
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/balances"] });
+      setSgActionOpen(false);
+      setSgActionAmount("");
+      toast({ title: sgActionType === "deposit" ? "💰 Saved!" : "✅ Withdrawn!", description: sgActionType === "deposit" ? "Amount added to your savings goal." : "Amount returned to your wallet." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+  const deleteGoalMutation = useMutation({
+    mutationFn: (goalId: number) => apiRequest("DELETE", `/api/savings/goals/${goalId}`).then(r => r.json()),
+    onSuccess: () => {
+      refetchGoals();
+      setSavingsView("list");
+      setSelectedGoalId(null);
+      setSgDeleteConfirm(false);
+      toast({ title: "Goal Deleted", description: "Savings goal removed." });
+    },
+    onError: (e: any) => toast({ title: "Cannot Delete", description: e.message, variant: "destructive" }),
+  });
+
   const { data: balances, refetch: refetchBalances } = useQuery<{
     bookBalance: string; availableBalance: string; confirmedBalance: string;
     minimumBalance: string; lockedBalance: string;
@@ -986,10 +1063,519 @@ export default function FinancialHub() {
   };
 
   // ═════════════════════════════════════════════════════════════════════════
+  // BOTTOM NAV BAR (shared)
+  // ═════════════════════════════════════════════════════════════════════════
+  const BottomNavBar = () => (
+    <nav className="fixed bottom-0 left-0 right-0 z-[60] bg-background/98 backdrop-blur-md border-t border-border h-[60px] flex items-stretch shadow-[0_-4px_20px_rgba(0,0,0,0.07)]">
+      {([
+        { id: "home",    label: "Home",    Icon: HomeIcon },
+        { id: "rewards", label: "Rewards", Icon: Trophy },
+        { id: "finance", label: "Finance", Icon: TrendingUp },
+        { id: "cards",   label: "Cards",   Icon: CreditCard },
+        { id: "me",      label: "Me",      Icon: UserCircle },
+      ] as const).map(({ id, label, Icon }) => {
+        const active = bottomNav === id;
+        return (
+          <button key={id} onClick={() => { setBottomNav(id); if (id === "finance") { setSavingsView("list"); setSelectedGoalId(null); } }}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-all ${active ? "text-tsia-green" : "text-muted-foreground hover:text-foreground"}`}
+            data-testid={`btn-nav-${id}`}>
+            <div className={`relative flex items-center justify-center transition-all ${active ? "scale-110" : ""}`}>
+              <Icon className={`w-[18px] h-[18px] ${active ? "stroke-[2.5px]" : ""}`} />
+              {active && <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-tsia-green" />}
+            </div>
+            <span className={`text-[9px] font-bold uppercase tracking-wider leading-none ${active ? "text-tsia-green" : ""}`}>{label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // FINANCE TAB — Savings + Loans
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "home" && bottomNav === "finance") {
+    const totalSaved = (savingsGoals as SavingsGoalT[]).reduce((s, g) => s + parseFloat(g.currentAmount), 0);
+    const activeGoals = (savingsGoals as SavingsGoalT[]).filter(g => g.status !== "deleted");
+
+    // ── Goal detail view ──────────────────────────────────────────────────
+    if (savingsView === "detail" && selectedGoalId) {
+      const goal = goalDetail?.goal ?? activeGoals.find(g => g.id === selectedGoalId);
+      const txs = goalDetail?.transactions ?? [];
+      if (!goal) return <div className="pb-20"><BottomNavBar /></div>;
+      const cur = parseFloat(goal.currentAmount);
+      const tgt = parseFloat(goal.targetAmount);
+      const pct = Math.min(100, tgt > 0 ? (cur / tgt) * 100 : 0);
+      const daysLeft = goal.targetDate
+        ? Math.max(0, Math.ceil((new Date(goal.targetDate).getTime() - Date.now()) / 86400000))
+        : null;
+      const actionAmt = parseFloat(sgActionAmount) || 0;
+      return (
+        <div className="space-y-5 pb-20">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <button onClick={() => { setSavingsView("list"); setSelectedGoalId(null); setSgDeleteConfirm(false); }}
+              className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="font-black text-base">Goal Details</h2>
+            <button onClick={() => setSgDeleteConfirm(true)} className="text-red-500 p-2" data-testid="btn-goal-delete-open">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Goal card */}
+          <div className="bg-gradient-to-br from-tsia-green to-tsia-green/80 rounded-3xl p-5 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-8 translate-x-8" />
+            <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
+            <div className="relative">
+              <div className="text-4xl mb-2">{goal.emoji}</div>
+              <p className="font-black text-xl leading-tight">{goal.name}</p>
+              <p className="text-white/70 text-xs mt-0.5 capitalize">{goal.type.replace("-", " ")} savings</p>
+              <div className="mt-4">
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="text-white/80">Progress</span>
+                  <span className="font-bold">{pct.toFixed(0)}%</span>
+                </div>
+                <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                  <div className="h-full bg-white rounded-full transition-all" style={{ width: `${pct}%` }} />
+                </div>
+                <div className="flex justify-between mt-2">
+                  <div>
+                    <p className="text-white/70 text-[10px]">Saved</p>
+                    <p className="font-black text-lg">${cur.toFixed(2)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-white/70 text-[10px]">Target</p>
+                    <p className="font-black text-lg">${tgt.toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+              {daysLeft !== null && (
+                <div className="mt-3 flex items-center gap-1.5 bg-white/15 rounded-xl px-3 py-1.5 w-fit">
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  <span className="text-xs font-semibold">{daysLeft === 0 ? "Due today!" : `${daysLeft} days remaining`}</span>
+                </div>
+              )}
+              {goal.status === "completed" && (
+                <div className="mt-3 flex items-center gap-1.5 bg-tsia-gold/30 rounded-xl px-3 py-1.5 w-fit">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-tsia-gold" />
+                  <span className="text-xs font-bold text-tsia-gold">Goal Completed! 🎉</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => { setSgActionType("deposit"); setSgActionAmount(""); setSgActionOpen(true); }}
+              className="flex items-center justify-center gap-2 h-12 rounded-2xl bg-tsia-green text-white font-bold text-sm"
+              data-testid="btn-savings-deposit">
+              <ArrowDownLeft className="w-4 h-4" /> Deposit
+            </button>
+            <button onClick={() => { setSgActionType("withdraw"); setSgActionAmount(""); setSgActionOpen(true); }}
+              disabled={cur <= 0}
+              className="flex items-center justify-center gap-2 h-12 rounded-2xl border-2 border-tsia-green text-tsia-green font-bold text-sm disabled:opacity-40"
+              data-testid="btn-savings-withdraw">
+              <ArrowUpRight className="w-4 h-4" /> Withdraw
+            </button>
+          </div>
+
+          {/* Quick amounts */}
+          <div className="grid grid-cols-4 gap-2">
+            {["1","5","10","20"].map(v => (
+              <button key={v} onClick={() => { setSgActionType("deposit"); setSgActionAmount(v); setSgActionOpen(true); }}
+                className="py-2 rounded-xl bg-tsia-green/10 text-tsia-green font-bold text-sm border border-tsia-green/20">
+                ${v}
+              </button>
+            ))}
+          </div>
+
+          {/* Transaction history */}
+          <div>
+            <h3 className="font-black text-sm mb-3">Transaction History</h3>
+            {txs.length === 0
+              ? <div className="text-center py-6 text-muted-foreground text-sm"><PiggyBank className="w-8 h-8 mx-auto mb-2 opacity-20" />No transactions yet</div>
+              : txs.slice(0, 10).map(tx => (
+                <div key={tx.id} className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === "deposit" ? "bg-tsia-green/10" : "bg-red-50"}`}>
+                    {tx.type === "deposit"
+                      ? <ArrowDownLeft className="w-4 h-4 text-tsia-green" />
+                      : <ArrowUpRight className="w-4 h-4 text-red-500" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm capitalize">{tx.type}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</p>
+                  </div>
+                  <p className={`font-bold text-sm ${tx.type === "deposit" ? "text-tsia-green" : "text-red-500"}`}>
+                    {tx.type === "deposit" ? "+" : "−"}${parseFloat(tx.amountUsd).toFixed(2)}
+                  </p>
+                </div>
+              ))
+            }
+          </div>
+
+          {/* Action dialog */}
+          <Dialog open={sgActionOpen} onOpenChange={setSgActionOpen}>
+            <DialogContent className="max-w-sm rounded-3xl">
+              <DialogHeader>
+                <DialogTitle className="font-black">{sgActionType === "deposit" ? "💰 Save Money" : "↩️ Withdraw"}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="bg-muted/50 rounded-2xl p-4 flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">{sgActionType === "deposit" ? "Wallet Balance" : "Savings Balance"}</span>
+                  <span className="font-black text-tsia-green">
+                    ${sgActionType === "deposit" ? balance.toFixed(2) : cur.toFixed(2)}
+                  </span>
+                </div>
+                <div>
+                  <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Amount (USD)</Label>
+                  <Input
+                    type="number" step="0.01" min="0.01"
+                    value={sgActionAmount}
+                    onChange={e => setSgActionAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="mt-1.5 h-12 text-2xl font-black text-center rounded-2xl border-2"
+                    data-testid="input-savings-action-amount"
+                  />
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {["1","5","10","20"].map(v => (
+                    <button key={v} onClick={() => setSgActionAmount(v)}
+                      className={`py-2 rounded-xl font-bold text-sm border-2 transition-all ${sgActionAmount === v ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border bg-muted/40 text-muted-foreground"}`}>
+                      ${v}
+                    </button>
+                  ))}
+                </div>
+                <Button
+                  className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
+                  disabled={savingsActionMutation.isPending || actionAmt <= 0
+                    || (sgActionType === "deposit" && actionAmt > balance)
+                    || (sgActionType === "withdraw" && actionAmt > cur)}
+                  onClick={() => savingsActionMutation.mutate({ goalId: selectedGoalId!, type: sgActionType!, amount: actionAmt })}
+                  data-testid="btn-savings-action-confirm">
+                  {savingsActionMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
+                  {sgActionType === "deposit" ? `Save $${actionAmt.toFixed(2)}` : `Withdraw $${actionAmt.toFixed(2)}`}
+                </Button>
+                {sgActionType === "deposit" && actionAmt > balance && <p className="text-xs text-center text-red-500">Insufficient wallet balance</p>}
+                {sgActionType === "withdraw" && actionAmt > cur && <p className="text-xs text-center text-red-500">Insufficient savings balance</p>}
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete confirm dialog */}
+          <Dialog open={sgDeleteConfirm} onOpenChange={setSgDeleteConfirm}>
+            <DialogContent className="max-w-sm rounded-3xl">
+              <DialogHeader><DialogTitle className="font-black">Delete Goal?</DialogTitle></DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                {cur > 0
+                  ? "You must withdraw all funds before deleting this goal."
+                  : "This will permanently delete your savings goal. This action cannot be undone."}
+              </p>
+              {cur <= 0 && (
+                <div className="flex gap-3 mt-2">
+                  <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setSgDeleteConfirm(false)}>Cancel</Button>
+                  <Button className="flex-1 bg-red-600 text-white rounded-xl font-bold"
+                    disabled={deleteGoalMutation.isPending}
+                    onClick={() => deleteGoalMutation.mutate(selectedGoalId!)}
+                    data-testid="btn-confirm-delete-goal">
+                    {deleteGoalMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+                  </Button>
+                </div>
+              )}
+              {cur > 0 && (
+                <Button className="w-full bg-tsia-green text-white rounded-xl" onClick={() => { setSgDeleteConfirm(false); setSgActionType("withdraw"); setSgActionAmount(cur.toFixed(2)); setSgActionOpen(true); }}>
+                  Withdraw All & Delete
+                </Button>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          <BottomNavBar />
+        </div>
+      );
+    }
+
+    // ── Create goal view ──────────────────────────────────────────────────
+    if (savingsView === "create") {
+      const selectedType = SAVINGS_TYPES.find(t => t.id === sgType) ?? SAVINGS_TYPES[0];
+      return (
+        <div className="space-y-5 pb-20">
+          <div className="flex items-center justify-between">
+            <button onClick={() => setSavingsView("list")} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="font-black text-base">New Savings Goal</h2>
+            <div className="w-9" />
+          </div>
+
+          {/* Type selector */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">Choose Type</p>
+            <div className="grid grid-cols-2 gap-2">
+              {SAVINGS_TYPES.map(t => (
+                <button key={t.id}
+                  onClick={() => { setSgType(t.id); setSgEmoji(t.emoji); }}
+                  className={`flex items-center gap-2.5 p-3 rounded-2xl border-2 text-left transition-all ${sgType === t.id ? "border-tsia-green bg-tsia-green/8" : "border-border bg-muted/30"}`}
+                  data-testid={`btn-savings-type-${t.id}`}>
+                  <span className="text-2xl">{t.emoji}</span>
+                  <div className="min-w-0">
+                    <p className={`font-bold text-xs leading-tight ${sgType === t.id ? "text-tsia-green" : ""}`}>{t.label}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{t.desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Name */}
+          <div>
+            <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Goal Name</Label>
+            <Input value={sgName} onChange={e => setSgName(e.target.value)}
+              placeholder={`e.g. "${selectedType.label}"`}
+              className="mt-1.5 h-12 rounded-2xl border-2 font-semibold"
+              data-testid="input-savings-name" />
+          </div>
+
+          {/* Target amount */}
+          <div>
+            <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Target Amount (USD)</Label>
+            <div className="relative mt-1.5">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-tsia-green text-lg">$</span>
+              <Input type="number" step="0.01" min="0.01"
+                value={sgTarget} onChange={e => setSgTarget(e.target.value)}
+                placeholder="0.00"
+                className="h-12 rounded-2xl border-2 font-black text-lg pl-8"
+                data-testid="input-savings-target" />
+            </div>
+          </div>
+
+          {/* Target date (optional) */}
+          <div>
+            <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Target Date <span className="font-normal text-muted-foreground/60">(optional)</span></Label>
+            <Input type="date" value={sgDate} onChange={e => setSgDate(e.target.value)}
+              min={new Date().toISOString().split("T")[0]}
+              className="mt-1.5 h-12 rounded-2xl border-2"
+              data-testid="input-savings-date" />
+          </div>
+
+          <Button
+            className="w-full h-12 bg-tsia-green text-white font-black rounded-2xl text-base"
+            disabled={createGoalMutation.isPending || !sgName.trim() || !sgTarget || parseFloat(sgTarget) <= 0}
+            onClick={() => createGoalMutation.mutate({
+              name: sgName.trim(),
+              type: sgType,
+              emoji: sgEmoji,
+              targetAmount: parseFloat(sgTarget).toFixed(2),
+              ...(sgDate ? { targetDate: sgDate } : {}),
+            })}
+            data-testid="btn-savings-create-confirm">
+            {createGoalMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Plus className="w-5 h-5 mr-2" />}
+            Create Goal
+          </Button>
+          <BottomNavBar />
+        </div>
+      );
+    }
+
+    // ── Savings list (default Finance tab view) ───────────────────────────
+    return (
+      <div className="space-y-5 pb-20">
+        {/* Header */}
+        <div className="flex items-center justify-between pt-1">
+          <div>
+            <h1 className="font-black text-xl">Finance</h1>
+            <p className="text-xs text-muted-foreground">Savings &amp; Loans</p>
+          </div>
+          <div className="w-10 h-10 rounded-full bg-tsia-green/10 flex items-center justify-center">
+            <PiggyBank className="w-5 h-5 text-tsia-green" />
+          </div>
+        </div>
+
+        {/* Total savings summary card */}
+        <div className="bg-gradient-to-br from-tsia-green to-tsia-green/80 rounded-3xl p-5 text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-white/10 rounded-full -translate-y-10 translate-x-10" />
+          <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
+          <div className="relative">
+            <p className="text-white/70 text-xs font-semibold uppercase tracking-wide mb-1">Total Saved</p>
+            <p className="font-black text-4xl">${totalSaved.toFixed(2)}</p>
+            <p className="text-white/70 text-xs mt-1">{activeGoals.length} active goal{activeGoals.length !== 1 ? "s" : ""}</p>
+            <button onClick={() => setSavingsView("create")}
+              className="mt-4 flex items-center gap-2 bg-white text-tsia-green font-bold text-sm rounded-full px-4 py-2 shadow-sm"
+              data-testid="btn-new-savings-goal">
+              <Plus className="w-4 h-4" /> New Goal
+            </button>
+          </div>
+        </div>
+
+        {/* My Goals */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-black text-base">My Goals</h2>
+            <button onClick={() => setSavingsView("create")} className="text-tsia-green text-xs font-bold flex items-center gap-1">
+              <Plus className="w-3.5 h-3.5" /> Add
+            </button>
+          </div>
+
+          {activeGoals.length === 0 ? (
+            <div className="rounded-3xl border-2 border-dashed border-tsia-green/30 p-8 flex flex-col items-center gap-3 bg-tsia-green/3">
+              <div className="text-5xl">🎯</div>
+              <div className="text-center">
+                <p className="font-black text-sm">No savings goals yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Create your first goal and start saving today!</p>
+              </div>
+              <button onClick={() => setSavingsView("create")}
+                className="bg-tsia-green text-white font-bold text-sm rounded-full px-6 py-2.5"
+                data-testid="btn-create-first-goal">
+                Start Saving
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {activeGoals.map(goal => {
+                const cur = parseFloat(goal.currentAmount);
+                const tgt = parseFloat(goal.targetAmount);
+                const pct = Math.min(100, tgt > 0 ? (cur / tgt) * 100 : 0);
+                return (
+                  <button key={goal.id}
+                    onClick={() => { setSelectedGoalId(goal.id); setSavingsView("detail"); setSgActionOpen(false); }}
+                    className="w-full bg-card rounded-2xl p-4 border border-border text-left hover:border-tsia-green/40 transition-all"
+                    data-testid={`btn-goal-${goal.id}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-tsia-green/10 flex items-center justify-center text-2xl shrink-0">
+                        {goal.emoji}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="font-black text-sm truncate">{goal.name}</p>
+                          {goal.status === "completed" && <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0" />}
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-1">
+                          <div className="h-full bg-gradient-to-r from-tsia-green to-tsia-gold rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground">
+                          <span className="font-semibold text-tsia-green">${cur.toFixed(2)} saved</span>
+                          <span>of ${tgt.toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Loans — Coming Soon */}
+        <div>
+          <h2 className="font-black text-base mb-3">Loans</h2>
+          <div className="rounded-2xl border border-border bg-muted/30 p-5 relative overflow-hidden">
+            <div className="absolute top-3 right-3 bg-amber-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Coming Soon</div>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center shrink-0">
+                <Banknote className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <p className="font-black text-sm">Quick Loans</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">Access instant loans funded by your TSIA savings history and membership. No collateral required for eligible members.</p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {["Student Loan", "Business Loan", "Emergency Cash"].map(t => (
+                    <span key={t} className="text-[10px] font-semibold bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-full px-2.5 py-1 border border-amber-200 dark:border-amber-700/30">{t}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* OPay-style promo card */}
+        <div className="rounded-2xl bg-gradient-to-r from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 p-4 flex items-center gap-4">
+          <div className="text-3xl">📈</div>
+          <div className="flex-1">
+            <p className="font-black text-sm">Earn interest on savings</p>
+            <p className="text-xs text-muted-foreground">Coming soon: up to 8% p.a. on all locked savings goals.</p>
+          </div>
+          <Sparkles className="w-5 h-5 text-tsia-gold shrink-0" />
+        </div>
+
+        <BottomNavBar />
+      </div>
+    );
+  }
+
+  // ── Rewards tab ────────────────────────────────────────────────────────────
+  if (view === "home" && bottomNav === "rewards") return (
+    <div className="space-y-5 pb-20">
+      <div className="flex items-center justify-between pt-1">
+        <div><h1 className="font-black text-xl">Rewards</h1><p className="text-xs text-muted-foreground">Earn points &amp; benefits</p></div>
+        <div className="w-10 h-10 rounded-full bg-tsia-gold/15 flex items-center justify-center"><Trophy className="w-5 h-5 text-tsia-gold" /></div>
+      </div>
+      <div className="rounded-3xl bg-gradient-to-br from-tsia-gold/20 to-amber-100/30 dark:from-amber-900/20 dark:to-amber-800/10 border border-tsia-gold/30 p-6 text-center">
+        <div className="text-5xl mb-3">🏆</div>
+        <p className="font-black text-lg">Rewards Coming Soon</p>
+        <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">Earn cashback, points, and exclusive perks for every transaction. Refer friends to unlock bonus rewards.</p>
+      </div>
+      <BottomNavBar />
+    </div>
+  );
+
+  // ── Cards tab ──────────────────────────────────────────────────────────────
+  if (view === "home" && bottomNav === "cards") return (
+    <div className="space-y-5 pb-20">
+      <div className="flex items-center justify-between pt-1">
+        <div><h1 className="font-black text-xl">Cards</h1><p className="text-xs text-muted-foreground">Virtual &amp; physical cards</p></div>
+        <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center"><CreditCard className="w-5 h-5 text-blue-600" /></div>
+      </div>
+      <div className="rounded-3xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/10 border border-blue-200/50 p-6 text-center">
+        <div className="text-5xl mb-3">💳</div>
+        <p className="font-black text-lg">Virtual Cards Coming Soon</p>
+        <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">Get a TSIA virtual USD Mastercard for online purchases worldwide. Fund directly from your SwiftWallet.</p>
+        <div className="grid grid-cols-2 gap-2 mt-4 max-w-xs mx-auto text-xs text-muted-foreground">
+          {["Real issuer-backed", "Fund from wallet", "Global online use", "Freeze / unfreeze"].map(f => (
+            <div key={f} className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-blue-400 shrink-0" /><span>{f}</span></div>
+          ))}
+        </div>
+      </div>
+      <BottomNavBar />
+    </div>
+  );
+
+  // ── Me tab ─────────────────────────────────────────────────────────────────
+  if (view === "home" && bottomNav === "me") return (
+    <div className="space-y-5 pb-20">
+      <div className="flex items-center justify-between pt-1">
+        <div><h1 className="font-black text-xl">Profile</h1><p className="text-xs text-muted-foreground">Account &amp; settings</p></div>
+        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg font-black text-tsia-green">
+          {user?.firstName?.[0]?.toUpperCase() ?? "U"}
+        </div>
+      </div>
+      <div className="bg-card rounded-2xl border border-border overflow-hidden">
+        {[
+          { icon: UserCircle, label: "Full Name", value: `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() },
+          { icon: Bell, label: "Email", value: user?.email ?? "" },
+          { icon: Phone, label: "Phone", value: user?.phone ?? "Not set" },
+          { icon: Shield, label: "Wallet Status", value: (wallet as any)?.activated ? "Active ✅" : "Not activated" },
+        ].map(({ icon: Icon, label, value }) => (
+          <div key={label} className="flex items-center gap-3 px-4 py-3.5 border-b border-border/50 last:border-0">
+            <div className="w-8 h-8 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
+              <Icon className="w-4 h-4 text-tsia-green" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">{label}</p>
+              <p className="font-semibold text-sm truncate">{value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <BottomNavBar />
+    </div>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
   // HOME VIEW
   // ═════════════════════════════════════════════════════════════════════════
   if (view === "home") return (
-    <div className="space-y-5">
+    <div className="space-y-5 pb-20">
 
       {/* ── TOP HEADER ── */}
       <div className="flex items-center justify-between">
@@ -1645,6 +2231,8 @@ export default function FinancialHub() {
           )}
         </DialogContent>
       </Dialog>
+
+      <BottomNavBar />
     </div>
   );
 

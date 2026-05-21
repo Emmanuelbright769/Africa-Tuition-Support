@@ -16,6 +16,7 @@ import {
   personalInvitations, type PersonalInvitation,
   virtualCards, type VirtualCard, type InsertVirtualCard,
   movieSubscriptions, type MovieSubscription,
+  savingsGoals, savingsTransactions,
   platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
   type User, type InsertUser,
   type Verification, type InsertVerification,
@@ -273,6 +274,15 @@ export interface IStorage {
   // Withdrawal OTPs
   createWithdrawalOtp(userId: number, code: string, purpose: string): Promise<void>;
   verifyAndConsumeWithdrawalOtp(userId: number, code: string, purpose: string): Promise<boolean>;
+
+  // Savings Goals
+  getSavingsGoalsByUser(userId: number): Promise<any[]>;
+  getSavingsGoal(id: number, userId: number): Promise<any | null>;
+  createSavingsGoal(data: { userId: number; name: string; type: string; emoji: string; targetAmount: string; targetDate?: Date | null }): Promise<any>;
+  depositToSavings(userId: number, goalId: number, amountUsd: number): Promise<{ goal: any; walletBalance: string }>;
+  withdrawFromSavings(userId: number, goalId: number, amountUsd: number): Promise<{ goal: any; walletBalance: string }>;
+  getSavingsTransactions(goalId: number, userId: number): Promise<any[]>;
+  deleteSavingsGoal(id: number, userId: number): Promise<void>;
 
   // Platform settings
   getPlatformSetting(key: string): Promise<string | null>;
@@ -2100,6 +2110,122 @@ export class DatabaseStorage implements IStorage {
     }
     const [sub] = await db.insert(movieSubscriptions).values({ userId, plan: "netflix", status: "active", expiresAt }).returning();
     return sub;
+  }
+
+  // ── Savings Goals ────────────────────────────────────────────────────────────
+  async getSavingsGoalsByUser(userId: number): Promise<any[]> {
+    return db.select().from(savingsGoals)
+      .where(and(eq(savingsGoals.userId, userId), ne(savingsGoals.status, "deleted")))
+      .orderBy(desc(savingsGoals.createdAt));
+  }
+
+  async getSavingsGoal(id: number, userId: number): Promise<any | null> {
+    const [goal] = await db.select().from(savingsGoals)
+      .where(and(eq(savingsGoals.id, id), eq(savingsGoals.userId, userId)));
+    return goal ?? null;
+  }
+
+  async createSavingsGoal(data: { userId: number; name: string; type: string; emoji: string; targetAmount: string; targetDate?: Date | null }): Promise<any> {
+    const [goal] = await db.insert(savingsGoals).values({
+      userId: data.userId,
+      name: data.name,
+      type: data.type,
+      emoji: data.emoji,
+      targetAmount: data.targetAmount,
+      targetDate: data.targetDate ?? null,
+      currentAmount: "0.00",
+      status: "active",
+    }).returning();
+    return goal;
+  }
+
+  async depositToSavings(userId: number, goalId: number, amountUsd: number): Promise<{ goal: any; walletBalance: string }> {
+    const wallet = await this.getOrCreateWallet(userId);
+    const walletBal = parseFloat(wallet.balance);
+    if (walletBal < amountUsd) throw new Error("Insufficient wallet balance");
+
+    const goal = await this.getSavingsGoal(goalId, userId);
+    if (!goal) throw new Error("Savings goal not found");
+    if (goal.status === "deleted") throw new Error("Goal not found");
+
+    const newGoalBal = parseFloat(goal.currentAmount) + amountUsd;
+    const newWalletBal = walletBal - amountUsd;
+    const isCompleted = newGoalBal >= parseFloat(goal.targetAmount);
+
+    await this.updateWalletBalance(userId, newWalletBal.toFixed(2));
+
+    const [updatedGoal] = await db.update(savingsGoals)
+      .set({ currentAmount: newGoalBal.toFixed(2), status: isCompleted ? "completed" : "active", updatedAt: new Date() })
+      .where(eq(savingsGoals.id, goalId))
+      .returning();
+
+    await db.insert(savingsTransactions).values({
+      userId, goalId, type: "deposit",
+      amountUsd: amountUsd.toFixed(2),
+      balanceAfter: newGoalBal.toFixed(2),
+      note: null,
+    });
+
+    await this.createTransaction({
+      userId,
+      type: "transfer",
+      amount: (-amountUsd).toFixed(2),
+      fee: "0.00",
+      description: `Savings deposit → ${goal.name}`,
+    });
+
+    return { goal: updatedGoal, walletBalance: newWalletBal.toFixed(2) };
+  }
+
+  async withdrawFromSavings(userId: number, goalId: number, amountUsd: number): Promise<{ goal: any; walletBalance: string }> {
+    const goal = await this.getSavingsGoal(goalId, userId);
+    if (!goal) throw new Error("Savings goal not found");
+
+    const goalBal = parseFloat(goal.currentAmount);
+    if (goalBal < amountUsd) throw new Error("Insufficient savings balance");
+
+    const wallet = await this.getOrCreateWallet(userId);
+    const newWalletBal = parseFloat(wallet.balance) + amountUsd;
+    const newGoalBal = goalBal - amountUsd;
+
+    await this.updateWalletBalance(userId, newWalletBal.toFixed(2));
+
+    const [updatedGoal] = await db.update(savingsGoals)
+      .set({ currentAmount: newGoalBal.toFixed(2), updatedAt: new Date() })
+      .where(eq(savingsGoals.id, goalId))
+      .returning();
+
+    await db.insert(savingsTransactions).values({
+      userId, goalId, type: "withdrawal",
+      amountUsd: amountUsd.toFixed(2),
+      balanceAfter: newGoalBal.toFixed(2),
+      note: null,
+    });
+
+    await this.createTransaction({
+      userId,
+      type: "transfer",
+      amount: amountUsd.toFixed(2),
+      fee: "0.00",
+      description: `Savings withdrawal ← ${goal.name}`,
+    });
+
+    return { goal: updatedGoal, walletBalance: newWalletBal.toFixed(2) };
+  }
+
+  async getSavingsTransactions(goalId: number, userId: number): Promise<any[]> {
+    return db.select().from(savingsTransactions)
+      .where(and(eq(savingsTransactions.goalId, goalId), eq(savingsTransactions.userId, userId)))
+      .orderBy(desc(savingsTransactions.createdAt));
+  }
+
+  async deleteSavingsGoal(id: number, userId: number): Promise<void> {
+    const goal = await this.getSavingsGoal(id, userId);
+    if (!goal) throw new Error("Goal not found");
+    if (parseFloat(goal.currentAmount) > 0) throw new Error("Withdraw all funds before deleting this goal");
+    await db.update(savingsGoals)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(and(eq(savingsGoals.id, id), eq(savingsGoals.userId, userId)));
   }
 }
 

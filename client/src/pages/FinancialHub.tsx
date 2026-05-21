@@ -167,7 +167,7 @@ const SERVICES = [
   { id: "airtime",   label: "Airtime",   icon: Phone,         color: "from-emerald-400 to-teal-500",  bg: "bg-emerald-50 dark:bg-emerald-900/20" },
   { id: "internet",  label: "Data",      icon: Wifi,          color: "from-blue-400 to-indigo-500",   bg: "bg-blue-50 dark:bg-blue-900/20" },
   { id: "electricity", label: "Electricity", icon: Zap,       color: "from-yellow-400 to-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20" },
-  { id: "cable-tv",  label: "Cable TV",  icon: Tv2,           color: "from-rose-400 to-pink-600",     bg: "bg-rose-50 dark:bg-rose-900/20" },
+  { id: "cable-tv",  label: "Cable TV",  icon: Tv2,           color: "from-rose-400 to-pink-600",     bg: "bg-rose-50 dark:bg-rose-900/20",   comingSoon: true },
   { id: "betting",   label: "Betting",   icon: Gamepad2,      color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
   { id: "education", label: "Education", icon: GraduationCap, color: "from-cyan-400 to-blue-500",     bg: "bg-cyan-50 dark:bg-cyan-900/20",   comingSoon: true },
   { id: "flight",    label: "Flight",    icon: Plane,         color: "from-sky-400 to-blue-600",      bg: "bg-sky-50 dark:bg-sky-900/20",     comingSoon: true },

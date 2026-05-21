@@ -15,7 +15,8 @@ import {
   Loader2, CheckCircle2, X, Zap, Phone, Wallet, Gamepad2, Delete,
   Copy, Search, ChevronDown, AlertCircle, Users, Building2, Clock,
   CreditCard, Shield, Lock, Coins, Smartphone, ExternalLink, Banknote,
-  RefreshCcw, BookMarked, GraduationCap, Briefcase, ArrowLeftRight, Check
+  RefreshCcw, BookMarked, GraduationCap, Briefcase, ArrowLeftRight, Check,
+  Plane, Gift, Tv2, Share2, Download
 } from "lucide-react";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 
@@ -163,11 +164,15 @@ type Bank = { code: string; name: string; gateway?: "squad" | "korapay" };
 
 // ─── Services ──────────────────────────────────────────────────────────────────
 const SERVICES = [
-  { id: "electricity", label: "Electricity", icon: Zap,      color: "from-yellow-400 to-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20" },
-  { id: "internet",    label: "Internet",    icon: Wifi,      color: "from-blue-400 to-indigo-500",   bg: "bg-blue-50 dark:bg-blue-900/20" },
-  { id: "airtime",     label: "Airtime",     icon: Phone,     color: "from-emerald-400 to-teal-500",  bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-  { id: "cable-tv",    label: "Cable TV",    icon: Smartphone, color: "from-rose-400 to-pink-600",   bg: "bg-rose-50 dark:bg-rose-900/20" },
-  { id: "betting",     label: "Betting",     icon: Gamepad2,  color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+  { id: "airtime",   label: "Airtime",   icon: Phone,         color: "from-emerald-400 to-teal-500",  bg: "bg-emerald-50 dark:bg-emerald-900/20" },
+  { id: "internet",  label: "Data",      icon: Wifi,          color: "from-blue-400 to-indigo-500",   bg: "bg-blue-50 dark:bg-blue-900/20" },
+  { id: "electricity", label: "Electricity", icon: Zap,       color: "from-yellow-400 to-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20" },
+  { id: "cable-tv",  label: "Cable TV",  icon: Tv2,           color: "from-rose-400 to-pink-600",     bg: "bg-rose-50 dark:bg-rose-900/20" },
+  { id: "betting",   label: "Betting",   icon: Gamepad2,      color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+  { id: "education", label: "Education", icon: GraduationCap, color: "from-cyan-400 to-blue-500",     bg: "bg-cyan-50 dark:bg-cyan-900/20",   comingSoon: true },
+  { id: "flight",    label: "Flight",    icon: Plane,         color: "from-sky-400 to-blue-600",      bg: "bg-sky-50 dark:bg-sky-900/20",     comingSoon: true },
+  { id: "insurance", label: "Insurance", icon: Shield,        color: "from-teal-400 to-green-500",    bg: "bg-teal-50 dark:bg-teal-900/20",   comingSoon: true },
+  { id: "giftcard",  label: "Gift Card", icon: Gift,          color: "from-pink-400 to-rose-500",     bg: "bg-pink-50 dark:bg-pink-900/20",   comingSoon: true },
 ];
 
 // ─── Nigerian Networks ────────────────────────────────────────────────────────
@@ -438,6 +443,8 @@ export default function FinancialHub() {
   const [billStep, setBillStep]               = useState<"details" | "amount" | "success">("details");
   const [billRef, setBillRef]                 = useState("");
   const [txResult, setTxResult]               = useState<{ ref: string; amountNgn: number; token?: string; message: string } | null>(null);
+  const [billReceiptRows, setBillReceiptRows]  = useState<ReceiptRow[]>([]);
+  const [billReceiptTitle, setBillReceiptTitle] = useState("");
   // Airtime
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
   // Internet / live data plans
@@ -931,20 +938,10 @@ export default function FinancialHub() {
         if (data.customerName) rows.push({ label: "Customer", value: data.customerName });
       }
 
-      resetBill();
-      setView("home");
-      setActiveTab("bills");
-      setBillPage(0);
-      showReceipt({
-        title:       titleMap[sid] || "Bill Payment",
-        status:      "success",
-        amount:      `₦${(data.amountNgn ?? 0).toLocaleString()}`,
-        amountLabel: "Nigerian Naira",
-        rows,
-        referenceRow: data.reference,
-        onNewTx: () => { setTxReceiptOpen(false); resetBill(); setView("pay-bill"); },
-        newTxLabel: "New Bill",
-      });
+      setBillReceiptRows(rows);
+      setBillReceiptTitle(titleMap[sid] || "Bill Payment");
+      setTxResult({ ref: data.reference || "", amountNgn: data.amountNgn ?? 0, token: data.token, message: "" });
+      setBillStep("success");
     },
     onError: (e: any) => toast({ title: "Payment failed", description: e.message, variant: "destructive" }),
   });
@@ -1053,7 +1050,7 @@ export default function FinancialHub() {
               <div className="flex items-center gap-1.5 mb-2" data-testid="text-ledger-balance">
                 <BookMarked className="w-3 h-3 text-amber-300/90" />
                 <p className="text-amber-300/90 text-[11px] font-semibold">
-                  🔒 Ledger: ${lockedBalance.toFixed(2)} reserve
+                  🔒 Ledger: ${(balance >= 2 ? 2 : Math.max(0, balance)).toFixed(2)} reserve
                   {pendingAmount > 0 && (
                     <span className="text-amber-300/70 font-medium"> · +${pendingAmount.toFixed(2)} pending</span>
                   )}
@@ -2514,11 +2511,86 @@ export default function FinancialHub() {
   // ═════════════════════════════════════════════════════════════════════════
   if (view === "service" && selectedService) {
 
+    // ── SHARED BILL SUCCESS SCREEN (all services) ─────────────────────────
+    if (billStep === "success" && txResult) {
+      const amtUsd = (txResult.amountNgn / 1480).toFixed(2);
+      const serviceLabel = ({
+        airtime:     `${selectedNetwork?.toUpperCase() ?? ""} Airtime`,
+        internet:    `${selectedISP?.toUpperCase() ?? ""} Data`,
+        electricity: `${selectedDisco?.label ?? ""} Electricity`,
+        "cable-tv":  `${selectedTvProvider?.label ?? ""} TV`,
+        betting:     `${selectedPlatform ?? ""} Betting`,
+      } as Record<string, string>)[selectedService.id] || selectedService.label;
+
+      const handleShare = () => {
+        const text = `TSIA ${serviceLabel}\nAmount: $${amtUsd}\nRef: ${txResult.ref}`;
+        if (typeof navigator.share === "function") {
+          navigator.share({ title: "TSIA Receipt", text }).catch(() => {});
+        } else {
+          navigator.clipboard.writeText(text).catch(() => {});
+          toast({ title: "Receipt copied to clipboard" });
+        }
+      };
+
+      return (
+        <AnimatePresence mode="wait">
+          <motion.div key="bill-success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+            <div className="flex flex-col items-center text-center space-y-5 pt-2 pb-2">
+              {/* Concentric rings */}
+              <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
+                <div className="absolute inset-0 rounded-full bg-tsia-green/10" />
+                <div className="absolute inset-[14px] rounded-full bg-tsia-green/20" />
+                <div className="absolute inset-[28px] rounded-full bg-tsia-green/30" />
+                <div className="w-16 h-16 rounded-full bg-tsia-green flex items-center justify-center shadow-lg">
+                  <Check className="w-8 h-8 text-white" strokeWidth={3} />
+                </div>
+              </div>
+
+              {/* Amount + label */}
+              <div className="space-y-1.5">
+                <p className="text-4xl font-black">${amtUsd}</p>
+                <p className="text-lg font-semibold text-foreground">{serviceLabel} purchased successfully.</p>
+                <p className="text-sm text-muted-foreground font-mono">Transaction ID: #{txResult.ref.slice(-8).toUpperCase()}</p>
+              </div>
+
+              {/* Electricity prepaid token */}
+              {txResult.token && (
+                <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-300 rounded-2xl p-4 text-center">
+                  <p className="text-xs text-muted-foreground mb-1 font-semibold uppercase tracking-wide">Prepaid Token</p>
+                  <p className="font-black text-xl tracking-[0.3em] text-amber-700">{txResult.token}</p>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="w-full space-y-3 pt-1">
+                <Button variant="outline" className="w-full h-12 font-semibold rounded-2xl border-2" onClick={handleShare} data-testid="btn-share-receipt">
+                  <Share2 className="w-4 h-4 mr-2" /> Share Receipt
+                </Button>
+                <Button variant="outline" className="w-full h-12 font-semibold rounded-2xl border-2"
+                  onClick={() => showReceipt({ title: billReceiptTitle, status: "success", amount: `$${amtUsd}`, amountLabel: "USD", rows: billReceiptRows, referenceRow: txResult.ref, onNewTx: () => { setTxReceiptOpen(false); resetBill(); setView("pay-bill"); }, newTxLabel: "New Bill" })}
+                  data-testid="btn-download-receipt">
+                  <Download className="w-4 h-4 mr-2" /> Download Receipt
+                </Button>
+                <Button className="w-full h-14 bg-tsia-green text-white font-bold text-base rounded-2xl shadow" onClick={() => { resetBill(); setView("home"); }} data-testid="btn-done-bill">
+                  Done
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      );
+    }
+
     // ── ELECTRICITY ──────────────────────────────────────────────────────
     if (selectedService.id === "electricity") return (
       <AnimatePresence mode="wait">
         <motion.div key="electricity" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "success" ? resetBill() : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Electricity" sub={billStep === "details" ? "Select provider & meter" : billStep === "success" ? "Payment Complete" : "Enter amount"} />
+          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Electricity" sub={billStep === "details" ? "Select provider & meter" : "Enter amount"} />
+
+          <div className="inline-flex items-center gap-2 bg-amber-500 text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
+            <Wallet className="w-4 h-4" />
+            Wallet Balance: ${balance.toFixed(2)}
+          </div>
 
           {billStep === "details" ? (<>
             {/* Disco search + pick */}
@@ -2579,30 +2651,6 @@ export default function FinancialHub() {
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
 
-          </>) : billStep === "success" && txResult ? (<>
-            {/* SUCCESS VIEW */}
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <CheckCircle2 className="w-10 h-10 text-tsia-green" />
-              </div>
-              <div>
-                <h3 className="font-black text-xl text-tsia-green">Electricity Credited ✓</h3>
-                <p className="text-muted-foreground text-sm mt-1">{selectedDisco?.label} • {meterType} • {billRef}</p>
-              </div>
-              <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-2xl p-4 space-y-2">
-                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount Paid</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
-                {txResult.token && (
-                  <div className="bg-white dark:bg-black/20 rounded-xl p-3 text-center border border-amber-300">
-                    <p className="text-xs text-muted-foreground mb-1 font-semibold">PREPAID TOKEN</p>
-                    <p className="font-black text-lg tracking-[0.25em] text-amber-700">{txResult.token}</p>
-                  </div>
-                )}
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
-              </div>
-              <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>
-                Done
-              </Button>
-            </div>
           </>) : (<>
             <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-300 rounded-2xl px-4 py-3">
               <div><p className="text-xs text-muted-foreground">Meter</p><p className="font-bold text-sm font-mono">{billRef}</p></div>
@@ -2643,7 +2691,12 @@ export default function FinancialHub() {
     if (selectedService.id === "internet") return (
       <AnimatePresence mode="wait">
         <motion.div key="internet" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Data" sub={billStep === "details" ? "Select network & plan" : billStep === "success" ? "Purchase Complete" : "Confirm purchase"} />
+          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Data" sub={billStep === "details" ? "Select network & plan" : "Confirm purchase"} />
+
+          <div className="inline-flex items-center gap-2 bg-blue-600 text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
+            <Wallet className="w-4 h-4" />
+            Wallet Balance: ${balance.toFixed(2)}
+          </div>
 
           {billStep === "details" ? (<>
             <div>
@@ -2725,16 +2778,6 @@ export default function FinancialHub() {
               }}>
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
-          </>) : billStep === "success" && txResult ? (<>
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><CheckCircle2 className="w-10 h-10 text-blue-600" /></div>
-              <div><h3 className="font-black text-xl text-blue-600">Data Bundle Activated ✓</h3><p className="text-muted-foreground text-sm mt-1">{selectedISP?.toUpperCase()} • {selectedPlan?.label} • {billRef}</p></div>
-              <div className="w-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-2xl p-4 space-y-2">
-                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
-              </div>
-              <Button className="w-full h-12 bg-blue-600 text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>Done</Button>
-            </div>
           </>) : (<>
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-3xl p-5 text-center">
               <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedISP?.toUpperCase()} Data</p>
@@ -2760,77 +2803,118 @@ export default function FinancialHub() {
     );
 
     // ── AIRTIME ─────────────────────────────────────────────────────────
-    if (selectedService.id === "airtime") return (
-      <AnimatePresence mode="wait">
-        <motion.div key="airtime" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Buy Airtime" sub={billStep === "details" ? "Select network & phone" : billStep === "success" ? "Purchase Complete" : "Enter amount"} />
+    if (selectedService.id === "airtime") {
+      const recentAirtime = (bills as BillRecord[]).filter(b => b.service === "airtime").slice(0, 3);
+      const canPay = !!selectedNetwork && billRef.length >= 10 && parseFloat(amount) > 0 && parseFloat(amount) <= balance;
+      return (
+        <AnimatePresence mode="wait">
+          <motion.div key="airtime" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+            <BackHeader onBack={() => setView("pay-bill")} title="Buy Airtime" sub="Recharge any Nigerian number instantly" />
 
-          {billStep === "details" ? (<>
+            {/* Wallet Balance Pill */}
+            <div className="inline-flex items-center gap-2 bg-tsia-green text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
+              <Wallet className="w-4 h-4" />
+              Wallet Balance: ${balance.toFixed(2)}
+            </div>
+
+            {/* Network Carrier Selector */}
             <div>
-              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Select Network</label>
-              <div className="grid grid-cols-4 gap-2">
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3 block">Select Network</label>
+              <div className="grid grid-cols-4 gap-3">
                 {NETWORKS.map(n => (
                   <button key={n.id} onClick={() => setSelectedNetwork(n.id)}
-                    className={`py-3 rounded-2xl font-bold text-sm transition-all ${n.color} ${n.text} ${selectedNetwork === n.id ? "ring-2 ring-offset-2 ring-tsia-green scale-105" : "opacity-70 hover:opacity-90"}`}
-                    data-testid={`btn-airtime-${n.id}`}>{n.label}</button>
+                    className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${selectedNetwork === n.id ? "border-tsia-green bg-tsia-green/5 scale-105 shadow-sm" : "border-border hover:border-tsia-green/40"}`}
+                    data-testid={`btn-airtime-${n.id}`}>
+                    <div className={`w-12 h-12 rounded-full ${n.color} flex items-center justify-center shadow`}>
+                      <span className="text-sm font-black text-white">{n.label.charAt(0)}</span>
+                    </div>
+                    <span className="text-[11px] font-bold">{n.label}</span>
+                  </button>
                 ))}
               </div>
             </div>
+
+            {/* Mobile Number */}
             <div>
-              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Phone Number</label>
-              <input type="tel" placeholder="e.g. 08012345678" value={billRef} onChange={e => setBillRef(e.target.value.replace(/\D/g,"").slice(0,11))}
-                className="w-full border-2 border-border rounded-2xl px-4 py-3.5 text-xl font-mono tracking-widest focus:outline-none focus:border-tsia-green bg-background"
-                data-testid="input-airtime-phone" />
-            </div>
-            <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
-              disabled={!selectedNetwork || billRef.length < 10}
-              onClick={() => setBillStep("amount")}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
-          </>) : billStep === "success" && txResult ? (<>
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center"><CheckCircle2 className="w-10 h-10 text-tsia-green" /></div>
-              <div><h3 className="font-black text-xl text-tsia-green">Airtime Delivered ✓</h3><p className="text-muted-foreground text-sm mt-1">{selectedNetwork?.toUpperCase()} • {billRef}</p></div>
-              <div className="w-full bg-emerald-50 dark:bg-emerald-900/20 border border-tsia-green/30 rounded-2xl p-4 space-y-2">
-                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Mobile Number</label>
+              <div className="relative">
+                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <input type="tel" placeholder="e.g. 08012345678" value={billRef}
+                  onChange={e => setBillRef(e.target.value.replace(/\D/g,"").slice(0,11))}
+                  className="w-full pl-11 pr-4 py-3.5 border-2 border-border rounded-2xl text-base font-mono tracking-wider focus:outline-none focus:border-tsia-green bg-background"
+                  data-testid="input-airtime-phone" />
               </div>
-              <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>Done</Button>
             </div>
-          </>) : (<>
-            <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20 border border-tsia-green/30 rounded-2xl px-4 py-3">
-              <div><p className="text-xs text-muted-foreground">Phone</p><p className="font-bold font-mono">{billRef}</p></div>
-              <div className="text-right"><p className="text-xs text-muted-foreground">Network</p><p className="font-bold uppercase">{selectedNetwork}</p></div>
+
+            {/* Amount & Quick Presets */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Amount</label>
+                <span className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code}</span>
+              </div>
+              <div className="text-4xl font-black text-center py-2">${fmt(amount)}</div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {[["1","$1.00"],["2","$2.00"],["5","$5.00"],["10","$10.00"]].map(([v, label]) => (
+                  <button key={v} onClick={() => setAmount(v)}
+                    className={`py-3 rounded-2xl font-bold text-sm border-2 transition-all ${amount === v ? "border-tsia-green bg-tsia-green text-white" : "border-border bg-muted/30 hover:border-tsia-green/40"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <Numpad value={amount} onChange={setAmount} />
             </div>
-            <div className="text-center py-1">
-              <div className="text-5xl font-black">${fmt(amount)}</div>
-              <p className="text-xs text-tsia-green font-semibold mt-0.5">≈ {formatAmount(parseFloat(amount) || 0)} {currency?.code}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Balance: ${balance.toFixed(2)}</p>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {["1","2","5","10"].map(v => (
-                <button key={v} onClick={() => setAmount(v)}
-                  className={`py-2.5 rounded-xl font-bold text-sm border-2 transition-all ${amount === v ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border bg-muted/40 text-muted-foreground"}`}>${v}</button>
-              ))}
-            </div>
-            <Numpad value={amount} onChange={setAmount} />
-            <div className="flex gap-3">
-              <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
-              <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-                onClick={() => billMutation.mutate()} data-testid="btn-confirm-airtime">
-                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Phone className="w-5 h-5 mr-2" />}
-                Buy ${fmt(amount)} Airtime
-              </Button>
-            </div>
-          </>)}
-        </motion.div>
-      </AnimatePresence>
-    );
+
+            {/* Recent Purchases */}
+            {recentAirtime.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">Recent Purchases</p>
+                <div className="space-y-2">
+                  {recentAirtime.map(b => {
+                    const net = NETWORKS.find(n => b.reference?.toLowerCase().includes(n.id)) ?? NETWORKS[0];
+                    return (
+                      <div key={b.id} className="flex items-center gap-3 p-3 rounded-2xl bg-muted/40 border border-border/50">
+                        <div className={`w-9 h-9 rounded-full ${net.color} flex items-center justify-center shrink-0`}>
+                          <Phone className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold">{net.label} Airtime</p>
+                          <p className="text-xs text-muted-foreground font-mono truncate">{b.reference}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-bold text-tsia-green">₦{parseFloat(b.amount).toLocaleString()}</p>
+                          <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Pay Button */}
+            <Button className="w-full h-14 bg-tsia-green text-white font-bold text-lg rounded-2xl shadow-lg"
+              disabled={!canPay || billMutation.isPending}
+              onClick={() => billMutation.mutate()}
+              data-testid="btn-confirm-airtime">
+              {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Phone className="w-5 h-5 mr-2" />}
+              Pay ${fmt(amount)}
+            </Button>
+            {parseFloat(amount) > balance && <p className="text-xs text-center text-red-500">Insufficient wallet balance</p>}
+          </motion.div>
+        </AnimatePresence>
+      );
+    }
 
     // ── BETTING ──────────────────────────────────────────────────────────
     if (selectedService.id === "betting") return (
       <AnimatePresence mode="wait">
         <motion.div key="betting" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Fund Betting Wallet" sub={billStep === "details" ? "Select platform & ID" : billStep === "success" ? "Payment Complete" : "Enter amount"} />
+          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Fund Betting Wallet" sub={billStep === "details" ? "Select platform & ID" : "Enter amount"} />
+
+          <div className="inline-flex items-center gap-2 bg-violet-600 text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
+            <Wallet className="w-4 h-4" />
+            Wallet Balance: ${balance.toFixed(2)}
+          </div>
 
           {billStep === "details" ? (<>
             <div>
@@ -2853,16 +2937,6 @@ export default function FinancialHub() {
               disabled={!selectedPlatform || !billRef.trim()} onClick={() => setBillStep("amount")}>
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
-          </>) : billStep === "success" && txResult ? (<>
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-20 h-20 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center"><CheckCircle2 className="w-10 h-10 text-violet-600" /></div>
-              <div><h3 className="font-black text-xl text-violet-600">Betting Wallet Funded ✓</h3><p className="text-muted-foreground text-sm mt-1">{selectedPlatform} • ID: {billRef}</p></div>
-              <div className="w-full bg-violet-50 dark:bg-violet-900/20 border border-violet-300 rounded-2xl p-4 space-y-2">
-                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount Credited</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
-              </div>
-              <Button className="w-full h-12 bg-violet-600 text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>Done</Button>
-            </div>
           </>) : (<>
             <div className="flex items-center justify-between bg-violet-50 dark:bg-violet-900/20 border border-violet-300 rounded-2xl px-4 py-3">
               <div><p className="text-xs text-muted-foreground">User ID</p><p className="font-bold">{billRef}</p></div>
@@ -2898,7 +2972,12 @@ export default function FinancialHub() {
     if (selectedService.id === "cable-tv") return (
       <AnimatePresence mode="wait">
         <motion.div key="cable-tv" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          <BackHeader onBack={() => billStep === "success" ? (resetBill(), setView("home")) as any : billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Cable TV" sub={billStep === "details" ? "Select provider & package" : billStep === "success" ? "Subscription Complete" : "Confirm subscription"} />
+          <BackHeader onBack={() => billStep === "amount" ? setBillStep("details") : setView("pay-bill")} title="Cable TV" sub={billStep === "details" ? "Select provider & package" : "Confirm subscription"} />
+
+          <div className="inline-flex items-center gap-2 bg-rose-600 text-white rounded-full px-4 py-2 text-sm font-bold shadow-sm">
+            <Wallet className="w-4 h-4" />
+            Wallet Balance: ${balance.toFixed(2)}
+          </div>
 
           {billStep === "details" ? (<>
             <div>
@@ -2968,17 +3047,6 @@ export default function FinancialHub() {
               }}>
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
-          </>) : billStep === "success" && txResult ? (<>
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-20 h-20 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center"><CheckCircle2 className="w-10 h-10 text-rose-600" /></div>
-              <div><h3 className="font-black text-xl text-rose-600">Subscription Activated ✓</h3><p className="text-muted-foreground text-sm mt-1">{selectedTvProvider?.label} • {selectedTvPackage?.label}</p></div>
-              <div className="w-full bg-rose-50 dark:bg-rose-900/20 border border-rose-300 rounded-2xl p-4 space-y-2">
-                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Amount</span><span className="font-bold">₦{txResult.amountNgn.toLocaleString()}</span></div>
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Smartcard</span><span className="font-mono">{billRef}</span></div>
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Reference</span><span className="font-mono text-muted-foreground">{txResult.ref}</span></div>
-              </div>
-              <Button className="w-full h-12 bg-rose-600 text-white font-bold rounded-2xl" onClick={() => { resetBill(); setView("home"); }}>Done</Button>
-            </div>
           </>) : (<>
             <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 rounded-3xl p-5 text-center">
               <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{selectedTvProvider?.label}</p>

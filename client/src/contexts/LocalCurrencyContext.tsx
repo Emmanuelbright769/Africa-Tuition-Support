@@ -148,7 +148,16 @@ function saveCache(c: LocalCurrency) {
 
 async function fetchRate(currencyCode: string): Promise<number> {
   if (currencyCode === "USD") return 1;
-  if (currencyCode === "NGN") return NGN_RATE;
+  if (currencyCode === "NGN") {
+    try {
+      const res = await fetch("/api/exchange-rates", { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json();
+        return typeof data.buying === "number" ? data.buying : NGN_RATE;
+      }
+    } catch {}
+    return NGN_RATE;
+  }
   try {
     const res = await fetch("https://open.er-api.com/v6/latest/USD");
     const data = await res.json();

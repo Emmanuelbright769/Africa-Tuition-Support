@@ -42,6 +42,21 @@ const PgSession = pgSession(session);
 // key: `${bankCode}:${accountNumber}` → accountName
 const bankResolveCache = new Map<string, string>();
 
+// ── USD/NGN exchange rate in-memory cache (5-min TTL) ─────────────────────
+let _usdNgnRatesCache: { buying: number; selling: number; cachedAt: number } | null = null;
+async function getUsdNgnRates(): Promise<{ buying: number; selling: number }> {
+  if (_usdNgnRatesCache && Date.now() - _usdNgnRatesCache.cachedAt < 5 * 60 * 1000) {
+    return _usdNgnRatesCache;
+  }
+  const buyingStr  = await storage.getPlatformSetting("usd_ngn_buying_rate");
+  const sellingStr = await storage.getPlatformSetting("usd_ngn_selling_rate");
+  const buying  = parseFloat(buyingStr  ?? "1480");
+  const selling = parseFloat(sellingStr ?? "1280");
+  _usdNgnRatesCache = { buying, selling, cachedAt: Date.now() };
+  return _usdNgnRatesCache;
+}
+function invalidateUsdNgnRatesCache() { _usdNgnRatesCache = null; }
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -3651,6 +3666,16 @@ export async function registerRoutes(
   });
 
   // ── Admin: get all platform settings ─────────────────────────────────────
+  // ── Public: exchange rates (no auth required) ─────────────────────────────
+  app.get("/api/exchange-rates", async (_req, res) => {
+    try {
+      const rates = await getUsdNgnRates();
+      res.json(rates);
+    } catch (e: any) {
+      res.json({ buying: 1480, selling: 1280 }); // safe fallback
+    }
+  });
+
   app.get("/api/admin/platform-settings", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -3660,7 +3685,13 @@ export async function registerRoutes(
       const settings = await storage.getAllPlatformSettings();
       const prices = await storage.getPlanPrices();
       const tiers = await storage.getTierPayouts();
-      res.json({ settings, prices, tiers });
+      const buyingStr  = await storage.getPlatformSetting("usd_ngn_buying_rate");
+      const sellingStr = await storage.getPlatformSetting("usd_ngn_selling_rate");
+      const exchangeRates = {
+        buying:  parseFloat(buyingStr  ?? "1480"),
+        selling: parseFloat(sellingStr ?? "1280"),
+      };
+      res.json({ settings, prices, tiers, exchangeRates });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -3674,7 +3705,8 @@ export async function registerRoutes(
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
       const { plan1yr, plan2yr, plan3yr, serviceChargeRate,
-              silverMin, silverMax, goldMin, goldMax, platinumMin, platinumMax } = req.body;
+              silverMin, silverMax, goldMin, goldMax, platinumMin, platinumMax,
+              buyingRate, sellingRate } = req.body;
       const updates: { key: string; val: number; min: number; max: number; label: string }[] = [
         { key: "plan_1yr_base",            val: parseFloat(plan1yr),         min: 1,    max: 9999, label: "1-year plan price" },
         { key: "plan_2yr_base",            val: parseFloat(plan2yr),         min: 1,    max: 9999, label: "2-year plan price" },
@@ -3693,9 +3725,24 @@ export async function registerRoutes(
         }
         await storage.setPlatformSetting(u.key, u.val.toString());
       }
+      // Exchange rates (optional — only update if provided)
+      if (buyingRate !== undefined) {
+        const br = parseFloat(buyingRate);
+        if (isNaN(br) || br < 1 || br > 99999) return res.status(400).json({ message: "Invalid buying rate" });
+        await storage.setPlatformSetting("usd_ngn_buying_rate", br.toString());
+      }
+      if (sellingRate !== undefined) {
+        const sr = parseFloat(sellingRate);
+        if (isNaN(sr) || sr < 1 || sr > 99999) return res.status(400).json({ message: "Invalid selling rate" });
+        await storage.setPlatformSetting("usd_ngn_selling_rate", sr.toString());
+      }
+      invalidateUsdNgnRatesCache();
       const prices = await storage.getPlanPrices();
       const tiers = await storage.getTierPayouts();
-      res.json({ message: "Settings updated successfully", prices, tiers });
+      const buyingStr  = await storage.getPlatformSetting("usd_ngn_buying_rate");
+      const sellingStr = await storage.getPlatformSetting("usd_ngn_selling_rate");
+      const exchangeRates = { buying: parseFloat(buyingStr ?? "1480"), selling: parseFloat(sellingStr ?? "1280") };
+      res.json({ message: "Settings updated successfully", prices, tiers, exchangeRates });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -5130,10 +5177,11 @@ export async function registerRoutes(
       const secretKey = process.env.SQUAD_SECRET_KEY;
       const publicKey = process.env.SQUAD_PUBLIC_KEY;
       if (!secretKey || !publicKey) return res.status(500).json({ message: "Payment gateway not configured. Please contact support." });
-      const USD_TO_KOBO = 148000;
+      const rates = await getUsdNgnRates();
+      const USD_TO_KOBO = Math.round(rates.buying * 100);
       const amountKobo = Math.round(totalUsd * USD_TO_KOBO);
       const transactionRef = `TSIA-SPO-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
-      res.json({ transactionRef, amountKobo, amountNgn: (totalUsd * 1480).toFixed(2), totalUsd: totalUsd.toFixed(2), publicKey, email, firstName, lastName });
+      res.json({ transactionRef, amountKobo, amountNgn: (totalUsd * rates.buying).toFixed(2), totalUsd: totalUsd.toFixed(2), publicKey, email, firstName, lastName });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -5173,7 +5221,7 @@ export async function registerRoutes(
             </div>
             <h2 style="color:#1a5c38;font-size:22px;margin-bottom:8px">Your Sponsor Code is Ready!</h2>
             <p style="color:#374151;font-size:15px">Hi ${firstName}, thank you for sponsoring <strong>${slots} student${slots > 1 ? "s" : ""}</strong> through TSIA.</p>
-            <p style="color:#6b7280;font-size:14px">Your payment of <strong>₦${(3.3 * slots * 1480).toLocaleString()}</strong> has been confirmed. Share the code below with your sponsored students — each student will enter it during their enrollment to activate their account for free.</p>
+            <p style="color:#6b7280;font-size:14px">Your payment of <strong>₦${(3.3 * slots * rates.buying).toLocaleString()}</strong> has been confirmed. Share the code below with your sponsored students — each student will enter it during their enrollment to activate their account for free.</p>
             <div style="background:#fff;border:2px solid #1a5c38;border-radius:12px;padding:24px;text-align:center;margin:28px 0">
               <p style="color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px">Your Sponsor Code</p>
               <p style="font-family:monospace;font-size:32px;font-weight:bold;color:#1a5c38;letter-spacing:4px;margin:0">${masterCode}</p>
@@ -5395,7 +5443,8 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
-      const USD_TO_KOBO = 148000; // 1 USD = ₦1,480 = 148,000 kobo
+      const rates = await getUsdNgnRates();
+      const USD_TO_KOBO = Math.round(rates.buying * 100); // e.g. 1 USD = ₦1,480 = 148,000 kobo
       const amountKobo = Math.round(amount * USD_TO_KOBO);
       const transactionRef = `TSIA-${userId}-${Date.now()}`;
       // Save pending deposit record
@@ -5408,7 +5457,7 @@ export async function registerRoutes(
         walletType: "squad",
         userId,
       }).catch((err: any) => console.error("[EMAIL] Admin Squad deposit email failed:", err?.message ?? err));
-      res.json({ transactionRef, amountKobo, amountNgn: (amount * 1480).toFixed(2), publicKey, email: user.email, firstName: user.firstName, lastName: user.lastName });
+      res.json({ transactionRef, amountKobo, amountNgn: (amount * rates.buying).toFixed(2), publicKey, email: user.email, firstName: user.firstName, lastName: user.lastName });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -5438,7 +5487,8 @@ export async function registerRoutes(
       }
       // Amount in kobo → USD
       const amountKoboFromSquad = data.data?.transaction_amount ?? 0;
-      const gross = parseFloat(existing?.amountUsd ?? (amountKoboFromSquad / 148000).toFixed(2));
+      const rates = await getUsdNgnRates();
+      const gross = parseFloat(existing?.amountUsd ?? (amountKoboFromSquad / Math.round(rates.buying * 100)).toFixed(2));
       // Credit 100% to wallet — service fees apply on transactions, not deposits
       const sqUserCredit = gross;
       const sqReserveCut = 0;
@@ -5623,7 +5673,8 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
-      const amountNgn = Math.round(amount * 1480); // 1 USD = ₦1,480
+      const rates = await getUsdNgnRates();
+      const amountNgn = Math.round(amount * rates.buying);
       const reference = `TSIA-KORA-${userId}-${Date.now()}`;
       const notifUrl = `${req.protocol}://${req.get("host")}/api/webhook/korapay`;
       const redirectUrl = `${req.protocol}://${req.get("host")}/student-dashboard`;
@@ -5672,7 +5723,8 @@ export async function registerRoutes(
       if (!verData.status || verData.data?.status !== "success") {
         return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment or contact support." });
       }
-      const gross = parseFloat(existing?.amountUsd ?? (verData.data.amount / 1480).toFixed(2));
+      const rates = await getUsdNgnRates();
+      const gross = parseFloat(existing?.amountUsd ?? (verData.data.amount / rates.buying).toFixed(2));
       await creditWalletWithSplit(userId, gross, "korapay", reference, existing);
       res.json({ message: `$${gross.toFixed(2)} has been credited to your TSIA SwiftWallet`, amountUsd: gross.toFixed(2) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -5810,8 +5862,9 @@ export async function registerRoutes(
           }
           if (fallbackUserId) {
             // Amount: prefer metadata, fall back to Korapay's reported NGN amount
-            // Korapay data.amount is in NGN (not kobo), so divide by 1480 for USD
-            const grossFromKora = data.amount ? parseFloat((data.amount / 1480).toFixed(2)) : 0;
+            const _koraRates = await getUsdNgnRates();
+            // Korapay data.amount is in NGN (not kobo), so divide by buying rate for USD
+            const grossFromKora = data.amount ? parseFloat((data.amount / _koraRates.buying).toFixed(2)) : 0;
             const gross = metaAmountUsd ? parseFloat(metaAmountUsd) : grossFromKora;
             if (gross > 0) {
               console.log(`[KORAPAY WEBHOOK] No deposit record found for ref ${ref} — crediting user ${fallbackUserId} $${gross} via fallback`);
@@ -5875,7 +5928,8 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
-      const USD_TO_KOBO = 148000; // 1 USD = 1480 NGN = 148000 kobo
+      const rates = await getUsdNgnRates();
+      const USD_TO_KOBO = Math.round(rates.buying * 100); // e.g. 1 USD = ₦1,480 = 148,000 kobo
       const amountKobo = Math.round(amount * USD_TO_KOBO);
       const reference = `TSIA-${userId}-${Date.now()}`;
       const response = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -5924,7 +5978,8 @@ export async function registerRoutes(
       });
       const data = await response.json() as any;
       if (!data.status || data.data?.status !== "success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment." });
-      const psGross = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / 148000).toFixed(2));
+      const rates = await getUsdNgnRates();
+      const psGross = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / Math.round(rates.buying * 100)).toFixed(2));
       // 5% affiliate pool on deposit, 95% credited to user
       const psAffiliateCut = parseFloat((psGross * 0.05).toFixed(2));
       const psUserCredit   = parseFloat((psGross - psAffiliateCut).toFixed(2));

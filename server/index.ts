@@ -121,7 +121,9 @@ async function runMigrations() {
         ('tier_gold_min',     '160'),
         ('tier_gold_max',     '180'),
         ('tier_platinum_min', '225'),
-        ('tier_platinum_max', '230')
+        ('tier_platinum_max', '230'),
+        ('usd_ngn_buying_rate',  '1480'),
+        ('usd_ngn_selling_rate', '1280')
       ON CONFLICT (key) DO NOTHING
     `);
     // ── BACKFILL: co_affiliates rows where share_percentage was stored as 0

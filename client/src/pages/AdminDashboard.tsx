@@ -163,6 +163,8 @@ export default function AdminDashboard() {
   const [wdNote, setWdNote]               = useState("");
   const [settingsForm, setSettingsForm]   = useState({ plan1yr: "", plan2yr: "", plan3yr: "", serviceChargeRate: "", silverMin: "", silverMax: "", goldMin: "", goldMax: "", platinumMin: "", platinumMax: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [rateForm, setRateForm]           = useState({ buying: "", selling: "" });
+  const [rateSaved, setRateSaved]         = useState(false);
   const [waecScaleForm, setWaecScaleForm] = useState<Record<string, string>>({});
   const [waecScaleSaved, setWaecScaleSaved] = useState(false);
   const [tradeForm, setTradeForm] = useState({ feeExchangeWithdraw: "", feeBankWithdraw: "", reserveRate: "", affiliateShareRate: "", minDeposit: "", minWithdraw: "", coAffiliatePoolRate: "", botFullRate: "" });
@@ -217,7 +219,7 @@ export default function AdminDashboard() {
   const { data: allTrustFunders = [] }     = useQuery({ queryKey: ["/api/admin/co-affiliates"], enabled: activeTab === "trustfunders", refetchInterval: 30_000, staleTime: 10_000 });
   const { data: referralsData }            = useQuery({ queryKey: ["/api/admin/referrals-all"], enabled: activeTab === "referrals" });
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 600_000 });
-  const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
+  const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } }; exchangeRates: { buying: number; selling: number } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
   const { data: waecScaleData, refetch: refetchWaecScale } = useQuery<{ scale: Record<string, number> }>({ queryKey: ["/api/admin/waec-grade-scale"], enabled: activeTab === "settings" });
   const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number; bankTransfersEnabled: boolean; bankTransfersWeekendOverrideUntil: number }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" || activeTab === "bank_transfers" });
   const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
@@ -471,6 +473,37 @@ export default function AdminDashboard() {
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
       toast({ title: "Plan Prices Updated ✓", description: "New prices are live for all students immediately." });
+    },
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+
+  const saveExchangeRatesMutation = useMutation({
+    mutationFn: async (form: { buying: string; selling: string }) => {
+      const currentSettings = {
+        plan1yr: settingsForm.plan1yr || "35",
+        plan2yr: settingsForm.plan2yr || "45",
+        plan3yr: settingsForm.plan3yr || "50",
+        serviceChargeRate: settingsForm.serviceChargeRate || "10",
+        silverMin: settingsForm.silverMin || "110",
+        silverMax: settingsForm.silverMax || "130",
+        goldMin: settingsForm.goldMin || "160",
+        goldMax: settingsForm.goldMax || "180",
+        platinumMin: settingsForm.platinumMin || "225",
+        platinumMax: settingsForm.platinumMax || "230",
+        buyingRate: form.buying,
+        sellingRate: form.selling,
+      };
+      const res = await apiRequest("PUT", "/api/admin/platform-settings", currentSettings);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/exchange-rates"] });
+      setRateSaved(true);
+      setTimeout(() => setRateSaved(false), 3000);
+      toast({ title: "Exchange Rates Updated ✓", description: "New rates are live across the platform immediately." });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
@@ -733,6 +766,8 @@ export default function AdminDashboard() {
     if (!platformSettingsData) return;
     const p = platformSettingsData.prices;
     const t = platformSettingsData.tiers;
+    const er = platformSettingsData.exchangeRates;
+    if (er) setRateForm(f => f.buying ? f : { buying: er.buying.toString(), selling: er.selling.toString() });
     setSettingsForm(f => f.plan1yr ? f : {
       plan1yr:           p ? p.plan1yr.toString() : "35",
       plan2yr:           p ? p.plan2yr.toString() : "45",
@@ -2353,7 +2388,7 @@ export default function AdminDashboard() {
                                   </div>
                                   <div className="flex items-center justify-between">
                                     <span className="text-muted-foreground text-xs">NGN Amount</span>
-                                    <span className="font-black text-tsia-green text-sm">₦{Math.round(parseFloat(wd.netAmount) * 1280).toLocaleString()}</span>
+                                    <span className="font-black text-tsia-green text-sm">₦{Math.round(parseFloat(wd.netAmount) * (parseFloat(rateForm.selling) || 1280)).toLocaleString()}</span>
                                   </div>
                                   <div className="flex items-center justify-between">
                                     <span className="text-muted-foreground text-xs">{wd.type === "trade_bank" ? "Fee (8%)" : "VAT"}</span>
@@ -3640,6 +3675,75 @@ export default function AdminDashboard() {
                       </Card>
                     );
                   })()}
+
+                  {/* ── USD/NGN Exchange Rates ───────────────────────────── */}
+                  <Card className="border-0 shadow-sm border-l-4 border-l-blue-500">
+                    <CardHeader className="border-b pb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+                          <DollarSign className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">USD / NGN Exchange Rates</CardTitle>
+                          <CardDescription>Set the Dollar–Naira buying and selling rates used across the platform for deposits, withdrawals, and conversions.</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-5">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="font-semibold text-sm">Buying Rate (Deposit)</Label>
+                          <p className="text-[10px] text-muted-foreground">How many ₦ users pay per $1 when funding their wallet (charged by TSIA on deposits).</p>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">₦</span>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="1"
+                              className="pl-7 h-11 bg-muted/30 font-semibold text-base"
+                              value={rateForm.buying}
+                              onChange={e => setRateForm(f => ({ ...f, buying: e.target.value }))}
+                              data-testid="input-rate-buying"
+                            />
+                          </div>
+                          <p className="text-xs font-medium text-blue-700">= ₦{(parseFloat(rateForm.buying) || 1480).toLocaleString()} per $1</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="font-semibold text-sm">Selling Rate (Withdrawal)</Label>
+                          <p className="text-[10px] text-muted-foreground">How many ₦ users receive per $1 when withdrawing to their bank account.</p>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">₦</span>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="1"
+                              className="pl-7 h-11 bg-muted/30 font-semibold text-base"
+                              value={rateForm.selling}
+                              onChange={e => setRateForm(f => ({ ...f, selling: e.target.value }))}
+                              data-testid="input-rate-selling"
+                            />
+                          </div>
+                          <p className="text-xs font-medium text-tsia-green">= ₦{(parseFloat(rateForm.selling) || 1280).toLocaleString()} per $1</p>
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 rounded-xl border border-blue-100 p-3 text-xs text-blue-700 space-y-1">
+                        <p className="font-semibold">Live Preview</p>
+                        <p>A $10 deposit → <strong>₦{((parseFloat(rateForm.buying) || 1480) * 10).toLocaleString()}</strong> charged &nbsp;·&nbsp; A $10 withdrawal → <strong>₦{((parseFloat(rateForm.selling) || 1280) * 10).toLocaleString()}</strong> paid out</p>
+                      </div>
+                      <Button
+                        className="w-full h-11 font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                        disabled={saveExchangeRatesMutation.isPending || !rateForm.buying || !rateForm.selling}
+                        onClick={() => saveExchangeRatesMutation.mutate(rateForm)}
+                        data-testid="button-save-exchange-rates"
+                      >
+                        {saveExchangeRatesMutation.isPending
+                          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Saving...</>
+                          : rateSaved
+                            ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Rates Saved!</>
+                            : <><Save className="w-4 h-4 mr-2" /> Save Exchange Rates</>}
+                      </Button>
+                    </CardContent>
+                  </Card>
 
                   {/* ── Fintech Hub Kill-Switches ───────────────────────── */}
                   <Card className={`border-0 shadow-sm border-l-4 ${bankTransfersEnabled ? "border-l-emerald-500" : "border-l-red-500"}`}>

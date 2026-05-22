@@ -151,7 +151,7 @@ function LocalEquiv({ usd, country }: { usd: number; country?: string }) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
-type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "receipt" | "history";
+type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "bill-otp" | "receipt" | "history";
 
 // ── TSIA Receiving Wallet Addresses ───────────────────────────────────────────
 const TSIA_WALLETS = {
@@ -446,6 +446,11 @@ export default function FinancialHub() {
   const [otpCode, setOtpCode]           = useState("");
   const [otpMaskedEmail, setOtpMaskedEmail] = useState("");
   const [otpResendCooldown, setOtpResendCooldown] = useState(0);
+
+  // ── Bill payment OTP state ───────────────────────────────────────────────
+  const [billOtpCode, setBillOtpCode]               = useState("");
+  const [billOtpMaskedEmail, setBillOtpMaskedEmail] = useState("");
+  const [billOtpResendCooldown, setBillOtpResendCooldown] = useState(0);
 
   // ── Request Money state ──────────────────────────────────────────────────
   const [requestEmail, setRequestEmail] = useState("");
@@ -970,29 +975,46 @@ export default function FinancialHub() {
     onError: (e: any) => toast({ title: "Request failed", description: e.message, variant: "destructive" }),
   });
 
+  const requestBillOtpMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedService) throw new Error("No service selected");
+      const res = await apiRequest("POST", "/api/fintech/bill-otp/request", { service: selectedService.id, amount });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setBillOtpCode("");
+      setBillOtpMaskedEmail(data.message?.replace("OTP sent to ", "") ?? "");
+      setBillOtpResendCooldown(60);
+      setView("bill-otp");
+    },
+    onError: (e: any) => toast({ title: "Could not send OTP", description: e.message, variant: "destructive" }),
+  });
+
   const billMutation = useMutation({
     mutationFn: async () => {
       if (!selectedService) throw new Error("No service selected");
+      if (!billOtpCode || billOtpCode.length !== 6) throw new Error("A valid 6-digit OTP is required");
       let endpoint = "/api/wallet/bill";
       let payload: Record<string, any> = {};
 
       if (selectedService.id === "airtime") {
         endpoint = "/api/fintech/airtime";
-        payload = { network: selectedNetwork, phone: billRef, amount: parseFloat(amount) };
+        payload = { network: selectedNetwork, phone: billRef, amount: parseFloat(amount), otpCode: billOtpCode };
       } else if (selectedService.id === "internet") {
         if (!selectedPlan?.variationId) throw new Error("No data plan selected");
         endpoint = "/api/fintech/data";
-        payload = { network: selectedISP, phone: billRef, amount: parseFloat(amount), variationId: selectedPlan.variationId, planLabel: selectedPlan.label };
+        payload = { network: selectedISP, phone: billRef, amount: parseFloat(amount), variationId: selectedPlan.variationId, planLabel: selectedPlan.label, otpCode: billOtpCode };
       } else if (selectedService.id === "electricity") {
         endpoint = "/api/fintech/electricity";
-        payload = { discoCode: selectedDisco?.id, meterType, meterNumber: billRef, amount: parseFloat(amount) };
+        payload = { discoCode: selectedDisco?.id, meterType, meterNumber: billRef, amount: parseFloat(amount), otpCode: billOtpCode };
       } else if (selectedService.id === "cable-tv") {
         if (!selectedTvPackage) throw new Error("No TV package selected");
         endpoint = "/api/fintech/cable-tv";
-        payload = { serviceId: selectedTvProvider?.id, smartcardNumber: billRef, variationId: selectedTvPackage.variationId, packageName: selectedTvPackage.label, amount: parseFloat(amount) };
+        payload = { serviceId: selectedTvProvider?.id, smartcardNumber: billRef, variationId: selectedTvPackage.variationId, packageName: selectedTvPackage.label, amount: parseFloat(amount), otpCode: billOtpCode };
       } else if (selectedService.id === "betting") {
         endpoint = "/api/fintech/betting";
-        payload = { platform: selectedPlatform, bettingUserId: billRef, amount: parseFloat(amount) };
+        payload = { platform: selectedPlatform, bettingUserId: billRef, amount: parseFloat(amount), otpCode: billOtpCode };
       }
 
       const res = await apiRequest("POST", endpoint, payload);
@@ -1047,12 +1069,19 @@ export default function FinancialHub() {
     onError: (e: any) => toast({ title: "Payment failed", description: e.message, variant: "destructive" }),
   });
 
-  // OTP resend countdown
+  // OTP resend countdown (transfer)
   useEffect(() => {
     if (otpResendCooldown <= 0) return;
     const t = setTimeout(() => setOtpResendCooldown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [otpResendCooldown]);
+
+  // OTP resend countdown (bill payment)
+  useEffect(() => {
+    if (billOtpResendCooldown <= 0) return;
+    const t = setTimeout(() => setBillOtpResendCooldown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [billOtpResendCooldown]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const resetSend = () => {
@@ -1069,6 +1098,7 @@ export default function FinancialHub() {
     setSelectedTvProvider(null); setTvPackages([]); setSelectedTvPackage(null); setTvCustomerName("");
     setSelectedPlatform(null);
     setTxResult(null);
+    setBillOtpCode(""); setBillOtpMaskedEmail(""); setBillOtpResendCooldown(0);
   };
 
   const lookupTsia = async () => {
@@ -3244,6 +3274,103 @@ export default function FinancialHub() {
   );
 
   // ═════════════════════════════════════════════════════════════════════════
+  // BILL PAYMENT OTP CONFIRMATION
+  // ═════════════════════════════════════════════════════════════════════════
+  if (view === "bill-otp" && selectedService) {
+    const serviceLabel = ({
+      airtime:     "Airtime Purchase",
+      internet:    "Data Bundle",
+      electricity: "Electricity Bill",
+      "cable-tv":  "Cable TV Subscription",
+      betting:     "Betting Top-up",
+    } as Record<string, string>)[selectedService.id] ?? "Bill Payment";
+
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div key="bill-otp" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+          <BackHeader onBack={() => setView("service")} title="Confirm Payment" sub="Enter the code sent to your email" />
+
+          {/* Payment summary */}
+          <div className="rounded-2xl bg-tsia-green/8 dark:bg-tsia-green/15 border border-tsia-green/30 p-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Service</span>
+              <span className="font-bold text-foreground">{serviceLabel}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm border-t border-tsia-green/20 pt-2">
+              <span className="text-muted-foreground font-semibold">Amount</span>
+              <span className="font-black text-tsia-green text-lg">${fmt(amount)}</span>
+            </div>
+            {billRef && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Reference</span>
+                <span className="font-mono text-foreground text-xs">{billRef}</span>
+              </div>
+            )}
+          </div>
+
+          {/* OTP notice */}
+          <div className="rounded-2xl bg-muted/50 border border-border p-4 text-center space-y-1">
+            <p className="text-sm font-semibold">Security code sent</p>
+            <p className="text-xs text-muted-foreground">
+              A 6-digit code was sent to <strong>{billOtpMaskedEmail}</strong>.{" "}
+              It expires in 10 minutes.
+            </p>
+          </div>
+
+          {/* OTP input */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Enter 6-digit OTP</label>
+            <input
+              type="tel"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="— — — — — —"
+              value={billOtpCode}
+              onChange={e => setBillOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              className="w-full text-center text-3xl font-black tracking-[0.4em] border-2 border-border rounded-2xl px-4 py-4 bg-background focus:outline-none focus:border-tsia-green"
+              data-testid="input-bill-otp"
+              autoFocus
+            />
+          </div>
+
+          {/* Resend */}
+          <p className="text-center text-xs text-muted-foreground">
+            Didn't receive it?{" "}
+            {billOtpResendCooldown > 0 ? (
+              <span className="font-semibold text-muted-foreground">Resend in {billOtpResendCooldown}s</span>
+            ) : (
+              <button
+                className="font-semibold text-tsia-green underline underline-offset-2"
+                onClick={() => requestBillOtpMutation.mutate()}
+                disabled={requestBillOtpMutation.isPending}
+                data-testid="btn-resend-bill-otp"
+              >
+                {requestBillOtpMutation.isPending ? "Sending…" : "Resend code"}
+              </button>
+            )}
+          </p>
+
+          {/* Confirm / Cancel */}
+          <div className="flex gap-3">
+            <button onClick={() => { setView("service"); setBillOtpCode(""); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
+              <X className="w-5 h-5 text-muted-foreground" />
+            </button>
+            <Button
+              className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
+              disabled={billMutation.isPending || billOtpCode.length !== 6}
+              onClick={() => billMutation.mutate()}
+              data-testid="btn-confirm-bill-otp"
+            >
+              {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
+              Confirm Payment
+            </Button>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
   // (TSIA Transfer receipt now handled by the universal TransactionReceipt dialog)
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -3513,9 +3640,9 @@ export default function FinancialHub() {
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-amber-500 text-white font-bold rounded-2xl"
-                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-                onClick={() => billMutation.mutate()} data-testid="btn-confirm-electricity">
-                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Zap className="w-5 h-5 mr-2" />}
+                disabled={requestBillOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                onClick={() => requestBillOtpMutation.mutate()} data-testid="btn-confirm-electricity">
+                {requestBillOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Zap className="w-5 h-5 mr-2" />}
                 Pay ${fmt(amount)}
               </Button>
             </div>
@@ -3633,9 +3760,9 @@ export default function FinancialHub() {
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-                disabled={billMutation.isPending || parseFloat(amount) > balance}
-                onClick={() => billMutation.mutate()} data-testid="btn-confirm-data">
-                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Wifi className="w-5 h-5 mr-2" />}
+                disabled={requestBillOtpMutation.isPending || parseFloat(amount) > balance}
+                onClick={() => requestBillOtpMutation.mutate()} data-testid="btn-confirm-data">
+                {requestBillOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Wifi className="w-5 h-5 mr-2" />}
                 Buy Data ${fmt(amount)}
               </Button>
             </div>
@@ -3735,10 +3862,10 @@ export default function FinancialHub() {
                     data-testid="input-airtime-amount" />
                 </div>
                 <Button className="h-12 px-6 bg-tsia-green text-white font-bold rounded-2xl shadow"
-                  disabled={!canPay || billMutation.isPending}
-                  onClick={() => billMutation.mutate()}
+                  disabled={!canPay || requestBillOtpMutation.isPending}
+                  onClick={() => requestBillOtpMutation.mutate()}
                   data-testid="btn-confirm-airtime">
-                  {billMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pay"}
+                  {requestBillOtpMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pay"}
                 </Button>
               </div>
               {parseFloat(amount) > balance && <p className="text-xs text-red-500 mt-1.5">Insufficient wallet balance (${balance.toFixed(2)} available)</p>}
@@ -3838,9 +3965,9 @@ export default function FinancialHub() {
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-                onClick={() => billMutation.mutate()} data-testid="btn-confirm-betting">
-                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Gamepad2 className="w-5 h-5 mr-2" />}
+                disabled={requestBillOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                onClick={() => requestBillOtpMutation.mutate()} data-testid="btn-confirm-betting">
+                {requestBillOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Gamepad2 className="w-5 h-5 mr-2" />}
                 Fund ${fmt(amount)}
               </Button>
             </div>
@@ -3945,9 +4072,9 @@ export default function FinancialHub() {
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-rose-600 text-white font-bold rounded-2xl"
-                disabled={billMutation.isPending || parseFloat(amount) > balance}
-                onClick={() => billMutation.mutate()} data-testid="btn-confirm-cable-tv">
-                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Smartphone className="w-5 h-5 mr-2" />}
+                disabled={requestBillOtpMutation.isPending || parseFloat(amount) > balance}
+                onClick={() => requestBillOtpMutation.mutate()} data-testid="btn-confirm-cable-tv">
+                {requestBillOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Smartphone className="w-5 h-5 mr-2" />}
                 Subscribe ${fmt(amount)}
               </Button>
             </div>

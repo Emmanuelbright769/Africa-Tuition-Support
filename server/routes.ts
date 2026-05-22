@@ -6598,13 +6598,33 @@ export async function registerRoutes(
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
+  // ── POST /api/fintech/bill-otp/request — send OTP before any bill payment ──────
+  app.post("/api/fintech/bill-otp/request", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      await storage.createWithdrawalOtp(userId, code, "bill_payment");
+      await sendOtpEmail(user.email, code, false);
+      console.log(`[BILL-OTP] code=${code} → ${user.email}`);
+      res.json({ success: true, message: `OTP sent to ${user.email.replace(/(.{2}).+(@.+)/, "$1***$2")}` });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ── POST /api/fintech/airtime — VTU.ng airtime purchase ─────────────────────
   app.post("/api/fintech/airtime", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { network, phone, amount } = req.body;
+      const { network, phone, amount, otpCode } = req.body;
       if (!network || !phone || !amount) return res.status(400).json({ message: "network, phone, and amount required" });
+      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
+      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
+      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
@@ -6654,8 +6674,11 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { network, phone, amount, planLabel, planValidity, variationId } = req.body;
+      const { network, phone, amount, planLabel, planValidity, variationId, otpCode } = req.body;
       if (!network || !phone || !variationId) return res.status(400).json({ message: "network, phone, and variationId required" });
+      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
+      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
+      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
@@ -6707,10 +6730,13 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { discoCode, meterType, meterNumber, amount } = req.body;
+      const { discoCode, meterType, meterNumber, amount, otpCode } = req.body;
       if (!discoCode || !meterType || !meterNumber || !amount) {
         return res.status(400).json({ message: "discoCode, meterType, meterNumber, and amount required" });
       }
+      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
+      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
+      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
@@ -6765,10 +6791,13 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { serviceId, smartcardNumber, variationId, packageName, subscriptionType, amount } = req.body;
+      const { serviceId, smartcardNumber, variationId, packageName, subscriptionType, amount, otpCode } = req.body;
       if (!serviceId || !smartcardNumber || !variationId) {
         return res.status(400).json({ message: "serviceId, smartcardNumber, and variationId required" });
       }
+      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
+      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
+      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
@@ -6816,8 +6845,11 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { platform, bettingUserId, amount } = req.body;
+      const { platform, bettingUserId, amount, otpCode } = req.body;
       if (!platform || !bettingUserId || !amount) return res.status(400).json({ message: "platform, bettingUserId, and amount required" });
+      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
+      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
+      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 

@@ -4792,6 +4792,66 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Stop a user's active bot trade session ───────────────────────────
+  app.post("/api/admin/trade-users/:userId/stop-bot", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const targetId = parseInt(req.params.userId);
+      if (isNaN(targetId)) return res.status(400).json({ message: "Invalid user ID" });
+
+      // Reset bot session state — unlocks capital, clears trading day counter
+      await db.execute(sql`
+        UPDATE trade_wallets
+        SET locked_principal = '0.000000',
+            trading_day_number = 0,
+            updated_at = NOW()
+        WHERE user_id = ${targetId}
+      `);
+
+      await db.insert(tradeTransactions).values({
+        userId: targetId,
+        type: "bot_earning",
+        amountUsd: "0.000000",
+        feeUsd: "0",
+        reserveFundDeduction: "0",
+        affiliateShareDeduction: "0",
+        netAmount: "0.000000",
+        status: "completed",
+        note: `Bot session stopped by admin (${admin.firstName} ${admin.lastName})`,
+      });
+
+      res.json({ ok: true, message: "Bot session stopped successfully." });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Remove a user from Trade Market entirely ─────────────────────────
+  app.delete("/api/admin/trade-users/:userId", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const targetId = parseInt(req.params.userId);
+      if (isNaN(targetId)) return res.status(400).json({ message: "Invalid user ID" });
+
+      // Delete all trade transactions for this user
+      await db.execute(sql`DELETE FROM trade_transactions WHERE user_id = ${targetId}`);
+      // Delete the trade wallet
+      await db.execute(sql`DELETE FROM trade_wallets WHERE user_id = ${targetId}`);
+
+      res.json({ ok: true, message: "User removed from Trade Market." });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── ADMIN: Send notification to user ───────────────────────────────────────
   app.post("/api/admin/notify-user/:targetUserId", async (req, res) => {
     try {

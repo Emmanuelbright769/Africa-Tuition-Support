@@ -181,6 +181,8 @@ export default function AdminDashboard() {
   const [wdCopied, setWdCopied]           = useState<string | null>(null);
   const [tradeExpandedUser, setTradeExpandedUser] = useState<number | null>(null);
   const [tradeAdjustDialog, setTradeAdjustDialog] = useState<{ userId: number; name: string } | null>(null);
+  const [stopBotConfirm, setStopBotConfirm] = useState<{ userId: number; name: string } | null>(null);
+  const [removeTradeConfirm, setRemoveTradeConfirm] = useState<{ userId: number; name: string } | null>(null);
   const [tradeAdjustAmount, setTradeAdjustAmount] = useState("");
   const [tradeAdjustNote, setTradeAdjustNote]   = useState("");
   const [sessionOverrideDialog, setSessionOverrideDialog] = useState<{ txId: number; userId: number; currentAmt: number } | null>(null);
@@ -503,6 +505,35 @@ export default function AdminDashboard() {
       toast({ title: "Trade Settings Updated ✓", description: "New rates are stored and will apply to future trades." });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+
+  const stopBotMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await apiRequest("POST", `/api/admin/trade-users/${userId}/stop-bot`, {});
+      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-stats"] });
+      setStopBotConfirm(null);
+      toast({ title: "Bot Stopped ✓", description: "User's active bot trade session has been stopped." });
+    },
+    onError: (e: any) => toast({ title: "Stop failed", description: e.message, variant: "destructive" }),
+  });
+
+  const removeFromTradeMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/trade-users/${userId}`, {});
+      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-stats"] });
+      setRemoveTradeConfirm(null);
+      setTradeExpandedUser(null);
+      toast({ title: "User Removed ✓", description: "User has been removed from the Trade Market." });
+    },
+    onError: (e: any) => toast({ title: "Remove failed", description: e.message, variant: "destructive" }),
   });
 
   const sessionOverrideMutation = useMutation({
@@ -1774,6 +1805,18 @@ export default function AdminDashboard() {
                             data-testid={`button-trade-adjust-${u.userId}`}>
                             Adjust Capital
                           </Button>
+                          {u.isActive && (
+                            <Button size="sm" variant="outline" className="text-xs shrink-0 border-amber-300 text-amber-700 hover:bg-amber-50"
+                              onClick={e => { e.stopPropagation(); setStopBotConfirm({ userId: u.userId, name: u.name }); }}
+                              data-testid={`button-stop-bot-${u.userId}`}>
+                              <XCircle className="w-3.5 h-3.5 mr-1" /> Stop Bot
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" className="text-xs shrink-0 border-red-300 text-red-700 hover:bg-red-50"
+                            onClick={e => { e.stopPropagation(); setRemoveTradeConfirm({ userId: u.userId, name: u.name }); }}
+                            data-testid={`button-remove-trade-${u.userId}`}>
+                            <Trash2 className="w-3.5 h-3.5 mr-1" /> Remove
+                          </Button>
                           <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${tradeExpandedUser === u.userId ? "rotate-180" : ""}`} />
                         </div>
 
@@ -1935,6 +1978,56 @@ export default function AdminDashboard() {
                         onClick={() => tradeAdjustDialog && tradeAdjustMutation.mutate({ userId: tradeAdjustDialog.userId, amount: tradeAdjustAmount, note: tradeAdjustNote })}
                         data-testid="button-confirm-trade-adjust">
                         {tradeAdjustMutation.isPending ? "Saving…" : "Apply Adjustment"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* ─── Stop Bot Confirm Dialog ──────────────────────────────────────── */}
+                <Dialog open={!!stopBotConfirm} onOpenChange={o => !o && setStopBotConfirm(null)}>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <XCircle className="w-5 h-5 text-amber-500" /> Stop Bot — {stopBotConfirm?.name}
+                      </DialogTitle>
+                      <DialogDescription>
+                        This will immediately stop the user's active bot trade session and unlock their capital. Their earnings history and balance will be preserved.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                      <Button variant="outline" onClick={() => setStopBotConfirm(null)}>Cancel</Button>
+                      <Button
+                        className="bg-amber-500 hover:bg-amber-600 text-white"
+                        disabled={stopBotMutation.isPending}
+                        onClick={() => stopBotConfirm && stopBotMutation.mutate(stopBotConfirm.userId)}
+                        data-testid="button-confirm-stop-bot"
+                      >
+                        {stopBotMutation.isPending ? "Stopping…" : "Stop Bot Session"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* ─── Remove from Trade Market Confirm Dialog ──────────────────────── */}
+                <Dialog open={!!removeTradeConfirm} onOpenChange={o => !o && setRemoveTradeConfirm(null)}>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <Trash2 className="w-5 h-5 text-red-500" /> Remove from Trade Market
+                      </DialogTitle>
+                      <DialogDescription>
+                        This will permanently remove <strong>{removeTradeConfirm?.name}</strong> from the Trade Market. Their trade wallet, all sessions, and associated data will be deleted. Their main wallet balance is not affected.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                      <Button variant="outline" onClick={() => setRemoveTradeConfirm(null)}>Cancel</Button>
+                      <Button
+                        variant="destructive"
+                        disabled={removeFromTradeMutation.isPending}
+                        onClick={() => removeTradeConfirm && removeFromTradeMutation.mutate(removeTradeConfirm.userId)}
+                        data-testid="button-confirm-remove-trade"
+                      >
+                        {removeFromTradeMutation.isPending ? "Removing…" : "Remove Permanently"}
                       </Button>
                     </DialogFooter>
                   </DialogContent>

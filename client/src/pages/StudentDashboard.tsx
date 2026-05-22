@@ -568,10 +568,8 @@ export default function StudentDashboard() {
                           const planDaysLeft = Math.max(0, 365 - planAge);
                           return planDaysLeft > 0 ? (
                             <>
-                              <div className="text-[10px] font-bold text-slate-300 mb-1.5 uppercase tracking-widest">Active plan expires in</div>
-                              <div className="text-tsia-gold font-black font-mono text-lg leading-tight">
-                                {planCountdown || `${planDaysLeft}d`}
-                              </div>
+                              <div className="text-[10px] font-bold text-slate-300 mb-1.5 uppercase tracking-widest">Disbursement</div>
+                              <div className="text-tsia-gold font-black text-xs leading-tight">Awaiting Admin Approval</div>
                               <div className="text-[10px] text-slate-400 mt-1">{(plan as any).planYears}-year plan</div>
                             </>
                           ) : (
@@ -950,31 +948,34 @@ export default function StudentDashboard() {
                       <div className="px-4 py-2.5 bg-tsia-green flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Shield className="w-4 h-4 text-white" />
-                          <span className="text-white text-xs font-bold uppercase tracking-wider">Active Sponsorship Period</span>
+                          <span className="text-white text-xs font-bold uppercase tracking-wider">Active Sponsorship Plan</span>
                         </div>
                         <span className="text-white/80 text-[10px] font-semibold">{(plan as any).planYears}-Year Plan</span>
                       </div>
                       <div className="p-4 space-y-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <p className="text-[10px] uppercase tracking-widest text-tsia-green font-bold mb-0.5">Time remaining</p>
-                            <p className="text-2xl font-black font-mono text-tsia-green tracking-tight">{planCountdown || `${planDaysLeft}d`}</p>
+                        {/* Disbursement status */}
+                        <div className="flex items-center gap-3 bg-white/60 dark:bg-black/20 rounded-xl px-3 py-3">
+                          <div className="w-8 h-8 bg-tsia-green/15 rounded-full flex items-center justify-center shrink-0">
+                            <Hourglass className="w-4 h-4 text-tsia-green" />
                           </div>
-                          <div className="text-right">
-                            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-0.5">Expires on</p>
-                            <p className="text-sm font-bold text-foreground">{expiryDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
-                            <p className="text-[10px] text-muted-foreground">{planAge} of 365 days elapsed</p>
+                          <div>
+                            <p className="text-xs font-bold text-tsia-green">Awaiting Disbursement Approval</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">Your disbursement is being reviewed by the TSIA admin team. You'll be notified once it's approved.</p>
                           </div>
                         </div>
                         {/* Progress bar */}
                         <div className="space-y-1">
-                          <div className="w-full bg-tsia-green/10 rounded-full h-2.5 overflow-hidden">
+                          <div className="flex justify-between text-[10px] text-muted-foreground font-semibold mb-1">
+                            <span>Plan started · {planAge} of 365 days</span>
+                            <span>Expires {expiryDate.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                          </div>
+                          <div className="w-full bg-tsia-green/10 rounded-full h-2 overflow-hidden">
                             <div className="h-full bg-tsia-green rounded-full transition-all" style={{ width: `${pct}%` }} />
                           </div>
-                          <div className="flex justify-between text-[10px] text-muted-foreground font-semibold">
-                            <span>Plan started</span>
+                          <div className="flex justify-between text-[10px] text-muted-foreground">
+                            <span>Day 1</span>
                             <span>{pct}% elapsed</span>
-                            <span>365 days</span>
+                            <span>Day 365</span>
                           </div>
                         </div>
                       </div>

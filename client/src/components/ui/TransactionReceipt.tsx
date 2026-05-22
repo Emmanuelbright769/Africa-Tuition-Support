@@ -315,7 +315,21 @@ export function TransactionReceipt({
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 
-  // ── Share as PNG — native share sheet or open in new tab ──────────────────
+  // ── Build plain-text receipt summary for text-only share fallback ──────────
+  const buildReceiptText = () => {
+    const lines = [
+      `TSIA SWIFT WALLET — ${(title || "Transaction Receipt").toUpperCase()}`,
+      `Amount: ${amount}${amountLabel ? ` (${amountLabel})` : ""}`,
+      `Date: ${now}`,
+      "─────────────────────",
+      ...rows.map(r => `${r.label}: ${r.value}`),
+      "─────────────────────",
+      "tsiforafrica.com",
+    ];
+    return lines.join("\n");
+  };
+
+  // ── Share as PNG — native share sheet, no download required ───────────────
   const handleShareImage = async () => {
     if (busy) return;
     setBusy("share-img");
@@ -323,7 +337,7 @@ export function TransactionReceipt({
       const dataUrl = await captureImage();
       const filename = `TSIA-Receipt-${Date.now()}.png`;
 
-      // 1. Try native Web Share API (mobile browsers)
+      // 1. Try native Web Share API with file (iOS Safari, Android Chrome)
       if (navigator.canShare && navigator.share) {
         const res = await fetch(dataUrl);
         const blob = await res.blob();
@@ -334,8 +348,16 @@ export function TransactionReceipt({
         }
       }
 
-      // 2. Fallback: open in new tab — user can long-press (mobile) or right-click (desktop) to save/share
-      openInTab(dataUrl, 0); // data URLs don't need revoking
+      // 2. Fallback: share as text summary via Web Share API
+      if (navigator.share) {
+        await navigator.share({ title: "TSIA Transaction Receipt", text: buildReceiptText() });
+        return;
+      }
+
+      // 3. Last resort: copy to clipboard
+      await navigator.clipboard.writeText(buildReceiptText());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 
@@ -356,14 +378,14 @@ export function TransactionReceipt({
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 
-  // ── Share as PDF — native share sheet or open in new tab ──────────────────
+  // ── Share as PDF — native share sheet, no download required ───────────────
   const handleSharePDF = async () => {
     if (busy) return;
     setBusy("share-pdf");
     try {
       const { pdfBlob, filename } = buildTextPdf();
 
-      // 1. Try native Web Share API with file (works on Android Chrome, iOS Safari)
+      // 1. Try native Web Share API with PDF file (Android Chrome, iOS Safari)
       if (navigator.canShare && navigator.share) {
         const file = new File([pdfBlob], filename, { type: "application/pdf" });
         if (navigator.canShare({ files: [file] })) {
@@ -372,9 +394,16 @@ export function TransactionReceipt({
         }
       }
 
-      // 2. Fallback: open PDF in new tab — browser PDF viewer lets user save/share without downloading
-      const url = URL.createObjectURL(pdfBlob);
-      openInTab(url, 30_000);
+      // 2. Fallback: share as text summary via Web Share API
+      if (navigator.share) {
+        await navigator.share({ title: "TSIA Transaction Receipt", text: buildReceiptText() });
+        return;
+      }
+
+      // 3. Last resort: copy to clipboard
+      await navigator.clipboard.writeText(buildReceiptText());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 

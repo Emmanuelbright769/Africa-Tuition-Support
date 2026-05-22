@@ -6248,9 +6248,9 @@ export async function registerRoutes(
       const sender = await storage.getUser(userId);
       const walletLabel = recipient.role === "student" ? "Student Wallet" : "Affiliate Wallet";
 
-      // ── Service fee: 20% reserve fund + 5% co-affiliate pool (25% total) ──
-      const transferReserveCut   = parseFloat((amount * TRADE_MARKET.RESERVE_FUND_RATE).toFixed(2));
-      const transferAffiliateCut = parseFloat((amount * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(2));
+      // ── Service fee: 6% reserve fund + 2% co-affiliate pool (8% total) ──
+      const transferReserveCut   = parseFloat((amount * 0.06).toFixed(2));
+      const transferAffiliateCut = parseFloat((amount * 0.02).toFixed(2));
       const recipientCredit      = parseFloat((amount - transferReserveCut - transferAffiliateCut).toFixed(2));
       const totalFee             = parseFloat((transferReserveCut + transferAffiliateCut).toFixed(2));
 
@@ -6315,7 +6315,7 @@ export async function registerRoutes(
       }).catch((err: any) => console.error("[EMAIL] Admin transfer alert failed:", err?.message ?? err));
 
       res.json({
-        message: `$${recipientCredit.toFixed(2)} delivered to ${recipientFullName}'s ${walletLabel} (25% platform service fee applied)`,
+        message: `$${recipientCredit.toFixed(2)} delivered to ${recipientFullName}'s ${walletLabel} (8% platform service fee applied)`,
         receipt: {
           txRef,
           txDate,

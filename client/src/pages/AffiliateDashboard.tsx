@@ -55,7 +55,7 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "referrals" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum" | "qce" | "emergency_response" | "movies" | "location";
+type Section = "overview" | "trade" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum" | "qce" | "emergency_response" | "movies" | "location";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
@@ -69,7 +69,6 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "movies",             label: "Movies & Streaming", icon: Film },
   { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
   { id: "forum",              label: "Community Forum",   icon: MessageSquareText },
-  { id: "referrals",          label: "Referrals",         icon: Users },
   { id: "location",           label: "My Location",       icon: MapPin },
 ];
 
@@ -1294,13 +1293,13 @@ export default function AffiliateDashboard() {
                     </CardContent></Card>
                   </motion.div>
                   <motion.div variants={itemVariants}>
-                    <Card className="shadow-md border-0 h-full cursor-pointer hover:shadow-lg transition-shadow hover:border-blue-300 dark:hover:border-blue-700 border" onClick={() => navigate("referrals")} data-testid="card-referral-overview">
+                    <Card className="shadow-md border-0 h-full border" data-testid="card-referral-overview">
                       <CardContent className="pt-6">
                         <div className="flex items-center gap-3 mb-4">
                           <div className="bg-blue-100 dark:bg-blue-900/40 p-3 rounded-xl"><Users className="w-6 h-6 text-blue-600" /></div>
                           <div><p className="text-sm text-muted-foreground font-medium">Total Referrals</p><p className="text-3xl font-bold" data-testid="text-aff-referral-count">{referralCount}</p></div>
                         </div>
-                        <p className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">View referral growth dashboard →</p>
+                        <p className="text-xs text-muted-foreground text-[10px]">Manage referral commissions in SwiftWallet → Rewards</p>
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -2703,16 +2702,6 @@ export default function AffiliateDashboard() {
                   </Card>
                 </motion.div>
               </>
-            )}
-
-            {/* ── REFERRALS ── */}
-            {activeSection === "referrals" && (
-              <ReferralSection
-                referralStats={referralStats}
-                referrals={referrals}
-                queryClient={queryClient}
-                navigate={navigate}
-              />
             )}
 
             {/* ── MY LOCATION ── */}

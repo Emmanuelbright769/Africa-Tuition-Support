@@ -4,7 +4,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "framer-motion";
@@ -16,7 +17,7 @@ import {
   Copy, Search, ChevronDown, AlertCircle, Users, Building2, Clock,
   CreditCard, Shield, Lock, Coins, Smartphone, ExternalLink, Banknote,
   RefreshCcw, BookMarked, GraduationCap, Briefcase, ArrowLeftRight, Check,
-  Plane, Gift, Tv2, Share2, Download,
+  Plane, Gift, Tv2, Share2, Download, ArrowDownToLine, DollarSign,
   PiggyBank, Target, Sparkles, Trophy, Trash2, UserCircle, Home as HomeIcon, Star, Plus, CalendarDays
 } from "lucide-react";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -601,6 +602,33 @@ export default function FinancialHub() {
       toast({ title: "Goal Deleted", description: "Savings goal removed." });
     },
     onError: (e: any) => toast({ title: "Cannot Delete", description: e.message, variant: "destructive" }),
+  });
+
+  // ── Referral program state ─────────────────────────────────────────────────
+  const [showReferralPanel, setShowReferralPanel] = useState(false);
+  const [referralWithdrawAmount, setReferralWithdrawAmount] = useState("");
+  const [showReferralWithdraw, setShowReferralWithdraw] = useState(false);
+
+  const { data: referralStats, refetch: refetchReferralStats } = useQuery<any>({
+    queryKey: ["/api/affiliate/referral-stats"],
+    staleTime: 60_000,
+    enabled: showReferralPanel,
+  });
+
+  const withdrawCommissionMutation = useMutation({
+    mutationFn: async (amount: string) => {
+      const res = await apiRequest("POST", "/api/affiliate/withdraw-commission", { amount: parseFloat(amount) });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Withdrawal Successful!", description: data.message, className: "border-tsia-green" });
+      refetchReferralStats();
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      setShowReferralWithdraw(false);
+      setReferralWithdrawAmount("");
+    },
+    onError: (e: any) => toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" }),
   });
 
   const { data: balances, refetch: refetchBalances } = useQuery<{
@@ -1503,14 +1531,197 @@ export default function FinancialHub() {
   if (view === "home" && bottomNav === "rewards") return (
     <div className="space-y-5 pb-20">
       <div className="flex items-center justify-between pt-1">
-        <div><h1 className="font-black text-xl">Rewards</h1><p className="text-xs text-muted-foreground">Earn points &amp; benefits</p></div>
+        <div><h1 className="font-black text-xl">Rewards</h1><p className="text-xs text-muted-foreground">Earn &amp; grow with TSIA</p></div>
         <div className="w-10 h-10 rounded-full bg-tsia-gold/15 flex items-center justify-center"><Trophy className="w-5 h-5 text-tsia-gold" /></div>
       </div>
-      <div className="rounded-3xl bg-gradient-to-br from-tsia-gold/20 to-amber-100/30 dark:from-amber-900/20 dark:to-amber-800/10 border border-tsia-gold/30 p-6 text-center">
-        <div className="text-5xl mb-3">🏆</div>
-        <p className="font-black text-lg">Rewards Coming Soon</p>
-        <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">Earn cashback, points, and exclusive perks for every transaction. Refer friends to unlock bonus rewards.</p>
+
+      {/* Referral commissions entry point */}
+      <button
+        onClick={() => setShowReferralPanel(true)}
+        className="w-full rounded-2xl bg-gradient-to-br from-tsia-green/90 to-green-700 text-white p-5 flex items-center gap-4 shadow-lg active:scale-[0.98] transition-transform text-left"
+        data-testid="btn-open-referral-panel"
+      >
+        <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+          <Users className="w-6 h-6 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-black text-base">Referral Commissions</p>
+          <p className="text-green-100 text-xs mt-0.5">Earn 5% on every wallet activation, subscription &amp; trade</p>
+        </div>
+        <ChevronRight className="w-5 h-5 text-white/70 shrink-0" />
+      </button>
+
+      {/* Coming soon rewards */}
+      <div className="rounded-2xl bg-gradient-to-br from-tsia-gold/20 to-amber-100/30 dark:from-amber-900/20 dark:to-amber-800/10 border border-tsia-gold/30 p-5 text-center">
+        <div className="text-4xl mb-2">🏆</div>
+        <p className="font-black text-base">More Rewards Coming Soon</p>
+        <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">Cashback, points &amp; exclusive perks for every transaction.</p>
       </div>
+
+      {/* Referral Commission Panel Dialog */}
+      <Dialog open={showReferralPanel} onOpenChange={setShowReferralPanel}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-tsia-green" /> Referral Commissions
+            </DialogTitle>
+            <DialogDescription>Track referrals and withdraw your commission earnings.</DialogDescription>
+          </DialogHeader>
+
+          {/* Referral link */}
+          <div className="bg-muted/50 rounded-xl p-3 flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-bold mb-0.5">Your Referral Code</p>
+              <p className="font-mono font-bold text-sm truncate">{user?.affiliateCode ?? "—"}</p>
+            </div>
+            <Button size="sm" variant="outline" className="shrink-0" onClick={async () => {
+              const url = `${window.location.origin}/register?ref=${user?.affiliateCode}`;
+              await navigator.clipboard.writeText(url);
+              toast({ title: "Link copied!", description: "Share it to earn commissions." });
+            }}><Copy className="w-3.5 h-3.5 mr-1.5" />Copy Link</Button>
+          </div>
+
+          {/* Commission hero */}
+          <div className="rounded-xl bg-gradient-to-br from-tsia-green/90 to-green-700 text-white p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-green-100 text-xs font-medium mb-0.5">Total Earned</p>
+                <p className="text-3xl font-black">${(referralStats?.totalCommissionEarned ?? 0).toFixed(4)}</p>
+                <p className="text-green-200 text-[10px] mt-0.5">{referralStats?.commissionCount ?? 0} commission events</p>
+              </div>
+              <DollarSign className="w-8 h-8 text-white/40" />
+            </div>
+            <div className="mt-4 pt-4 border-t border-white/20 flex items-center justify-between">
+              <div>
+                <p className="text-green-100 text-[10px]">Commission Wallet Balance</p>
+                <p className="text-xl font-bold">${(referralStats?.commissionBalance ?? 0).toFixed(4)}</p>
+              </div>
+              <Button
+                size="sm"
+                className="bg-white text-tsia-green font-bold hover:bg-green-50"
+                onClick={() => setShowReferralWithdraw(true)}
+                disabled={(referralStats?.commissionBalance ?? 0) <= 0}
+                data-testid="btn-open-commission-withdraw"
+              >
+                <ArrowDownToLine className="w-3.5 h-3.5 mr-1.5" /> Withdraw
+              </Button>
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Total Referred", value: referralStats?.totalReferred ?? 0, color: "text-foreground" },
+              { label: "Active", value: referralStats?.activeCount ?? 0, color: "text-tsia-green" },
+              { label: "Pending", value: referralStats?.pendingCount ?? 0, color: "text-amber-600" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="rounded-xl bg-muted/50 p-3 text-center">
+                <p className={`text-2xl font-black ${color}`}>{value}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Recent commissions */}
+          {(referralStats?.recentCommissions?.length ?? 0) > 0 && (
+            <div className="rounded-xl border p-3 space-y-2">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Recent Earnings</p>
+              {(referralStats?.recentCommissions ?? []).slice(0, 5).map((c: any, i: number) => (
+                <div key={i} className="flex items-center justify-between py-1 border-b last:border-0">
+                  <div>
+                    <p className="text-xs font-medium line-clamp-1">{c.note?.replace("Referral commission (5%) — ", "From: ") || "Commission"}</p>
+                    <p className="text-[10px] text-muted-foreground">{new Date(c.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                  </div>
+                  <span className="text-tsia-green font-bold text-sm">+${c.amount.toFixed(4)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Referral list */}
+          <div className="rounded-xl border p-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Your Referrals</p>
+            {(referralStats?.referrals?.length ?? 0) === 0 ? (
+              <div className="text-center py-6">
+                <Users className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No referrals yet — share your link to start earning</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(referralStats?.referrals ?? []).map((r: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/40">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                        <span className="text-sm font-bold text-primary">{r.name?.charAt(0) ?? "?"}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{r.name}</p>
+                        <p className="text-[10px] text-muted-foreground">Joined {new Date(r.joinedAt).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    <Badge className={r.status === "active"
+                      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"}>
+                      {r.status === "active" ? "Active" : "Pending"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Withdraw commission dialog */}
+      <Dialog open={showReferralWithdraw} onOpenChange={setShowReferralWithdraw}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Withdraw Commission Earnings</DialogTitle>
+            <DialogDescription>Move earnings from your Commission Wallet to your SwiftWallet.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-tsia-green/10 border border-tsia-green/30 rounded-xl p-4 flex justify-between items-center">
+              <span className="text-sm font-medium text-muted-foreground">Available</span>
+              <span className="font-bold text-tsia-green text-lg">${(referralStats?.commissionBalance ?? 0).toFixed(4)}</span>
+            </div>
+            <div>
+              <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Amount ($)</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number" min="0.01" step="0.01" max={referralStats?.commissionBalance ?? 0}
+                  placeholder="0.00" value={referralWithdrawAmount}
+                  onChange={e => setReferralWithdrawAmount(e.target.value)}
+                  className="text-lg font-bold" data-testid="input-commission-withdraw-amount"
+                />
+                <Button variant="outline" size="sm" className="shrink-0 font-bold"
+                  onClick={() => setReferralWithdrawAmount((referralStats?.commissionBalance ?? 0).toFixed(4))}>Max</Button>
+              </div>
+              {referralWithdrawAmount && parseFloat(referralWithdrawAmount) > (referralStats?.commissionBalance ?? 0) && (
+                <p className="text-xs text-red-500 mt-1">Exceeds available balance</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowReferralWithdraw(false)}>Cancel</Button>
+            <Button
+              className="bg-tsia-green text-white font-bold"
+              disabled={
+                !referralWithdrawAmount || parseFloat(referralWithdrawAmount) <= 0 ||
+                parseFloat(referralWithdrawAmount) > (referralStats?.commissionBalance ?? 0) ||
+                withdrawCommissionMutation.isPending
+              }
+              onClick={() => withdrawCommissionMutation.mutate(referralWithdrawAmount)}
+              data-testid="btn-confirm-commission-withdraw"
+            >
+              {withdrawCommissionMutation.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                : <ArrowDownToLine className="w-4 h-4 mr-2" />}
+              Withdraw ${parseFloat(referralWithdrawAmount || "0").toFixed(2)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <BottomNavBar />
     </div>
   );
@@ -1619,26 +1830,39 @@ export default function FinancialHub() {
               </button>
             </div>
 
-            {/* Balance amount */}
-            <p className="text-4xl font-black text-white tracking-tight leading-none mb-1">
-              {balanceHidden ? "••••••" : showLocalBalance ? formatAmount(balance) : `$${balance.toFixed(2)}`}
-            </p>
+            {/* Balance amount — shows available (balance minus $2 ledger reserve) */}
+            {(() => {
+              const ledger = Math.min(balance, 2);
+              const available = Math.max(0, balance - ledger);
+              return (
+                <>
+                  <p className="text-4xl font-black text-white tracking-tight leading-none mb-0.5">
+                    {balanceHidden ? "••••••" : showLocalBalance ? formatAmount(available) : `$${available.toFixed(2)}`}
+                  </p>
+                  {!balanceHidden && (
+                    <p className="text-white/40 text-[10px] font-medium mb-0.5">
+                      Total: ${balance.toFixed(2)} · Ledger reserve: ${ledger.toFixed(2)}
+                    </p>
+                  )}
+                </>
+              );
+            })()}
 
             {/* Local equiv */}
             {!balanceHidden && !showLocalBalance && currency?.code !== "USD" && (
               <p className="text-white/50 text-[11px] mb-1">≈ {formatAmount(balance)} {currency?.code}</p>
             )}
 
-            {/* Ledger line */}
-            {!balanceHidden && (
+            {/* Ledger / pending line */}
+            {!balanceHidden && pendingAmount > 0 && (
               <div className="flex items-center gap-1.5 mb-4" data-testid="text-ledger-balance">
                 <BookMarked className="w-3 h-3 text-amber-300/80 shrink-0" />
                 <p className="text-amber-300/80 text-[10px] font-semibold">
-                  Ledger: ${(balance >= 2 ? 2 : Math.max(0, balance)).toFixed(2)} reserve
-                  {pendingAmount > 0 && <span className="text-amber-300/60"> · +${pendingAmount.toFixed(2)} pending</span>}
+                  +${pendingAmount.toFixed(2)} pending
                 </p>
               </div>
             )}
+            {!balanceHidden && pendingAmount === 0 && <div className="mb-4" />}
 
             {/* Income / Expense stats */}
             <div className="flex gap-5">

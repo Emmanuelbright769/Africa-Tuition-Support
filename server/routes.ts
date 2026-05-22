@@ -4757,6 +4757,59 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Get warnings issued to a trade user ──────────────────────────────
+  app.get("/api/admin/trade-users/:userId/warnings", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const targetId = parseInt(req.params.userId);
+      const rows = await db.execute(sql`
+        SELECT id, title, message, created_at, is_read
+        FROM notifications
+        WHERE user_id = ${targetId}
+          AND type = 'system'
+          AND title ILIKE '%warning%'
+        ORDER BY created_at DESC
+        LIMIT 50
+      `);
+      res.json((rows.rows as any[]).map(r => ({
+        id: r.id,
+        title: r.title,
+        message: r.message,
+        createdAt: r.created_at,
+        isRead: r.is_read,
+      })));
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Issue a warning to a trade user ───────────────────────────────────
+  app.post("/api/admin/trade-users/:userId/warn", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const targetId = parseInt(req.params.userId);
+      const { message } = req.body;
+      if (!message?.trim()) return res.status(400).json({ message: "Warning message is required" });
+      await storage.createNotification({
+        userId: targetId,
+        type: "system",
+        title: "⚠ Warning from Admin",
+        message: message.trim(),
+        data: { isAdminWarning: true },
+        isRead: false,
+      });
+      res.json({ message: "Warning issued successfully" });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ─── ADMIN: Override a loss/missed session to profit ─────────────────────────
   app.post("/api/admin/trade-sessions/:txId/override", async (req, res) => {
     try {

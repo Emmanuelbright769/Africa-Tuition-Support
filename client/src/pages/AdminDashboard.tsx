@@ -189,6 +189,8 @@ export default function AdminDashboard() {
   const [tradeAdjustNote, setTradeAdjustNote]   = useState("");
   const [sessionOverrideDialog, setSessionOverrideDialog] = useState<{ txId: number; userId: number; currentAmt: number } | null>(null);
   const [sessionOverrideAmt, setSessionOverrideAmt] = useState("");
+  const [tradeWarnDialog, setTradeWarnDialog] = useState<{ userId: number; name: string } | null>(null);
+  const [tradeWarnMsg, setTradeWarnMsg] = useState("");
   const [tfAdjustDialog, setTfAdjustDialog] = useState<{ userId: number; name: string; earnedAmount: number; availableAmount: number; sharePercentage: string; withdrawnAmount: string } | null>(null);
   const [tfAdjustSharePct, setTfAdjustSharePct] = useState("");
   const [tfGrantAmount, setTfGrantAmount] = useState("");
@@ -210,6 +212,7 @@ export default function AdminDashboard() {
   const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade", refetchInterval: 30_000, staleTime: 15_000 });
   const { data: tradeUsers = [] }          = useQuery<any[]>({ queryKey: ["/api/admin/trade-users"], enabled: activeTab === "trade", refetchInterval: 30_000 });
   const { data: tradeUserSessions = [] }   = useQuery<any[]>({ queryKey: ["/api/admin/trade-users", tradeExpandedUser, "sessions"], queryFn: async () => { if (!tradeExpandedUser) return []; const r = await fetch(`/api/admin/trade-users/${tradeExpandedUser}/sessions`, { credentials: "include" }); return r.json(); }, enabled: activeTab === "trade" && !!tradeExpandedUser });
+  const { data: tradeUserWarnings = [] }   = useQuery<any[]>({ queryKey: ["/api/admin/trade-users", tradeExpandedUser, "warnings"], queryFn: async () => { if (!tradeExpandedUser) return []; const r = await fetch(`/api/admin/trade-users/${tradeExpandedUser}/warnings`, { credentials: "include" }); return r.json(); }, enabled: activeTab === "trade" && !!tradeExpandedUser });
   const { data: tradeWithdrawals = [] }    = useQuery<any[]>({ queryKey: ["/api/admin/trade-withdrawals"], enabled: activeTab === "trade_withdrawals", refetchInterval: 30_000 });
   const { data: allDeposits = [] }         = useQuery({ queryKey: ["/api/admin/wallet-deposits"], enabled: activeTab === "deposits" });
   const { data: pendingBankTransfers = [], refetch: refetchBankTransfers } = useQuery<any[]>({ queryKey: ["/api/admin/pending-bank-transfers"], enabled: activeTab === "bank_transfers", refetchInterval: 30_000 });
@@ -567,6 +570,19 @@ export default function AdminDashboard() {
       toast({ title: "User Removed ✓", description: "User has been removed from the Trade Market." });
     },
     onError: (e: any) => toast({ title: "Remove failed", description: e.message, variant: "destructive" }),
+  });
+
+  const warnTradeMutation = useMutation({
+    mutationFn: async ({ userId, message }: { userId: number; message: string }) => {
+      const res = await apiRequest("POST", `/api/admin/trade-users/${userId}/warn`, { message });
+      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d;
+    },
+    onSuccess: () => {
+      toast({ title: "Warning Issued ✓", description: "User has been notified via in-app notification.", className: "border-orange-500" });
+      setTradeWarnDialog(null); setTradeWarnMsg("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-users", tradeExpandedUser, "warnings"] });
+    },
+    onError: (e: any) => toast({ title: "Failed to issue warning", description: e.message, variant: "destructive" }),
   });
 
   const sessionOverrideMutation = useMutation({
@@ -1805,54 +1821,56 @@ export default function AdminDashboard() {
                       <div className="py-10 text-center text-slate-500 text-sm">No active trade wallets</div>
                     ) : (tradeUsers as any[]).map((u: any) => (
                       <div key={u.userId}>
-                        {/* User row */}
-                        <div className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50/50 cursor-pointer"
+                        {/* User row — two-line layout so actions never overflow the name */}
+                        <div className="flex flex-col px-4 sm:px-6 py-3 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 cursor-pointer gap-2"
                           onClick={() => setTradeExpandedUser(tradeExpandedUser === u.userId ? null : u.userId)}
                           data-testid={`row-trade-user-${u.userId}`}>
-                          <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center shrink-0">
-                            <Users2 className="w-4 h-4 text-purple-500" />
+                          {/* Row 1: avatar + name/email + status + chevron */}
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center shrink-0">
+                              <Users2 className="w-4 h-4 text-purple-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-sm truncate">{u.name}</p>
+                              <p className="text-xs text-slate-500 truncate">{u.email}</p>
+                            </div>
+                            <div className="shrink-0">
+                              {u.isActive
+                                ? <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">● BOT ACTIVE</Badge>
+                                : u.tradingDayNumber > 0
+                                  ? <Badge variant="outline" className="text-[10px] text-slate-500">Day {u.tradingDayNumber}/120</Badge>
+                                  : <Badge variant="outline" className="text-[10px] text-slate-400">No sessions</Badge>}
+                            </div>
+                            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${tradeExpandedUser === u.userId ? "rotate-180" : ""}`} />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-slate-900">{u.name}</p>
-                            <p className="text-xs text-slate-500">{u.email}</p>
-                          </div>
-                          {/* Bot status badge */}
-                          <div className="text-center hidden sm:block">
-                            {u.isActive
-                              ? <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">● BOT ACTIVE</Badge>
-                              : u.tradingDayNumber > 0
-                                ? <Badge variant="outline" className="text-[10px] text-slate-500">Day {u.tradingDayNumber}/120</Badge>
-                                : <Badge variant="outline" className="text-[10px] text-slate-400">No sessions</Badge>}
-                          </div>
-                          {/* Balance / locked */}
-                          <div className="text-right hidden md:block">
-                            <p className="font-bold text-sm text-tsia-green">{fmtUSD(u.balance)}</p>
-                            <p className="text-[10px] text-slate-500">🔒 {fmtUSD(u.lockedPrincipal)} locked</p>
-                          </div>
-                          {/* Cycle progress */}
-                          <div className="text-right hidden lg:block">
-                            <p className="text-sm font-semibold">{fmtUSD(u.totalBotEarnings)}</p>
-                            <p className="text-[10px] text-slate-400">Bot earnings</p>
-                          </div>
-                          {/* Actions */}
-                          <Button size="sm" variant="outline" className="text-xs shrink-0"
-                            onClick={e => { e.stopPropagation(); setTradeAdjustDialog({ userId: u.userId, name: u.name }); }}
-                            data-testid={`button-trade-adjust-${u.userId}`}>
-                            Adjust Capital
-                          </Button>
-                          {u.isActive && (
-                            <Button size="sm" variant="outline" className="text-xs shrink-0 border-amber-300 text-amber-700 hover:bg-amber-50"
-                              onClick={e => { e.stopPropagation(); setStopBotConfirm({ userId: u.userId, name: u.name }); }}
-                              data-testid={`button-stop-bot-${u.userId}`}>
-                              <XCircle className="w-3.5 h-3.5 mr-1" /> Stop Bot
+                          {/* Row 2: balance chip + action buttons (stop propagation so clicks don't toggle expand) */}
+                          <div className="flex flex-wrap items-center gap-1.5 pl-11" onClick={e => e.stopPropagation()}>
+                            <span className="text-[11px] font-bold text-tsia-green bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full border border-green-100 dark:border-green-800">
+                              {fmtUSD(u.balance)}
+                            </span>
+                            <Button size="sm" variant="outline" className="text-[11px] h-6 px-2.5 shrink-0"
+                              onClick={() => setTradeAdjustDialog({ userId: u.userId, name: u.name })}
+                              data-testid={`button-trade-adjust-${u.userId}`}>
+                              Adjust Capital
                             </Button>
-                          )}
-                          <Button size="sm" variant="outline" className="text-xs shrink-0 border-red-300 text-red-700 hover:bg-red-50"
-                            onClick={e => { e.stopPropagation(); setRemoveTradeConfirm({ userId: u.userId, name: u.name }); }}
-                            data-testid={`button-remove-trade-${u.userId}`}>
-                            <Trash2 className="w-3.5 h-3.5 mr-1" /> Remove
-                          </Button>
-                          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${tradeExpandedUser === u.userId ? "rotate-180" : ""}`} />
+                            {u.isActive && (
+                              <Button size="sm" variant="outline" className="text-[11px] h-6 px-2.5 shrink-0 border-amber-300 text-amber-700 hover:bg-amber-50"
+                                onClick={() => setStopBotConfirm({ userId: u.userId, name: u.name })}
+                                data-testid={`button-stop-bot-${u.userId}`}>
+                                <XCircle className="w-3 h-3 mr-1" /> Stop Bot
+                              </Button>
+                            )}
+                            <Button size="sm" variant="outline" className="text-[11px] h-6 px-2.5 shrink-0 border-orange-300 text-orange-700 hover:bg-orange-50"
+                              onClick={() => { setTradeWarnDialog({ userId: u.userId, name: u.name }); setTradeWarnMsg(""); }}
+                              data-testid={`button-warn-trade-${u.userId}`}>
+                              <AlertTriangle className="w-3 h-3 mr-1" /> Warn
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-[11px] h-6 px-2.5 shrink-0 border-red-300 text-red-700 hover:bg-red-50"
+                              onClick={() => setRemoveTradeConfirm({ userId: u.userId, name: u.name })}
+                              data-testid={`button-remove-trade-${u.userId}`}>
+                              <Trash2 className="w-3 h-3 mr-1" /> Remove
+                            </Button>
+                          </div>
                         </div>
 
                         {/* Expanded: session history */}
@@ -1893,18 +1911,51 @@ export default function AdminDashboard() {
                             )}
                             {/* User summary bar */}
                             <div className="mt-3 pt-3 border-t border-border/50 grid grid-cols-3 gap-3 text-xs">
-                              <div className="bg-white rounded-lg px-3 py-2">
+                              <div className="bg-white dark:bg-slate-800 rounded-lg px-3 py-2">
                                 <p className="text-slate-400">Balance</p>
                                 <p className="font-bold text-tsia-green">{fmtUSD(u.balance)}</p>
                               </div>
-                              <div className="bg-white rounded-lg px-3 py-2">
+                              <div className="bg-white dark:bg-slate-800 rounded-lg px-3 py-2">
                                 <p className="text-slate-400">Locked Capital</p>
-                                <p className="font-bold text-slate-700">{fmtUSD(u.lockedPrincipal)}</p>
+                                <p className="font-bold text-slate-700 dark:text-slate-200">{fmtUSD(u.lockedPrincipal)}</p>
                               </div>
-                              <div className="bg-white rounded-lg px-3 py-2">
+                              <div className="bg-white dark:bg-slate-800 rounded-lg px-3 py-2">
                                 <p className="text-slate-400">Day Progress</p>
                                 <p className="font-bold">{u.tradingDayNumber}/120 {u.roiComplete && "✓"}</p>
                               </div>
+                            </div>
+
+                            {/* Warnings issued to this user */}
+                            <div className="mt-3 pt-3 border-t border-border/50">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-orange-500" /> Warnings Issued
+                                </p>
+                                <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                                  onClick={() => { setTradeWarnDialog({ userId: u.userId, name: u.name }); setTradeWarnMsg(""); }}
+                                  data-testid={`button-warn-expanded-${u.userId}`}>
+                                  + Issue Warning
+                                </Button>
+                              </div>
+                              {(tradeUserWarnings as any[]).length === 0 ? (
+                                <p className="text-xs text-slate-400 py-2 text-center">No warnings issued to this user</p>
+                              ) : (
+                                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                  {(tradeUserWarnings as any[]).map((w: any) => (
+                                    <div key={w.id} className="bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-800/30 rounded-xl px-3 py-2 text-xs"
+                                      data-testid={`row-warning-${w.id}`}>
+                                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                                        <span className="font-semibold text-orange-700 dark:text-orange-400 flex items-center gap-1">
+                                          <AlertTriangle className="w-3 h-3" /> {w.title}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 shrink-0">{fmtDate(w.createdAt)}</span>
+                                      </div>
+                                      <p className="text-slate-600 dark:text-slate-300 leading-relaxed">{w.message}</p>
+                                      {!w.isRead && <span className="inline-block mt-1 text-[9px] bg-orange-200 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 px-1.5 py-0.5 rounded-full font-semibold">UNREAD</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
@@ -2038,6 +2089,36 @@ export default function AdminDashboard() {
                         data-testid="button-confirm-stop-bot"
                       >
                         {stopBotMutation.isPending ? "Stopping…" : "Stop Bot Session"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* ─── Issue Warning Dialog ─────────────────────────────────────────── */}
+                <Dialog open={!!tradeWarnDialog} onOpenChange={o => !o && setTradeWarnDialog(null)}>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-orange-500" /> Issue Warning — {tradeWarnDialog?.name}
+                      </DialogTitle>
+                      <DialogDescription>
+                        This warning will be delivered as an in-app notification to the user immediately.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-2">
+                      <Label htmlFor="warn-msg">Warning Message</Label>
+                      <Textarea id="warn-msg" placeholder="Describe the issue or rule violation…" rows={4}
+                        value={tradeWarnMsg} onChange={e => setTradeWarnMsg(e.target.value)}
+                        className="mt-1 resize-none" data-testid="input-warn-msg" />
+                    </div>
+                    <DialogFooter className="gap-2">
+                      <Button variant="outline" onClick={() => setTradeWarnDialog(null)}>Cancel</Button>
+                      <Button
+                        className="bg-orange-500 hover:bg-orange-600 text-white"
+                        disabled={warnTradeMutation.isPending || !tradeWarnMsg.trim()}
+                        onClick={() => tradeWarnDialog && warnTradeMutation.mutate({ userId: tradeWarnDialog.userId, message: tradeWarnMsg })}
+                        data-testid="button-confirm-warn">
+                        {warnTradeMutation.isPending ? "Sending…" : "Issue Warning"}
                       </Button>
                     </DialogFooter>
                   </DialogContent>

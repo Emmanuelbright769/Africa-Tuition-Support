@@ -585,14 +585,8 @@ export default function AffiliateDashboard() {
     });
   };
 
-  // Exchange onboarding — show picker when user has no broker yet and no active session
-  const [showExchangeOnboarding, setShowExchangeOnboarding] = useState<boolean>(() => {
-    try {
-      const hasBroker = !!localStorage.getItem("tsia_selected_broker_id") || !!localStorage.getItem("tsia_bot_broker_id");
-      const hasSession = !!localStorage.getItem("tsia_bot_activated_at");
-      return !hasBroker && !hasSession;
-    } catch { return true; }
-  });
+  // Fund trade dialog broker-selection step ("broker" = picker, "amount" = enter amount)
+  const [fundTradeBrokerStep, setFundTradeBrokerStep] = useState<"broker" | "amount">("broker");
 
   // Bot deactivating loading state
   const [botDeactivating, setBotDeactivating] = useState(false);
@@ -610,7 +604,6 @@ export default function AffiliateDashboard() {
   const selectedBroker = TRADE_BROKERS.find(b => b.id === selectedBrokerId) ?? null;
   const handleBrokerChange = (id: string) => {
     setSelectedBrokerId(id);
-    setShowExchangeOnboarding(false);
     try { localStorage.setItem("tsia_selected_broker_id", id); } catch {}
     if (id === "binance") setChartSymbol("BINANCE:BTCUSDT");
     else if (id === "bybit") setChartSymbol("BYBIT:BTCUSDT");
@@ -944,7 +937,7 @@ export default function AffiliateDashboard() {
     },
     onSuccess: (data) => {
       toast({ title: "Trade Wallet Funded! ✓", description: data.message, className: "border-tsia-green" });
-      setFundTradeOpen(false); setFundTradeAmt("");
+      setFundTradeOpen(false); setFundTradeAmt(""); setFundTradeBrokerStep("broker");
       refetchTradeWallet(); refetchTradeTxs();
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
     },
@@ -1426,64 +1419,6 @@ export default function AffiliateDashboard() {
                   </h2>
                   <p className="text-muted-foreground text-sm mb-4">Invest globally — deposit & withdraw using BYBIT, BINANCE & more.</p>
                 </motion.div>
-
-                {/* ===== EXCHANGE ONBOARDING — shown when no broker is selected ===== */}
-                {showExchangeOnboarding && !botActive && (
-                  <motion.div variants={itemVariants} className="mb-2">
-                    <Card className="border-0 shadow-xl overflow-hidden">
-                      <div className="h-1.5 bg-gradient-to-r from-tsia-green via-tsia-gold to-blue-500" />
-                      <CardHeader className="pb-3 pt-6">
-                        <div className="flex items-center gap-3 mb-1">
-                          <div className="w-10 h-10 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
-                            <Globe className="w-5 h-5 text-tsia-green" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-lg">Choose Your Exchange</CardTitle>
-                            <CardDescription className="text-sm">Select an exchange partner to unlock the Itera Trading BOT. Your choice sets the minimum deposit required to start.</CardDescription>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pb-6">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {TRADE_BROKERS.map(broker => (
-                            <button
-                              key={broker.id}
-                              type="button"
-                              onClick={() => handleBrokerChange(broker.id)}
-                              data-testid={`button-select-exchange-${broker.id}`}
-                              className="text-left rounded-xl border-2 border-border hover:border-tsia-green bg-card hover:bg-tsia-green/5 transition-all duration-150 p-4 group focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
-                            >
-                              <div className="flex items-start justify-between gap-2 mb-2">
-                                <div>
-                                  <p className="font-bold text-base group-hover:text-tsia-green transition-colors">{broker.name}</p>
-                                  <p className="text-[11px] text-muted-foreground">{broker.specialty}</p>
-                                </div>
-                                <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
-                                  {Array.from({ length: 5 }).map((_, i) => (
-                                    <Star key={i} className={`w-3 h-3 ${i < Math.round(broker.rating) ? "text-tsia-gold fill-tsia-gold" : "text-muted-foreground/30"}`} />
-                                  ))}
-                                </div>
-                              </div>
-                              <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">{broker.description}</p>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-bold bg-tsia-green/10 text-tsia-green px-2 py-0.5 rounded-full border border-tsia-green/20">
-                                    Min. ${broker.minDeposit}
-                                  </span>
-                                  <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Fee: {broker.fee}</span>
-                                </div>
-                                <span className="text-[11px] font-semibold text-tsia-green opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                                  Select <ChevronRight className="w-3 h-3" />
-                                </span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                        <p className="text-[11px] text-muted-foreground text-center mt-4">You can change your exchange at any time from the broker panel below.</p>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                )}
 
                 {/* ===== TRADING BOT ACTIVATION PANEL ===== */}
                 <motion.div variants={itemVariants}>
@@ -3006,46 +2941,85 @@ export default function AffiliateDashboard() {
       </Dialog>
 
       {/* Fund Trade Wallet from SwiftWallet */}
-      <Dialog open={fundTradeOpen} onOpenChange={o => { setFundTradeOpen(o); if (!o) setFundTradeAmt(""); }}>
+      <Dialog open={fundTradeOpen} onOpenChange={o => { setFundTradeOpen(o); if (!o) { setFundTradeAmt(""); setFundTradeBrokerStep("broker"); } }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><ArrowDownLeft className="w-5 h-5 text-blue-600" /> Fund Trade Wallet</DialogTitle>
-            <DialogDescription>Transfer from your SwiftWallet balance to your Trade Wallet.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">SwiftWallet Balance</span>
-              <span className="font-bold text-blue-700 dark:text-blue-300">${personalBalance.toFixed(2)}</span>
-            </div>
-            <div>
-              <Label htmlFor="fund-trade-amt">Amount (USD)</Label>
-              <Input id="fund-trade-amt" type="number" min={10} step={0.01} placeholder="Min $10.00"
-                value={fundTradeAmt} onChange={e => setFundTradeAmt(e.target.value)}
-                className="mt-1 text-lg font-bold" data-testid="input-fund-trade-amt" />
-              {parseFloat(fundTradeAmt) >= 10 && (
-                <div className="mt-2 text-xs space-y-1 text-muted-foreground border border-border rounded-xl p-3 bg-muted/30">
-                  <p className="font-semibold text-foreground mb-1">Breakdown</p>
-                  <div className="flex justify-between"><span>You transfer</span><span className="font-semibold text-foreground">${parseFloat(fundTradeAmt).toFixed(2)}</span></div>
-                  <div className="flex justify-between"><span>Affiliate pool (5%)</span><span className="text-red-500">-${(parseFloat(fundTradeAmt) * 0.05).toFixed(2)}</span></div>
-                  <div className="flex justify-between font-bold text-green-600 border-t border-border pt-1 mt-1"><span>Trade wallet receives (95%)</span><span>${(parseFloat(fundTradeAmt) * 0.95).toFixed(2)}</span></div>
+          {fundTradeBrokerStep === "broker" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><Globe className="w-5 h-5 text-blue-600" /> Choose Your Exchange</DialogTitle>
+                <DialogDescription>Select the exchange you want to fund. The minimum deposit varies per broker.</DialogDescription>
+              </DialogHeader>
+              <div className="py-2 space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                {TRADE_BROKERS.map(broker => (
+                  <button
+                    key={broker.id}
+                    type="button"
+                    data-testid={`button-fund-broker-${broker.id}`}
+                    onClick={() => { handleBrokerChange(broker.id); setFundTradeBrokerStep("amount"); setFundTradeAmt(""); }}
+                    className="w-full text-left flex items-center justify-between gap-3 rounded-xl border-2 border-border hover:border-blue-500 bg-card hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-150 px-4 py-3 group"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm group-hover:text-blue-600 transition-colors">{broker.name}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">{broker.specialty}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
+                        Min. ${broker.minDeposit}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-blue-500 transition-colors" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setFundTradeOpen(false)}>Cancel</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><ArrowDownLeft className="w-5 h-5 text-blue-600" /> Fund Trade Wallet</DialogTitle>
+                <DialogDescription>
+                  Funding via <strong>{selectedBroker?.name ?? "exchange"}</strong> — min. deposit ${selectedBroker?.minDeposit ?? 10}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">SwiftWallet Balance</span>
+                  <span className="font-bold text-blue-700 dark:text-blue-300">${personalBalance.toFixed(2)}</span>
                 </div>
-              )}
-              {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) > personalBalance - 2 && (
-                <p className="mt-2 text-xs text-red-500 font-semibold flex items-center gap-1">
-                  <span>⚠</span> Insufficient balance — you need at least ${(parseFloat(fundTradeAmt) + 2).toFixed(2)} (keeping $2.00 minimum in SwiftWallet)
-                </p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFundTradeOpen(false)}>Cancel</Button>
-            <Button onClick={() => fundTradeMutation.mutate()}
-              disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < 10 || parseFloat(fundTradeAmt) > personalBalance - 2}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold" data-testid="btn-confirm-fund-trade">
-              {fundTradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />}
-              Transfer ${parseFloat(fundTradeAmt || "0").toFixed(2)}
-            </Button>
-          </DialogFooter>
+                <div>
+                  <Label htmlFor="fund-trade-amt">Amount (USD)</Label>
+                  <Input id="fund-trade-amt" type="number" min={selectedBroker?.minDeposit ?? 10} step={0.01}
+                    placeholder={`Min $${selectedBroker?.minDeposit ?? 10}.00`}
+                    value={fundTradeAmt} onChange={e => setFundTradeAmt(e.target.value)}
+                    className="mt-1 text-lg font-bold" data-testid="input-fund-trade-amt" />
+                  {parseFloat(fundTradeAmt) >= (selectedBroker?.minDeposit ?? 10) && (
+                    <div className="mt-2 text-xs space-y-1 text-muted-foreground border border-border rounded-xl p-3 bg-muted/30">
+                      <p className="font-semibold text-foreground mb-1">Breakdown</p>
+                      <div className="flex justify-between"><span>You transfer</span><span className="font-semibold text-foreground">${parseFloat(fundTradeAmt).toFixed(2)}</span></div>
+                      <div className="flex justify-between"><span>Affiliate pool (5%)</span><span className="text-red-500">-${(parseFloat(fundTradeAmt) * 0.05).toFixed(2)}</span></div>
+                      <div className="flex justify-between font-bold text-green-600 border-t border-border pt-1 mt-1"><span>Trade wallet receives (95%)</span><span>${(parseFloat(fundTradeAmt) * 0.95).toFixed(2)}</span></div>
+                    </div>
+                  )}
+                  {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) > personalBalance - 2 && (
+                    <p className="mt-2 text-xs text-red-500 font-semibold flex items-center gap-1">
+                      <span>⚠</span> Insufficient balance — you need at least ${(parseFloat(fundTradeAmt) + 2).toFixed(2)} (keeping $2.00 minimum in SwiftWallet)
+                    </p>
+                  )}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setFundTradeBrokerStep("broker")}>← Back</Button>
+                <Button onClick={() => fundTradeMutation.mutate()}
+                  disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < (selectedBroker?.minDeposit ?? 10) || parseFloat(fundTradeAmt) > personalBalance - 2}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold" data-testid="btn-confirm-fund-trade">
+                  {fundTradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />}
+                  Transfer ${parseFloat(fundTradeAmt || "0").toFixed(2)}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

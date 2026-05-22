@@ -409,23 +409,9 @@ export default function FinancialHub() {
 
   // ── Fund Account state ────────────────────────────────────────────────────
   type FundMethod = "squad" | "korapay" | "crypto";
-
-  const FUND_BROKERS = [
-    { id: "binance",   name: "Binance",    specialty: "Crypto & Futures",     minDeposit: 50,  color: "from-amber-400 to-yellow-500",    bgLight: "bg-amber-50 dark:bg-amber-900/20" },
-    { id: "exness",    name: "Exness",     specialty: "Forex & Crypto",        minDeposit: 30,  color: "from-green-400 to-emerald-500",   bgLight: "bg-emerald-50 dark:bg-emerald-900/20" },
-    { id: "octafx",    name: "OctaFX",     specialty: "Forex & CFDs",          minDeposit: 100, color: "from-blue-400 to-indigo-500",     bgLight: "bg-blue-50 dark:bg-blue-900/20" },
-    { id: "etoro",     name: "eToro",      specialty: "Social Copy Trading",   minDeposit: 20,  color: "from-teal-400 to-cyan-500",       bgLight: "bg-teal-50 dark:bg-teal-900/20" },
-    { id: "bybit",     name: "BYBIT",      specialty: "Crypto Derivatives",    minDeposit: 50,  color: "from-orange-400 to-red-400",      bgLight: "bg-orange-50 dark:bg-orange-900/20" },
-    { id: "iq_option", name: "IQ Option",  specialty: "Options & Crypto",      minDeposit: 30,  color: "from-violet-400 to-purple-500",   bgLight: "bg-violet-50 dark:bg-violet-900/20" },
-    { id: "vantage",   name: "Vantage",    specialty: "Multi-Asset Trading",   minDeposit: 50,  color: "from-rose-400 to-pink-500",       bgLight: "bg-rose-50 dark:bg-rose-900/20" },
-  ] as const;
-  type FundBrokerId = typeof FUND_BROKERS[number]["id"];
-
   const [fundMethod, setFundMethod]     = useState<FundMethod>("squad");
-  const [fundStep, setFundStep]         = useState<"broker" | "method" | "amount">("broker");
+  const [fundStep, setFundStep]         = useState<"method" | "amount">("method");
   const [fundAmount, setFundAmount]     = useState("");
-  const [selectedFundBrokerId, setSelectedFundBrokerId] = useState<FundBrokerId | null>(null);
-  const selectedFundBroker = FUND_BROKERS.find(b => b.id === selectedFundBrokerId) ?? null;
   const [squadLoading, setSquadLoading] = useState(false);
   const [koraLoading, setKoraLoading]   = useState(false);
   const [koraReference, setKoraReference] = useState<string | null>(null);
@@ -1934,7 +1920,7 @@ export default function FinancialHub() {
           {/* ── Action buttons strip inside card ── */}
           <div className="grid grid-cols-3 divide-x divide-white/10 border-t border-white/10">
             {[
-              { icon: ArrowDownLeft, label: "Add Money", action: () => { setFundStep("broker"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setSelectedFundBrokerId(null); setView("fund"); } },
+              { icon: ArrowDownLeft, label: "Add Money", action: () => { setFundStep("method"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); } },
               { icon: Send,          label: "Transfer",  action: () => { resetSend(); setView("send"); } },
               { icon: Bell,          label: "Request",   action: () => setView("request") },
             ].map(({ icon: Icon, label, action }) => (
@@ -2458,11 +2444,10 @@ export default function FinancialHub() {
         <BackHeader
           onBack={() => {
             if (fundStep === "amount") { setFundStep("method"); }
-            else if (fundStep === "method") { setFundStep("broker"); }
-            else { setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setSelectedFundBrokerId(null); setView("home"); }
+            else { setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("home"); }
           }}
-          title={fundStep === "broker" ? "Fund Wallet" : fundStep === "method" ? "Payment Method" : fundMethod === "squad" ? "Pay via Squad" : fundMethod === "korapay" ? "Pay via Korapay" : "Crypto Deposit"}
-          sub={fundStep === "broker" ? "Select your exchange to continue" : fundStep === "method" ? "Choose how you want to add money" : "Add money to your TSIA wallet"}
+          title={fundStep === "method" ? "Fund Account" : fundMethod === "squad" ? "Pay via Squad" : fundMethod === "korapay" ? "Pay via Korapay" : "Crypto Deposit"}
+          sub={fundStep === "method" ? "Choose how you want to add money" : "Add money to your TSIA wallet"}
         />
 
         {/* Balance pill */}
@@ -2471,54 +2456,9 @@ export default function FinancialHub() {
           <span className="text-lg font-black text-tsia-green">${balance.toFixed(2)}</span>
         </div>
 
-        {/* ── STEP 0: Broker / Exchange picker ── */}
-        {fundStep === "broker" && (
-          <motion.div key="broker-picker" initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} className="space-y-3">
-            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest px-1">Choose Your Exchange</p>
-            <div className="grid grid-cols-1 gap-3">
-              {FUND_BROKERS.map(broker => (
-                <button
-                  key={broker.id}
-                  data-testid={`btn-fund-broker-${broker.id}`}
-                  onClick={() => { setSelectedFundBrokerId(broker.id); setFundStep("method"); }}
-                  className="w-full text-left border-2 border-border hover:border-tsia-green rounded-2xl p-4 bg-card hover:bg-tsia-green/5 transition-all active:scale-[0.99] group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${broker.color} flex items-center justify-center shrink-0`}>
-                      <span className="text-white font-black text-sm">{broker.name.charAt(0)}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-bold text-sm text-foreground group-hover:text-tsia-green transition-colors">{broker.name}</p>
-                        <span className="text-[10px] font-black bg-tsia-green/10 text-tsia-green border border-tsia-green/20 px-2 py-0.5 rounded-full shrink-0">
-                          Min. ${broker.minDeposit}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{broker.specialty}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-tsia-green transition-colors shrink-0" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
         {/* ── STEP 1: Payment method picker ── */}
         {fundStep === "method" && (
           <motion.div key="method-picker" initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} className="space-y-3">
-            {selectedFundBroker && (
-              <div className="flex items-center gap-2 bg-tsia-green/8 dark:bg-tsia-green/15 border border-tsia-green/20 rounded-xl px-3 py-2">
-                <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${selectedFundBroker.color} flex items-center justify-center shrink-0`}>
-                  <span className="text-white font-black text-[10px]">{selectedFundBroker.name.charAt(0)}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-bold text-tsia-green">{selectedFundBroker.name}</span>
-                  <span className="text-xs text-muted-foreground ml-1.5">· Min. ${selectedFundBroker.minDeposit}</span>
-                </div>
-                <button onClick={() => setFundStep("broker")} className="text-[10px] text-muted-foreground underline underline-offset-2 shrink-0">Change</button>
-              </div>
-            )}
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest px-1">Select Payment Method</p>
             {[
               {

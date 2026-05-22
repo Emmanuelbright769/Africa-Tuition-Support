@@ -949,8 +949,8 @@ export default function FinancialHub() {
             { label: "Sender",           value: `${r.senderName} (You)` },
             { label: "Recipient",        value: `${r.recipientName} — ${r.walletLabel}` },
             { label: "Amount Sent",      value: `-$${r.amount}`,                            red: true },
-            { label: "Platform Fee (25%)", value: `-$${r.fee ?? (parseFloat(r.amount) * 0.25).toFixed(2)}`,  red: true },
-            { label: "Recipient Received", value: `$${r.recipientCredit ?? (parseFloat(r.amount) * 0.75).toFixed(2)}`, green: true },
+            { label: "Platform Fee (8%)", value: `-$${r.fee ?? (parseFloat(r.amount) * 0.08).toFixed(2)}`,  red: true },
+            { label: "Recipient Received", value: `$${r.recipientCredit ?? (parseFloat(r.amount) * 0.92).toFixed(2)}`, green: true },
             ...(r.note ? [{ label: "Narration", value: `"${r.note}"` }] : []),
           ] as ReceiptRow[],
           referenceRow: r.txRef,
@@ -3159,10 +3159,10 @@ export default function FinancialHub() {
 
         {parseFloat(amount) > 0 && (
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 text-xs space-y-1" data-testid="transfer-fee-breakdown">
-            <p className="font-bold text-amber-800 dark:text-amber-300">Platform Service Fee (25%)</p>
+            <p className="font-bold text-amber-800 dark:text-amber-300">Platform Service Fee (8%)</p>
             <div className="flex justify-between text-muted-foreground"><span>You send</span><span className="font-semibold text-foreground">${fmt(amount)}</span></div>
-            <div className="flex justify-between text-muted-foreground"><span>Platform fee (25%)</span><span className="text-red-500">-${(parseFloat(amount) * 0.25).toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold text-tsia-green"><span>Recipient receives</span><span>${(parseFloat(amount) * 0.75).toFixed(2)}</span></div>
+            <div className="flex justify-between text-muted-foreground"><span>Platform fee (8%)</span><span className="text-red-500">-${(parseFloat(amount) * 0.08).toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold text-tsia-green"><span>Recipient receives</span><span>${(parseFloat(amount) * 0.92).toFixed(2)}</span></div>
           </div>
         )}
 
@@ -3196,12 +3196,12 @@ export default function FinancialHub() {
             <span className="font-black text-tsia-green text-lg">${fmt(amount)}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Platform fee (25%)</span>
-            <span className="font-semibold text-red-500">-${(parseFloat(amount) * 0.25).toFixed(2)}</span>
+            <span className="text-muted-foreground">Platform fee (8%)</span>
+            <span className="font-semibold text-red-500">-${(parseFloat(amount) * 0.08).toFixed(2)}</span>
           </div>
           <div className="flex items-center justify-between text-sm border-t border-tsia-green/20 pt-2">
             <span className="text-muted-foreground font-semibold">Recipient gets</span>
-            <span className="font-black text-tsia-green">${(parseFloat(amount) * 0.75).toFixed(2)}</span>
+            <span className="font-black text-tsia-green">${(parseFloat(amount) * 0.92).toFixed(2)}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">To</span>

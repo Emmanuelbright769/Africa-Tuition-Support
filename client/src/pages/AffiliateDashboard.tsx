@@ -63,7 +63,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "qce",             label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
   { id: "reserve_fund",    label: "Strategic Reserve Fund", icon: Shield },
   { id: "trade",           label: "Trade Market",           icon: Globe },
-  { id: "exchange_market", label: "Stock Exchange",          icon: BarChart3, badge: "Soon" },
+  { id: "exchange_market", label: "Exchange Market",          icon: BarChart3, badge: "Soon" },
   { id: "trust_fund",   label: "Affiliate Trust Fund",   icon: Crown },
   { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
   { id: "tour_africa",  label: "Glide Africa",           icon: Car },

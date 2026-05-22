@@ -585,6 +585,18 @@ export default function AffiliateDashboard() {
     });
   };
 
+  // Exchange onboarding — show picker when user has no broker yet and no active session
+  const [showExchangeOnboarding, setShowExchangeOnboarding] = useState<boolean>(() => {
+    try {
+      const hasBroker = !!localStorage.getItem("tsia_selected_broker_id") || !!localStorage.getItem("tsia_bot_broker_id");
+      const hasSession = !!localStorage.getItem("tsia_bot_activated_at");
+      return !hasBroker && !hasSession;
+    } catch { return true; }
+  });
+
+  // Bot deactivating loading state
+  const [botDeactivating, setBotDeactivating] = useState(false);
+
   // Broker selection (persisted).
   // Also read tsia_bot_broker_id — saved when bot is activated — as fallback so
   // the correct broker shows even if the main key was cleared (e.g. different browser session).
@@ -598,6 +610,7 @@ export default function AffiliateDashboard() {
   const selectedBroker = TRADE_BROKERS.find(b => b.id === selectedBrokerId) ?? null;
   const handleBrokerChange = (id: string) => {
     setSelectedBrokerId(id);
+    setShowExchangeOnboarding(false);
     try { localStorage.setItem("tsia_selected_broker_id", id); } catch {}
     if (id === "binance") setChartSymbol("BINANCE:BTCUSDT");
     else if (id === "bybit") setChartSymbol("BYBIT:BTCUSDT");
@@ -640,6 +653,7 @@ export default function AffiliateDashboard() {
   const completeBotSession = async (isAutoOff: boolean, overrideActivatedAt?: number) => {
     if (botCompletingRef.current) return;
     botCompletingRef.current = true;
+    if (!isAutoOff) setBotDeactivating(true);
     const sessionStart = overrideActivatedAt ?? botActivatedAt;
     try {
       const r = await apiRequest("POST", "/api/trade/bot/complete", { activatedAt: sessionStart });
@@ -694,6 +708,7 @@ export default function AffiliateDashboard() {
       }
     } finally {
       botCompletingRef.current = false;
+      setBotDeactivating(false);
     }
   };
 
@@ -722,7 +737,10 @@ export default function AffiliateDashboard() {
     }
   };
 
-  const deactivateBot = () => completeBotSession(false);
+  const deactivateBot = () => {
+    botCompletingRef.current = false; // reset any stuck guard before manual deactivation
+    completeBotSession(false);
+  };
 
   // On mount: settle any expired/overdue session (12h elapsed OR window already closed)
   useEffect(() => {
@@ -1407,8 +1425,65 @@ export default function AffiliateDashboard() {
                     <span className="text-red-500">Market</span>
                   </h2>
                   <p className="text-muted-foreground text-sm mb-4">Invest globally — deposit & withdraw using BYBIT, BINANCE & more.</p>
-
                 </motion.div>
+
+                {/* ===== EXCHANGE ONBOARDING — shown when no broker is selected ===== */}
+                {showExchangeOnboarding && !botActive && (
+                  <motion.div variants={itemVariants} className="mb-2">
+                    <Card className="border-0 shadow-xl overflow-hidden">
+                      <div className="h-1.5 bg-gradient-to-r from-tsia-green via-tsia-gold to-blue-500" />
+                      <CardHeader className="pb-3 pt-6">
+                        <div className="flex items-center gap-3 mb-1">
+                          <div className="w-10 h-10 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
+                            <Globe className="w-5 h-5 text-tsia-green" />
+                          </div>
+                          <div>
+                            <CardTitle className="text-lg">Choose Your Exchange</CardTitle>
+                            <CardDescription className="text-sm">Select an exchange partner to unlock the Itera Trading BOT. Your choice sets the minimum deposit required to start.</CardDescription>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pb-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {TRADE_BROKERS.map(broker => (
+                            <button
+                              key={broker.id}
+                              type="button"
+                              onClick={() => handleBrokerChange(broker.id)}
+                              data-testid={`button-select-exchange-${broker.id}`}
+                              className="text-left rounded-xl border-2 border-border hover:border-tsia-green bg-card hover:bg-tsia-green/5 transition-all duration-150 p-4 group focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
+                            >
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <div>
+                                  <p className="font-bold text-base group-hover:text-tsia-green transition-colors">{broker.name}</p>
+                                  <p className="text-[11px] text-muted-foreground">{broker.specialty}</p>
+                                </div>
+                                <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+                                  {Array.from({ length: 5 }).map((_, i) => (
+                                    <Star key={i} className={`w-3 h-3 ${i < Math.round(broker.rating) ? "text-tsia-gold fill-tsia-gold" : "text-muted-foreground/30"}`} />
+                                  ))}
+                                </div>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">{broker.description}</p>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-bold bg-tsia-green/10 text-tsia-green px-2 py-0.5 rounded-full border border-tsia-green/20">
+                                    Min. ${broker.minDeposit}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Fee: {broker.fee}</span>
+                                </div>
+                                <span className="text-[11px] font-semibold text-tsia-green opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                  Select <ChevronRight className="w-3 h-3" />
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground text-center mt-4">You can change your exchange at any time from the broker panel below.</p>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
 
                 {/* ===== TRADING BOT ACTIVATION PANEL ===== */}
                 <motion.div variants={itemVariants}>
@@ -1521,8 +1596,10 @@ export default function AffiliateDashboard() {
                               <div className="flex-1">
                                 <p className="text-xs text-muted-foreground">Bot activated · auto-deactivates at <strong>{new Date((botActivatedAt ?? 0) + 12 * 3600000).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}</strong> GMT{selectedBroker ? ` · ${selectedBroker.name}` : ""}</p>
                               </div>
-                              <Button size="sm" variant="outline" onClick={deactivateBot} data-testid="button-bot-deactivate" className="border-red-300 text-red-600 hover:bg-red-50">
-                                <Power className="w-3.5 h-3.5 mr-1" /> Turn Off
+                              <Button size="sm" variant="outline" onClick={deactivateBot} disabled={botDeactivating} data-testid="button-bot-deactivate" className="border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-60">
+                                {botDeactivating
+                                  ? <><div className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin mr-1" /> Stopping...</>
+                                  : <><Power className="w-3.5 h-3.5 mr-1" /> Turn Off</>}
                               </Button>
                             </>
                           ) : !selectedBroker ? (

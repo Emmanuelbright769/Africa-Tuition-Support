@@ -1141,5 +1141,5 @@ export const TRADE_BROKERS = [
   { id: "etoro",    name: "eToro",    specialty: "Social Copy Trading",   rating: 4.5, minDeposit: 50,  fee: "1%",        description: "Copy top traders automatically. Best for beginners." },
   { id: "bybit",    name: "Bybit",    specialty: "Crypto Derivatives",    rating: 4.7, minDeposit: 10,  fee: "0.1%",      description: "Industry-leading derivatives exchange with 100x leverage." },
   { id: "iq_option",name: "IQ Option",specialty: "Options & Crypto",     rating: 4.4, minDeposit: 10,  fee: "Variable",  description: "Intuitive platform with smart trading tools for all levels." },
-  { id: "vampage",  name: "Vampage",  specialty: "Multi-Asset Trading",   rating: 4.6, minDeposit: 10,  fee: "0.2%",      description: "Next-gen multi-asset platform with AI-powered signals and zero-commission crypto." },
+  { id: "vantage",  name: "Vantage",  specialty: "Multi-Asset Trading",   rating: 4.6, minDeposit: 10,  fee: "0.2%",      description: "Next-gen multi-asset platform with AI-powered signals and zero-commission crypto." },
 ] as const;

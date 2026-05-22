@@ -993,18 +993,18 @@ export default function AdminDashboard() {
                   </Card>
 
                   <Card className="border-0 shadow-sm">
-                    <CardHeader className="pb-3"><CardTitle className="text-base">Platform SLA Status</CardTitle></CardHeader>
+                    <CardHeader className="pb-3"><CardTitle className="text-base">Pending Reviews</CardTitle></CardHeader>
                     <CardContent className="space-y-3">
                       {[
-                        { label: "Verification SLA", value: (pendingVerifications as any[]).length, target: "24–48h review", ok: (pendingVerifications as any[]).length < 10 },
-                        { label: "Payout SLA",        value: (pendingDisbursements as any[]).length, target: "24–48h disbursement", ok: (pendingDisbursements as any[]).length < 5 },
-                        { label: "Loan Reviews",      value: stats?.pendingLoans ?? 0, target: "48–72h decision", ok: (stats?.pendingLoans ?? 0) < 5 },
+                        { label: "Pending Verifications", value: (pendingVerifications as any[]).length, sub: "Awaiting admin review", ok: (pendingVerifications as any[]).length < 10 },
+                        { label: "Pending Disbursements", value: (pendingDisbursements as any[]).length, sub: "Awaiting admin approval", ok: (pendingDisbursements as any[]).length < 5 },
+                        { label: "Loan Reviews",           value: stats?.pendingLoans ?? 0,               sub: "Awaiting admin decision", ok: (stats?.pendingLoans ?? 0) < 5 },
                       ].map(item => (
                         <div key={item.label} className={`p-4 rounded-xl border ${item.ok ? "bg-green-50 border-green-100" : "bg-amber-50 border-amber-100"}`}>
                           <div className="flex items-center justify-between">
                             <div>
                               <p className={`text-sm font-semibold ${item.ok ? "text-green-800" : "text-amber-800"}`}>{item.label}</p>
-                              <p className={`text-xs mt-0.5 ${item.ok ? "text-green-600" : "text-amber-600"}`}>{item.target}</p>
+                              <p className={`text-xs mt-0.5 ${item.ok ? "text-green-600" : "text-amber-600"}`}>{item.sub}</p>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className={`text-lg font-bold ${item.ok ? "text-green-700" : "text-amber-700"}`}>{item.value}</span>
@@ -1151,14 +1151,6 @@ export default function AdminDashboard() {
             {/* ═══════════════════════════════ PAYOUTS ═══════════════════════════════ */}
             {activeTab === "payouts" && (
               <motion.div key="payouts" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
-                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-blue-900 text-sm">SLA Requirement Active</p>
-                    <p className="text-xs text-blue-700 mt-0.5">All approved disbursements must be processed within <strong>24–48 hours</strong>.</p>
-                  </div>
-                </div>
-
                 {/* Semester 2 backfill tool */}
                 <Card className="border border-purple-200 bg-purple-50/60 dark:bg-purple-900/10">
                   <CardContent className="flex items-center justify-between p-4">

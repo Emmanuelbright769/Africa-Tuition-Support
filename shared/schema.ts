@@ -1137,7 +1137,7 @@ export const TRADE_BROKERS = [
   { id: "binance",  name: "Binance",  specialty: "Crypto & Futures",    rating: 4.9, minDeposit: 50,  fee: "0.1%",      description: "World's largest crypto exchange with deep liquidity." },
   { id: "exness",   name: "Exness",   specialty: "Forex & Crypto",       rating: 4.8, minDeposit: 30,  fee: "0.3 pips",  description: "Ultra-low spreads, instant withdrawals, regulated globally." },
   { id: "octafx",   name: "OctaFX",   specialty: "Forex & CFDs",         rating: 4.7, minDeposit: 100, fee: "0.4 pips",  description: "Award-winning African forex broker with MT4/MT5 support." },
-  { id: "xm_group", name: "XM Group", specialty: "Forex & Metals",       rating: 4.6, minDeposit: 5,   fee: "0.6 pips",  description: "Over 15 years of experience, 3.5M clients worldwide." },
+  { id: "xm_group", name: "XM Group", specialty: "Forex & Metals",       rating: 4.6, minDeposit: 50,  fee: "0.6 pips",  description: "Over 15 years of experience, 3.5M clients worldwide." },
   { id: "etoro",    name: "eToro",    specialty: "Social Copy Trading",   rating: 4.5, minDeposit: 20,  fee: "1%",        description: "Copy top traders automatically. Best for beginners." },
   { id: "bybit",    name: "Bybit",    specialty: "Crypto Derivatives",    rating: 4.7, minDeposit: 50,  fee: "0.1%",      description: "Industry-leading derivatives exchange with 100x leverage." },
   { id: "iq_option",name: "IQ Option",specialty: "Options & Crypto",     rating: 4.4, minDeposit: 30,  fee: "Variable",  description: "Intuitive platform with smart trading tools for all levels." },

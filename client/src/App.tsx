@@ -70,6 +70,7 @@ function Router() {
       <Route path="/" component={Landing} />
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
+      <Route path="/register">{() => { window.location.replace("/signup" + window.location.search); return null; }}</Route>
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/dashboard" component={StudentDashboard} />
       <Route path="/admin" component={AdminDashboard} />

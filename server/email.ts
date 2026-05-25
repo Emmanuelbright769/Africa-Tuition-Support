@@ -1089,7 +1089,7 @@ export async function sendSupportConfirmation(to: string, name: string, subject:
       <p style="color:#6b7c72;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Your enquiry</p>
       <p style="color:#1a1a1a;font-size:15px;font-weight:600;margin:0;">${subject}</p>
     </div>
-    <p style="color:#4a5e50;font-size:14px;line-height:1.7;margin:0 0 20px;">Our support team reviews every message and will respond within <strong>24 hours</strong> (Monday – Friday, 9 AM – 5 PM GMT). For urgent matters, you can also reach us on WhatsApp at <strong>+447552647146</strong>.</p>
+    <p style="color:#4a5e50;font-size:14px;line-height:1.7;margin:0 0 20px;">Our support team reviews every message and will respond within <strong>24 hours</strong> (Monday – Friday, 9 AM – 5 PM GMT). For urgent matters, you can also reach us on WhatsApp at <strong>+4407916395474</strong>.</p>
     <p style="color:#9caa9f;font-size:13px;text-align:center;margin:0;">Please do not reply to this email — it is sent from an automated address.<br/>To update your enquiry, visit <a href="https://tsiforafrica.com/contact" style="color:#1a6b3c;">tsiforafrica.com/contact</a>.</p>
   `);
   await sendEmail(to, `We received your message — TSIA Support`, html);

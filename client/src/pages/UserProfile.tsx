@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,10 +12,24 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, User, Mail, Phone, Globe, Shield, Lock, Eye, EyeOff,
-  CheckCircle2, KeyRound, Edit3, Save, X, GraduationCap, Briefcase
+  CheckCircle2, KeyRound, Edit3, Save, X, GraduationCap, Briefcase,
+  MapPin, Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { queryClient } from "@/lib/queryClient";
+import ReserveFund from "./ReserveFund";
+
+const COUNTRIES = [
+  { code: "ng", name: "Nigeria" }, { code: "gh", name: "Ghana" }, { code: "ke", name: "Kenya" },
+  { code: "za", name: "South Africa" }, { code: "ug", name: "Uganda" }, { code: "tz", name: "Tanzania" },
+  { code: "rw", name: "Rwanda" }, { code: "et", name: "Ethiopia" }, { code: "ci", name: "Côte d'Ivoire" },
+  { code: "sn", name: "Senegal" }, { code: "cm", name: "Cameroon" }, { code: "eg", name: "Egypt" },
+  { code: "ma", name: "Morocco" }, { code: "tn", name: "Tunisia" }, { code: "dz", name: "Algeria" },
+  { code: "zm", name: "Zambia" }, { code: "zw", name: "Zimbabwe" }, { code: "ao", name: "Angola" },
+  { code: "gb", name: "United Kingdom" }, { code: "us", name: "United States" }, { code: "ca", name: "Canada" },
+  { code: "de", name: "Germany" }, { code: "fr", name: "France" }, { code: "ae", name: "UAE" },
+  { code: "other", name: "Other" },
+];
 
 type SecurityStep = "idle" | "sending" | "otp" | "newpass" | "saving";
 type EmailStep = "idle" | "sending" | "otp" | "newemail" | "saving";
@@ -43,6 +58,25 @@ export default function UserProfile() {
   const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  /* ─── My Location ─── */
+  const [selectedCountry, setSelectedCountry] = useState("");
+  const [locationSaved, setLocationSaved] = useState(false);
+
+  const locationMutation = useMutation({
+    mutationFn: async (country: string) => {
+      const res = await apiRequest("PATCH", "/api/user/country", { country });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to update"); }
+    },
+    onSuccess: () => {
+      setLocationSaved(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      setTimeout(() => setLocationSaved(false), 3000);
+    },
+    onError: (err: any) => {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   if (!user) {
     return (
@@ -530,6 +564,82 @@ export default function UserProfile() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </CardContent>
+        </Card>
+
+        {/* ── My Location ── */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <MapPin className="w-5 h-5 text-tsia-green" />
+              </div>
+              <div>
+                <CardTitle className="text-base">My Location</CardTitle>
+                <CardDescription className="text-xs">Update your country for accurate regional services</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border">
+              <Globe className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground">Current country</p>
+                <p className="text-sm font-medium" data-testid="text-current-country">
+                  {COUNTRIES.find(c => c.code === (user.country || "ng"))?.name || user.country || "Not set"}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-country-select">Select your country</Label>
+              <select
+                id="profile-country-select"
+                data-testid="select-profile-country"
+                value={selectedCountry || user.country || "ng"}
+                onChange={e => setSelectedCountry(e.target.value)}
+                className="w-full border border-input bg-background rounded-md px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                {COUNTRIES.map(c => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <Button
+              data-testid="button-save-location"
+              className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white"
+              onClick={() => locationMutation.mutate(selectedCountry || user.country || "ng")}
+              disabled={locationMutation.isPending || (!selectedCountry && !user.country) || (selectedCountry || user.country || "ng") === (user.country || "ng")}
+            >
+              {locationMutation.isPending
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</>
+                : locationSaved
+                  ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Saved!</>
+                  : "Save Location"}
+            </Button>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-0.5">Why does location matter?</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                Your location is used for referral matching, regional pricing, currency display, and access to country-specific TSIA services.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Strategic Reserve Fund ── */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Strategic Reserve Fund</CardTitle>
+                <CardDescription className="text-xs">20% of every trade deposit — growing in real-time</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ReserveFund />
           </CardContent>
         </Card>
 

@@ -55,13 +55,12 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "trade" | "exchange_market" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum" | "qce" | "emergency_response" | "movies" | "location" | "auto_care";
+type Section = "overview" | "trade" | "exchange_market" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "forum" | "qce" | "emergency_response" | "movies" | "auto_care";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",        label: "Overview",               icon: LayoutDashboard },
   { id: "fintech",         label: "Swift Hub",              icon: CreditCard },
   { id: "qce",             label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
-  { id: "reserve_fund",    label: "Strategic Reserve Fund", icon: Shield },
   { id: "trade",           label: "Trade Market",           icon: Globe },
   { id: "exchange_market", label: "Exchange Market",          icon: BarChart3, badge: "Soon" },
   { id: "trust_fund",   label: "Affiliate Trust Fund",   icon: Crown },
@@ -71,7 +70,6 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "auto_care",          label: "Auto Care Fix",     icon: Wrench,    badge: "Soon" },
   { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
   { id: "forum",              label: "Community Forum",   icon: MessageSquareText },
-  { id: "location",           label: "My Location",       icon: MapPin },
 ];
 
 // ─── Referral Section Component ─────────────────────────────────────────────
@@ -2597,19 +2595,6 @@ export default function AffiliateDashboard() {
               </>
             )}
 
-            {/* ── STRATEGIC RESERVE FUND ── */}
-            {activeSection === "reserve_fund" && (
-              <motion.div variants={itemVariants}>
-                <div className="mb-5">
-                  <h2 className="text-2xl font-bold flex items-center gap-2">
-                    <Shield className="w-6 h-6 text-tsia-green" /> Strategic Reserve Fund
-                  </h2>
-                  <p className="text-muted-foreground text-sm">20% of every trade deposit — growing in real-time</p>
-                </div>
-                <ReserveFund />
-              </motion.div>
-            )}
-
             {/* ── FINTECH HUB ── */}
             {activeSection === "fintech" && (
               <motion.div variants={itemVariants}>
@@ -2895,10 +2880,6 @@ export default function AffiliateDashboard() {
               </>
             )}
 
-            {/* ── MY LOCATION ── */}
-            {activeSection === "location" && (
-              <LocationSection user={user} />
-            )}
 
           </motion.div>
         </AnimatePresence>

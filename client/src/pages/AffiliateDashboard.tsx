@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import FinancialHub from "./FinancialHub";
 import MoviesSection from "@/components/MoviesSection";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
+import ExchangeMarket from "./ExchangeMarket";
 import QCESection from "./QCESection";
 import { useLocation, useSearch, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -62,7 +63,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "fintech",         label: "Swift Hub",              icon: CreditCard },
   { id: "qce",             label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
   { id: "trade",           label: "Trade Market",           icon: Globe },
-  { id: "exchange_market", label: "Exchange Market",          icon: BarChart3, badge: "Soon" },
+  { id: "exchange_market", label: "Exchange Market",          icon: BarChart3 },
   { id: "trust_fund",   label: "Affiliate Trust Fund",   icon: Crown },
   { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
   { id: "tour_africa",  label: "Glide Africa",           icon: Car },
@@ -2030,43 +2031,11 @@ export default function AffiliateDashboard() {
               </>
             )}
 
-            {/* ── EXCHANGE MARKET (Coming Soon) ── */}
+            {/* ── EXCHANGE MARKET ── */}
             {activeSection === "exchange_market" && (
-              <>
-                <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">Stock Exchange Market</h2>
-                  <p className="text-muted-foreground text-sm mb-6">Equities, indices, and real-time stock trading — coming to TSIA soon.</p>
-                </motion.div>
-                <motion.div variants={itemVariants}>
-                  <Card className="border-0 shadow-lg overflow-hidden">
-                    <div className="h-1.5 bg-gradient-to-r from-tsia-green via-tsia-gold to-blue-500" />
-                    <CardContent className="pt-10 pb-10 text-center">
-                      <div className="w-20 h-20 bg-gradient-to-br from-tsia-green/20 to-blue-500/20 rounded-3xl flex items-center justify-center mx-auto mb-5">
-                        <BarChart3 className="w-10 h-10 text-tsia-green" />
-                      </div>
-                      <Badge className="mb-4 bg-tsia-gold/20 text-tsia-gold border-tsia-gold/30 text-xs font-bold px-3 py-1">Coming Soon</Badge>
-                      <h3 className="text-xl font-black mb-2">Stock Exchange Market</h3>
-                      <p className="text-muted-foreground text-sm max-w-sm mx-auto mb-6">
-                        Buy and sell equities, ETFs, and indices from African and global markets — all within the TSIA ecosystem at live market prices.
-                      </p>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-md mx-auto text-left">
-                        {[
-                          { icon: "📈", label: "Equities", desc: "Nigerian, US & global stocks" },
-                          { icon: "📊", label: "Live Prices", desc: "Real-time market data" },
-                          { icon: "💼", label: "Portfolio", desc: "Track your holdings & gains" },
-                          { icon: "🔒", label: "Secure Trading", desc: "Protected by TSIA trust system" },
-                        ].map(({ icon, label, desc }) => (
-                          <div key={label} className="rounded-xl bg-muted/50 border p-3">
-                            <div className="text-2xl mb-1">{icon}</div>
-                            <p className="text-xs font-bold mb-0.5">{label}</p>
-                            <p className="text-[10px] text-muted-foreground">{desc}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </>
+              <motion.div variants={itemVariants}>
+                <ExchangeMarket walletBalance={personalBalance} />
+              </motion.div>
             )}
 
             {/* ── QCE ── */}

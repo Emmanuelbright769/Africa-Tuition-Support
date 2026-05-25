@@ -1093,7 +1093,7 @@ export async function registerRoutes(
       }
 
       // ── Batch enrollment check ──────────────────────────────────────────────
-      const BATCH_MAX = 15; // server-side only; never sent to client
+      const BATCH_MAX = 1000; // server-side only; never sent to client
       let batch = await storage.getCurrentBatch();
 
       if (batch && batch.status === "closed") {
@@ -5087,7 +5087,7 @@ export async function registerRoutes(
   });
 
   // ─── ADMIN: Enrollment Batch Management ──────────────────────────────────────
-  const BATCH_BASE_MAX = 15; // base max per batch — server-side only
+  const BATCH_BASE_MAX = 1000; // base max per batch — server-side only
 
   app.get("/api/admin/batch-status", async (req, res) => {
     try {

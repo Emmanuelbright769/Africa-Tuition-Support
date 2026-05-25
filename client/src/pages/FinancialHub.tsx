@@ -1065,6 +1065,7 @@ export default function FinancialHub() {
       setBillReceiptTitle(titleMap[sid] || "Bill Payment");
       setTxResult({ ref: data.reference || "", amountNgn: data.amountNgn ?? 0, token: data.token, message: "" });
       setBillStep("success");
+      setView("service");
     },
     onError: (e: any) => toast({ title: "Payment failed", description: e.message, variant: "destructive" }),
   });

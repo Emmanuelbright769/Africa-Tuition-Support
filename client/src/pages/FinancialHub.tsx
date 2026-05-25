@@ -504,6 +504,19 @@ export default function FinancialHub() {
   const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
   const { data: banks = [] }     = useQuery<Bank[]>({ queryKey: ["/api/wallet/banks"] });
   const { data: vcData, refetch: refetchCard } = useQuery<{ card: any | null }>({ queryKey: ["/api/fintech/virtual-card"] });
+  const { data: cashbackData, refetch: refetchCashback } = useQuery<{ balance: string }>({ queryKey: ["/api/wallet/cashback"], staleTime: 30_000 });
+  const { data: loanLimit, isLoading: loanLimitLoading } = useQuery<{ eligible: boolean; reason?: string; limitUsd: number; tier?: string; activeLoan?: any; interestRate?: number; terms?: number[] }>({ queryKey: ["/api/loans/limit"], staleTime: 60_000, enabled: bottomNav === "finance" });
+  const { data: myLoans = [], refetch: refetchLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"], staleTime: 60_000, enabled: bottomNav === "finance" });
+
+  // ── Loan application state ────────────────────────────────────────────────
+  const [loanDialogOpen, setLoanDialogOpen]   = useState(false);
+  const [loanAmount, setLoanAmount]           = useState("");
+  const [loanTerm, setLoanTerm]               = useState<number | null>(null);
+  const [loanPurpose, setLoanPurpose]         = useState("");
+
+  // ── Cashback withdraw state ───────────────────────────────────────────────
+  const [cashbackWithdrawOpen, setCashbackWithdrawOpen] = useState(false);
+  const [cashbackWithdrawAmt, setCashbackWithdrawAmt]   = useState("");
 
   const [cardRevealed, setCardRevealed] = useState(false);
   const [vcCopied, setVcCopied]         = useState<string | null>(null);
@@ -607,6 +620,38 @@ export default function FinancialHub() {
       toast({ title: "Goal Deleted", description: "Savings goal removed." });
     },
     onError: (e: any) => toast({ title: "Cannot Delete", description: e.message, variant: "destructive" }),
+  });
+
+  const applyLoanMutation = useMutation({
+    mutationFn: async (data: { amountUsd: string; termMonths: number; purpose: string }) => {
+      const res = await apiRequest("POST", "/api/loans/apply", data);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      setLoanDialogOpen(false);
+      setLoanAmount(""); setLoanTerm(null); setLoanPurpose("");
+      refetchLoans();
+      queryClient.invalidateQueries({ queryKey: ["/api/loans/limit"] });
+      toast({ title: "Loan Application Submitted!", description: "Your application is under review. We'll notify you once it's approved." });
+    },
+    onError: (e: any) => toast({ title: "Application Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const cashbackWithdrawMutation = useMutation({
+    mutationFn: async (amount: number) => {
+      const res = await apiRequest("POST", "/api/wallet/cashback/withdraw", { amount });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      setCashbackWithdrawOpen(false);
+      setCashbackWithdrawAmt("");
+      refetchCashback();
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+      toast({ title: "Cashback Withdrawn!", description: "Your cashback has been moved to your wallet." });
+    },
+    onError: (e: any) => toast({ title: "Withdrawal Failed", description: e.message, variant: "destructive" }),
   });
 
   // ── Referral program state ─────────────────────────────────────────────────
@@ -1521,26 +1566,82 @@ export default function FinancialHub() {
           )}
         </div>
 
-        {/* Loans — Coming Soon */}
+        {/* Loans */}
         <div>
-          <h2 className="font-black text-base mb-3">Loans</h2>
-          <div className="rounded-2xl border border-border bg-muted/30 p-5 relative overflow-hidden">
-            <div className="absolute top-3 right-3 bg-amber-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Coming Soon</div>
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center shrink-0">
-                <Banknote className="w-6 h-6 text-amber-600" />
-              </div>
-              <div>
-                <p className="font-black text-sm">Quick Loans</p>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">Access instant loans funded by your TSIA savings history and membership. No collateral required for eligible members.</p>
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {["Student Loan", "Business Loan", "Emergency Cash"].map(t => (
-                    <span key={t} className="text-[10px] font-semibold bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-full px-2.5 py-1 border border-amber-200 dark:border-amber-700/30">{t}</span>
-                  ))}
+          <h2 className="font-black text-base mb-3">Quick Loans</h2>
+          {loanLimitLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-3"><Loader2 className="w-4 h-4 animate-spin" /> Checking eligibility…</div>
+          ) : loanLimit && !loanLimit.eligible ? (
+            <div className="rounded-2xl border border-border bg-muted/30 p-5">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center shrink-0">
+                  <Banknote className="w-6 h-6 text-amber-600" />
+                </div>
+                <div>
+                  <p className="font-black text-sm">Not yet eligible</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{loanLimit.reason}</p>
                 </div>
               </div>
             </div>
-          </div>
+          ) : loanLimit?.activeLoan ? (
+            <div className="rounded-2xl border border-tsia-green/30 bg-tsia-green/5 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Banknote className="w-5 h-5 text-tsia-green" />
+                  <p className="font-black text-sm">Active Loan</p>
+                </div>
+                <span className="text-[10px] font-black bg-tsia-green/20 text-tsia-green px-2 py-0.5 rounded-full uppercase tracking-wider">{loanLimit.activeLoan.status}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-card rounded-xl p-2.5 border border-border">
+                  <p className="text-muted-foreground mb-0.5">Loan Amount</p>
+                  <p className="font-black text-tsia-green">${parseFloat(loanLimit.activeLoan.amountUsd).toFixed(2)}</p>
+                </div>
+                <div className="bg-card rounded-xl p-2.5 border border-border">
+                  <p className="text-muted-foreground mb-0.5">Monthly Payment</p>
+                  <p className="font-black">${parseFloat(loanLimit.activeLoan.monthlyPaymentUsd).toFixed(2)}</p>
+                </div>
+                <div className="bg-card rounded-xl p-2.5 border border-border">
+                  <p className="text-muted-foreground mb-0.5">Paid</p>
+                  <p className="font-black">${parseFloat(loanLimit.activeLoan.totalPaidUsd).toFixed(2)}</p>
+                </div>
+                <div className="bg-card rounded-xl p-2.5 border border-border">
+                  <p className="text-muted-foreground mb-0.5">Total Payable</p>
+                  <p className="font-black">${parseFloat(loanLimit.activeLoan.totalPayableUsd).toFixed(2)}</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Repay in full before applying for another loan.</p>
+            </div>
+          ) : loanLimit?.eligible ? (
+            <div className="rounded-2xl border border-amber-300/50 bg-gradient-to-br from-amber-50/60 to-amber-100/30 dark:from-amber-900/20 dark:to-amber-800/10 p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+                  <Banknote className="w-6 h-6 text-amber-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-black text-sm">You're Eligible!</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Borrow up to <span className="font-bold text-amber-700 dark:text-amber-400">${loanLimit.limitUsd.toFixed(2)}</span> at {loanLimit.interestRate}% p.a.</p>
+                </div>
+              </div>
+              {myLoans.filter((l: any) => l.status !== "repaid" && l.status !== "rejected").length > 0 && (
+                <div className="space-y-2">
+                  {myLoans.filter((l: any) => l.status !== "repaid").slice(0, 2).map((loan: any) => (
+                    <div key={loan.id} className="flex items-center justify-between bg-white/60 dark:bg-white/5 rounded-xl px-3 py-2 text-xs border border-amber-200/50 dark:border-amber-700/20">
+                      <span className="font-semibold">${parseFloat(loan.amountUsd).toFixed(2)} • {loan.termMonths}mo</span>
+                      <span className={`font-bold capitalize ${loan.status === "pending" ? "text-amber-600" : loan.status === "approved" || loan.status === "active" ? "text-tsia-green" : "text-red-500"}`}>{loan.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={() => { setLoanAmount(""); setLoanTerm(loanLimit.terms?.[0] ?? 6); setLoanPurpose(""); setLoanDialogOpen(true); }}
+                className="w-full bg-amber-500 hover:bg-amber-600 text-white font-black text-sm rounded-xl py-3 transition-colors"
+                data-testid="btn-apply-loan"
+              >
+                Apply for Loan
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {/* OPay-style promo card */}
@@ -1548,10 +1649,68 @@ export default function FinancialHub() {
           <div className="text-3xl">📈</div>
           <div className="flex-1">
             <p className="font-black text-sm">Earn interest on savings</p>
-            <p className="text-xs text-muted-foreground">Coming soon: up to 8% p.a. on all locked savings goals.</p>
+            <p className="text-xs text-muted-foreground">Up to 20% p.a. on all locked savings goals.</p>
           </div>
           <Sparkles className="w-5 h-5 text-tsia-gold shrink-0" />
         </div>
+
+        {/* Loan Application Dialog */}
+        <Dialog open={loanDialogOpen} onOpenChange={setLoanDialogOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Banknote className="w-5 h-5 text-amber-600" /> Loan Application</DialogTitle>
+              <DialogDescription>Fill in your loan details. Applications are reviewed within 24 hours.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-1">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">Amount (USD)</Label>
+                <Input
+                  type="number"
+                  placeholder={`Max $${loanLimit?.limitUsd?.toFixed(2) ?? "—"}`}
+                  value={loanAmount}
+                  onChange={e => setLoanAmount(e.target.value)}
+                  min="1" max={loanLimit?.limitUsd}
+                  data-testid="input-loan-amount"
+                />
+                {loanAmount && loanLimit && parseFloat(loanAmount) > 0 && loanTerm && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Monthly payment: <span className="font-bold text-foreground">${((parseFloat(loanAmount) * (1 + (loanLimit.interestRate ?? 10) / 100)) / loanTerm).toFixed(2)}</span> × {loanTerm} months
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">Repayment Term</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {(loanLimit?.terms ?? [6, 12]).map(t => (
+                    <button key={t} onClick={() => setLoanTerm(t)}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${loanTerm === t ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground"}`}
+                      data-testid={`btn-term-${t}`}
+                    >{t} months</button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">Purpose (optional)</Label>
+                <Input placeholder="e.g. School fees, business supplies…" value={loanPurpose} onChange={e => setLoanPurpose(e.target.value)} data-testid="input-loan-purpose" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setLoanDialogOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  if (!loanAmount || !loanTerm) { toast({ title: "Fill in all required fields", variant: "destructive" }); return; }
+                  if (loanLimit && parseFloat(loanAmount) > loanLimit.limitUsd) { toast({ title: `Max is $${loanLimit.limitUsd.toFixed(2)}`, variant: "destructive" }); return; }
+                  applyLoanMutation.mutate({ amountUsd: loanAmount, termMonths: loanTerm, purpose: loanPurpose });
+                }}
+                disabled={applyLoanMutation.isPending}
+                className="bg-amber-500 hover:bg-amber-600 text-white"
+                data-testid="btn-submit-loan"
+              >
+                {applyLoanMutation.isPending ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Submitting…</> : "Submit Application"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <BottomNavBar />
       </div>
@@ -1582,12 +1741,88 @@ export default function FinancialHub() {
         <ChevronRight className="w-5 h-5 text-white/70 shrink-0" />
       </button>
 
-      {/* Coming soon rewards */}
-      <div className="rounded-2xl bg-gradient-to-br from-tsia-gold/20 to-amber-100/30 dark:from-amber-900/20 dark:to-amber-800/10 border border-tsia-gold/30 p-5 text-center">
-        <div className="text-4xl mb-2">🏆</div>
-        <p className="font-black text-base">More Rewards Coming Soon</p>
-        <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">Cashback, points &amp; exclusive perks for every transaction.</p>
+      {/* Cashback wallet */}
+      <div className="rounded-2xl bg-gradient-to-br from-tsia-gold/90 to-amber-500 text-white p-5 relative overflow-hidden shadow-lg">
+        <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-8 translate-x-8" />
+        <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-1">
+            <Gift className="w-4 h-4 text-white/80" />
+            <p className="text-white/80 text-xs font-semibold uppercase tracking-wide">Cashback Balance</p>
+          </div>
+          <p className="font-black text-4xl mb-0.5">${parseFloat(cashbackData?.balance ?? "0").toFixed(2)}</p>
+          <p className="text-white/70 text-xs">10% back on every bill &amp; transfer</p>
+          <button
+            onClick={() => { setCashbackWithdrawAmt(""); setCashbackWithdrawOpen(true); }}
+            disabled={!cashbackData || parseFloat(cashbackData.balance) <= 0}
+            className="mt-4 flex items-center gap-2 bg-white text-amber-700 font-bold text-sm rounded-full px-4 py-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="btn-withdraw-cashback"
+          >
+            <ArrowDownToLine className="w-4 h-4" /> Withdraw to Wallet
+          </button>
+        </div>
       </div>
+
+      {/* Cashback how it works */}
+      <div className="rounded-2xl bg-card border border-border p-4 space-y-2">
+        <p className="font-black text-sm flex items-center gap-2"><Sparkles className="w-4 h-4 text-tsia-gold" /> How Cashback Works</p>
+        <div className="space-y-2 text-xs text-muted-foreground">
+          {[
+            { icon: "💸", text: "Pay airtime, data, electricity, cable TV or betting" },
+            { icon: "📤", text: "Send money to any TSIA member" },
+            { icon: "🎁", text: "Earn 10% of every transaction as cashback" },
+            { icon: "💰", text: "Withdraw anytime to your personal wallet" },
+          ].map((item, i) => (
+            <div key={i} className="flex items-center gap-2.5">
+              <span className="text-base shrink-0">{item.icon}</span>
+              <span>{item.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Cashback Withdraw Dialog */}
+      <Dialog open={cashbackWithdrawOpen} onOpenChange={setCashbackWithdrawOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Gift className="w-5 h-5 text-tsia-gold" /> Withdraw Cashback</DialogTitle>
+            <DialogDescription>Move your cashback earnings to your personal wallet instantly.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="bg-tsia-gold/10 rounded-xl p-3 text-center">
+              <p className="text-xs text-muted-foreground">Available Cashback</p>
+              <p className="font-black text-2xl text-tsia-gold">${parseFloat(cashbackData?.balance ?? "0").toFixed(2)}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">Amount to Withdraw (USD)</Label>
+              <Input
+                type="number"
+                placeholder={`Max $${parseFloat(cashbackData?.balance ?? "0").toFixed(2)}`}
+                value={cashbackWithdrawAmt}
+                onChange={e => setCashbackWithdrawAmt(e.target.value)}
+                min="0.01"
+                max={parseFloat(cashbackData?.balance ?? "0")}
+                data-testid="input-cashback-withdraw"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCashbackWithdrawOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                const amt = parseFloat(cashbackWithdrawAmt);
+                if (!amt || amt <= 0) { toast({ title: "Enter a valid amount", variant: "destructive" }); return; }
+                cashbackWithdrawMutation.mutate(amt);
+              }}
+              disabled={cashbackWithdrawMutation.isPending}
+              className="bg-tsia-gold hover:bg-amber-500 text-white"
+              data-testid="btn-confirm-cashback-withdraw"
+            >
+              {cashbackWithdrawMutation.isPending ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Withdrawing…</> : "Withdraw"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Referral Commission Panel Dialog */}
       <Dialog open={showReferralPanel} onOpenChange={setShowReferralPanel}>

@@ -284,6 +284,11 @@ export interface IStorage {
   getSavingsTransactions(goalId: number, userId: number): Promise<any[]>;
   deleteSavingsGoal(id: number, userId: number): Promise<void>;
 
+  // Cashback
+  getCashbackBalance(userId: number): Promise<string>;
+  addCashback(userId: number, amountUsd: number): Promise<void>;
+  withdrawCashbackToWallet(userId: number, amountUsd: number): Promise<{ cashbackBalance: string; walletBalance: string }>;
+
   // Platform settings
   getPlatformSetting(key: string): Promise<string | null>;
   getAllPlatformSettings(): Promise<PlatformSetting[]>;
@@ -2226,6 +2231,39 @@ export class DatabaseStorage implements IStorage {
     await db.update(savingsGoals)
       .set({ status: "deleted", updatedAt: new Date() })
       .where(and(eq(savingsGoals.id, id), eq(savingsGoals.userId, userId)));
+  }
+
+  // ── Cashback ────────────────────────────────────────────────────────────────
+  async getCashbackBalance(userId: number): Promise<string> {
+    const wallet = await this.getOrCreateWallet(userId);
+    return wallet.cashbackBalance ?? "0.00";
+  }
+
+  async addCashback(userId: number, amountUsd: number): Promise<void> {
+    if (amountUsd <= 0) return;
+    const wallet = await this.getOrCreateWallet(userId);
+    const current = parseFloat(wallet.cashbackBalance ?? "0.00");
+    const updated = (current + amountUsd).toFixed(2);
+    await db.update(wallets).set({ cashbackBalance: updated }).where(eq(wallets.userId, userId));
+  }
+
+  async withdrawCashbackToWallet(userId: number, amountUsd: number): Promise<{ cashbackBalance: string; walletBalance: string }> {
+    const wallet = await this.getOrCreateWallet(userId);
+    const cashback = parseFloat(wallet.cashbackBalance ?? "0.00");
+    if (amountUsd <= 0) throw new Error("Amount must be greater than 0");
+    if (cashback < amountUsd) throw new Error(`Insufficient cashback balance. You have $${cashback.toFixed(2)}`);
+    const newCashback = (cashback - amountUsd).toFixed(2);
+    const newWallet = (parseFloat(wallet.balance) + amountUsd).toFixed(2);
+    await db.update(wallets).set({ cashbackBalance: newCashback, balance: newWallet }).where(eq(wallets.userId, userId));
+    await this.createTransaction({
+      userId,
+      type: "transfer",
+      amount: amountUsd.toFixed(2),
+      fee: "0.00",
+      paymentMethod: "cashback",
+      description: `Cashback withdrawal — $${amountUsd.toFixed(2)} moved to personal wallet`,
+    });
+    return { cashbackBalance: newCashback, walletBalance: newWallet };
   }
 }
 

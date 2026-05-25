@@ -6438,6 +6438,13 @@ export async function registerRoutes(
       // Record transaction entries for both parties
       await storage.createTransaction({ userId, type: "transfer", amount: (-amount).toFixed(2), fee: totalFee.toFixed(2), paymentMethod: "wallet", description: `TSIA transfer to ${recipient.firstName} ${recipient.lastName} (${walletLabel}) — $${recipientCredit.toFixed(2)} delivered, $${totalFee.toFixed(2)} platform fee${note ? ` | ${note}` : ""}` });
       await storage.createTransaction({ userId: resolvedId, type: "transfer", amount: recipientCredit.toFixed(2), fee: "0.00", paymentMethod: "wallet", description: `TSIA transfer from ${sender?.firstName ?? "Member"}${note ? ` — ${note}` : ""}` });
+      // ── 10% cashback on outgoing transfers for sender ────────────────────────
+      const transferCashback = parseFloat((amount * 0.10).toFixed(2));
+      if (transferCashback > 0) {
+        await storage.addCashback(userId, transferCashback).catch(() => {});
+        const cbNotif = await storage.createNotification({ userId, type: "system", title: "Cashback Earned 🎁", message: `You earned $${transferCashback.toFixed(2)} cashback (10%) on your transfer. Withdraw it anytime from Rewards.`, data: { transferCashback }, isRead: false });
+        pushToUser(userId, "notification", cbNotif);
+      }
       // In-app notification for recipient
       const receiveNotif = await storage.createNotification({
         userId: resolvedId, type: "wallet_credit",
@@ -6532,6 +6539,13 @@ export async function registerRoutes(
     await storage.createTransaction({ userId, type: "bill", amount: (-amountUsd).toFixed(2), fee: "0.00", paymentMethod: "wallet", description });
     const notif = await storage.createNotification({ userId, type: "wallet_credit", title: notifTitle, message: notifMessage, data: notifData, isRead: false });
     pushToUser(userId, "notification", notif);
+    // ── 10% cashback on every bill payment ──────────────────────────────────
+    const cashbackAmt = parseFloat((amountUsd * 0.10).toFixed(2));
+    if (cashbackAmt > 0) {
+      await storage.addCashback(userId, cashbackAmt).catch(() => {});
+      const cbNotif = await storage.createNotification({ userId, type: "system", title: "Cashback Earned 🎁", message: `You earned $${cashbackAmt.toFixed(2)} cashback (10%) on your ${service} payment. Withdraw it anytime from Rewards.`, data: { cashbackAmt }, isRead: false });
+      pushToUser(userId, "notification", cbNotif);
+    }
     // Bust server-side caches so the client sees updated data immediately
     invalidateCacheKey(`wallet:${userId}`);
     invalidateCacheKey(`transactions:${userId}`);
@@ -8815,6 +8829,31 @@ export async function registerRoutes(
       console.error("[TS-MART-DIGEST] Error:", err.message ?? err);
     }
   }
+
+  // ── CASHBACK ─────────────────────────────────────────────────────────────────
+  app.get("/api/wallet/cashback", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const balance = await storage.getCashbackBalance(userId);
+      res.json({ balance });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/wallet/cashback/withdraw", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const amount = parseFloat(req.body.amount);
+      if (!amount || amount <= 0) return res.status(400).json({ message: "Amount must be greater than 0" });
+      const result = await storage.withdrawCashbackToWallet(userId, amount);
+      invalidateCacheKey(`wallet:${userId}`);
+      invalidateCacheKey(`transactions:${userId}`);
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Cashback Withdrawn ✓", message: `$${amount.toFixed(2)} moved from your cashback to your personal wallet.`, data: { amount }, isRead: false });
+      pushToUser(userId, "notification", notif);
+      res.json({ success: true, ...result });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
 
   // ── SAVINGS GOALS ────────────────────────────────────────────────────────────
   app.get("/api/savings/goals", async (req, res) => {

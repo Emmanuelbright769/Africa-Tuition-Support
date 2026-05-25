@@ -92,6 +92,7 @@ export const wallets = pgTable("wallets", {
   balance: decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
   activated: boolean("activated").notNull().default(false),
   activatedAt: timestamp("activated_at"),
+  cashbackBalance: decimal("cashback_balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
 });
 
 export const transactions = pgTable("transactions", {

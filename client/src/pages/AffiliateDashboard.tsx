@@ -22,7 +22,7 @@ import {
   Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
   Eye, EyeOff, Bell, Power, Timer, CreditCard, PiggyBank,
   HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Lock,
-  Film, MapPin, UserCircle2, Gift, Trophy, Unlock
+  Film, MapPin, UserCircle2, Gift, Trophy, Unlock, Wrench, Truck, Settings, UserCheck, BatteryCharging, Construction
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -55,7 +55,7 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "trade" | "exchange_market" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum" | "qce" | "emergency_response" | "movies" | "location";
+type Section = "overview" | "trade" | "exchange_market" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "forum" | "qce" | "emergency_response" | "movies" | "location" | "auto_care";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",        label: "Overview",               icon: LayoutDashboard },
@@ -68,6 +68,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
   { id: "tour_africa",  label: "Glide Africa",           icon: Car },
   { id: "movies",             label: "Movies & Streaming", icon: Film },
+  { id: "auto_care",          label: "Auto Care Fix",     icon: Wrench,    badge: "Soon" },
   { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
   { id: "forum",              label: "Community Forum",   icon: MessageSquareText },
   { id: "location",           label: "My Location",       icon: MapPin },
@@ -2456,6 +2457,144 @@ export default function AffiliateDashboard() {
               <motion.div variants={itemVariants}>
                 <MoviesSection />
               </motion.div>
+            )}
+
+            {/* ── AUTO CARE FIX ── */}
+            {activeSection === "auto_care" && (
+              <>
+                {/* Hero banner */}
+                <motion.div variants={itemVariants} className="relative overflow-hidden rounded-3xl mb-6">
+                  <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900" />
+                  <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 70% 50%, #f59e0b 0%, transparent 60%), radial-gradient(circle at 20% 80%, #3b82f6 0%, transparent 50%)" }} />
+                  <div className="relative z-10 px-6 py-10 sm:px-10 sm:py-14 flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                    <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center shrink-0">
+                      <Wrench className="w-8 h-8 text-amber-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className="bg-amber-400/20 text-amber-300 border-amber-400/30 text-xs font-bold px-3 py-1">Coming Soon</Badge>
+                      </div>
+                      <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Auto Care Fix 🦺</h2>
+                      <p className="text-blue-200 text-sm sm:text-base max-w-xl leading-relaxed">
+                        Your complete vehicle care ecosystem — from maintenance kits to emergency towing, certified technicians, and spare parts, all at your fingertips.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Service cards grid */}
+                <motion.div variants={itemVariants}>
+                  <h3 className="text-base font-bold mb-4 text-muted-foreground uppercase tracking-wide text-xs">Available Services</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[
+                      {
+                        icon: Wrench,
+                        emoji: "🔧",
+                        label: "Maintenance & Repairs Kit",
+                        desc: "Browse curated car maintenance kits, tools, fluids, and accessories delivered to your door.",
+                        gradient: "from-blue-500/10 to-cyan-500/10",
+                        border: "border-blue-200 dark:border-blue-800",
+                        iconColor: "text-blue-600",
+                        iconBg: "bg-blue-50 dark:bg-blue-900/30",
+                      },
+                      {
+                        icon: Package,
+                        emoji: "🛒",
+                        label: "Car Parts & Sales Vendors",
+                        desc: "Purchase OEM and aftermarket car parts from verified vendors across Africa.",
+                        gradient: "from-purple-500/10 to-pink-500/10",
+                        border: "border-purple-200 dark:border-purple-800",
+                        iconColor: "text-purple-600",
+                        iconBg: "bg-purple-50 dark:bg-purple-900/30",
+                      },
+                      {
+                        icon: UserCheck,
+                        emoji: "👨‍🔧",
+                        label: "Request Technical Officer",
+                        desc: "Book a certified auto technician for inspection, diagnosis, or specialist repair — on-demand.",
+                        gradient: "from-green-500/10 to-emerald-500/10",
+                        border: "border-green-200 dark:border-green-800",
+                        iconColor: "text-green-600",
+                        iconBg: "bg-green-50 dark:bg-green-900/30",
+                      },
+                      {
+                        icon: Settings,
+                        emoji: "⚙️",
+                        label: "Mechanical Services",
+                        desc: "Engine diagnostics, clutch, suspension, brakes, oil change — full mechanical servicing.",
+                        gradient: "from-orange-500/10 to-amber-500/10",
+                        border: "border-orange-200 dark:border-orange-800",
+                        iconColor: "text-orange-600",
+                        iconBg: "bg-orange-50 dark:bg-orange-900/30",
+                      },
+                      {
+                        icon: BatteryCharging,
+                        emoji: "⚡",
+                        label: "Electrical Services",
+                        desc: "Auto electrical repairs — battery, alternator, wiring, ECU, and lighting systems.",
+                        gradient: "from-yellow-500/10 to-amber-500/10",
+                        border: "border-yellow-200 dark:border-yellow-800",
+                        iconColor: "text-yellow-600",
+                        iconBg: "bg-yellow-50 dark:bg-yellow-900/30",
+                      },
+                      {
+                        icon: Truck,
+                        emoji: "🚚",
+                        label: "Towing Vans",
+                        desc: "Request a towing van quickly when your vehicle breaks down — tracked, fast response.",
+                        gradient: "from-slate-500/10 to-zinc-500/10",
+                        border: "border-slate-200 dark:border-slate-700",
+                        iconColor: "text-slate-600",
+                        iconBg: "bg-slate-50 dark:bg-slate-800/50",
+                      },
+                      {
+                        icon: HeartPulse,
+                        emoji: "🦺",
+                        label: "Emergency Response",
+                        desc: "Any roadside emergency — accident response, flat tyre, fuel delivery, and more.",
+                        gradient: "from-red-500/10 to-rose-500/10",
+                        border: "border-red-200 dark:border-red-900",
+                        iconColor: "text-red-600",
+                        iconBg: "bg-red-50 dark:bg-red-900/30",
+                      },
+                    ].map((svc) => (
+                      <div key={svc.label}
+                        className={`relative group rounded-2xl border ${svc.border} bg-gradient-to-br ${svc.gradient} bg-card p-5 overflow-hidden transition-all duration-200 hover:shadow-lg`}>
+                        {/* Coming Soon overlay */}
+                        <div className="absolute top-3 right-3">
+                          <Badge className="bg-amber-400/20 text-amber-600 dark:text-amber-400 border-amber-300/40 text-[10px] font-bold px-2 py-0.5">Coming Soon</Badge>
+                        </div>
+                        {/* Icon */}
+                        <div className={`w-11 h-11 rounded-xl ${svc.iconBg} flex items-center justify-center mb-4`}>
+                          <svc.icon className={`w-5 h-5 ${svc.iconColor}`} />
+                        </div>
+                        {/* Text */}
+                        <p className="font-bold text-sm mb-1.5">{svc.emoji} {svc.label}</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{svc.desc}</p>
+                        {/* Notify button */}
+                        <button className="mt-4 w-full text-xs font-semibold text-muted-foreground border border-border rounded-xl py-2 hover:bg-muted/50 transition-colors" data-testid={`btn-notify-${svc.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                          🔔 Notify Me When Live
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+
+                {/* Bottom info strip */}
+                <motion.div variants={itemVariants} className="mt-6">
+                  <div className="rounded-2xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/10 p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                      <Construction className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm text-amber-800 dark:text-amber-300 mb-0.5">We're Building Auto Care Fix</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                        Our team is onboarding certified vendors, technicians, and towing partners across Africa. All services will be fully integrated into your TSIA wallet for seamless, secure payments.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              </>
             )}
 
             {/* ── STRATEGIC RESERVE FUND ── */}

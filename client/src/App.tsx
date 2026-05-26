@@ -24,6 +24,7 @@ import TourAfrica from "@/pages/TourAfrica";
 import TenancyPage from "@/pages/TenancyPage";
 import TermsAndConditions from "@/pages/TermsAndConditions";
 import UserProfile from "@/pages/UserProfile";
+import PromoLanding from "@/pages/PromoLanding";
 import { AiAssistant } from "@/components/AiAssistant";
 
 class ErrorBoundary extends Component<
@@ -84,6 +85,7 @@ function Router() {
       <Route path="/terms" component={TermsAndConditions} />
       <Route path="/wallet">{() => { window.location.replace("/student-dashboard"); return null; }}</Route>
       <Route path="/profile" component={UserProfile} />
+      <Route path="/promo" component={PromoLanding} />
       <Route component={NotFound} />
     </Switch>
   );

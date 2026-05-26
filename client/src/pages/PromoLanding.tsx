@@ -940,6 +940,24 @@ export default function PromoLanding() {
               <Logo variant="badge" height={36} />
               <p className="text-xs text-muted-foreground">SMAKEMGGOLD Ltd · RC: 1359954</p>
               <p className="text-xs text-muted-foreground">support@tsia.africa · +4407916395474</p>
+              {/* Social media links */}
+              <div className="flex items-center gap-2 mt-1">
+                {[
+                  { href: "https://www.facebook.com/tsiforafrica", label: "Facebook", bg: "bg-[#1877f2]", symbol: "f" },
+                  { href: "https://www.instagram.com/tsiforafrica", label: "Instagram", bg: "bg-gradient-to-br from-[#fdf497] via-[#fd5949] to-[#285AEB]", symbol: "IG" },
+                  { href: "https://x.com/tsiforafrica", label: "X / Twitter", bg: "bg-black", symbol: "𝕏" },
+                  { href: "https://www.youtube.com/@tsiforafrica", label: "YouTube", bg: "bg-[#ff0000]", symbol: "▶" },
+                  { href: "https://www.tiktok.com/@tsiforafrica", label: "TikTok", bg: "bg-[#010101]", symbol: "TT" },
+                ].map(({ href, label, bg, symbol }) => (
+                  <a key={label} href={href} target="_blank" rel="noopener noreferrer"
+                    aria-label={label}
+                    className={`w-8 h-8 ${bg} rounded-full flex items-center justify-center text-white text-[11px] font-black hover:opacity-80 transition-opacity shrink-0`}
+                    data-testid={`link-social-${label.toLowerCase().replace(/[^a-z]/g, "")}`}
+                  >
+                    {symbol}
+                  </a>
+                ))}
+              </div>
             </div>
             <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
               <a href="/promo" className="hover:text-foreground transition-colors">Home</a>

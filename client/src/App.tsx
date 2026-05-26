@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { Component, ReactNode } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -91,6 +91,12 @@ function Router() {
   );
 }
 
+function ConditionalAiAssistant() {
+  const [location] = useLocation();
+  if (location === "/promo") return null;
+  return <AiAssistant />;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -101,7 +107,7 @@ function App() {
               <TooltipProvider>
                 <Toaster />
                 <Router />
-                <AiAssistant />
+                <ConditionalAiAssistant />
               </TooltipProvider>
             </AuthProvider>
           </LocalCurrencyProvider>

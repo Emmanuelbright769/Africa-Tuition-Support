@@ -3,157 +3,112 @@ import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Logo } from "@/components/ui/Logo";
 import {
-  GraduationCap, Shield, Wallet, Trophy, CheckCircle2, ChevronDown, ChevronRight,
+  GraduationCap, Shield, Wallet, Trophy, CheckCircle2, ChevronDown,
   ArrowRight, Star, Users, TrendingUp, Banknote, Home, ShoppingBag,
   Plane, MessageCircle, X, Send, Bot, Phone, Sparkles, Clock,
-  BookOpen, BarChart3, DollarSign, Award, Zap, Globe, Lock,
+  BookOpen, Award, Zap, Globe, Lock,
   AlertCircle, Info, Check, ChevronUp, Menu, ExternalLink, Gift,
 } from "lucide-react";
 
-// ── Constants ──────────────────────────────────────────────────────────────
+// ── Constants ───────────────────────────────────────────────────────────────
 const WA_NUMBER = "447552647146";
 const WA_URL = `https://wa.me/${WA_NUMBER}?text=Hello%20TSIA%20Support%2C%20I%20have%20a%20question%20about%20the%20platform.`;
 
-// ── AI Knowledge Base ───────────────────────────────────────────────────────
+// ── AI Knowledge Base ────────────────────────────────────────────────────────
 interface KBEntry { patterns: RegExp[]; response: string }
 
 const KB: KBEntry[] = [
-  // Greetings
   {
     patterns: [/^(hi|hello|hey|good\s*(morning|afternoon|evening)|greet|yo|sup)\b/i],
-    response: `Hello! Welcome to TSIA — the Tuition Support Initiative for Africa. 👋\n\nI'm your dedicated TSIA guide. I can answer questions on:\n\n🎓 **Sponsorship & Academic Tiers** — how payouts are calculated\n💳 **Wallet Activation** — the $5.50 minimum deposit\n🔐 **Verification Process** — NIN, WAEC, portal fee, biometrics\n📅 **Semester Disbursements** — 1st & 2nd semester over 3 years\n🤝 **Affiliate Program** — earn by referring students\n📈 **Trade Market** — AI-powered investments\n🏠 **Tenancy Program** — housing made affordable\n💰 **Loans & Cashback** — borrow and earn rewards\n\nWhat would you like to know?`,
+    response: `Hello! Welcome to TSIA — the Tuition Support Initiative for Africa. 👋\n\nI'm your dedicated TSIA guide. I can answer questions on:\n\n🎓 **Sponsorship & Academic Tiers** — how merit-based payouts are assigned\n💳 **Wallet Activation** — the $5.50 minimum deposit\n🔐 **Verification Process** — NIN, WAEC, portal fee, biometrics\n📅 **Semester Disbursements** — 2 per year × 3 years = 6 total payouts\n🤝 **Affiliate Program** — earn by referring students\n📈 **Trade Market** — AI-powered investments\n🏠 **Tenancy Program** — housing made affordable\n💰 **Loans & Cashback** — borrow and earn rewards\n\nWhat would you like to know?`,
   },
-
-  // What is TSIA / About
   {
     patterns: [/what is tsia|about tsia|who.*tsia|tsia.*what|explain tsia|tell me about tsia|what.*platform|overview/i],
-    response: `**TSIA — Tuition Support Initiative for Africa** is a registered fintech platform (operated by **SMAKEMGGOLD Ltd**, RC: 1359954) designed to:\n\n🎓 Fund African students' tuition based on academic merit\n🤝 Empower affiliates with income & investment tools\n📈 Provide investment & financial services\n\n**Core Features:**\n• **Student Sponsorship** — earn $110–$230 per semester based on WAEC performance\n• **Digital Wallet** — secure USD wallet for all transactions\n• **Trade Market** — AI-powered daily returns on crypto/forex\n• **Co-Affiliate Trust Fund** — invest once, earn lifetime profit share\n• **Tenancy Programme** — affordable housing across Africa\n• **Quick Loans** — borrow against your verified earnings\n• **TS-Mart Online Stores** — buy & sell in the TSIA community\n• **Cashback System** — earn 10% back on every transaction\n\n👉 Visit **/signup** to create your free account and start your journey!`,
+    response: `**TSIA — Tuition Support Initiative for Africa** is a registered fintech platform (operated by **SMAKEMGGOLD Ltd**, RC: 1359954) designed to:\n\n🎓 Fund African students' tuition based on academic merit\n🤝 Empower affiliates with income & investment tools\n📈 Provide investment & financial services to all members\n\n**Core Features:**\n• **Student Sponsorship** — merit-based payouts per semester, determined by WAEC results\n• **Digital Wallet** — secure USD wallet for all transactions\n• **Trade Market** — AI-powered daily returns on crypto/forex\n• **Co-Affiliate Trust Fund** — invest once, earn lifetime profit share\n• **Tenancy Programme** — affordable housing across Africa\n• **Quick Loans** — borrow against your verified earnings\n• **TS-Mart Online Stores** — buy & sell in the TSIA community\n• **Cashback System** — earn 10% back on every transaction\n\n👉 Visit **/signup** to create your free account and start your journey!`,
   },
-
-  // Sign up / Registration
   {
     patterns: [/sign.?up|register|create.*account|how.*join|how.*start|get started|new.*account/i],
     response: `**Creating your TSIA account is completely FREE.** Here's how:\n\n**Step 1 — Go to /signup**\n• Choose your account type: Student, Business (Affiliate), or Both\n• Enter your name, email, and phone number\n• No password needed — TSIA uses secure OTP login\n\n**Step 2 — Activate your wallet**\n• Deposit a minimum of **$5.50** to activate your TSIA digital wallet\n• This unlocks all platform features\n• Fund via bank transfer, card, or crypto (USDT)\n\n**Step 3 — Complete verification**\n• NIN verification (National ID)\n• WAEC/NECO/GCE result entry\n• Document upload\n• $3 portal fee payment\n• Biometric face scan\n\nOnce admin approves (within 24–48 hours), your sponsorship payout is credited to your wallet!\n\n👉 **Start now at /signup** — it takes less than 10 minutes.`,
   },
-
-  // Wallet activation
   {
     patterns: [/wallet.*activ|activ.*wallet|5\.5|5\.50|minimum.*deposit|deposit.*minimum|fund.*wallet|wallet.*fund|how.*activate/i],
-    response: `**TSIA Wallet Activation — $5.50 Minimum Deposit**\n\nTo unlock all platform features, you must fund your TSIA digital wallet with at least **$5.50 (≈₦8,140)**.\n\n**Why $5.50?**\nThis small commitment confirms your serious intent to participate in the platform and unlocks:\n✅ Identity verification process\n✅ Portal fee payment capability\n✅ Bill payments (airtime, data, electricity, cable TV)\n✅ Peer-to-peer transfers\n✅ Trade market access\n✅ Loan eligibility\n✅ Cashback earnings (10% on every transaction)\n\n**How to fund your wallet:**\n1. Log in → go to Financial Hub\n2. Tap "Fund Account"\n3. Choose: **Bank Transfer** (Korapay/Squad), **Card Payment**, or **Crypto (USDT TRC20/BEP20)**\n4. Complete payment — balance reflects instantly\n\n💡 Payment rate: ₦1,480 per $1 | Display rate: ₦1,600 per $1`,
+    response: `**TSIA Wallet Activation — $5.50 Minimum Deposit**\n\nTo unlock all platform features, you must fund your TSIA digital wallet with at least **$5.50**.\n\n**Why $5.50?**\nThis small commitment confirms your serious intent to participate in the platform and unlocks:\n✅ Identity verification process\n✅ Portal fee payment capability\n✅ Bill payments (airtime, data, electricity, cable TV)\n✅ Peer-to-peer transfers\n✅ Trade market access\n✅ Loan eligibility\n✅ Cashback earnings (10% on every transaction)\n\n**How to fund your wallet:**\n1. Log in → go to Financial Hub\n2. Tap "Fund Account"\n3. Choose: **Bank Transfer** (Korapay/Squad), **Card Payment**, or **Crypto (USDT TRC20/BEP20)**\n4. Complete payment — balance reflects instantly`,
   },
-
-  // Verification process
   {
     patterns: [/verif|nin|biometric|face.*scan|kyc|identity|onboard|how.*verify|document.*upload|upload.*doc/i],
-    response: `**Full TSIA Verification Process — 4 Steps**\n\n**Step 1 — NIN Verification** (National ID)\n• Enter your 11-digit NIN\n• Verified instantly against the NIMC database\n• Must match your registered name\n\n**Step 2 — WAEC/NECO/GCE Entry**\n• Enter your exam reg number, year, and grades\n• Select at least 5 subjects (2 compulsory: Math + English + 3 electives)\n• Upload a government-issued ID document (JPEG, PNG, PDF — max 5MB)\n\n**Step 3 — Wallet KYC + Portal Fee**\n• Complete 3-step KYC: NIN confirm + BVN + GPS location\n• Pay the **one-time $3 portal fee** (≈₦4,440)\n• Wallet must be active ($5.50+ funded) before this step\n\n**Step 4 — Biometric Face Scan**\n• Quick selfie verification to confirm identity\n• Processed using AI facial recognition\n\n⏱️ Admin reviews submissions within **24–48 hours**\n✅ Approval triggers your sponsorship payout to your wallet`,
+    response: `**Full TSIA Verification Process — 4 Steps**\n\n**Step 1 — NIN Verification** (National ID)\n• Enter your 11-digit NIN\n• Verified instantly against the NIMC database\n• Must match your registered name\n\n**Step 2 — WAEC/NECO/GCE Entry**\n• Enter your exam reg number, year, and grades\n• Select at least 5 subjects (2 compulsory: Math + English + 3 electives)\n• Upload a government-issued ID document (JPEG, PNG, PDF — max 5MB)\n\n**Step 3 — Wallet KYC + Portal Fee**\n• Complete 3-step KYC: NIN confirm + BVN + GPS location\n• Pay the **one-time $3 portal fee**\n• Wallet must be active ($5.50+ funded) before this step\n\n**Step 4 — Biometric Face Scan**\n• Quick selfie verification to confirm identity\n• Processed using AI facial recognition\n\n⏱️ Admin reviews submissions within **24–48 hours**\n✅ Approval triggers your sponsorship payout to your wallet`,
   },
-
-  // WAEC / Academic performance / Grades
   {
     patterns: [/waec|neco|gce|academic|grade|score|subject|result|performance|apm|percentage|average|math|english|50.*percent|below.*50|50.*average/i],
-    response: `**TSIA Academic Performance Matrix (APM)**\n\nYour sponsorship tier is determined by your WAEC/NECO/GCE grade average using TSIA's algorithmic scoring system.\n\n**Grading Weights (A–F scale):**\n• A1 = 12 pts | B2 = 11.5 | B3 = 11\n• C4 = 10.5 | C5 = 10 | C6 = 9.5\n• D7 = 9 | E8 = 8.5 | **F9 = 8** *(minimum counted)*\n\n**Compulsory Subjects (required):** Mathematics + English Language\n**Elective Subjects:** Physics, Chemistry, Biology, Economics, etc.\n\n**⚠️ Minimum Requirement: 50% average**\nScoring below 50% means you do not qualify for any sponsorship tier. A score of exactly 50%+ unlocks the Silver tier.\n\n**Tier Thresholds:**\n🥈 **Silver** — 50–59% average\n🥇 **Gold** — 60–74% average\n🏆 **Platinum** — 75%+ average\n\nResults are submitted once and reviewed by our admin team. You cannot change your submitted grades.`,
+    response: `**TSIA Academic Performance Matrix (APM)**\n\nYour sponsorship tier is determined by your WAEC/NECO/GCE grade average using TSIA's proprietary algorithmic scoring system.\n\n**Compulsory Subjects (required):** Mathematics + English Language\n**Elective Subjects:** Physics, Chemistry, Biology, Economics, etc.\n\n**⚠️ Minimum Requirement: 50% average**\nScoring below 50% means you do not qualify for any sponsorship tier. A score of exactly 50%+ unlocks the Silver tier.\n\n**Tier Thresholds:**\n🥈 **Silver** — 50–59% average → competitive merit payout\n🥇 **Gold** — 60–74% average → higher merit payout\n🏆 **Platinum** — 75%+ average → highest merit payout\n\nResults are submitted once and reviewed by our admin team. You cannot change your submitted grades.\n\n💡 Sign up to see your exact payout after your academic performance is assessed.`,
   },
-
-  // Portal fee
   {
-    patterns: [/portal.*fee|fee.*portal|3.*dollar|\$3|portal.*cost|how much.*fee|one.*time.*fee|registration.*fee/i],
-    response: `**TSIA Portal Fee — $3 (One-Time Only)**\n\nThe portal fee is a **one-time, non-refundable** payment of **$3 (≈₦4,440)** that:\n\n✅ Activates your verification submission\n✅ Covers the cost of admin review & verification\n✅ Confirms your commitment to the programme\n✅ Cannot be paid without first activating your wallet ($5.50 minimum)\n\n**How to pay:**\n1. Complete your NIN + WAEC entry\n2. Go to "Pay Portal Fee" in your dashboard\n3. Fee is deducted from your TSIA wallet\n4. Biometric face scan is immediately unlocked\n\n⚠️ You must have at least **$3 in your wallet** at the time of payment.\n\nTotal minimum spend to fully verify: **$5.50 activation + $3 portal fee = $8.50**`,
+    patterns: [/portal.*fee|fee.*portal|\$3|portal.*cost|how much.*fee|one.*time.*fee|registration.*fee/i],
+    response: `**TSIA Portal Fee — $3 (One-Time Only)**\n\nThe portal fee is a **one-time, non-refundable** payment of **$3** that:\n\n✅ Activates your verification submission\n✅ Covers the cost of admin review & verification\n✅ Confirms your commitment to the programme\n✅ Cannot be paid without first activating your wallet ($5.50 minimum)\n\n**How to pay:**\n1. Complete your NIN + WAEC entry\n2. Go to "Pay Portal Fee" in your dashboard\n3. Fee is deducted from your TSIA wallet\n4. Biometric face scan is immediately unlocked\n\n⚠️ Total minimum to fully verify: **$5.50 wallet activation + $3 portal fee = $8.50**`,
   },
-
-  // Sponsorship tiers and payouts
   {
     patterns: [/tier|platinum|gold|silver|payout|sponsorship.*amount|how much.*earn|earn.*how much|disburs|reward|benefit/i],
-    response: `**TSIA Sponsorship Tiers & Payouts**\n\nOnce verified, you receive semester payouts based on your academic tier:\n\n🏆 **Platinum Tier** (75%+ average)\n→ **$225 – $230** per semester disbursement\n→ Student loan eligibility: up to **$200**\n\n🥇 **Gold Tier** (60–74% average)\n→ **$160 – $180** per semester disbursement\n→ Student loan eligibility: up to **$150**\n\n🥈 **Silver Tier** (50–59% average)\n→ **$110 – $130** per semester disbursement\n→ Student loan eligibility: up to **$100**\n\n**Payout Schedule:**\n• 1st Semester — Year 1\n• 2nd Semester — Year 1\n• 1st Semester — Year 2\n• 2nd Semester — Year 2\n• 1st Semester — Year 3\n• 2nd Semester — Year 3\n→ **Total: 6 disbursements over 3 academic years**\n\n💰 All payouts land directly in your TSIA digital wallet. Withdraw to any Nigerian bank account anytime.`,
+    response: `**TSIA Sponsorship Tiers**\n\nOnce verified, you receive semester payouts based on your WAEC academic tier:\n\n🏆 **Platinum Tier** (75%+ average)\n→ Highest merit-based payout per semester\n→ Highest student loan eligibility\n\n🥇 **Gold Tier** (60–74% average)\n→ Mid-level merit-based payout per semester\n→ Mid-level student loan eligibility\n\n🥈 **Silver Tier** (50–59% average)\n→ Entry-level merit-based payout per semester\n→ Entry-level student loan eligibility\n\n**Payout Schedule:**\n• 2 disbursements per academic year for 3 years\n• Total: **6 payouts** (1st Semester + 2nd Semester × Year 1, 2, 3)\n\n💰 All payouts go directly to your TSIA wallet. Sign up to see exact amounts after assessment.`,
   },
-
-  // Semester disbursements
   {
     patterns: [/semester|disbursement|1st.*semester|2nd.*semester|3.*year|6.*payout|yearly|annual.*payout|how many.*payout|when.*paid/i],
-    response: `**TSIA Disbursement Schedule — 6 Payouts Over 3 Years**\n\nOnce your verification is approved, you receive **2 disbursements per academic year** for **3 consecutive years**:\n\n📅 **Year 1**\n• 1st Semester Payout\n• 2nd Semester Payout\n\n📅 **Year 2**\n• 3rd Payout (Year 2, Semester 1)\n• 4th Payout (Year 2, Semester 2)\n\n📅 **Year 3**\n• 5th Payout (Year 3, Semester 1)\n• 6th Payout (Year 3, Semester 2) ← final disbursement\n\n**Payout amounts (per semester):**\n🏆 Platinum: $225–$230 × 6 = **up to $1,380 total**\n🥇 Gold: $160–$180 × 6 = **up to $1,080 total**\n🥈 Silver: $110–$130 × 6 = **up to $780 total**\n\nDisbursements are processed by the admin team and credited directly to your TSIA wallet.\n\n⚠️ Subsequent semesters require continued good academic standing.`,
+    response: `**TSIA Disbursement Schedule — 2 Semesters Per Year, 3 Years**\n\nOnce your verification is approved, you receive **2 disbursements per academic year** for **3 consecutive years** — that's **6 total payouts**:\n\n📅 **Year 1** — 1st Semester Payout + 2nd Semester Payout\n📅 **Year 2** — 1st Semester Payout + 2nd Semester Payout\n📅 **Year 3** — 1st Semester Payout + 2nd Semester Payout\n\n✅ Think of it like this: every academic year has 2 semesters. TSIA funds both, for 3 years running.\n\nDisbursements are processed by the admin team and credited directly to your TSIA wallet.\n\n⚠️ Continued good academic standing is required for subsequent semester disbursements.`,
   },
-
-  // Affiliate program
   {
     patterns: [/affiliate|refer|commission|referral.*code|my.*code|share.*code|earn.*refer|how.*affiliate/i],
-    response: `**TSIA Affiliate Programme — Earn by Referring Students**\n\n**How it works:**\n1. Sign up at **/affiliate-signup** (free)\n2. Get your unique referral code (e.g. TSIA-EMM0001)\n3. Share your referral link with students\n4. Earn commission when they verify and pay fees\n\n**Commission Structure:**\n• Earn on every wallet activation\n• Earn on subscription payments\n• Earn on trade activity\n• Lifetime referral tracking\n\n**Affiliate Dashboard includes:**\n📈 Global Trade Market (AI bot, 2% daily ROI)\n💎 Co-Affiliate Trust Fund (lifetime profit sharing)\n💼 Business Loans (up to $5,000)\n🏠 Tenancy Programme management\n🛍️ TS-Mart Online Stores marketplace\n✈️ Glide Africa (hotel, car, flight bookings)\n💬 Community Forum & real-time chat\n\n👉 Go to **/affiliate-signup** to join!`,
+    response: `**TSIA Affiliate Programme — Earn by Referring Students**\n\n**How it works:**\n1. Sign up at **/affiliate-signup** (free)\n2. Get your unique referral code (e.g. TSIA-EMM0001)\n3. Share your referral link with students\n4. Earn commission when they verify and pay fees\n\n**Affiliate Dashboard includes:**\n📈 Global Trade Market (AI bot, 2% daily ROI)\n💎 Co-Affiliate Trust Fund (lifetime profit sharing)\n💼 Business Loans\n🏠 Tenancy Programme management\n🛍️ TS-Mart Online Stores marketplace\n✈️ Glide Africa (hotel, car, flight bookings)\n💬 Community Forum & real-time chat\n\n👉 Go to **/affiliate-signup** to join!`,
   },
-
-  // Student loans
   {
     patterns: [/student.*loan|loan.*student|borrow.*student|education.*loan|how.*borrow/i],
-    response: `**TSIA Student Loan Programme**\n\n✅ Available to all verified students with a QCE SwiftVault contribution\n\n**Loan Limits by Tier:**\n🏆 Platinum → up to **$200**\n🥇 Gold → up to **$150**\n🥈 Silver → up to **$100**\n\n**Terms:**\n• Interest rate: **10% per annum** (flat)\n• Repayment options: 6, 12, or 18 months\n• Monthly payment auto-deducted from wallet\n• No collateral — identity-based\n• One active loan at a time\n\n**How to apply:**\n1. Log in to your student dashboard\n2. Open Financial Hub → Finance tab\n3. Click "Apply for Loan"\n4. Select amount + term → submit\n5. Admin approves within 24–48 hours\n\n💡 Having a QCE SwiftVault contribution (any amount) unlocks loan eligibility automatically.`,
+    response: `**TSIA Student Loan Programme**\n\n✅ Available to all verified students with a QCE SwiftVault contribution\n\n**Loan limits scale with your sponsorship tier** — higher tier = higher loan eligibility.\n\n**Terms:**\n• Interest rate: **10% per annum** (flat)\n• Repayment options: 6, 12, or 18 months\n• Monthly payment auto-deducted from wallet\n• No collateral — identity-based\n• One active loan at a time\n\n**How to apply:**\n1. Log in to your student dashboard\n2. Open Financial Hub → Finance tab\n3. Click "Apply for Loan"\n4. Select amount + term → submit\n5. Admin approves within 24–48 hours\n\n💡 Making your first QCE SwiftVault contribution unlocks loan eligibility automatically.`,
   },
-
-  // Trade market
   {
     patterns: [/trade|invest|roi|return|bot|daily.*profit|profit.*daily|crypto|usdt|trc20|bep20|trade.*market|ai.*bot/i],
-    response: `**TSIA Global Trade Market — AI-Powered Investing**\n\n📈 **Target ROI:** 2% daily profit via AI trading bot\n⏰ **BOT Window:** 1PM – 1AM GMT on working days\n💼 **Deposit Methods:** USDT via TRC20 (TRON) or BEP20 (BNB Chain)\n\n**Fee Structure on Deposit:**\n• 75% → your trade wallet\n• 20% → strategic reserve fund\n• 5% → affiliate commission pool\n\n**Withdrawal Fees:**\n• Exchange withdrawal: 5% + 5% affiliate pool\n• Bank withdrawal: 8% + 5% affiliate pool\n\n**Minimum:** $10 deposit | $5 withdrawal\n**Broker Partners:** Binance, Exness, OctaFX, Bybit, XM Group, eToro, IQ Option\n\n🔒 20% of all deposits go into a **Strategic Reserve Fund** — a safety net protecting all investors.\n\nAccess via **Affiliate Dashboard → Trade Market**`,
+    response: `**TSIA Global Trade Market — AI-Powered Investing**\n\n📈 **Target ROI:** 2% daily profit via AI trading bot\n⏰ **BOT Window:** 1PM – 1AM GMT on working days\n💼 **Deposit Methods:** USDT via TRC20 (TRON) or BEP20 (BNB Chain)\n\n**Fee Structure on Deposit:**\n• 75% → your trade wallet\n• 20% → strategic reserve fund\n• 5% → affiliate commission pool\n\n**Withdrawal Fees:**\n• Exchange withdrawal: 5% + 5% affiliate pool\n• Bank withdrawal: 8% + 5% affiliate pool\n\n**Minimum:** $10 deposit | $5 withdrawal\n**Broker Partners:** Binance, Exness, OctaFX, Bybit, XM Group, eToro, IQ Option\n\n🔒 20% of all deposits go into a **Strategic Reserve Fund** protecting all investors.\n\nAccess via **Affiliate Dashboard → Trade Market**`,
   },
-
-  // Co-affiliate trust fund
   {
     patterns: [/co.?affiliate|trust.*fund|initiator|lifetime.*profit|invest.*lifetime|starter|growth|elite|fund.*invest/i],
-    response: `**Co-Affiliate / Initiator Trust Fund — Lifetime Investment**\n\nInvest once. Earn forever.\n\n💎 **Starter** — $100 → lifetime profit participation\n💎 **Growth** — $300 → larger lifetime profit share\n💎 **Elite** — $500–$10,000 → maximum custom share %\n\n**Programme Details:**\n🎯 Target: 1,000,000 co-affiliate investors worldwide\n📈 Every 150,000 new investors = **+20% price increase** on subscriptions\n💰 **5% of all TSIA platform profits** shared proportionally — forever\n✅ One-time payment, no renewal, no expiry\n\n**Elite Profit Share Formula:**\n*Your Investment ÷ Total Elite Pool × 5% Annual TSIA Profits*\n\nEarly investors get the best prices before price milestones kick in!\n\nAccess: **Affiliate Dashboard → Co-Affiliate Fund**`,
+    response: `**Co-Affiliate / Initiator Trust Fund — Lifetime Investment**\n\nInvest once. Earn forever.\n\n💎 **Starter** — invest a base amount → lifetime profit participation\n💎 **Growth** — invest more → higher lifetime profit share\n💎 **Elite** — invest at premium → maximum custom share %\n\n**Programme Details:**\n🎯 Target: 1,000,000 co-affiliate investors worldwide\n📈 Every 150,000 new investors = **+20% price increase** on subscriptions\n💰 **5% of all TSIA platform profits** shared proportionally — forever\n✅ One-time payment, no renewal, no expiry\n\nEarly investors get the best prices before price milestones kick in!\n\nAccess: **Affiliate Dashboard → Co-Affiliate Fund**`,
   },
-
-  // Tenancy
   {
     patterns: [/tenancy|landlord|rent|house|property|tenant|accommodation|housing|flat|apartment|monthly.*rent/i],
-    response: `**TSIA Tenancy Programme — Affordable Housing Across Africa**\n\n🏠 **For Landlords:**\n• List your property for a 3–10 year TSIA lease\n• Receive a **lump sum upfront** (88% of total rent value)\n• No more chasing tenants for annual payments\n• TSIA handles the tenants and collections\n\n🏠 **For Tenants:**\n• Browse properties across African cities by budget\n• Pay in **monthly installments** at just 5% annual interest\n• Example: Instead of ₦1,000,000 upfront → pay ~₦87,500/month\n• No large lump sums, no deposit stress\n\n**How to Access:**\n→ Visit **/tenancy** from the main menu\n→ Affiliates can manage tenancy from their dashboard\n\n📞 Contact the TSIA team to list your property or browse available units.`,
+    response: `**TSIA Tenancy Programme — Affordable Housing Across Africa**\n\n🏠 **For Landlords:**\n• List your property for a 3–10 year TSIA lease\n• Receive a **lump sum upfront** (88% of total rent value)\n• No more chasing tenants for annual payments\n• TSIA handles the tenants and collections\n\n🏠 **For Tenants:**\n• Browse properties across African cities by budget\n• Pay in **monthly installments** at just 5% annual interest\n• No large lump sums, no deposit stress\n\n**How to Access:**\n→ Visit **/tenancy** from the main menu\n→ Affiliates can manage tenancy from their dashboard`,
   },
-
-  // Cashback
   {
     patterns: [/cashback|cash.*back|10.*percent.*back|earn.*back|reward.*transaction|reward.*spend/i],
-    response: `**TSIA Cashback System — 10% Back on Every Transaction**\n\nEvery time you spend on the platform, you earn **10% cashback automatically!**\n\n**Cashback applies to:**\n💸 Airtime purchases\n📶 Data bundle purchases\n⚡ Electricity bill payments\n📺 Cable TV subscriptions\n🎮 Betting wallet top-ups\n📤 Peer-to-peer wallet transfers\n\n**How it works:**\n1. Make any qualifying transaction\n2. 10% is instantly added to your **Cashback Wallet**\n3. You receive an in-app notification\n4. Withdraw to your personal wallet anytime — no minimum\n\n**Where to find it:**\nFinancial Hub → Rewards tab → Cashback Balance\n\n💡 The more you use TSIA services, the more cashback you accumulate!`,
+    response: `**TSIA Cashback System — 10% Back on Every Transaction**\n\nEvery time you spend on the platform, you earn **10% cashback automatically!**\n\n**Cashback applies to:**\n💸 Airtime purchases\n📶 Data bundle purchases\n⚡ Electricity bill payments\n📺 Cable TV subscriptions\n🎮 Betting wallet top-ups\n📤 Peer-to-peer wallet transfers\n\n**How it works:**\n1. Make any qualifying transaction\n2. 10% is instantly added to your **Cashback Wallet**\n3. Withdraw to your personal wallet anytime — no minimum\n\n**Where to find it:**\nFinancial Hub → Rewards tab → Cashback Balance`,
   },
-
-  // Fees and costs
   {
     patterns: [/fee|cost|price|charge|all.*fee|fee.*list|total.*cost|how much.*total|what.*charge/i],
-    response: `**Complete TSIA Fee Breakdown — No Hidden Charges**\n\n✅ **Account Registration:** FREE\n💳 **Wallet Activation:** $5.50 minimum deposit\n🔐 **Portal Verification Fee:** $3 one-time (≈₦4,440)\n\n**Withdrawal Fees:**\n• Bank withdrawal: 7.5% VAT (Nigerian law)\n• Trade market exchange: 5% + 5% affiliate pool\n• Trade market bank: 8% + 5% affiliate pool\n\n**Service Fees:**\n• Peer-to-peer transfers: 8% platform fee\n• TS-Mart Online Stores (sellers): 8% commission per sale\n• Glide Africa bookings: 10% commission\n\n**Loan Interest:**\n• Student loans: 10% p.a. (flat)\n• Business loans: 30% p.a. (flat)\n\n**Savings:**\n• Savings goals: up to 20% p.a. interest\n• Cashback: 10% back on all transactions\n\n💬 All fees shown transparently before confirming any action.`,
+    response: `**Complete TSIA Fee Breakdown — No Hidden Charges**\n\n✅ **Account Registration:** FREE\n💳 **Wallet Activation:** $5.50 minimum deposit\n🔐 **Portal Verification Fee:** $3 one-time\n\n**Withdrawal Fees:**\n• Bank withdrawal: 7.5% VAT (Nigerian law)\n• Trade market exchange: 5% + 5% affiliate pool\n• Trade market bank: 8% + 5% affiliate pool\n\n**Service Fees:**\n• Peer-to-peer transfers: 8% platform fee\n• TS-Mart Online Stores (sellers): 8% commission per sale\n• Glide Africa bookings: 10% commission\n\n**Loan Interest:**\n• Student loans: 10% p.a. (flat)\n• Business loans: 30% p.a. (flat)\n\n**Savings:**\n• Savings goals: up to 20% p.a. interest\n• Cashback: 10% back on all transactions`,
   },
-
-  // Support / Contact / WhatsApp / Human
   {
     patterns: [/contact|support|help.*team|human|agent|speak|whatsapp|call|email.*team|reach.*team|talk.*to|get.*help/i],
-    response: `**Reach the TSIA Support Team**\n\nI'm happy to escalate this to our human team!\n\n📱 **WhatsApp / Call** — Click the button below to open WhatsApp directly\n📞 **Number:** +44 0791 639 5474\n⏰ **Hours:** Monday–Friday, 9am–6pm GMT\n\n📧 **Email:** support@tsia.africa\n→ Response within 24 hours\n\n📋 **Contact Form:** Visit **/contact** to send a formal inquiry\n\nOur team typically responds within **2–4 hours** on business days. For urgent verification issues, WhatsApp is fastest! 🚀`,
+    response: `**Reach the TSIA Support Team**\n\nI'm happy to escalate this to our human team!\n\n📱 **WhatsApp / Call** — Click the button below to open WhatsApp directly\n📞 **Number:** +4407916395474\n⏰ **Hours:** Monday–Friday, 9am–6pm GMT\n\n📧 **Email:** support@tsia.africa\n→ Response within 24 hours\n\n📋 **Contact Form:** Visit **/contact** to send a formal inquiry\n\nOur team typically responds within **2–4 hours** on business days. For urgent verification issues, WhatsApp is fastest! 🚀`,
   },
-
-  // Login / OTP / Account
   {
     patterns: [/login|sign.*in|otp|password|forgot|can'?t.*log|not.*log|session|logout|access.*account/i],
-    response: `**TSIA Login — Passwordless & Secure**\n\nTSIA uses **OTP (One-Time Password)** login — no passwords to remember!\n\n**How to log in:**\n1. Visit **/login**\n2. Enter your registered email address\n3. Check your inbox for a **6-digit code** (valid 10 minutes)\n4. Enter the code — you're in!\n\n**Security Features:**\n🔒 Auto-logout after 15 minutes of inactivity\n🔄 One active session per device\n📧 OTP sent to verified email only\n\n**Common Issues:**\n• Didn't get OTP? Check your spam/junk folder\n• Wait 2 minutes, then request a new code\n• Still stuck? WhatsApp our support team (button below)\n\n**Dual Account:**\nOne email can hold both a **Student + Affiliate account** — switch roles seamlessly from your dashboard header.`,
+    response: `**TSIA Login — Passwordless & Secure**\n\nTSIA uses **OTP (One-Time Password)** login — no passwords to remember!\n\n**How to log in:**\n1. Visit **/login**\n2. Enter your registered email address\n3. Check your inbox for a **6-digit code** (valid 10 minutes)\n4. Enter the code — you're in!\n\n**Security Features:**\n🔒 Auto-logout after 15 minutes of inactivity\n🔄 One active session per device\n📧 OTP sent to verified email only\n\n**Common Issues:**\n• Didn't get OTP? Check your spam/junk folder\n• Wait 2 minutes, then request a new code\n• Still stuck? WhatsApp our support team (button below)\n\n**Dual Account:** One email can hold both a **Student + Affiliate account** — switch roles from your dashboard header.`,
   },
-
-  // Eligibility / who can join
   {
     patterns: [/eligible|who.*can|can.*join|qualif|requirement|criteria|who.*apply|apply.*who|nationality|country/i],
     response: `**Who Can Join TSIA?**\n\n✅ **Students eligible for sponsorship:**\n• African students (Nigeria primary market)\n• Have sat WAEC, NECO, or GCE examinations\n• Must score **50% or above** on the APM scoring matrix\n• Must be able to provide a valid NIN (National ID Number)\n\n✅ **Affiliates can join from anywhere:**\n• No geographic restriction for the affiliate programme\n• Must be 18+ years old\n• Requires a valid email and phone number\n\n**Disqualifying factors:**\n❌ WAEC average below 50%\n❌ Fraudulent document submissions\n❌ Using another person's NIN or identity\n❌ Multiple accounts under the same identity\n\n💡 Even students who don't qualify for sponsorship can still use the wallet, trade market, marketplace, tenancy, and loans!`,
   },
-
-  // Savings
   {
     patterns: [/saving|savings.*goal|save|savings.*plan|qce|swift.*vault|interest.*saving/i],
-    response: `**TSIA Savings Features**\n\n**1. Savings Goals (Financial Hub)**\n• Create custom savings goals (e.g. "School Fees", "New Phone")\n• Set a target amount and optional target date\n• Deposit from your wallet, withdraw anytime\n• Earn up to **20% p.a. interest** on locked goals\n\n**2. QCE SwiftVault (Students)**\n• A 90-day locked savings pot\n• Making your first contribution instantly unlocks **student loan eligibility**\n• Auto-matures after 90 days — 24-hour withdrawal window opens\n• Eligibility grows with consistent saving\n\n**Benefits of Saving on TSIA:**\n✅ Up to 20% p.a. savings interest\n✅ Unlocks loan eligibility\n✅ Earns 10% cashback on deposits\n✅ Safe, wallet-based — no bank intermediary\n\nAccess: **Financial Hub → Finance tab → Savings Goals**`,
+    response: `**TSIA Savings Features**\n\n**1. Savings Goals (Financial Hub)**\n• Create custom savings goals\n• Set a target amount and optional target date\n• Earn up to **20% p.a. interest** on locked goals\n\n**2. QCE SwiftVault (Students)**\n• A 90-day locked savings pot\n• Your first contribution instantly unlocks **student loan eligibility**\n• Auto-matures after 90 days — 24-hour withdrawal window opens\n\nAccess: **Financial Hub → Finance tab → Savings Goals**`,
   },
-
-  // Marketplace / TS-Mart
   {
     patterns: [/market.*place|ts.?mart|shop|buy|sell|product|order|ecommerce|e.?commerce|seller/i],
-    response: `**TS-Mart Online Stores — TSIA's Built-in Marketplace**\n\n🛍️ **Buyers:**\n• Browse thousands of products from TSIA community sellers\n• Filter by category, price, condition, and location\n• Pay directly from your TSIA wallet (USD/NGN displayed)\n• Rate and review sellers after purchase\n• Real-time chat with sellers before buying\n\n📦 **Sellers (Affiliates only):**\n• List unlimited products for sale\n• TSIA retains **8% commission** per completed sale\n• You receive **92%** — credited directly to your wallet\n• Full order management and tracking from dashboard\n\n**Product Categories:**\nElectronics, Fashion, Home & Garden, Books, Services, and more\n\n**Voice Calls:** Chat with sellers using built-in WebRTC voice calling\n\nAccess: **Dashboard → TS-Mart Online Stores**`,
+    response: `**TS-Mart Online Stores — TSIA's Built-in Marketplace**\n\n🛍️ **Buyers:**\n• Browse products from TSIA community sellers\n• Filter by category, price, condition, and location\n• Pay directly from your TSIA wallet\n• Rate and review sellers after purchase\n• Real-time chat with sellers before buying\n\n📦 **Sellers (Affiliates only):**\n• List unlimited products for sale\n• TSIA retains **8% commission** per completed sale\n• You receive **92%** — credited directly to your wallet\n• Full order management from dashboard\n\nAccess: **Dashboard → TS-Mart Online Stores**`,
   },
-
-  // Glide Africa / Tours / Travel
   {
     patterns: [/glide|tour|hotel|car.*rent|flight|travel|booking|transport|airport|ride/i],
-    response: `**Glide Africa — Travel & Mobility Services**\n\n✈️ **Flight Booking**\n• Search and book flights by route and passenger count\n• Pay from your TSIA wallet\n\n🏨 **Hotel Booking**\n• Browse hotels across African cities\n• Instant booking, pay from wallet\n\n🚗 **Car Rental**\n• Self-drive or chauffeured options\n• Daily or weekly rates\n\n📦 **Dispatch & E-Taxi** *(Coming soon!)*\n\n**All Glide Africa bookings:**\n• Paid directly from your TSIA personal wallet\n• TSIA retains 10% service commission\n• Remaining 90% forwarded to service providers\n• Receipts sent to your email\n\nAccess: **Dashboard → Glide Africa**`,
+    response: `**Glide Africa — Travel & Mobility Services**\n\n✈️ **Flight Booking** — book by route and passenger count\n🏨 **Hotel Booking** — browse hotels across African cities\n🚗 **Car Rental** — self-drive or chauffeured options\n📦 **Dispatch & E-Taxi** *(Coming soon!)*\n\n**All bookings:** paid from your TSIA wallet | TSIA retains 10% service commission\n\nAccess: **Dashboard → Glide Africa**`,
   },
-
-  // Security / Safe?
   {
     patterns: [/safe|secure|legit|scam|fraud|trust|real|registered|RC|company|SMAKEMGGOLD/i],
-    response: `**Is TSIA Legitimate & Safe?**\n\n✅ **Yes — TSIA is a registered fintech company.**\n\n**Company Details:**\n• Full name: **SMAKEMGGOLD Ltd**\n• Registration Number: **RC 1359954**\n• Category: Fintech / EdTech / Financial Services\n\n**Security Measures:**\n🔐 OTP-based passwordless authentication\n🆔 NIN verification via NIMC database\n😊 Biometric face scan (liveness detection)\n🔒 Encrypted sessions with auto-logout\n📜 Terms & Conditions binding on all users\n🏦 Payments via Korapay & Squad (CBN-licensed gateways)\n\n**Financial Security:**\n• 20% of all trade deposits held in a Strategic Reserve Fund\n• All wallet transactions are recorded and auditable\n• Admin oversight on all verification and disbursement decisions\n\n💬 Still have concerns? WhatsApp our team directly (button below) — we're happy to answer any question!`,
+    response: `**Is TSIA Legitimate & Safe?**\n\n✅ **Yes — TSIA is a registered fintech company.**\n\n**Company Details:**\n• Full name: **SMAKEMGGOLD Ltd**\n• Registration Number: **RC 1359954**\n• Category: Fintech / EdTech / Financial Services\n\n**Security Measures:**\n🔐 OTP-based passwordless authentication\n🆔 NIN verification via NIMC database\n😊 Biometric face scan (liveness detection)\n🔒 Encrypted sessions with auto-logout\n🏦 Payments via Korapay & Squad (CBN-licensed gateways)\n\n**Financial Security:**\n• 20% of all trade deposits held in a Strategic Reserve Fund\n• Admin oversight on all verification and disbursement decisions\n\n💬 Still have concerns? WhatsApp our team directly (button below)!`,
   },
 ];
 
@@ -162,7 +117,7 @@ function getBotResponse(msg: string): string {
   for (const entry of KB) {
     if (entry.patterns.some(p => p.test(lower))) return entry.response;
   }
-  return `I understand you're asking about **"${msg}"**.\n\nI may not have a specific answer for that, but here's what I cover best:\n\n• **Sign-up & account creation** — type "how do I sign up"\n• **Wallet activation** — type "wallet activation"\n• **Verification process** — type "how do I verify"\n• **WAEC grades & tiers** — type "sponsorship tiers"\n• **Semester payouts** — type "how many disbursements"\n• **Affiliate earnings** — type "affiliate program"\n• **Loans** — type "student loan"\n• **Security** — type "is TSIA safe"\n\n📱 For a specific or complex question, click **"Chat on WhatsApp"** below and our team will assist you directly — usually within 2 hours!`;
+  return `I understand you're asking about **"${msg}"**.\n\nI may not have a specific answer for that, but here's what I cover best:\n\n• **Sign-up & account creation** — type "how do I sign up"\n• **Wallet activation** — type "wallet activation"\n• **Verification process** — type "how do I verify"\n• **WAEC grades & tiers** — type "sponsorship tiers"\n• **Semester payouts** — type "how many disbursements"\n• **Affiliate earnings** — type "affiliate program"\n• **Loans** — type "student loan"\n• **Security** — type "is TSIA safe"\n\n📱 For a specific or complex question, click **"Chat on WhatsApp"** below — our team typically responds within 2 hours!`;
 }
 
 function renderMarkdown(text: string) {
@@ -178,14 +133,14 @@ function renderMarkdown(text: string) {
   });
 }
 
-// ── Inline AI Chat ──────────────────────────────────────────────────────────
+// ── Full-Screen AI Chat ──────────────────────────────────────────────────────
 interface Msg { id: string; role: "user" | "ai"; text: string }
 
 function PromoAiChat() {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([{
     id: "init", role: "ai",
-    text: `Hello! 👋 I'm TSIA's AI guide.\n\nAsk me anything about the platform — from sign-up to disbursements, loans, trade market, and more.\n\nOr click **"Chat on WhatsApp"** below to speak with a human agent directly.`,
+    text: `Hello! 👋 I'm TSIA's AI Guide.\n\nAsk me anything about the platform — from sign-up to semester payouts, loans, trade market, and more.\n\nOr tap **"Chat on WhatsApp"** above to speak with a human agent directly.`,
   }]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
@@ -193,21 +148,36 @@ function PromoAiChat() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, typing]);
-  useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 200); }, [open]);
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+      setTimeout(() => inputRef.current?.focus(), 300);
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
 
   const send = useCallback(() => {
     const text = input.trim();
     if (!text) return;
-    const userMsg: Msg = { id: Date.now() + "u", role: "user", text };
-    setMsgs(prev => [...prev, userMsg]);
+    setMsgs(prev => [...prev, { id: Date.now() + "u", role: "user", text }]);
     setInput("");
     setTyping(true);
     setTimeout(() => {
-      const reply = getBotResponse(text);
-      setMsgs(prev => [...prev, { id: Date.now() + "a", role: "ai", text: reply }]);
+      setMsgs(prev => [...prev, { id: Date.now() + "a", role: "ai", text: getBotResponse(text) }]);
       setTyping(false);
-    }, 900 + Math.random() * 600);
+    }, 800 + Math.random() * 500);
   }, [input]);
+
+  const sendQuick = (q: string) => {
+    setMsgs(prev => [...prev, { id: Date.now() + "u", role: "user", text: q }]);
+    setTyping(true);
+    setTimeout(() => {
+      setMsgs(prev => [...prev, { id: Date.now() + "a", role: "ai", text: getBotResponse(q) }]);
+      setTyping(false);
+    }, 800);
+  };
 
   const quickQ = [
     "How do I sign up?",
@@ -216,65 +186,88 @@ function PromoAiChat() {
     "How many disbursements?",
     "Is TSIA safe?",
     "Affiliate programme",
+    "What is the portal fee?",
+    "How does the trade market work?",
   ];
 
   return (
     <>
       {/* Floating button */}
-      <button
+      <motion.button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-gradient-to-br from-tsia-green to-green-700 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform"
+        className="fixed bottom-6 right-6 z-40 w-14 h-14 bg-gradient-to-br from-tsia-green to-green-700 text-white rounded-full shadow-2xl flex items-center justify-center"
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
         aria-label="Open AI Assistant"
         data-testid="btn-open-promo-chat"
       >
         <MessageCircle className="w-6 h-6" />
-        <span className="absolute -top-1 -right-1 w-4 h-4 bg-tsia-gold rounded-full flex items-center justify-center text-[8px] font-black text-white">AI</span>
-      </button>
+        <span className="absolute -top-1 -right-1 w-5 h-5 bg-tsia-gold rounded-full flex items-center justify-center text-[9px] font-black text-white">AI</span>
+      </motion.button>
 
-      {/* Chat panel */}
+      {/* Full-screen overlay */}
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: 40, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 40, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 280, damping: 26 }}
-            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 sm:w-[380px] z-50 bg-card border border-border rounded-3xl shadow-2xl flex flex-col overflow-hidden"
-            style={{ maxHeight: "min(600px, 80vh)" }}
+            initial={{ opacity: 0, y: "100%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: "100%" }}
+            transition={{ type: "spring", stiffness: 320, damping: 32 }}
+            className="fixed inset-0 z-50 bg-background flex flex-col"
           >
             {/* Header */}
-            <div className="bg-gradient-to-r from-tsia-green to-green-700 p-4 flex items-center gap-3">
-              <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center shrink-0">
-                <Bot className="w-5 h-5 text-white" />
+            <div className="bg-gradient-to-r from-tsia-green to-green-800 px-4 py-3 flex items-center gap-3 shrink-0">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+                <Bot className="w-6 h-6 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white font-black text-sm">TSIA AI Guide</p>
-                <p className="text-green-100 text-xs">Ask me anything about TSIA</p>
+                <p className="text-white font-black text-base leading-tight">TSIA AI Guide</p>
+                <p className="text-green-100 text-xs flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 bg-green-300 rounded-full animate-pulse inline-block" />
+                  Online — ask me anything about TSIA
+                </p>
               </div>
-              <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white transition-colors">
+              <a
+                href={WA_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-bold px-3 py-2 rounded-xl transition-colors shrink-0"
+                data-testid="link-whatsapp-header"
+              >
+                <Phone className="w-3.5 h-3.5" /> WhatsApp
+              </a>
+              <button
+                onClick={() => setOpen(false)}
+                className="w-9 h-9 bg-white/15 hover:bg-white/25 rounded-xl flex items-center justify-center text-white transition-colors shrink-0"
+                data-testid="btn-close-promo-chat"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/20">
+            <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4 bg-muted/10">
               {msgs.map(m => (
-                <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${m.role === "ai" ? "bg-tsia-green/20" : "bg-tsia-gold/20"}`}>
-                    {m.role === "ai" ? <Bot className="w-3.5 h-3.5 text-tsia-green" /> : <span className="text-[10px] font-black text-tsia-gold">You</span>}
+                <div key={m.id} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${m.role === "ai" ? "bg-tsia-green/15 border border-tsia-green/20" : "bg-tsia-gold/15 border border-tsia-gold/20"}`}>
+                    {m.role === "ai"
+                      ? <Bot className="w-4 h-4 text-tsia-green" />
+                      : <span className="text-[10px] font-black text-tsia-gold">You</span>}
                   </div>
-                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${m.role === "ai" ? "bg-card border border-border text-foreground" : "bg-tsia-green text-white"}`}>
+                  <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${m.role === "ai" ? "bg-card border border-border text-foreground" : "bg-tsia-green text-white"}`}>
                     {m.role === "ai" ? renderMarkdown(m.text) : m.text}
                   </div>
                 </div>
               ))}
               {typing && (
-                <div className="flex gap-2">
-                  <div className="w-7 h-7 rounded-full bg-tsia-green/20 flex items-center justify-center shrink-0">
-                    <Bot className="w-3.5 h-3.5 text-tsia-green" />
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-tsia-green/15 border border-tsia-green/20 flex items-center justify-center shrink-0">
+                    <Bot className="w-4 h-4 text-tsia-green" />
                   </div>
-                  <div className="bg-card border border-border rounded-2xl px-4 py-3 flex gap-1 items-center">
-                    {[0,1,2].map(i => <div key={i} className="w-1.5 h-1.5 bg-tsia-green/60 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />)}
+                  <div className="bg-card border border-border rounded-2xl px-5 py-4 flex gap-1.5 items-center shadow-sm">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className="w-2 h-2 bg-tsia-green/50 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.18}s` }} />
+                    ))}
                   </div>
                 </div>
               )}
@@ -282,48 +275,51 @@ function PromoAiChat() {
             </div>
 
             {/* Quick questions */}
-            <div className="px-3 pt-2 flex gap-1.5 flex-wrap border-t border-border bg-card">
+            <div className="px-4 pt-3 pb-2 flex gap-2 flex-wrap border-t border-border bg-background">
               {quickQ.map(q => (
-                <button key={q} onClick={() => { setInput(q); setTimeout(() => { setInput(""); const text = q; const userMsg: Msg = { id: Date.now() + "u", role: "user", text }; setMsgs(prev => [...prev, userMsg]); setTyping(true); setTimeout(() => { setMsgs(prev => [...prev, { id: Date.now() + "a", role: "ai", text: getBotResponse(text) }]); setTyping(false); }, 900); }, 50); }}
-                  className="text-[10px] font-semibold bg-muted px-2 py-1 rounded-full text-muted-foreground hover:bg-tsia-green/10 hover:text-tsia-green transition-colors border border-transparent hover:border-tsia-green/20 mb-1.5"
+                <button
+                  key={q}
+                  onClick={() => sendQuick(q)}
+                  disabled={typing}
+                  className="text-xs font-semibold bg-muted border border-border px-3 py-1.5 rounded-full text-muted-foreground hover:bg-tsia-green/10 hover:text-tsia-green hover:border-tsia-green/30 transition-colors disabled:opacity-40"
                 >
                   {q}
                 </button>
               ))}
             </div>
 
-            {/* Input */}
-            <div className="p-3 bg-card border-t border-border flex gap-2">
+            {/* Input row */}
+            <div className="px-4 py-3 bg-background border-t border-border flex gap-3 items-center">
               <input
                 ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
                 placeholder="Ask anything about TSIA…"
-                className="flex-1 bg-muted rounded-xl px-3.5 py-2.5 text-sm outline-none border border-border focus:border-tsia-green/50 transition-colors placeholder:text-muted-foreground"
+                className="flex-1 bg-muted rounded-2xl px-4 py-3 text-sm outline-none border border-border focus:border-tsia-green/50 transition-colors placeholder:text-muted-foreground"
                 data-testid="input-promo-chat"
               />
               <button
                 onClick={send}
                 disabled={!input.trim() || typing}
-                className="w-9 h-9 bg-tsia-green text-white rounded-xl flex items-center justify-center hover:bg-tsia-green/90 disabled:opacity-40 transition-all shrink-0"
+                className="w-12 h-12 bg-tsia-green text-white rounded-2xl flex items-center justify-center hover:bg-tsia-green/90 disabled:opacity-40 transition-all shrink-0"
                 data-testid="btn-send-promo-chat"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-5 h-5" />
               </button>
             </div>
 
-            {/* WhatsApp CTA */}
+            {/* WhatsApp footer banner */}
             <a
               href={WA_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-colors"
-              data-testid="link-whatsapp-promo"
+              className="flex items-center justify-center gap-2 py-3.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors shrink-0"
+              data-testid="link-whatsapp-promo-footer"
             >
-              <Phone className="w-3.5 h-3.5" />
-              Chat with TSIA Team on WhatsApp
-              <ExternalLink className="w-3 h-3 opacity-70" />
+              <Phone className="w-4 h-4" />
+              Prefer a person? Chat with TSIA Team on WhatsApp
+              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
             </a>
           </motion.div>
         )}
@@ -332,7 +328,7 @@ function PromoAiChat() {
   );
 }
 
-// ── Step card ───────────────────────────────────────────────────────────────
+// ── Step card ────────────────────────────────────────────────────────────────
 function StepCard({ step, icon: Icon, title, desc, color, detail }: {
   step: number; icon: any; title: string; desc: string; color: string; detail?: string;
 }) {
@@ -345,9 +341,8 @@ function StepCard({ step, icon: Icon, title, desc, color, detail }: {
       transition={{ delay: step * 0.08 }}
       className="relative"
     >
-      <div className={`absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b ${color.replace("bg-", "from-")} to-transparent last:hidden`} style={{ top: "3.5rem" }} />
       <div className="bg-card border border-border rounded-2xl p-5 ml-14 relative hover:border-tsia-green/30 transition-colors">
-        <div className={`absolute -left-8 w-12 h-12 ${color} rounded-2xl flex items-center justify-center shadow-lg`} style={{ left: "-3.25rem" }}>
+        <div className={`absolute w-12 h-12 ${color} rounded-2xl flex items-center justify-center shadow-lg`} style={{ left: "-3.25rem" }}>
           <Icon className="w-6 h-6 text-white" />
         </div>
         <div className="flex items-start justify-between gap-2">
@@ -376,9 +371,9 @@ function StepCard({ step, icon: Icon, title, desc, color, detail }: {
   );
 }
 
-// ── Tier card ───────────────────────────────────────────────────────────────
-function TierCard({ icon, label, range, payout, loan, color, bg, border }: {
-  icon: string; label: string; range: string; payout: string; loan: string;
+// ── Tier card ────────────────────────────────────────────────────────────────
+function TierCard({ icon, label, range, qualifier, color, bg, border }: {
+  icon: string; label: string; range: string; qualifier: string;
   color: string; bg: string; border: string;
 }) {
   return (
@@ -388,17 +383,17 @@ function TierCard({ icon, label, range, payout, loan, color, bg, border }: {
       <div className="text-4xl">{icon}</div>
       <div>
         <p className={`font-black text-lg ${color}`}>{label} Tier</p>
-        <p className="text-xs text-muted-foreground font-semibold mt-0.5">{range} WAEC average</p>
+        <p className="text-xs text-muted-foreground font-semibold mt-0.5">{range} WAEC/NECO/GCE average</p>
       </div>
       <div className="space-y-2">
         <div className="bg-white/60 dark:bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Per Semester Payout</p>
-          <p className={`font-black text-2xl ${color}`}>{payout}</p>
-          <p className="text-[10px] text-muted-foreground">× 6 semesters over 3 years</p>
+          <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Semester Disbursement</p>
+          <p className={`font-black text-base ${color} mt-0.5`}>Merit-based funding</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">× 6 total (2 semesters/year × 3 years)</p>
         </div>
         <div className="bg-white/60 dark:bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Max Student Loan</p>
-          <p className={`font-black text-lg ${color}`}>{loan}</p>
+          <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Requirement</p>
+          <p className={`font-semibold text-sm ${color} mt-0.5`}>{qualifier}</p>
         </div>
       </div>
     </motion.div>
@@ -425,7 +420,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
-// ── Main Page ────────────────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function PromoLanding() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -437,24 +432,24 @@ export default function PromoLanding() {
     { label: "FAQ", href: "#faq" },
   ];
 
-  const scrollTo = (id: string) => {
-    document.getElementById(id.replace("#", ""))?.scrollIntoView({ behavior: "smooth" });
-    setMobileMenuOpen(false);
-  };
-
   return (
     <div className="min-h-screen bg-background font-sans">
       {/* ── Sticky Nav ── */}
       <nav className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-          <Link href="/">
+          {/* Logo → back to /promo */}
+          <a href="/promo" onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
             <Logo variant="badge" height={40} />
-          </Link>
+          </a>
+          {/* Desktop nav — native anchors for reliable scrolling */}
           <div className="hidden md:flex items-center gap-6">
             {navLinks.map(l => (
-              <button key={l.label} onClick={() => scrollTo(l.href)} className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              <a key={l.label} href={l.href}
+                className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
                 {l.label}
-              </button>
+              </a>
             ))}
           </div>
           <div className="flex items-center gap-2">
@@ -477,9 +472,12 @@ export default function PromoLanding() {
             <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden border-t border-border md:hidden bg-background">
               <div className="px-4 py-3 flex flex-col gap-1">
                 {navLinks.map(l => (
-                  <button key={l.label} onClick={() => scrollTo(l.href)} className="text-sm font-semibold py-2.5 text-left text-muted-foreground hover:text-foreground transition-colors">
+                  <a key={l.label} href={l.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="text-sm font-semibold py-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                  >
                     {l.label}
-                  </button>
+                  </a>
                 ))}
               </div>
             </motion.div>
@@ -509,9 +507,9 @@ export default function PromoLanding() {
           <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
             className="text-lg text-white/80 max-w-2xl mx-auto leading-relaxed mb-10"
           >
-            TSIA (Tuition Support Initiative for Africa) funds African students based on WAEC/NECO/GCE performance — 
-            earning you <strong className="text-white">$110 to $230 every semester</strong> for <strong className="text-white">3 academic years</strong>.
-            Sign up free. No sponsor needed. Merit earns the money.
+            TSIA (Tuition Support Initiative for Africa) funds African students based on WAEC/NECO/GCE performance —
+            awarding <strong className="text-white">merit-based semester funding</strong> for <strong className="text-white">3 academic years</strong>.
+            Sign up free. No sponsor needed. Your results earn the money.
           </motion.p>
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="flex flex-wrap gap-4 justify-center">
             <Link href="/signup">
@@ -519,12 +517,12 @@ export default function PromoLanding() {
                 Apply for Free <ArrowRight className="w-5 h-5" />
               </button>
             </Link>
-            <button onClick={() => scrollTo("how-it-works")}
+            <a href="#how-it-works"
               className="flex items-center gap-2 bg-white/15 hover:bg-white/25 border border-white/20 text-white font-bold text-base px-8 py-4 rounded-2xl transition-all"
               data-testid="btn-hero-learn"
             >
               <BookOpen className="w-5 h-5" /> How It Works
-            </button>
+            </a>
           </motion.div>
 
           {/* Quick stats */}
@@ -532,8 +530,8 @@ export default function PromoLanding() {
             className="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto"
           >
             {[
-              { label: "Max Total Payout", value: "$1,380" },
               { label: "Semesters Funded", value: "6 total" },
+              { label: "How Counted", value: "2/year × 3yrs" },
               { label: "Years of Support", value: "3 years" },
               { label: "Registration Cost", value: "FREE" },
             ].map(s => (
@@ -556,12 +554,12 @@ export default function PromoLanding() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {[
-              { icon: GraduationCap, label: "Student Sponsorship", desc: "$110–$230/semester", color: "text-tsia-green bg-tsia-green/10" },
+              { icon: GraduationCap, label: "Student Sponsorship", desc: "Merit-based semester funding", color: "text-tsia-green bg-tsia-green/10" },
               { icon: Wallet, label: "Digital Wallet", desc: "USD/NGN wallet", color: "text-blue-600 bg-blue-50 dark:bg-blue-900/20" },
               { icon: TrendingUp, label: "Trade Market", desc: "AI bot investing", color: "text-purple-600 bg-purple-50 dark:bg-purple-900/20" },
               { icon: Trophy, label: "Co-Affiliate Fund", desc: "Lifetime profit share", color: "text-amber-600 bg-amber-50 dark:bg-amber-900/20" },
               { icon: Home, label: "Tenancy Programme", desc: "Affordable housing", color: "text-rose-600 bg-rose-50 dark:bg-rose-900/20" },
-              { icon: Banknote, label: "Quick Loans", desc: "Borrow up to $200", color: "text-orange-600 bg-orange-50 dark:bg-orange-900/20" },
+              { icon: Banknote, label: "Quick Loans", desc: "Tier-based borrowing", color: "text-orange-600 bg-orange-50 dark:bg-orange-900/20" },
               { icon: ShoppingBag, label: "TS-Mart Online Stores", desc: "Buy & sell products", color: "text-teal-600 bg-teal-50 dark:bg-teal-900/20" },
               { icon: Gift, label: "Cashback Rewards", desc: "10% on every spend", color: "text-pink-600 bg-pink-50 dark:bg-pink-900/20" },
               { icon: Plane, label: "Glide Africa", desc: "Flights, hotels, cars", color: "text-sky-600 bg-sky-50 dark:bg-sky-900/20" },
@@ -601,9 +599,9 @@ export default function PromoLanding() {
               detail={"• 100% free to create\n• Supports student and/or affiliate accounts under one email\n• OTP-based secure login — no passwords to forget\n• Takes less than 2 minutes to complete\n• Available on mobile and desktop"}
             />
             <StepCard step={2} icon={Wallet} color="bg-blue-600"
-              title="Activate Your Digital Wallet ($5.50)"
-              desc="Fund your TSIA wallet with a minimum of $5.50 (≈₦8,140) to unlock all platform features including verification, bill payments, and the trade market."
-              detail={"• Minimum: $5.50 (≈₦8,140 at current rates)\n• Payment methods: Bank transfer, card payment, crypto (USDT TRC20/BEP20)\n• Powered by Korapay & Squad — CBN-licensed payment gateways\n• Funds reflect in your wallet within minutes\n• Wallet displays in both USD and NGN"}
+              title="Activate Your Digital Wallet ($5.50 minimum)"
+              desc="Fund your TSIA wallet with a minimum of $5.50 to unlock all platform features including verification, bill payments, and the trade market."
+              detail={"• Minimum: $5.50\n• Payment methods: Bank transfer, card payment, crypto (USDT TRC20/BEP20)\n• Powered by Korapay & Squad — CBN-licensed payment gateways\n• Funds reflect in your wallet within minutes\n• Wallet displays in both USD and NGN"}
             />
             <StepCard step={3} icon={Shield} color="bg-purple-600"
               title="Complete NIN Identity Verification"
@@ -615,15 +613,15 @@ export default function PromoLanding() {
               desc="Enter your exam registration number, year, and grades for at least 5 subjects (Mathematics + English compulsory, plus 3 electives). Upload a valid government ID."
               detail={"• Accepted exams: WAEC, NECO, GCE\n• Compulsory: Mathematics + English Language\n• Electives: Physics, Chemistry, Biology, Economics, and 15+ more\n• ID documents: NIN slip, driver's licence, international passport\n• ⚠️ MINIMUM 50% average required to qualify for any tier\n• Submitted grades cannot be changed after submission"}
             />
-            <StepCard step={5} icon={DollarSign} color="bg-rose-600"
+            <StepCard step={5} icon={Award} color="bg-rose-600"
               title="Pay the One-Time $3 Portal Fee"
-              desc="Pay a single $3 portal verification fee (≈₦4,440) from your TSIA wallet. This activates your verification submission and biometric face scan."
-              detail={"• One-time, non-refundable fee\n• Covers admin review costs and identity verification\n• Deducted directly from your TSIA wallet\n• Unlocks the biometric face scan step immediately\n• Total minimum investment: $5.50 + $3 = $8.50"}
+              desc="Pay a one-time $3 portal verification fee from your TSIA wallet. This activates your verification submission and unlocks the biometric face scan."
+              detail={"• One-time, non-refundable fee\n• Covers admin review costs and identity verification\n• Deducted directly from your TSIA wallet\n• Unlocks the biometric face scan step immediately\n• Total minimum to fully verify: $5.50 + $3 = $8.50"}
             />
-            <StepCard step={6} icon={Award} color="bg-tsia-green"
+            <StepCard step={6} icon={CheckCircle2} color="bg-tsia-green"
               title="Biometric Face Scan & Admin Approval"
-              desc="Complete a quick AI-powered selfie scan to confirm your identity. Admin reviews your full submission within 24–48 hours and approves your sponsorship tier."
-              detail={"• AI facial recognition liveness detection\n• Compared against your uploaded ID document\n• Admin reviews: NIN, WAEC grades, document, face scan\n• Approval notification via in-app + email\n• Once approved: your first semester payout is credited to your wallet\n• Rejection includes a reason — some issues can be corrected and resubmitted"}
+              desc="Complete a quick AI-powered selfie scan to confirm your identity. Admin reviews your full submission within 24–48 hours and assigns your sponsorship tier."
+              detail={"• AI facial recognition liveness detection\n• Compared against your uploaded ID document\n• Admin reviews: NIN, WAEC grades, document, face scan\n• Approval notification via in-app + email\n• Once approved: your 1st semester payout is credited to your wallet\n• Rejection includes a reason — some issues can be corrected and resubmitted"}
             />
           </div>
         </div>
@@ -634,13 +632,13 @@ export default function PromoLanding() {
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
             <p className="text-xs font-black text-tsia-green uppercase tracking-widest mb-2">Academic Performance Matrix</p>
-            <h2 className="text-3xl font-black">Your WAEC Results Determine Your Tier</h2>
+            <h2 className="text-3xl font-black">Your Results Determine Your Tier</h2>
             <p className="text-muted-foreground mt-2 text-sm max-w-xl mx-auto">
-              TSIA uses an algorithmic scoring system (APM) to calculate your grade average. Score 50%+ to qualify. The higher your average, the more you earn.
+              TSIA uses a proprietary algorithmic scoring system (APM) to calculate your grade average. Score 50%+ to qualify. The higher your average, the more you earn.
             </p>
           </div>
 
-          {/* Minimum score warning */}
+          {/* Minimum score notice */}
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl p-4 mb-8 flex items-start gap-3 max-w-xl mx-auto">
             <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
             <div>
@@ -651,31 +649,24 @@ export default function PromoLanding() {
             </div>
           </div>
 
-          {/* Grade weights */}
-          <div className="bg-card border border-border rounded-2xl p-5 mb-8 max-w-xl mx-auto">
-            <p className="font-black text-sm mb-3 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-tsia-green" /> WAEC Grade Points (APM Scale)</p>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-              {[["A1","12"],["B2","11.5"],["B3","11"],["C4","10.5"],["C5","10"],["C6","9.5"],["D7","9"],["E8","8.5"],["F9","8"]].map(([g,p]) => (
-                <div key={g} className="bg-muted rounded-xl p-2 text-center">
-                  <p className="font-black text-sm">{g}</p>
-                  <p className="text-[10px] text-muted-foreground">{p} pts</p>
-                </div>
-              ))}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-3">* Score = Sum of grade points ÷ Maximum possible points × 100</p>
-          </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            <TierCard icon="🥈" label="Silver" range="50–59%" payout="$110 – $130"
-              loan="up to $100" color="text-slate-600 dark:text-slate-300"
+            <TierCard icon="🥈" label="Silver" range="50–59%"
+              qualifier="Score 50% to 59% average"
+              color="text-slate-600 dark:text-slate-300"
               bg="bg-slate-50 dark:bg-slate-900/30" border="border-slate-200 dark:border-slate-700/50" />
-            <TierCard icon="🥇" label="Gold" range="60–74%" payout="$160 – $180"
-              loan="up to $150" color="text-amber-600"
+            <TierCard icon="🥇" label="Gold" range="60–74%"
+              qualifier="Score 60% to 74% average"
+              color="text-amber-600"
               bg="bg-amber-50 dark:bg-amber-900/20" border="border-amber-200 dark:border-amber-700/50" />
-            <TierCard icon="🏆" label="Platinum" range="75%+" payout="$225 – $230"
-              loan="up to $200" color="text-tsia-green"
+            <TierCard icon="🏆" label="Platinum" range="75%+"
+              qualifier="Score 75% or above"
+              color="text-tsia-green"
               bg="bg-tsia-green/5" border="border-tsia-green/30" />
           </div>
+
+          <p className="text-center text-xs text-muted-foreground mt-6">
+            Exact payout amounts are revealed upon successful registration and academic assessment. Sign up to see your tier eligibility.
+          </p>
         </div>
       </section>
 
@@ -684,18 +675,26 @@ export default function PromoLanding() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10">
             <p className="text-xs font-black text-tsia-green uppercase tracking-widest mb-2">Payout Schedule</p>
-            <h2 className="text-3xl font-black">1st & 2nd Semester, Every Year, for 3 Years</h2>
+            <h2 className="text-3xl font-black">2 Semesters Per Year, Over 3 Years</h2>
             <p className="text-muted-foreground mt-2 text-sm max-w-xl mx-auto">
-              Once verified, you receive 2 semester disbursements per academic year for 3 consecutive years — a total of 6 payouts deposited directly to your TSIA wallet.
+              Funding is disbursed every semester — that's <strong>2 payouts per year</strong> for <strong>3 consecutive years</strong>, giving you a total of <strong>6 semester disbursements</strong>.
             </p>
           </div>
 
+          {/* Explainer banner */}
+          <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-2xl p-4 mb-8 flex items-start gap-3 max-w-2xl mx-auto">
+            <Info className="w-5 h-5 text-tsia-green shrink-0 mt-0.5" />
+            <div>
+              <p className="font-black text-sm text-tsia-green">Why 6 disbursements?</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                A standard academic year has 2 semesters — 1st Semester and 2nd Semester. TSIA funds both, every year, for 3 years.
+                That's <strong>2 × 3 = 6 total payouts</strong>. Each one lands directly in your TSIA wallet.
+              </p>
+            </div>
+          </div>
+
           <div className="space-y-5">
-            {[
-              { year: 1, sem1: true, sem2: true },
-              { year: 2, sem1: true, sem2: true },
-              { year: 3, sem1: true, sem2: true },
-            ].map(({ year, sem1, sem2 }) => (
+            {[1, 2, 3].map(year => (
               <motion.div key={year} initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
                 className="bg-card border border-border rounded-3xl p-5"
               >
@@ -705,32 +704,23 @@ export default function PromoLanding() {
                   </div>
                   <div>
                     <p className="font-black text-base">Year {year}</p>
-                    <p className="text-xs text-muted-foreground">Academic Year {year}</p>
+                    <p className="text-xs text-muted-foreground">Academic Year {year} — 2 disbursements</p>
+                  </div>
+                  <div className="ml-auto flex items-center gap-1.5 bg-tsia-green/10 border border-tsia-green/20 rounded-full px-3 py-1">
+                    <Check className="w-3 h-3 text-tsia-green" />
+                    <span className="text-[11px] font-bold text-tsia-green">Both semesters funded</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  {[{ label: "1st Semester Payout", active: sem1 }, { label: "2nd Semester Payout", active: sem2 }].map(({ label, active }) => (
-                    <div key={label} className={`rounded-2xl p-4 border ${active ? "bg-tsia-green/5 border-tsia-green/30" : "bg-muted/30 border-border"}`}>
+                  {["1st Semester", "2nd Semester"].map(sem => (
+                    <div key={sem} className="rounded-2xl p-4 border bg-tsia-green/5 border-tsia-green/30">
                       <div className="flex items-center gap-2 mb-2">
-                        {active
-                          ? <Check className="w-4 h-4 text-tsia-green" />
-                          : <Clock className="w-4 h-4 text-muted-foreground" />}
-                        <p className="text-[11px] font-bold text-muted-foreground">{label}</p>
+                        <Check className="w-4 h-4 text-tsia-green" />
+                        <p className="text-[11px] font-bold text-muted-foreground">{sem} Payout</p>
                       </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">🥈 Silver</span>
-                          <span className="font-bold">$110–$130</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">🥇 Gold</span>
-                          <span className="font-bold">$160–$180</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">🏆 Platinum</span>
-                          <span className="font-bold text-tsia-green">$225–$230</span>
-                        </div>
-                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Merit-based disbursement — amount determined by your academic tier (Silver, Gold, or Platinum).
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -738,22 +728,24 @@ export default function PromoLanding() {
             ))}
           </div>
 
-          {/* Total payout table */}
+          {/* Summary */}
           <div className="mt-8 bg-gradient-to-br from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 rounded-3xl p-6">
-            <p className="font-black text-center text-lg mb-5">Total 3-Year Payout Summary</p>
+            <p className="font-black text-center text-lg mb-2">3-Year Disbursement Summary</p>
+            <p className="text-center text-sm text-muted-foreground mb-5">2 semesters/year × 3 years = 6 total payouts</p>
             <div className="grid grid-cols-3 gap-3 text-center">
               {[
-                { tier: "🥈 Silver", total: "$660 – $780", color: "text-slate-600 dark:text-slate-300" },
-                { tier: "🥇 Gold", total: "$960 – $1,080", color: "text-amber-600" },
-                { tier: "🏆 Platinum", total: "$1,350 – $1,380", color: "text-tsia-green" },
-              ].map(({ tier, total, color }) => (
+                { tier: "🥈 Silver", note: "Entry-level funding", color: "text-slate-600 dark:text-slate-300" },
+                { tier: "🥇 Gold", note: "Mid-level funding", color: "text-amber-600" },
+                { tier: "🏆 Platinum", note: "Top-level funding", color: "text-tsia-green" },
+              ].map(({ tier, note, color }) => (
                 <div key={tier} className="bg-card rounded-2xl p-4 border border-border">
                   <p className="text-sm font-black mb-1">{tier}</p>
-                  <p className={`font-black text-lg ${color}`}>{total}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">over 6 semesters</p>
+                  <p className={`font-bold text-sm ${color}`}>{note}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">across 6 semesters</p>
                 </div>
               ))}
             </div>
+            <p className="text-center text-xs text-muted-foreground mt-4">Sign up to see exact payout amounts after your academic assessment.</p>
           </div>
         </div>
       </section>
@@ -777,7 +769,7 @@ export default function PromoLanding() {
               {
                 icon: Banknote, color: "bg-amber-100 dark:bg-amber-900/30 text-amber-600",
                 title: "Quick Loans (No Collateral)",
-                desc: "Borrow up to $200 (students) or $5,000 (affiliates) at 10% p.a. interest. Repay over 6–18 months. Loan limit set by your academic tier.",
+                desc: "Borrow against your verified tier at competitive interest rates. Loan limits scale with your academic tier. Repay over 6–18 months with no collateral needed.",
               },
               {
                 icon: TrendingUp, color: "bg-purple-100 dark:bg-purple-900/30 text-purple-600",
@@ -807,7 +799,7 @@ export default function PromoLanding() {
               {
                 icon: Trophy, color: "bg-amber-100 dark:bg-amber-900/30 text-amber-700",
                 title: "Co-Affiliate Trust Fund",
-                desc: "Invest $100–$10,000 once and receive a lifetime share of TSIA's annual profits. No renewal. No expiry. Early investors benefit before price milestones.",
+                desc: "Invest once and receive a lifetime share of TSIA's annual profits. No renewal. No expiry. Early investors lock in lower prices before milestone increases.",
               },
               {
                 icon: Plane, color: "bg-sky-100 dark:bg-sky-900/30 text-sky-600",
@@ -891,15 +883,15 @@ export default function PromoLanding() {
           </div>
           <div className="space-y-3">
             <FaqItem q="Is TSIA free to join?" a="Account registration is completely free. To access verification and sponsorship features, you need to activate your wallet with a minimum $5.50 deposit, followed by a one-time $3 portal fee. Total minimum: $8.50." />
-            <FaqItem q="What WAEC score do I need to qualify?" a="You need a minimum of 50% average on the APM (Academic Performance Matrix) using your WAEC/NECO/GCE grades across at least 5 subjects — Mathematics and English Language are compulsory. Scoring below 50% means you won't qualify for any sponsorship tier." />
-            <FaqItem q="How many times will I receive a payout?" a="You receive 2 disbursements per academic year for 3 years — a total of 6 payouts. These are credited to your TSIA digital wallet after each semester review by the admin team." />
+            <FaqItem q="What WAEC score do I need to qualify?" a="You need a minimum of 50% average on the APM (Academic Performance Matrix) across at least 5 subjects — Mathematics and English Language are compulsory. Scoring below 50% means you won't qualify for any sponsorship tier." />
+            <FaqItem q="How many times will I receive a payout?" a="You receive 2 disbursements per academic year for 3 years — a total of 6 payouts. Think of it as: every academic year has a 1st Semester and a 2nd Semester. TSIA funds both, every year, for 3 years straight." />
+            <FaqItem q="What does '6 semesters' mean exactly?" a="It means 2 semesters per year × 3 years = 6 total semester payouts. Each academic year has 2 semesters (1st and 2nd). TSIA disburses funding at the start of each semester, for 3 consecutive years after your verification is approved." />
             <FaqItem q="Can I withdraw my wallet balance to my bank?" a="Yes. You can withdraw from your TSIA wallet to any Nigerian bank account at any time. A 7.5% VAT (required by Nigerian law) applies to bank withdrawals. Withdrawals are processed within 24–48 business hours." />
             <FaqItem q="What happens if my WAEC score is below 50%?" a="Unfortunately, you won't qualify for a sponsorship tier. However, you can still use all other TSIA features — digital wallet, trade market, bill payments, marketplace, tenancy programme, loans, and more." />
-            <FaqItem q="Can I have both a student and affiliate account?" a="Yes! One email address can hold both a student account and an affiliate (business) account simultaneously. You can switch between the two from your dashboard header without logging out." />
+            <FaqItem q="Can I have both a student and affiliate account?" a="Yes! One email address can hold both a student account and an affiliate (business) account simultaneously. Switch between them from your dashboard header without logging out." />
             <FaqItem q="How long does verification take after I submit?" a="Admin reviews typically take 24–48 hours on business days. You'll receive an in-app notification and email once your verification is approved or if additional information is needed." />
-            <FaqItem q="Is the $3 portal fee refundable?" a="No. The portal fee is a non-refundable, one-time payment that covers the cost of identity verification, admin review, and document processing. It is only charged once." />
-            <FaqItem q="What is the cashback system?" a="TSIA automatically credits 10% of every transaction (bill payments, transfers) back to your Cashback Wallet. You can withdraw this accumulated cashback to your personal wallet at any time with no minimum amount." />
-            <FaqItem q="How do I earn as an affiliate?" a="Sign up as an affiliate, get your unique referral code, and share it with students. You earn commission whenever someone signs up and completes verification using your referral code. Additional income streams include the trade market, co-affiliate trust fund, and TS-Mart Online Stores sales." />
+            <FaqItem q="Is the $3 portal fee refundable?" a="No. The portal fee is a one-time, non-refundable payment that covers identity verification, admin review, and document processing. It is only charged once." />
+            <FaqItem q="How do I earn as an affiliate?" a="Sign up as an affiliate, get your unique referral code, and share it with students. You earn commission whenever someone signs up and completes verification using your code. Additional income streams include the trade market, co-affiliate trust fund, and TS-Mart marketplace sales." />
           </div>
         </div>
       </section>
@@ -913,10 +905,10 @@ export default function PromoLanding() {
         <div className="relative max-w-3xl mx-auto text-center">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
             <p className="text-tsia-gold font-black uppercase tracking-widest text-xs mb-3">Ready to Start?</p>
-            <h2 className="text-4xl font-black mb-4">Your WAEC Results Are Worth Money</h2>
+            <h2 className="text-4xl font-black mb-4">Your WAEC Results Are Worth Funding</h2>
             <p className="text-white/80 mb-8 max-w-lg mx-auto text-sm leading-relaxed">
-              Thousands of African students are already receiving $110–$230 every semester based on their academic performance.
-              Your results could earn you up to $1,380 over 3 years. Sign up free today.
+              African students are already receiving merit-based semester funding for their academic performance.
+              Your results could earn you 6 semester payouts over 3 years. Sign up free today and get assessed.
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
               <Link href="/signup">
@@ -934,7 +926,7 @@ export default function PromoLanding() {
               <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-tsia-gold" /> Free to register</span>
               <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-tsia-gold" /> No collateral</span>
               <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-tsia-gold" /> Results-based, not social status</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-tsia-gold" /> 6 disbursements over 3 years</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-tsia-gold" /> 2 semesters/year × 3 years</span>
             </div>
           </motion.div>
         </div>
@@ -950,7 +942,7 @@ export default function PromoLanding() {
               <p className="text-xs text-muted-foreground">support@tsia.africa · +4407916395474</p>
             </div>
             <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
-              <Link href="/"><span className="hover:text-foreground transition-colors cursor-pointer">Home</span></Link>
+              <a href="/promo" className="hover:text-foreground transition-colors">Home</a>
               <Link href="/signup"><span className="hover:text-foreground transition-colors cursor-pointer">Sign Up</span></Link>
               <Link href="/login"><span className="hover:text-foreground transition-colors cursor-pointer">Log In</span></Link>
               <Link href="/affiliate-signup"><span className="hover:text-foreground transition-colors cursor-pointer">Affiliate</span></Link>
@@ -965,7 +957,7 @@ export default function PromoLanding() {
         </div>
       </footer>
 
-      {/* ── AI Chat Assistant ── */}
+      {/* ── Full-Screen AI Chat (only on this page) ── */}
       <PromoAiChat />
     </div>
   );

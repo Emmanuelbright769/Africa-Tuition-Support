@@ -186,10 +186,10 @@ const SERVICES = [
 
 // ─── Nigerian Networks ────────────────────────────────────────────────────────
 const NETWORKS = [
-  { id: "mtn",     label: "MTN",     color: "bg-yellow-400",  text: "text-yellow-900" },
-  { id: "airtel",  label: "Airtel",  color: "bg-red-500",     text: "text-white" },
-  { id: "glo",     label: "Glo",     color: "bg-green-600",   text: "text-white" },
-  { id: "9mobile", label: "9mobile", color: "bg-emerald-700", text: "text-white" },
+  { id: "mtn",     label: "MTN",     color: "bg-yellow-400",  text: "text-yellow-900", logo: "/logos/mtn.jpeg"    },
+  { id: "airtel",  label: "Airtel",  color: "bg-red-500",     text: "text-white",       logo: "/logos/airtel.png"  },
+  { id: "glo",     label: "Glo",     color: "bg-green-600",   text: "text-white",       logo: "/logos/glo.png"     },
+  { id: "9mobile", label: "9mobile", color: "bg-emerald-700", text: "text-white",       logo: "/logos/9mobile.png" },
 ];
 
 // ─── Data Plans per network (fallback when live API unavailable) ──────────────
@@ -4034,8 +4034,9 @@ export default function FinancialHub() {
               {/* Network pill selector */}
               <div className="flex items-center gap-2 shrink-0">
                 {selectedNetwork ? (
-                  <div className={`w-8 h-8 rounded-full ${NETWORKS.find(n=>n.id===selectedNetwork)?.color ?? "bg-gray-400"} flex items-center justify-center shadow-sm`}>
-                    <span className="text-xs font-black text-white">{NETWORKS.find(n=>n.id===selectedNetwork)?.label.charAt(0) ?? "?"}</span>
+                  <div className="w-8 h-8 rounded-full overflow-hidden shadow-sm shrink-0">
+                    <img src={NETWORKS.find(n=>n.id===selectedNetwork)?.logo} alt={selectedNetwork}
+                      className="w-full h-full object-cover" />
                   </div>
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-muted border-2 border-dashed border-border flex items-center justify-center">
@@ -4060,10 +4061,10 @@ export default function FinancialHub() {
             <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
               {NETWORKS.map(n => (
                 <button key={n.id} onClick={() => setSelectedNetwork(n.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 font-bold text-xs shrink-0 transition-all ${selectedNetwork === n.id ? "border-tsia-green bg-tsia-green text-white" : "border-border bg-background text-foreground hover:border-tsia-green/40"}`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 font-bold text-xs shrink-0 transition-all ${selectedNetwork === n.id ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border bg-background text-foreground hover:border-tsia-green/40"}`}
                   data-testid={`btn-airtime-${n.id}`}>
-                  <div className={`w-4 h-4 rounded-full ${n.color} flex items-center justify-center`}>
-                    <span className="text-[8px] font-black text-white">{n.label.charAt(0)}</span>
+                  <div className="w-5 h-5 rounded-full overflow-hidden shrink-0">
+                    <img src={n.logo} alt={n.label} className="w-full h-full object-cover" />
                   </div>
                   {n.label}
                 </button>
@@ -4121,8 +4122,8 @@ export default function FinancialHub() {
                       <button key={b.id}
                         onClick={() => { setBillRef(b.reference.split(" | ")[0] || ""); setSelectedNetwork(net.id); }}
                         className="w-full flex items-center gap-3 p-3 rounded-2xl bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors text-left">
-                        <div className={`w-9 h-9 rounded-full ${net.color} flex items-center justify-center shrink-0`}>
-                          <Phone className="w-4 h-4 text-white" />
+                        <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
+                          <img src={net.logo} alt={net.label} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold">{net.label} Airtime</p>

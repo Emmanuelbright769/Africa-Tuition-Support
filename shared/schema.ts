@@ -1144,3 +1144,35 @@ export const TRADE_BROKERS = [
   { id: "iq_option",name: "IQ Option",specialty: "Options & Crypto",     rating: 4.4, minDeposit: 30,  fee: "Variable",  description: "Intuitive platform with smart trading tools for all levels." },
   { id: "vantage",  name: "Vantage",  specialty: "Multi-Asset Trading",   rating: 4.6, minDeposit: 50,  fee: "0.2%",      description: "Next-gen multi-asset platform with AI-powered signals and zero-commission crypto." },
 ] as const;
+
+// ─── SCHOLARSHIPS ─────────────────────────────────────────────────────────────
+export const scholarships = pgTable("scholarships", {
+  id:                  integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:              integer("user_id").notNull().references(() => users.id),
+  type:                text("type").notNull(),
+  status:              text("status").notNull().default("started"),
+  waecRegNumber:       text("waec_reg_number"),
+  waecYear:            text("waec_year"),
+  waecSubjects:        text("waec_subjects"),
+  waecGrades:          text("waec_grades"),
+  waecPercentage:      decimal("waec_percentage", { precision: 5, scale: 2 }),
+  schoolName:          text("school_name"),
+  schoolLocation:      text("school_location"),
+  ageDisqualified:     boolean("age_disqualified").notNull().default(false),
+  portalFeePaid:       boolean("portal_fee_paid").notNull().default(false),
+  commitmentFeePaid:   boolean("commitment_fee_paid").notNull().default(false),
+  commitmentStartDate: timestamp("commitment_start_date"),
+  testStartedAt:       timestamp("test_started_at"),
+  testCompletedAt:     timestamp("test_completed_at"),
+  verbalScore:         integer("verbal_score"),
+  quantScore:          integer("quant_score"),
+  testData:            jsonb("test_data"),
+  prizePaid:           boolean("prize_paid").notNull().default(false),
+  prizeAmount:         decimal("prize_amount", { precision: 10, scale: 2 }),
+  createdAt:           timestamp("created_at").defaultNow().notNull(),
+  updatedAt:           timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertScholarshipSchema = createInsertSchema(scholarships).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertScholarship = z.infer<typeof insertScholarshipSchema>;
+export type Scholarship = typeof scholarships.$inferSelect;

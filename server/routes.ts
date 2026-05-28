@@ -32,6 +32,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
+import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
 import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
@@ -9100,6 +9101,298 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
+
+  // ── SCHOLARSHIP PORTAL ────────────────────────────────────────────────────
+  app.get("/api/scholarship/my", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+        const student = await storage.getScholarship(userId, "student");
+        const masters = await storage.getScholarship(userId, "masters");
+        res.json({ student: student ?? null, masters: masters ?? null });
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
+
+    app.post("/api/scholarship/start", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+        const { type } = req.body;
+        if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid scholarship type" });
+        const existing = await storage.getScholarship(userId, type);
+        if (existing) return res.json(existing);
+        const record = await storage.createScholarship({ userId, type, status: "started" });
+        res.json(record);
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
+
+    app.post("/api/scholarship/waec-validate", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+        const { type, waecRegNumber, waecYear, subjects, grades, schoolName, schoolLocation } = req.body;
+        if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid scholarship type" });
+
+        let record = await storage.getScholarship(userId, type);
+        if (!record) record = await storage.createScholarship({ userId, type, status: "started" });
+        if (record.status !== "started") return res.status(400).json({ message: "WAEC already validated for this scholarship" });
+
+        if (!waecRegNumber || !waecYear) return res.status(400).json({ message: "WAEC registration number and year are required" });
+        if (!schoolName || !schoolLocation) return res.status(400).json({ message: "School name and location are required" });
+        if (!subjects || !Array.isArray(subjects) || subjects.length !== 5)
+          return res.status(400).json({ message: "Exactly 5 subjects are required (Mathematics + English Language + 3 electives)" });
+        if (!subjects.includes("Mathematics") || !subjects.includes("English Language"))
+          return res.status(400).json({ message: "Mathematics and English Language are compulsory subjects" });
+        const validGrades = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9"];
+        if (!grades || !Array.isArray(grades) || grades.length !== 5 || grades.some((g: string) => !validGrades.includes(g.toUpperCase())))
+          return res.status(400).json({ message: `All 5 grades required. Valid grades: ${validGrades.join(", ")}` });
+
+        const gradeScaleRaw = await storage.getPlatformSetting("waec_grade_scale");
+        const gradeScale = gradeScaleRaw ? JSON.parse(gradeScaleRaw) : undefined;
+        const percentage = calculateWaecPercentage(grades, gradeScale);
+
+        if (percentage < 70) {
+          return res.status(400).json({
+            message: `Your WAEC score is ${percentage.toFixed(1)}%. You need at least 70% to qualify for the scholarship.`,
+            percentage,
+          });
+        }
+
+        const currentYear = new Date().getFullYear();
+        const estimatedAge = currentYear - parseInt(waecYear, 10) + 16;
+        const isAgeDisqualified = estimatedAge > 29;
+
+        record = await storage.updateScholarship(record.id, {
+          waecRegNumber, waecYear, schoolName, schoolLocation,
+          waecSubjects: subjects.join(","),
+          waecGrades: grades.join(" "),
+          waecPercentage: percentage.toFixed(2) as any,
+          ageDisqualified: isAgeDisqualified,
+          status: "waec_done",
+        });
+
+        res.json({ ...record, percentage });
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
+
+    app.post("/api/scholarship/pay-fee", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+        const { type } = req.body;
+        if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid scholarship type" });
+
+        const record = await storage.getScholarship(userId, type);
+        if (!record) return res.status(400).json({ message: "Start a scholarship application first" });
+        if (record.status !== "waec_done") return res.status(400).json({ message: "Complete WAEC validation first" });
+        if (record.portalFeePaid) return res.status(400).json({ message: "Fee already paid" });
+
+        const wallet = await storage.getOrCreateWallet(userId);
+        if (!wallet.activated) return res.status(403).json({ message: "Activate your SwiftWallet first" });
+
+        const portalFee = 3.00;
+        const serviceCharge = 0.30;
+        const totalCharged = portalFee + serviceCharge;
+        const bal = parseFloat(wallet.balance);
+        if (bal < totalCharged) {
+          return res.status(402).json({
+            code: "INSUFFICIENT_BALANCE",
+            message: `Insufficient balance. You need $${totalCharged.toFixed(2)} but have $${bal.toFixed(2)}.`,
+          });
+        }
+
+        await storage.updateWalletBalance(userId, (bal - totalCharged).toFixed(2));
+        await storage.createTransaction({
+          userId, type: "verification_fee",
+          amount: `-${totalCharged.toFixed(2)}`, fee: serviceCharge.toFixed(2),
+          paymentMethod: "wallet",
+          description: `Scholarship WAEC validation fee — $${portalFee.toFixed(2)} + $${serviceCharge.toFixed(2)} service charge`,
+        });
+
+        const nextStatus = type === "masters" ? "fee_paid" : "fee_paid";
+        const updated = await storage.updateScholarship(record.id, {
+          portalFeePaid: true,
+          status: nextStatus,
+          ...(type === "masters" ? { commitmentStartDate: new Date() } : {}),
+        });
+
+        try {
+          const u = await storage.getUser(userId);
+          if (u) {
+            sendAdminKycEmail({
+              name: `${u.firstName} ${u.lastName}`,
+              email: u.email,
+              kycType: `Scholarship fee paid — ${type} | WAEC: ${record.waecPercentage}% | Ref: SCH-FEE-${Date.now().toString(36).toUpperCase()}`,
+              userId,
+            }).catch(() => {});
+          }
+        } catch { /* non-critical */ }
+
+        res.json(updated);
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
+
+    app.post("/api/scholarship/pay-commitment", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+        const record = await storage.getScholarship(userId, "masters");
+        if (!record) return res.status(400).json({ message: "No masters scholarship application found" });
+        if (record.status !== "fee_paid") return res.status(400).json({ message: "Pay the WAEC validation fee first" });
+        if (record.commitmentFeePaid) return res.status(400).json({ message: "Commitment fee already paid" });
+
+        if (!record.commitmentStartDate) return res.status(400).json({ message: "Commitment window not started" });
+        const daysSince = (Date.now() - new Date(record.commitmentStartDate).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSince < 30) {
+          const daysLeft = Math.ceil(30 - daysSince);
+          return res.status(403).json({
+            code: "COMMITMENT_PENDING",
+            message: `You are still in the 30-day commitment window. ${daysLeft} day${daysLeft !== 1 ? "s" : ""} remaining.`,
+            daysLeft,
+          });
+        }
+
+        const wallet = await storage.getOrCreateWallet(userId);
+        const commitmentFee = 10.00;
+        const bal = parseFloat(wallet.balance);
+        if (bal < commitmentFee) {
+          return res.status(402).json({
+            code: "INSUFFICIENT_BALANCE",
+            message: `Insufficient balance. You need $${commitmentFee.toFixed(2)} but have $${bal.toFixed(2)}.`,
+          });
+        }
+
+        await storage.updateWalletBalance(userId, (bal - commitmentFee).toFixed(2));
+        await storage.createTransaction({
+          userId, type: "plan_payment",
+          amount: `-${commitmentFee.toFixed(2)}`, fee: "0.00",
+          paymentMethod: "wallet",
+          description: "Masters Scholarship commitment fee — $10.00",
+        });
+
+        const updated = await storage.updateScholarship(record.id, {
+          commitmentFeePaid: true,
+          status: "commitment_paid",
+        });
+
+        res.json(updated);
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
+
+    app.post("/api/scholarship/start-test", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+        const { type } = req.body;
+        if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid type" });
+
+        const record = await storage.getScholarship(userId, type);
+        if (!record) return res.status(400).json({ message: "No scholarship application found" });
+
+        const canStart = (type === "student" && record.status === "fee_paid") ||
+                         (type === "masters" && record.status === "commitment_paid") ||
+                         record.status === "test_in_progress";
+        if (!canStart) return res.status(403).json({ message: "Not eligible to start the test yet" });
+        if (["passed", "failed"].includes(record.status)) return res.status(400).json({ message: "Test already completed" });
+
+        let verbalQs: any[];
+        let quantQs: any[];
+
+        if (record.status === "test_in_progress" && record.testData) {
+          const td = record.testData as any;
+          const allQuestions = [...VERBAL_QUESTIONS, ...QUANT_QUESTIONS];
+          const qMap = Object.fromEntries(allQuestions.map(q => [q.id, q]));
+          verbalQs = (td.verbalIds as number[]).map((id: number) => {
+            const { correctIndex, ...rest } = qMap[id];
+            return { ...rest, correctIndex };
+          });
+          quantQs = (td.quantIds as number[]).map((id: number) => {
+            const { correctIndex, ...rest } = qMap[id];
+            return { ...rest, correctIndex };
+          });
+        } else {
+          verbalQs = pickQuestions(15, VERBAL_QUESTIONS);
+          quantQs = pickQuestions(15, QUANT_QUESTIONS);
+          await storage.updateScholarship(record.id, {
+            status: "test_in_progress",
+            testStartedAt: new Date(),
+            testData: {
+              verbalIds: verbalQs.map((q: any) => q.id),
+              quantIds: quantQs.map((q: any) => q.id),
+            } as any,
+          });
+        }
+
+        res.json({ verbal: verbalQs, quant: quantQs });
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
+
+    app.post("/api/scholarship/submit-test", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+        const { type, answers } = req.body;
+        if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid type" });
+
+        const record = await storage.getScholarship(userId, type);
+        if (!record || record.status !== "test_in_progress") return res.status(400).json({ message: "No active test found" });
+
+        const td = record.testData as any;
+        const allQuestions = [...VERBAL_QUESTIONS, ...QUANT_QUESTIONS];
+        const qMap = Object.fromEntries(allQuestions.map(q => [q.id, q]));
+        const answerMap: Record<number, number> = {};
+        for (const a of (answers ?? [])) answerMap[a.questionId] = a.selectedIndex;
+
+        let verbalScore = 0;
+        let quantScore = 0;
+        for (const id of (td.verbalIds as number[])) {
+          if (answerMap[id] !== undefined && answerMap[id] === qMap[id]?.correctIndex) verbalScore++;
+        }
+        for (const id of (td.quantIds as number[])) {
+          if (answerMap[id] !== undefined && answerMap[id] === qMap[id]?.correctIndex) quantScore++;
+        }
+
+        const totalScore = verbalScore + quantScore;
+        const passed = totalScore >= 21;
+        const prizeAmount = type === "masters" ? 250 : 100;
+
+        const updated = await storage.updateScholarship(record.id, {
+          status: passed ? "passed" : "failed",
+          verbalScore, quantScore,
+          testCompletedAt: new Date(),
+          testData: { ...td, answers: answerMap } as any,
+          ...(passed ? { prizeAmount: prizeAmount.toFixed(2) } : {}),
+        });
+
+        if (passed) {
+          try {
+            const notif = await storage.createNotification({
+              userId, type: "system",
+              title: "🎉 Scholarship Test Passed!",
+              message: `Congratulations! You scored ${totalScore}/30 on the ${type === "masters" ? "Masters" : "Student"} Scholarship test. Your $${prizeAmount} prize will be credited to your wallet within 24 hours of admin review.`,
+              data: { verbalScore, quantScore, totalScore, prizeAmount },
+              isRead: false,
+            });
+            pushToUser(userId, "notification", notif);
+          } catch { /* non-critical */ }
+
+          try {
+            const u = await storage.getUser(userId);
+            if (u) {
+              sendAdminKycEmail({
+                name: `${u.firstName} ${u.lastName}`,
+                email: u.email,
+                kycType: `SCHOLARSHIP PASSED — ${type.toUpperCase()} | Score: ${totalScore}/30 (Verbal: ${verbalScore}, Quant: ${quantScore}) | Prize: $${prizeAmount}`,
+                userId,
+              }).catch(() => {});
+            }
+          } catch { /* non-critical */ }
+        }
+
+        res.json({ verbalScore, quantScore, totalScore, passed, prizeAmount: passed ? prizeAmount : 0 });
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
 
   function msUntilNextMondayAt8WAT() {
     // WAT = UTC+1

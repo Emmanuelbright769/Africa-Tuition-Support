@@ -34,7 +34,7 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 
 
-type Section = "overview" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies" | "msc_plans";
+type Section = "overview" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies" | "msc_plans" | "scholarship";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
@@ -45,6 +45,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "movies",             label: "Movies & Streaming", icon: Film },
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
   { id: "plans",        label: "Swift-Pay Plans",        icon: Star },
+  { id: "scholarship",  label: "Scholarship Portal",     icon: Trophy, badge: "New" },
   { id: "msc_plans",    label: "Swift Pay MSc plans",    icon: GraduationCap, badge: "Soon" },
   { id: "activity",     label: "Activity",               icon: History },
   { id: "loan",               label: "Student loan",      icon: Banknote },
@@ -1121,6 +1122,51 @@ export default function StudentDashboard() {
             {activeSection === "movies" && (
               <motion.div variants={itemVariants}>
                 <MoviesSection />
+              </motion.div>
+            )}
+
+            {/* ── SCHOLARSHIP PORTAL ── */}
+            {activeSection === "scholarship" && (
+              <motion.div variants={itemVariants}>
+                <div className="mb-5">
+                  <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
+                    <Trophy className="w-6 h-6 text-amber-500" /> Scholarship Portal
+                  </h2>
+                  <p className="text-muted-foreground text-sm">One-time merit scholarship for exceptional students — test your verbal and quantitative skills.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {[
+                    { type: "student", label: "Student Scholarship", prize: "$100", color: "from-blue-500 to-indigo-600", desc: "Open to all verified students. Pass the aptitude test to win $100 credited to your wallet." },
+                    { type: "masters", label: "Masters Scholarship", prize: "$250", color: "from-amber-500 to-orange-600", desc: "Advanced track for serious scholars. 30-day commitment window + aptitude test. Win $250." },
+                  ].map((s) => (
+                    <div key={s.type} className="rounded-2xl overflow-hidden shadow-sm border border-border">
+                      <div className={`bg-gradient-to-br ${s.color} p-5 text-white`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <Trophy className="w-7 h-7 opacity-90" />
+                          <span className="text-2xl font-black">{s.prize}</span>
+                        </div>
+                        <p className="font-bold text-lg">{s.label}</p>
+                      </div>
+                      <div className="p-4 bg-card">
+                        <p className="text-sm text-muted-foreground mb-4">{s.desc}</p>
+                        <a href={`/scholarship?type=${s.type}`}>
+                          <button className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity">
+                            Apply Now →
+                          </button>
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
+                  <p className="font-semibold mb-1">What to expect:</p>
+                  <ul className="space-y-1 text-xs list-disc list-inside">
+                    <li>WAEC result validation required ($3.30 fee) — minimum 70% score to qualify</li>
+                    <li>15 verbal reasoning + 15 quantitative reasoning questions</li>
+                    <li>10 seconds per question, 15-minute section countdown</li>
+                    <li>One attempt only — prepare thoroughly before starting</li>
+                  </ul>
+                </div>
               </motion.div>
             )}
 

@@ -17,6 +17,7 @@ import {
   virtualCards, type VirtualCard, type InsertVirtualCard,
   movieSubscriptions, type MovieSubscription,
   savingsGoals, savingsTransactions,
+  scholarships, type Scholarship, type InsertScholarship,
   platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
   type User, type InsertUser,
   type Verification, type InsertVerification,
@@ -220,6 +221,12 @@ export interface IStorage {
   getBillPaymentsByUser(userId: number): Promise<BillPayment[]>;
   getPendingBankTransfers(): Promise<(BillPayment & { userName?: string; userEmail?: string })[]>;
   updateBillPaymentStatus(id: number, status: string): Promise<BillPayment>;
+
+  // Scholarships
+  getScholarship(userId: number, type: string): Promise<Scholarship | undefined>;
+  createScholarship(data: Partial<InsertScholarship> & { userId: number; type: string }): Promise<Scholarship>;
+  updateScholarship(id: number, data: Partial<Scholarship>): Promise<Scholarship>;
+  getAllScholarships(): Promise<(Scholarship & { user: User })[]>;
 
   // Tour Africa Bookings
   createTourBooking(data: InsertTourBooking): Promise<TourBooking>;
@@ -2237,6 +2244,32 @@ export class DatabaseStorage implements IStorage {
   async getCashbackBalance(userId: number): Promise<string> {
     const wallet = await this.getOrCreateWallet(userId);
     return wallet.cashbackBalance ?? "0.00";
+  }
+
+  async getScholarship(userId: number, type: string): Promise<Scholarship | undefined> {
+    const [row] = await db.select().from(scholarships).where(and(eq(scholarships.userId, userId), eq(scholarships.type, type))).limit(1);
+    return row;
+  }
+
+  async createScholarship(data: Partial<InsertScholarship> & { userId: number; type: string }): Promise<Scholarship> {
+    const now = new Date();
+    const [row] = await db.insert(scholarships).values({ ...data, updatedAt: now } as any).returning();
+    return row;
+  }
+
+  async updateScholarship(id: number, data: Partial<Scholarship>): Promise<Scholarship> {
+    const [row] = await db.update(scholarships).set({ ...data, updatedAt: new Date() } as any).where(eq(scholarships.id, id)).returning();
+    return row;
+  }
+
+  async getAllScholarships(): Promise<(Scholarship & { user: User })[]> {
+    const rows = await db.select().from(scholarships).orderBy(desc(scholarships.createdAt));
+    const result: (Scholarship & { user: User })[] = [];
+    for (const row of rows) {
+      const user = await this.getUser(row.userId);
+      if (user) result.push({ ...row, user });
+    }
+    return result;
   }
 
   async addCashback(userId: number, amountUsd: number): Promise<void> {

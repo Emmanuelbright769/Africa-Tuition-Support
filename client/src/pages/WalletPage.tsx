@@ -139,6 +139,12 @@ export default function WalletPage() {
   const portalFeePaid = verification?.portalFeePaid === true;
   const needsKyc = portalFeePaid && !walletKycDone;
 
+  // Age-based BVN requirement: optional for users ≤ 19 (estimated from WAEC year)
+  const currentYear = new Date().getFullYear();
+  const waecYr = verification?.waecYear ? parseInt(verification.waecYear, 10) : null;
+  const estimatedAge = waecYr ? currentYear - waecYr + 16 : null;
+  const bvnOptional = estimatedAge !== null && estimatedAge <= 19;
+
   // ── Open fund section ────────────────────────────────────────────────────
   const openFund = (method: FundMethod = "squad") => {
     if (!walletKycDone && needsKyc) {
@@ -348,10 +354,14 @@ export default function WalletPage() {
       toast({ title: "Selfie required", description: "Please capture your selfie in Step 3 before continuing.", variant: "destructive" });
       return;
     }
+    if (!bvnOptional && !kycBvnVerified) {
+      toast({ title: "BVN required", description: "Please verify your BVN before continuing.", variant: "destructive" });
+      return;
+    }
     setKycSubmitting(true);
     try {
       const res = await apiRequest("POST", "/api/verification/wallet-kyc", {
-        bvn: kycBvn,
+        ...(kycBvn.length === 11 ? { bvn: kycBvn } : {}),
         gpsCoords: kycLocationCoords,
         selfieBase64: kycSelfie,
       });
@@ -415,14 +425,21 @@ export default function WalletPage() {
               </div>
               <div className="p-5 space-y-4">
                 {/* BVN */}
-                <div className={`p-4 rounded-xl border transition-all ${kycBvnVerified ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700' : 'bg-white dark:bg-slate-800 border-border'}`}>
+                <div className={`p-4 rounded-xl border transition-all ${kycBvnVerified ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700' : bvnOptional ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' : 'bg-white dark:bg-slate-800 border-border'}`}>
                   <div className="flex items-center justify-between mb-2">
                     <Label className="font-semibold flex items-center gap-2 text-sm">
                       {kycBvnVerified ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 text-xs font-bold flex items-center justify-center">1</span>}
                       BVN Verification
+                      {bvnOptional && !kycBvnVerified && <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 px-1.5 py-0.5 rounded-full font-bold">Optional</span>}
                     </Label>
                     {kycBvnVerified && <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 px-2 py-0.5 rounded-full font-bold">Verified ✓</span>}
                   </div>
+                  {bvnOptional && !kycBvnVerified && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 shrink-0" />
+                      BVN is optional for users aged 19 and under. You may skip this step.
+                    </p>
+                  )}
                   {!kycBvnVerified && (
                     <div className="flex gap-2">
                       <Input placeholder="11-digit BVN" className="h-10 bg-muted/30 flex-1 font-mono tracking-widest" value={kycBvn} maxLength={11} onChange={e => setKycBvn(e.target.value.replace(/\D/g, ""))} data-testid="input-wallet-bvn" />
@@ -434,7 +451,7 @@ export default function WalletPage() {
                 </div>
 
                 {/* GPS */}
-                <div className={`p-4 rounded-xl border transition-all ${!kycBvnVerified ? 'opacity-40 pointer-events-none' : kycLocationVerified ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700' : 'bg-white dark:bg-slate-800 border-border'}`}>
+                <div className={`p-4 rounded-xl border transition-all ${!(kycBvnVerified || bvnOptional) ? 'opacity-40 pointer-events-none' : kycLocationVerified ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700' : 'bg-white dark:bg-slate-800 border-border'}`}>
                   <div className="flex items-center justify-between mb-2">
                     <Label className="font-semibold flex items-center gap-2 text-sm">
                       {kycLocationVerified ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 text-xs font-bold flex items-center justify-center">2</span>}

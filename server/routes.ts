@@ -934,9 +934,27 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const { bvn, gpsCoords, selfieBase64 } = req.body;
-      if (!bvn)           return res.status(400).json({ message: "BVN is required." });
       if (!gpsCoords)     return res.status(400).json({ message: "GPS coordinates are required." });
       if (!selfieBase64)  return res.status(400).json({ message: "Facial selfie is required." });
+
+      // ── Determine if BVN is required based on estimated age from WAEC year ─
+      let verification = await storage.getVerificationByUser(userId);
+      if (!verification) {
+        verification = await storage.createVerification({
+          userId, status: "pending", portalFeePaid: false, tier: "none",
+        });
+      }
+      const currentYearKyc = new Date().getFullYear();
+      const waecYrKyc = verification.waecYear ? parseInt(verification.waecYear, 10) : null;
+      const estimatedAgeKyc = waecYrKyc ? currentYearKyc - waecYrKyc + 16 : 99;
+      const bvnRequired = estimatedAgeKyc >= 20;
+
+      if (bvnRequired && !bvn) {
+        return res.status(400).json({ message: "BVN is required for users aged 20 and above." });
+      }
+      if (bvn && (bvn.length !== 11 || !/^\d{11}$/.test(bvn))) {
+        return res.status(400).json({ message: "BVN must be exactly 11 digits." });
+      }
 
       // ── Optional: Prembly face/liveness check ──────────────────────────────
       try {
@@ -944,25 +962,18 @@ export async function registerRoutes(
         const PREMBLY_APP = process.env.PREMBLY_APP_ID  || "";
         if (PREMBLY_KEY && PREMBLY_APP) {
           const imageData = selfieBase64.replace(/^data:image\/\w+;base64,/, "");
-          const pfRes = await fetch("https://api.prembly.com/identitypass/verification/face", {
+          const pfRes = await fetch("https://api.prembly.com/identitypass/verification/biometrics/face/liveliness_check", {
             method: "POST",
             headers: { "x-api-key": PREMBLY_KEY, "app-id": PREMBLY_APP, "Content-Type": "application/json" },
             body: JSON.stringify({ image: imageData }),
+            signal: AbortSignal.timeout(20000),
           });
           const pfJson = await pfRes.json();
-          // If Prembly explicitly rejects the face (when they have the feature), block
           if (pfRes.ok && pfJson.status === false && pfJson.verification?.status === "NOT VERIFIED") {
-            return res.status(400).json({ message: "Facial biometric verification failed. Please retake your selfie in good lighting." });
+            return res.status(400).json({ message: "Facial liveness check failed. Please retake your selfie in good lighting and look directly at the camera." });
           }
         }
       } catch { /* face API optional — fall through */ }
-
-      let verification = await storage.getVerificationByUser(userId);
-      if (!verification) {
-        verification = await storage.createVerification({
-          userId, status: "pending", portalFeePaid: false, tier: "none",
-        });
-      }
 
       const alreadyDone = verification.biometricVerified;
 
@@ -1002,8 +1013,10 @@ export async function registerRoutes(
           userId,
           type: "verification_update",
           title: "Wallet KYC Complete ✓",
-          message: "Your BVN, GPS location, and facial biometric have been verified. Your TSIA wallet is now fully unlocked.",
-          data: { bvn: bvn.slice(-4).padStart(11, "*"), gpsCoords },
+          message: bvn
+            ? "Your BVN, GPS location, and facial biometric have been verified. Your TSIA wallet is now fully unlocked."
+            : "Your GPS location and facial biometric have been verified. Your TSIA wallet is now fully unlocked.",
+          data: { bvn: bvn ? bvn.slice(-4).padStart(11, "*") : "N/A (under 20)", gpsCoords },
           isRead: false,
         });
         pushToUser(userId, "notification", kycNotif);
@@ -1047,7 +1060,7 @@ export async function registerRoutes(
         if (PREMBLY_KEY && PREMBLY_APP) {
           // Strip the data URI prefix if present
           const imageData = selfieBase64.replace(/^data:image\/\w+;base64,/, "");
-          const pfRes = await fetch("https://api.prembly.com/identitypass/verification/face", {
+          const pfRes = await fetch("https://api.prembly.com/identitypass/verification/biometrics/face/liveliness_check", {
             method: "POST",
             headers: {
               "x-api-key":    PREMBLY_KEY,
@@ -1055,9 +1068,10 @@ export async function registerRoutes(
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ image: imageData }),
+            signal: AbortSignal.timeout(20000),
           });
           const pfJson = await pfRes.json();
-          if (pfRes.ok && pfJson.status === true) {
+          if (pfRes.ok && pfJson.status === true && pfJson.verification?.status === "VERIFIED") {
             premblyFaceResult = pfJson;
           }
         }
@@ -1071,6 +1085,63 @@ export async function registerRoutes(
         message: "Facial biometric verification completed.",
         premblyChecked: !!premblyFaceResult,
       });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── Face Liveness Check (called by BiometricVerification.tsx during onboarding) ──
+  app.post("/api/verification/face-liveness", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { image } = req.body;
+      if (!image) return res.status(400).json({ message: "Image is required." });
+
+      const PREMBLY_KEY = process.env.PREMBLY_API_KEY || "";
+      const PREMBLY_APP = process.env.PREMBLY_APP_ID  || "";
+
+      // If keys not configured, approve automatically (dev/staging fallback)
+      if (!PREMBLY_KEY || !PREMBLY_APP) {
+        console.warn("[FaceLiveness] PREMBLY keys not set — auto-approving liveness check");
+        return res.json({ live: true, confidence: 99, demo: true });
+      }
+
+      try {
+        const imageData = image.replace(/^data:image\/\w+;base64,/, "");
+        const pfRes = await fetch("https://api.prembly.com/identitypass/verification/biometrics/face/liveliness_check", {
+          method: "POST",
+          headers: {
+            "x-api-key":    PREMBLY_KEY,
+            "app-id":       PREMBLY_APP,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ image: imageData }),
+          signal: AbortSignal.timeout(20000),
+        });
+        const pfJson = await pfRes.json();
+
+        if (!pfRes.ok) {
+          // Network/server error from Prembly — allow through (don't block onboarding)
+          console.warn("[FaceLiveness] Prembly HTTP error:", pfRes.status, pfJson?.detail);
+          return res.json({ live: true, confidence: 0, fallback: true });
+        }
+
+        const isLive      = pfJson.status === true && pfJson.verification?.status === "VERIFIED";
+        const isNotLive   = pfJson.status === false && pfJson.verification?.status === "NOT VERIFIED";
+        const confidence  = pfJson.data?.confidence_in_percentage ?? (isLive ? 95 : 10);
+
+        if (isNotLive) {
+          return res.json({ live: false, confidence, reason: pfJson.detail || "Liveness not detected" });
+        }
+
+        return res.json({ live: true, confidence });
+      } catch (fetchErr: any) {
+        // Prembly unreachable — allow through
+        console.warn("[FaceLiveness] Prembly unreachable:", fetchErr?.message);
+        return res.json({ live: true, confidence: 0, fallback: true });
+      }
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

@@ -957,9 +957,9 @@ function OrdersTab({ orders }: { orders: TradeOrder[] }) {
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
-interface ExchangeMarketProps { walletBalance?: number; }
+interface ExchangeMarketProps { walletBalance?: number; onBack?: () => void; }
 
-export default function ExchangeMarket({ walletBalance = 0 }: ExchangeMarketProps) {
+export default function ExchangeMarket({ walletBalance = 0, onBack }: ExchangeMarketProps) {
   const [tab, setTab]               = useState<Tab>("home");
   const [selected, setSelected]     = useState<Stock | null>(null);
   const [tradeModal, setTradeModal]  = useState<{ stock: Stock; type: "buy"|"sell" } | null>(null);
@@ -1005,27 +1005,35 @@ export default function ExchangeMarket({ walletBalance = 0 }: ExchangeMarketProp
   ];
 
   return (
-    <div className="relative flex flex-col rounded-2xl overflow-hidden border border-gray-800"
-      style={{ background:"#0a0f1a", height:"calc(100vh - 140px)", minHeight:560, maxHeight:820 }}>
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background:"#0a0f1a" }}>
 
       {/* Top bar */}
-      <div className="flex items-center justify-between px-5 py-3 shrink-0 border-b" style={{ borderColor:"#1f2937" }}>
-        <div>
-          <h2 className="text-white font-black text-base tracking-tight">Exchange Market</h2>
-          <p className="text-gray-600 text-[10px]">Live stock trading · {STOCKS.length} instruments</p>
+      <div className="flex items-center justify-between px-4 py-3 shrink-0 border-b" style={{ borderColor:"#1a2236" }}>
+        <div className="flex items-center gap-3">
+          {onBack && (
+            <button onClick={onBack}
+              className="w-8 h-8 rounded-full flex items-center justify-center transition-opacity hover:opacity-70"
+              style={{ background:"#111827" }} data-testid="btn-exchange-back">
+              <ArrowLeft className="w-4 h-4 text-white" />
+            </button>
+          )}
+          <div>
+            <h2 className="text-white font-black text-base tracking-tight">Exchange Market</h2>
+            <p className="text-[10px]" style={{ color:"#4b5563" }}>Live trading · {STOCKS.length} instruments</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="text-right mr-1">
-            <p className="text-gray-600 text-[10px]">Cash</p>
+            <p className="text-[10px]" style={{ color:"#4b5563" }}>Cash</p>
             <p className="text-white text-xs font-black">${fmt(cash)}</p>
           </div>
           <button className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background:"#111827" }}
             data-testid="btn-notifications">
-            <Bell className="w-4 h-4 text-gray-500" />
+            <Bell className="w-4 h-4" style={{ color:"#4b5563" }} />
           </button>
           <button className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background:"#111827" }}
             data-testid="btn-refresh">
-            <RefreshCw className="w-4 h-4 text-gray-500" />
+            <RefreshCw className="w-4 h-4" style={{ color:"#4b5563" }} />
           </button>
         </div>
       </div>
@@ -1036,20 +1044,13 @@ export default function ExchangeMarket({ walletBalance = 0 }: ExchangeMarketProp
           <HomeTab holdings={holdings} orders={orders} cash={cash} watchlistSet={watchlist}
             onSelectStock={setSelected} onGoMarket={() => setTab("market")} />
         )}
-        {tab === "market" && (
-          <MarketTab onSelectStock={setSelected} />
-        )}
-        {tab === "portfolio" && (
-          <PortfolioTab holdings={holdings} cash={cash} onSelectStock={setSelected} />
-        )}
+        {tab === "market" && <MarketTab onSelectStock={setSelected} />}
+        {tab === "portfolio" && <PortfolioTab holdings={holdings} cash={cash} onSelectStock={setSelected} />}
         {tab === "watchlist" && (
           <WatchlistTab watchlistSet={watchlist} onSelectStock={setSelected}
-            onRemove={toggleWatch}
-            onTrade={(s, type) => setTradeModal({ stock: s, type })} />
+            onRemove={toggleWatch} onTrade={(s, type) => setTradeModal({ stock: s, type })} />
         )}
-        {tab === "orders" && (
-          <OrdersTab orders={orders} />
-        )}
+        {tab === "orders" && <OrdersTab orders={orders} />}
 
         {/* Stock detail overlay */}
         <AnimatePresence>
@@ -1063,24 +1064,60 @@ export default function ExchangeMarket({ walletBalance = 0 }: ExchangeMarketProp
         </AnimatePresence>
       </div>
 
-      {/* Bottom nav */}
-      <div className="flex items-center border-t shrink-0 px-1 py-1" style={{ borderColor:"#1f2937", background:"#0a0f1a" }}>
-        {TABS.map(({ id, Icon, label }) => {
-          const active = tab === id && !selected;
-          return (
-            <button key={id} onClick={() => { setTab(id); setSelected(null); }}
-              className="flex-1 flex flex-col items-center gap-0.5 py-2 transition-all"
-              data-testid={`tab-${id}`}>
-              <Icon className="w-5 h-5 transition-colors" style={{ color: active ? "var(--color-tsia-green)" : "#374151" }} />
-              <span className="text-[10px] font-bold transition-colors"
-                style={{ color: active ? "var(--color-tsia-green)" : "#374151" }}>{label}</span>
-              {active && <div className="w-1 h-1 rounded-full" style={{ background:"var(--color-tsia-green)" }} />}
-            </button>
-          );
-        })}
+      {/* ── Beautiful Bottom Navigation ─────────────────────────────────────── */}
+      <div className="shrink-0 px-4 pb-6 pt-1" style={{ background:"#0a0f1a", borderTop:"1px solid #1a2236" }}>
+        {/* pill track */}
+        <div className="flex items-center justify-between gap-1 rounded-2xl p-1.5 relative"
+          style={{ background:"#0d1525" }}>
+          {TABS.map(({ id, Icon, label }) => {
+            const active = tab === id && !selected;
+            return (
+              <button key={id} onClick={() => { setTab(id); setSelected(null); }}
+                className="relative flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl transition-all duration-200"
+                data-testid={`tab-${id}`}
+                style={{ zIndex: 1 }}>
+
+                {/* animated pill background */}
+                {active && (
+                  <motion.div layoutId="tab-pill"
+                    className="absolute inset-0 rounded-xl"
+                    style={{ background:"linear-gradient(135deg, #0d2e1f 0%, #0a2419 100%)", border:"1px solid #1a4a30" }}
+                    transition={{ type:"spring", stiffness:400, damping:35 }} />
+                )}
+
+                {/* icon with optional glow ring */}
+                <div className="relative z-10 flex items-center justify-center">
+                  {active && (
+                    <motion.div initial={{ scale:0.6, opacity:0 }} animate={{ scale:1, opacity:1 }}
+                      className="absolute inset-0 rounded-full blur-md"
+                      style={{ background:"var(--color-tsia-green)", opacity:0.25 }} />
+                  )}
+                  <Icon className="w-[18px] h-[18px] relative z-10 transition-all duration-200"
+                    style={{ color: active ? "var(--color-tsia-green)" : "#374151",
+                             filter: active ? "drop-shadow(0 0 6px var(--color-tsia-green))" : "none" }} />
+                </div>
+
+                {/* label */}
+                <span className="relative z-10 font-bold transition-all duration-200"
+                  style={{ fontSize:"9px", letterSpacing:"0.04em",
+                           color: active ? "var(--color-tsia-green)" : "#374151" }}>
+                  {label.toUpperCase()}
+                </span>
+
+                {/* active dot */}
+                {active && (
+                  <motion.div layoutId="tab-dot" initial={{ scale:0 }} animate={{ scale:1 }}
+                    className="relative z-10 w-1 h-1 rounded-full"
+                    style={{ background:"var(--color-tsia-green)" }}
+                    transition={{ type:"spring", stiffness:500, damping:30 }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Trade modal portal */}
+      {/* Trade modal */}
       <AnimatePresence>
         {tradeModal && (
           <TradeModal key="modal" stock={tradeModal.stock} type={tradeModal.type} cash={cash}

@@ -2034,7 +2034,7 @@ export default function AffiliateDashboard() {
             {/* ── EXCHANGE MARKET ── */}
             {activeSection === "exchange_market" && (
               <motion.div variants={itemVariants}>
-                <ExchangeMarket walletBalance={personalBalance} />
+                <ExchangeMarket walletBalance={personalBalance} onBack={goBack} />
               </motion.div>
             )}
 

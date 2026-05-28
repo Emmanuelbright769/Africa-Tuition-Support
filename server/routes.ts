@@ -6643,6 +6643,104 @@ export async function registerRoutes(
     return { blocked: false };
   }
 
+  // ── Airtime to Cash ──────────────────────────────────────────────────────────
+  app.post("/api/fintech/airtime-to-cash", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { network, senderPhone, amountNgn } = req.body;
+
+      const validNetworks = ["mtn", "airtel", "glo", "9mobile"];
+      if (!network || !validNetworks.includes(network)) {
+        return res.status(400).json({ message: "Select a valid network (MTN, Airtel, Glo, or 9mobile)." });
+      }
+      const phone = String(senderPhone ?? "").replace(/\s/g, "");
+      if (!/^0[789]\d{9}$/.test(phone)) {
+        return res.status(400).json({ message: "Enter a valid 11-digit Nigerian phone number (e.g. 08012345678)." });
+      }
+      const ngn = Math.floor(parseFloat(amountNgn));
+      if (!ngn || ngn < 500) {
+        return res.status(400).json({ message: "Minimum airtime amount is ₦500." });
+      }
+      if (ngn > 50000) {
+        return res.status(400).json({ message: "Maximum airtime amount per transaction is ₦50,000." });
+      }
+
+      // Conversion rates per network (% of face value paid out)
+      const rates: Record<string, number> = { mtn: 0.73, airtel: 0.75, glo: 0.70, "9mobile": 0.68 };
+      const rate = rates[network];
+      const cashNgn = Math.floor(ngn * rate);
+      const cashUsd = parseFloat((cashNgn / 1600).toFixed(2));
+
+      // TSIA's dedicated receiving numbers per network
+      const tsiaNumbers: Record<string, string> = {
+        mtn: "09060000001", airtel: "09010000001", glo: "09050000001", "9mobile": "09090000001",
+      };
+      const tsiaPhone = tsiaNumbers[network];
+
+      // USSD transfer codes
+      const ussdCodes: Record<string, string> = {
+        mtn:     `*600*${tsiaPhone}*${ngn}#`,
+        airtel:  `*432*${tsiaPhone}*${ngn}*0000#`,
+        glo:     `*131*1*${tsiaPhone}*${ngn}*0000#`,
+        "9mobile": `*223*${ngn}*${tsiaPhone}#`,
+      };
+      const ussdCode = ussdCodes[network];
+
+      const reference = `TSIA-A2C-${network.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+
+      // Record as a pending bill payment — admin reviews & credits wallet
+      await storage.createBillPayment({
+        userId,
+        service: "airtime_cash",
+        amount: cashUsd,
+        reference: `${reference} | From: ${phone} | ₦${ngn} | Rate: ${(rate * 100).toFixed(0)}%`,
+        status: "pending",
+      });
+
+      // Notify user
+      try {
+        const notif = await storage.createNotification({
+          userId,
+          type: "system",
+          title: "Airtime Sale Request Received ✓",
+          message: `We received your request to sell ₦${ngn.toLocaleString()} ${network.toUpperCase()} airtime. Dial ${ussdCode} to transfer the airtime to ${tsiaPhone}. Your wallet will be credited $${cashUsd} within 30 minutes of confirmation.`,
+          data: { network, amountNgn: ngn, cashUsd, reference },
+          isRead: false,
+        });
+        pushToUser(userId, "notification", notif);
+      } catch { /* non-critical */ }
+
+      // Notify admin
+      try {
+        const u = await storage.getUser(userId);
+        if (u) {
+          sendAdminKycEmail({
+            name: `${u.firstName} ${u.lastName}`,
+            email: u.email,
+            kycType: `Airtime-to-Cash: ${network.toUpperCase()} ₦${ngn.toLocaleString()} from ${phone} → $${cashUsd} | Ref: ${reference}`,
+            userId,
+          }).catch(() => {});
+        }
+      } catch { /* non-critical */ }
+
+      res.json({
+        success: true,
+        reference,
+        network,
+        amountNgn: ngn,
+        cashNgn,
+        cashUsd,
+        ussdCode,
+        tsiaPhone,
+        rate,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ── Public: bank-transfer availability status (no auth) ─────────────────────
   app.get("/api/fintech/bank-transfer-status", async (_req, res) => {
     try {

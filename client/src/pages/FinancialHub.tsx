@@ -181,8 +181,22 @@ const SERVICES = [
   { id: "internet",  label: "Data",      icon: Wifi,          color: "from-blue-400 to-indigo-500",   bg: "bg-blue-50 dark:bg-blue-900/20" },
   { id: "electricity", label: "Electricity", icon: Zap,       color: "from-yellow-400 to-amber-500",  bg: "bg-amber-50 dark:bg-amber-900/20" },
   { id: "cable-tv",  label: "Cable TV",  icon: Tv2,           color: "from-rose-400 to-pink-600",     bg: "bg-rose-50 dark:bg-rose-900/20",   comingSoon: true },
-  { id: "betting",   label: "Betting",   icon: Gamepad2,      color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+  { id: "betting",         label: "Betting",     icon: Gamepad2,  color: "from-violet-500 to-purple-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+  { id: "airtime-to-cash", label: "Sell Airtime", icon: Banknote,  color: "from-orange-400 to-amber-500",  bg: "bg-orange-50 dark:bg-orange-900/20" },
 ];
+
+// ─── Airtime-to-Cash rates & config ─────────────────────────────────────────
+const A2C_RATES: Record<string, number> = { mtn: 0.73, airtel: 0.75, glo: 0.70, "9mobile": 0.68 };
+const A2C_TSIA_NUMBERS: Record<string, string> = {
+  mtn: "09060000001", airtel: "09010000001", glo: "09050000001", "9mobile": "09090000001",
+};
+const A2C_USSD = (network: string, tsiaPhone: string, amount: number): string => ({
+  mtn:     `*600*${tsiaPhone}*${amount}#`,
+  airtel:  `*432*${tsiaPhone}*${amount}*0000#`,
+  glo:     `*131*1*${tsiaPhone}*${amount}*0000#`,
+  "9mobile": `*223*${amount}*${tsiaPhone}#`,
+} as Record<string, string>)[network] ?? "";
+const NGN_RATE = 1600;
 
 // ─── Nigerian Networks ────────────────────────────────────────────────────────
 const NETWORKS = [
@@ -496,6 +510,15 @@ export default function FinancialHub() {
   const [tvCustomerName, setTvCustomerName]   = useState("");
   // Betting
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  // Airtime to Cash
+  const [a2cNetwork, setA2cNetwork]   = useState<string | null>(null);
+  const [a2cPhone, setA2cPhone]       = useState("");
+  const [a2cAmount, setA2cAmount]     = useState("");
+  const [a2cSubmitting, setA2cSubmitting] = useState(false);
+  const [a2cResult, setA2cResult]     = useState<{
+    reference: string; cashUsd: number; cashNgn: number;
+    ussdCode: string; tsiaPhone: string; network: string; amountNgn: number;
+  } | null>(null);
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: wallet }         = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
@@ -1143,6 +1166,7 @@ export default function FinancialHub() {
     setSelectedDisco(null); setMeterType(null); setElecPhone(""); setElecCustomerName("");
     setSelectedTvProvider(null); setTvPackages([]); setSelectedTvPackage(null); setTvCustomerName("");
     setSelectedPlatform(null);
+    setA2cNetwork(null); setA2cPhone(""); setA2cAmount(""); setA2cResult(null); setA2cSubmitting(false);
     setTxResult(null);
     setBillOtpCode(""); setBillOtpMaskedEmail(""); setBillOtpResendCooldown(0);
   };
@@ -4317,6 +4341,283 @@ export default function FinancialHub() {
             </div>
             {parseFloat(amount) > balance && <p className="text-xs text-center text-red-500">Insufficient balance</p>}
           </>)}
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AIRTIME TO CASH
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (view === "service" && selectedService?.id === "airtime-to-cash") {
+    const net = NETWORKS.find(n => n.id === a2cNetwork);
+    const ngn = parseFloat(a2cAmount) || 0;
+    const rate = a2cNetwork ? (A2C_RATES[a2cNetwork] ?? 0.70) : 0;
+    const cashNgn = Math.floor(ngn * rate);
+    const cashUsd = cashNgn > 0 ? (cashNgn / NGN_RATE).toFixed(2) : "0.00";
+    const tsiaPhone = a2cNetwork ? A2C_TSIA_NUMBERS[a2cNetwork] : "";
+    const ussdPreview = a2cNetwork && ngn >= 500 ? A2C_USSD(a2cNetwork, tsiaPhone, Math.floor(ngn)) : "";
+    const canSubmit = !!a2cNetwork && a2cPhone.length === 11 && ngn >= 500 && ngn <= 50000 && !a2cSubmitting;
+
+    const handleSubmit = async () => {
+      setA2cSubmitting(true);
+      try {
+        const res = await apiRequest("POST", "/api/fintech/airtime-to-cash", {
+          network: a2cNetwork, senderPhone: a2cPhone, amountNgn: Math.floor(ngn),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.message);
+        setA2cResult(d);
+      } catch (e: any) {
+        toast({ title: "Submission failed", description: e.message, variant: "destructive" });
+      } finally { setA2cSubmitting(false); }
+    };
+
+    if (a2cResult) {
+      return (
+        <AnimatePresence mode="wait">
+          <motion.div key="a2c-success" initial={{ opacity:0, scale:0.95 }} animate={{ opacity:1, scale:1 }} className="space-y-5">
+            {/* Success header */}
+            <div className="flex flex-col items-center text-center space-y-4 pt-2">
+              <div className="relative w-28 h-28 flex items-center justify-center shrink-0">
+                <div className="absolute inset-0 rounded-full bg-orange-400/10" />
+                <div className="absolute inset-[10px] rounded-full bg-orange-400/20" />
+                <div className="absolute inset-[20px] rounded-full bg-orange-400/30" />
+                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center shadow-lg">
+                  <Check className="w-7 h-7 text-white" strokeWidth={3} />
+                </div>
+              </div>
+              <div>
+                <p className="text-xl font-black">Request Submitted!</p>
+                <p className="text-sm text-muted-foreground mt-1">Transfer the airtime using the code below, then wait for your wallet to be credited.</p>
+              </div>
+            </div>
+
+            {/* USSD instruction card */}
+            <div className="bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border-2 border-orange-200 dark:border-orange-800 rounded-3xl p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
+                  <img src={NETWORKS.find(n => n.id === a2cResult.network)?.logo} alt={a2cResult.network} className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <p className="font-black text-base">{a2cResult.network.toUpperCase()} → Wallet</p>
+                  <p className="text-xs text-muted-foreground">Airtime transfer to TSIA</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Dial This Code on Your Phone</p>
+                <div className="flex items-center gap-2 bg-background border-2 border-orange-300 dark:border-orange-700 rounded-2xl px-4 py-3">
+                  <span className="flex-1 text-lg font-black font-mono tracking-wider text-orange-700 dark:text-orange-400">{a2cResult.ussdCode}</span>
+                  <button onClick={() => { navigator.clipboard.writeText(a2cResult.ussdCode).catch(() => {}); toast({ title: "Copied!" }); }}
+                    className="p-1.5 rounded-lg bg-orange-100 dark:bg-orange-900/30 hover:bg-orange-200 transition-colors" data-testid="btn-copy-ussd">
+                    <Copy className="w-4 h-4 text-orange-600" />
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  Dial from the phone number you entered: {a2cResult.amountNgn > 0 ? a2cPhone : "—"}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-center">
+                <div className="bg-white/60 dark:bg-white/10 rounded-2xl p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Airtime Sent</p>
+                  <p className="font-black text-base">₦{a2cResult.amountNgn.toLocaleString()}</p>
+                </div>
+                <div className="bg-white/60 dark:bg-white/10 rounded-2xl p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">You Receive</p>
+                  <p className="font-black text-base text-tsia-green">${a2cResult.cashUsd}</p>
+                </div>
+              </div>
+
+              <div className="bg-amber-100 dark:bg-amber-900/30 rounded-2xl px-4 py-3 flex items-start gap-2">
+                <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <span className="font-bold">Processing time:</span> 5–30 minutes after airtime is received. Your wallet will be credited automatically and you'll get a notification.
+                </p>
+              </div>
+            </div>
+
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground font-mono">Ref: {a2cResult.reference}</p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1 h-12 rounded-2xl font-bold"
+                onClick={() => { resetBill(); }} data-testid="btn-a2c-sell-more">
+                Sell More Airtime
+              </Button>
+              <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
+                onClick={() => { resetBill(); setView("home"); }} data-testid="btn-a2c-done">
+                Done
+              </Button>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      );
+    }
+
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div key="a2c-form" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <button onClick={() => { resetBill(); setView("pay-bill"); }}
+              className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="font-black text-base">Sell Airtime for Cash</h2>
+            <button onClick={() => { resetBill(); setView("home"); }}
+              className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Info banner */}
+          <div className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border border-orange-200 dark:border-orange-800 rounded-2xl px-4 py-3 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center shrink-0 mt-0.5">
+              <Banknote className="w-4 h-4 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-orange-800 dark:text-orange-300">How it works</p>
+              <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-0.5">Select your network, enter your phone number and the airtime amount you want to sell. We'll give you a USSD code to transfer the airtime to us — and credit your wallet within 30 minutes.</p>
+            </div>
+          </div>
+
+          {/* Network selector */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3 block">Your Network</label>
+            <div className="grid grid-cols-4 gap-3">
+              {NETWORKS.map(n => (
+                <button key={n.id} onClick={() => setA2cNetwork(n.id)}
+                  className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${a2cNetwork === n.id ? "border-tsia-green bg-tsia-green/5" : "border-border bg-card hover:border-tsia-green/40"}`}
+                  data-testid={`btn-a2c-${n.id}`}>
+                  <div className="w-10 h-10 rounded-full overflow-hidden">
+                    <img src={n.logo} alt={n.label} className="w-full h-full object-cover" />
+                  </div>
+                  <span className="text-[10px] font-bold">{n.label}</span>
+                  {a2cNetwork === n.id && (
+                    <span className="text-[9px] text-tsia-green font-bold">{((A2C_RATES[n.id] ?? 0.7) * 100).toFixed(0)}% rate</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Phone number */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Your Phone Number</label>
+            <div className="flex items-center gap-3 bg-muted/30 border-2 border-border focus-within:border-tsia-green rounded-2xl px-4 py-3 transition-colors">
+              {a2cNetwork && net ? (
+                <div className="w-7 h-7 rounded-full overflow-hidden shrink-0">
+                  <img src={net.logo} alt={net.label} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+              )}
+              <input type="tel" placeholder="e.g. 08012345678"
+                value={a2cPhone}
+                onChange={e => setA2cPhone(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                className="flex-1 bg-transparent text-base font-mono tracking-wider focus:outline-none placeholder:text-muted-foreground/60"
+                data-testid="input-a2c-phone" />
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1.5 ml-1">Use the phone number that will send the airtime transfer</p>
+          </div>
+
+          {/* Airtime amount */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Airtime Amount (₦)</label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-xl text-muted-foreground">₦</span>
+              <input type="number" placeholder="500 – 50,000"
+                value={a2cAmount}
+                min={500} max={50000}
+                onChange={e => setA2cAmount(e.target.value)}
+                className="w-full pl-10 pr-4 py-3.5 text-2xl font-black border-2 border-border focus:border-tsia-green rounded-2xl bg-background focus:outline-none transition-colors"
+                data-testid="input-a2c-amount" />
+            </div>
+            <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground mx-1">
+              <span>Min: ₦500</span>
+              <span>Max: ₦50,000</span>
+            </div>
+            {/* Quick amounts */}
+            <div className="flex gap-2 mt-2 flex-wrap">
+              {[500, 1000, 2000, 5000, 10000].map(amt => (
+                <button key={amt} onClick={() => setA2cAmount(String(amt))}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${parseFloat(a2cAmount) === amt ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border hover:border-tsia-green/40"}`}
+                  data-testid={`btn-a2c-quick-${amt}`}>
+                  ₦{amt.toLocaleString()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conversion preview */}
+          {a2cNetwork && ngn >= 500 && (
+            <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
+              className="bg-gradient-to-r from-tsia-green/8 to-tsia-gold/8 border border-tsia-green/20 rounded-3xl p-5 space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">You will receive</p>
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-3xl font-black text-tsia-green">${cashUsd}</p>
+                  <p className="text-sm text-muted-foreground">≈ ₦{cashNgn.toLocaleString()} NGN</p>
+                </div>
+                <div className="text-right text-xs text-muted-foreground space-y-0.5">
+                  <p>Airtime: <span className="font-bold text-foreground">₦{ngn.toLocaleString()}</span></p>
+                  <p>Rate: <span className="font-bold text-tsia-green">{(rate * 100).toFixed(0)}%</span></p>
+                  <p>Fee: <span className="font-bold text-foreground">{((1 - rate) * 100).toFixed(0)}%</span></p>
+                </div>
+              </div>
+
+              {ussdPreview && (
+                <div className="border-t border-tsia-green/20 pt-3">
+                  <p className="text-[10px] text-muted-foreground mb-1 uppercase tracking-wide">USSD Code Preview</p>
+                  <div className="flex items-center gap-2 bg-background/60 rounded-xl px-3 py-2 font-mono text-sm font-bold text-tsia-green">
+                    <span className="flex-1">{ussdPreview}</span>
+                    <button onClick={() => { navigator.clipboard.writeText(ussdPreview).catch(() => {}); toast({ title: "Copied!" }); }}
+                      className="p-1 rounded hover:bg-muted transition-colors">
+                      <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Transfer to TSIA number: <span className="font-mono font-bold">{tsiaPhone}</span></p>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* Rates table */}
+          <div className="bg-muted/30 rounded-2xl p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">Conversion Rates</p>
+            <div className="grid grid-cols-2 gap-2">
+              {NETWORKS.map(n => (
+                <div key={n.id} className={`flex items-center gap-2 p-2 rounded-xl transition-colors ${a2cNetwork === n.id ? "bg-tsia-green/10" : ""}`}>
+                  <div className="w-6 h-6 rounded-full overflow-hidden shrink-0">
+                    <img src={n.logo} alt={n.label} className="w-full h-full object-cover" />
+                  </div>
+                  <span className="text-xs font-semibold">{n.label}</span>
+                  <span className="ml-auto text-xs font-black text-tsia-green">{((A2C_RATES[n.id] ?? 0.7) * 100).toFixed(0)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Submit */}
+          <Button
+            className="w-full h-14 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-base rounded-2xl shadow-lg disabled:opacity-50"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+            data-testid="btn-a2c-submit">
+            {a2cSubmitting ? (
+              <><Loader2 className="w-5 h-5 animate-spin mr-2" />Processing…</>
+            ) : (
+              <><Banknote className="w-5 h-5 mr-2" />Sell ₦{ngn >= 500 ? ngn.toLocaleString() : "—"} Airtime for ${cashUsd}</>
+            )}
+          </Button>
+
+          {!a2cNetwork && <p className="text-xs text-center text-muted-foreground">Select your network to see the conversion rate</p>}
+          {a2cNetwork && ngn > 0 && ngn < 500 && <p className="text-xs text-center text-red-500">Minimum is ₦500</p>}
+          {ngn > 50000 && <p className="text-xs text-center text-red-500">Maximum is ₦50,000 per transaction</p>}
         </motion.div>
       </AnimatePresence>
     );

@@ -181,8 +181,11 @@ export default function ScholarshipPortal() {
     if (s === "started") { setStep("waec"); return; }
     if (s === "waec_done") { setStep("pay_fee"); return; }
     if (s === "fee_paid" && type === "student") { setStep("test_intro"); return; }
-    if (s === "fee_paid" && type === "masters") { setStep("commitment"); return; }
-    if (s === "commitment_paid") { setStep("test_intro"); return; }
+    if (s === "fee_paid" && type === "masters") {
+      // If commitment window already served, go straight to test; else show countdown
+      if (rec.commitmentFeePaid) { setStep("test_intro"); return; }
+      setStep("commitment"); return;
+    }
     if (s === "test_in_progress") { setStep("test_intro"); return; }
     if (s === "passed" || s === "failed") {
       setResult({ verbalScore: rec.verbalScore ?? 0, quantScore: rec.quantScore ?? 0, totalScore: (rec.verbalScore ?? 0) + (rec.quantScore ?? 0), passed: s === "passed", prizeAmount: rec.prizeAmount ? parseFloat(rec.prizeAmount) : 0 });
@@ -345,7 +348,9 @@ export default function ScholarshipPortal() {
       const data = await apiRequest("POST", "/api/scholarship/pay-fee", { type: scholarshipType });
       setScholarshipRecord(data);
       if (scholarshipType === "masters") {
-        setStep("commitment");
+        // commitmentFeePaid=true means 30-day window already served → go to test
+        if ((data as any).commitmentFeePaid) { setStep("test_intro"); }
+        else { setStep("commitment"); }
       } else {
         setStep("test_intro");
       }
@@ -361,7 +366,11 @@ export default function ScholarshipPortal() {
     try {
       const data = await apiRequest("POST", "/api/scholarship/pay-commitment", {});
       setScholarshipRecord(data);
-      setStep("test_intro");
+      // After paying $10, record resets to "started" — user does WAEC fresh
+      setStep("waec");
+      setWaecReg(""); setWaecYear(""); setSchoolName(""); setSchoolLocation("");
+      setSubjects(["Mathematics", "English Language", "", "", ""]);
+      setGrades(["", "", "", "", ""]);
       setWalletBalance(prev => prev !== null ? prev - 10 : null);
     } catch (e: any) {
       toast({ title: "Payment Failed", description: e.message, variant: "destructive" });
@@ -617,7 +626,7 @@ export default function ScholarshipPortal() {
                 className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 mb-4 text-center">
                 <Trophy className="w-7 h-7 text-amber-400 mx-auto mb-2" />
                 <p className="text-amber-300 font-bold text-lg">${prizeAmt}.00 Prize Awarded</p>
-                <p className="text-amber-200/70 text-xs mt-1">Your prize will be credited to your SwiftWallet within 24 hours after admin review. You'll receive an in-app notification.</p>
+                <p className="text-amber-200/70 text-xs mt-1">Your prize is pending admin approval. You will receive an in-app notification once your wallet has been credited.</p>
               </motion.div>
             )}
 
@@ -828,7 +837,7 @@ export default function ScholarshipPortal() {
                   <Clock className="w-8 h-8 text-amber-400" />
                 </div>
                 <h2 className="text-2xl font-black text-white">30-Day Commitment Window</h2>
-                <p className="text-white/60 text-sm mt-1 max-w-xs mx-auto">The Masters Scholarship requires 30 days of commitment. Return after your countdown to unlock the test.</p>
+                <p className="text-white/60 text-sm mt-1 max-w-xs mx-auto">The Masters Scholarship requires a 30-day commitment period. Once it elapses, pay $10 to start your application afresh and take the test.</p>
               </div>
 
               {/* Countdown */}
@@ -849,12 +858,12 @@ export default function ScholarshipPortal() {
                 <div className="space-y-4">
                   <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                     <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
-                    <p className="text-emerald-300 font-bold">Commitment Complete!</p>
-                    <p className="text-emerald-300/70 text-xs mt-1">Pay the $10 unlock fee to access your test.</p>
+                    <p className="text-emerald-300 font-bold">Commitment Window Complete!</p>
+                    <p className="text-emerald-300/70 text-xs mt-1">Pay $10 to restart your application from the beginning and proceed to the test.</p>
                   </div>
 
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
-                    <div className="flex justify-between text-sm text-white/70"><span>Commitment Unlock Fee</span><span>$10.00</span></div>
+                    <div className="flex justify-between text-sm text-white/70"><span>Fresh Start Fee</span><span>$10.00</span></div>
                     <div className="flex items-center gap-2 pt-1">
                       <Wallet className="w-4 h-4 text-white/50" />
                       <span className="text-white/60 text-sm">Your balance: <strong className="text-white">${(walletBalance ?? 0).toFixed(2)}</strong></span>
@@ -863,12 +872,12 @@ export default function ScholarshipPortal() {
 
                   <Button onClick={handlePayCommitment} disabled={loading || (walletBalance !== null && walletBalance < 10)}
                     className="w-full h-12 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold">
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Pay $10.00 & Unlock Test"}
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Pay $10.00 & Start Afresh"}
                   </Button>
                 </div>
               ) : (
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-                  <p className="text-white/60 text-sm">Come back in <strong className="text-white">{daysLeft} days</strong> to pay the $10 unlock fee and take your test.</p>
+                  <p className="text-white/60 text-sm">Come back in <strong className="text-white">{daysLeft} day{daysLeft !== 1 ? "s" : ""}</strong> to pay the $10 fresh start fee and begin your application.</p>
                   <Button onClick={() => setLocation("/dashboard")} variant="ghost" className="mt-3 text-white/60 hover:text-white text-sm">
                     Return to Dashboard
                   </Button>

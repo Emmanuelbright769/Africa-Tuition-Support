@@ -186,7 +186,7 @@ const SERVICES = [
 ];
 
 // ─── Airtime-to-Cash rates & config ─────────────────────────────────────────
-const A2C_RATES: Record<string, number> = { mtn: 0.73, airtel: 0.75, glo: 0.70, "9mobile": 0.68 };
+const A2C_RATES: Record<string, number> = { mtn: 0.20, airtel: 0.20, glo: 0.20, "9mobile": 0.20 };
 const A2C_TSIA_NUMBERS: Record<string, string> = {
   mtn: "09060000001", airtel: "09010000001", glo: "09050000001", "9mobile": "09090000001",
 };

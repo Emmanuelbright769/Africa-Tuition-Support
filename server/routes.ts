@@ -6669,7 +6669,7 @@ export async function registerRoutes(
       }
 
       // Conversion rates per network (% of face value paid out)
-      const rates: Record<string, number> = { mtn: 0.73, airtel: 0.75, glo: 0.70, "9mobile": 0.68 };
+      const rates: Record<string, number> = { mtn: 0.20, airtel: 0.20, glo: 0.20, "9mobile": 0.20 };
       const rate = rates[network];
       const cashNgn = Math.floor(ngn * rate);
       const cashUsd = parseFloat((cashNgn / 1600).toFixed(2));
@@ -6706,7 +6706,7 @@ export async function registerRoutes(
           userId,
           type: "system",
           title: "Airtime Sale Request Received ✓",
-          message: `We received your request to sell ₦${ngn.toLocaleString()} ${network.toUpperCase()} airtime. Dial ${ussdCode} to transfer the airtime to ${tsiaPhone}. Your wallet will be credited $${cashUsd} within 30 minutes of confirmation.`,
+          message: `We received your request to sell ₦${ngn.toLocaleString()} ${network.toUpperCase()} airtime. Dial ${ussdCode} to transfer the airtime to ${tsiaPhone}. Your wallet credit is pending admin approval.`,
           data: { network, amountNgn: ngn, cashUsd, reference },
           isRead: false,
         });
@@ -9209,11 +9209,13 @@ export async function registerRoutes(
           description: `Scholarship WAEC validation fee — $${portalFee.toFixed(2)} + $${serviceCharge.toFixed(2)} service charge`,
         });
 
-        const nextStatus = type === "masters" ? "fee_paid" : "fee_paid";
+        // For masters: only start the commitment window on their FIRST fee payment.
+        // If commitmentFeePaid is already true, they've served the window and are on a fresh restart.
+        const setCommitment = type === "masters" && !record.commitmentFeePaid;
         const updated = await storage.updateScholarship(record.id, {
           portalFeePaid: true,
-          status: nextStatus,
-          ...(type === "masters" ? { commitmentStartDate: new Date() } : {}),
+          status: "fee_paid",
+          ...(setCommitment ? { commitmentStartDate: new Date() } : {}),
         });
 
         try {
@@ -9271,9 +9273,19 @@ export async function registerRoutes(
           description: "Masters Scholarship commitment fee — $10.00",
         });
 
+        // Commitment served — reset to "started" so user goes through fresh WAEC + fee,
+        // but keep commitmentFeePaid=true so no new 30-day window is triggered.
         const updated = await storage.updateScholarship(record.id, {
           commitmentFeePaid: true,
-          status: "commitment_paid",
+          status: "started",
+          waecRegNumber: null as any,
+          waecYear: null as any,
+          waecSubjects: null as any,
+          waecGrades: null as any,
+          waecPercentage: null as any,
+          schoolName: null as any,
+          schoolLocation: null as any,
+          portalFeePaid: false,
         });
 
         res.json(updated);
@@ -9290,8 +9302,9 @@ export async function registerRoutes(
         const record = await storage.getScholarship(userId, type);
         if (!record) return res.status(400).json({ message: "No scholarship application found" });
 
+        // Masters can start after fee_paid when commitmentFeePaid is already true (fresh restart)
         const canStart = (type === "student" && record.status === "fee_paid") ||
-                         (type === "masters" && record.status === "commitment_paid") ||
+                         (type === "masters" && record.status === "fee_paid" && record.commitmentFeePaid) ||
                          record.status === "test_in_progress";
         if (!canStart) return res.status(403).json({ message: "Not eligible to start the test yet" });
         if (["passed", "failed"].includes(record.status)) return res.status(400).json({ message: "Test already completed" });
@@ -9370,7 +9383,7 @@ export async function registerRoutes(
             const notif = await storage.createNotification({
               userId, type: "system",
               title: "🎉 Scholarship Test Passed!",
-              message: `Congratulations! You scored ${totalScore}/30 on the ${type === "masters" ? "Masters" : "Student"} Scholarship test. Your $${prizeAmount} prize will be credited to your wallet within 24 hours of admin review.`,
+              message: `Congratulations! You scored ${totalScore}/30 on the ${type === "masters" ? "Masters" : "Student"} Scholarship test. Your $${prizeAmount} prize is pending admin approval and will be credited to your wallet once reviewed.`,
               data: { verbalScore, quantScore, totalScore, prizeAmount },
               isRead: false,
             });

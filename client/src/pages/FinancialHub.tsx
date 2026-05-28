@@ -1186,33 +1186,6 @@ export default function FinancialHub() {
     finally { setTsiaLooking(false); }
   };
 
-  // ═════════════════════════════════════════════════════════════════════════
-  // BOTTOM NAV BAR (shared)
-  // ═════════════════════════════════════════════════════════════════════════
-  const BottomNavBar = () => (
-    <nav className="fixed bottom-0 left-0 right-0 z-[60] bg-background/98 backdrop-blur-md border-t border-border h-[60px] flex items-stretch shadow-[0_-4px_20px_rgba(0,0,0,0.07)]">
-      {([
-        { id: "home",    label: "Home",    Icon: HomeIcon },
-        { id: "rewards", label: "Rewards", Icon: Trophy },
-        { id: "finance", label: "Finance", Icon: TrendingUp },
-        { id: "cards",   label: "Cards",   Icon: CreditCard },
-        { id: "me",      label: "Me",      Icon: UserCircle },
-      ] as const).map(({ id, label, Icon }) => {
-        const active = bottomNav === id;
-        return (
-          <button key={id} onClick={() => { setBottomNav(id); if (id === "finance") { setSavingsView("list"); setSelectedGoalId(null); } }}
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-all ${active ? "text-tsia-green" : "text-muted-foreground hover:text-foreground"}`}
-            data-testid={`btn-nav-${id}`}>
-            <div className={`relative flex items-center justify-center transition-all ${active ? "scale-110" : ""}`}>
-              <Icon className={`w-[18px] h-[18px] ${active ? "stroke-[2.5px]" : ""}`} />
-              {active && <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-tsia-green" />}
-            </div>
-            <span className={`text-[9px] font-bold uppercase tracking-wider leading-none ${active ? "text-tsia-green" : ""}`}>{label}</span>
-          </button>
-        );
-      })}
-    </nav>
-  );
 
   // ═════════════════════════════════════════════════════════════════════════
   // FINANCE TAB — Savings + Loans
@@ -1225,7 +1198,7 @@ export default function FinancialHub() {
     if (savingsView === "detail" && selectedGoalId) {
       const goal = goalDetail?.goal ?? activeGoals.find(g => g.id === selectedGoalId);
       const txs = goalDetail?.transactions ?? [];
-      if (!goal) return <div className="pb-20"><BottomNavBar /></div>;
+      if (!goal) return <div className="pb-4"></div>;
       const cur = parseFloat(goal.currentAmount);
       const tgt = parseFloat(goal.targetAmount);
       const pct = Math.min(100, tgt > 0 ? (cur / tgt) * 100 : 0);
@@ -1234,7 +1207,7 @@ export default function FinancialHub() {
         : null;
       const actionAmt = parseFloat(sgActionAmount) || 0;
       return (
-        <div className="space-y-5 pb-20">
+        <div className="space-y-5 pb-4">
           {/* Header */}
           <div className="flex items-center justify-between">
             <button onClick={() => { setSavingsView("list"); setSelectedGoalId(null); setSgDeleteConfirm(false); }}
@@ -1414,7 +1387,6 @@ export default function FinancialHub() {
             </DialogContent>
           </Dialog>
 
-          <BottomNavBar />
         </div>
       );
     }
@@ -1423,7 +1395,7 @@ export default function FinancialHub() {
     if (savingsView === "create") {
       const selectedType = SAVINGS_TYPES.find(t => t.id === sgType) ?? SAVINGS_TYPES[0];
       return (
-        <div className="space-y-5 pb-20">
+        <div className="space-y-5 pb-4">
           <div className="flex items-center justify-between">
             <button onClick={() => setSavingsView("list")} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
               <ArrowLeft className="w-4 h-4" />
@@ -1496,14 +1468,13 @@ export default function FinancialHub() {
             {createGoalMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Plus className="w-5 h-5 mr-2" />}
             Create Goal
           </Button>
-          <BottomNavBar />
         </div>
       );
     }
 
     // ── Savings list (default Finance tab view) ───────────────────────────
     return (
-      <div className="space-y-5 pb-20">
+      <div className="space-y-5 pb-4">
         {/* Header */}
         <div className="flex items-center justify-between pt-1">
           <div>
@@ -1736,14 +1707,13 @@ export default function FinancialHub() {
           </DialogContent>
         </Dialog>
 
-        <BottomNavBar />
       </div>
     );
   }
 
   // ── Rewards tab ────────────────────────────────────────────────────────────
   if (view === "home" && bottomNav === "rewards") return (
-    <div className="space-y-5 pb-20">
+    <div className="space-y-5 pb-4">
       <div className="flex items-center justify-between pt-1">
         <div><h1 className="font-black text-xl">Rewards</h1><p className="text-xs text-muted-foreground">Earn &amp; grow with TSIA</p></div>
         <div className="w-10 h-10 rounded-full bg-tsia-gold/15 flex items-center justify-center"><Trophy className="w-5 h-5 text-tsia-gold" /></div>
@@ -2012,13 +1982,12 @@ export default function FinancialHub() {
         </DialogContent>
       </Dialog>
 
-      <BottomNavBar />
     </div>
   );
 
   // ── Cards tab ──────────────────────────────────────────────────────────────
   if (view === "home" && bottomNav === "cards") return (
-    <div className="space-y-5 pb-20">
+    <div className="space-y-5 pb-4">
       <div className="flex items-center justify-between pt-1">
         <div><h1 className="font-black text-xl">Cards</h1><p className="text-xs text-muted-foreground">Virtual &amp; physical cards</p></div>
         <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center"><CreditCard className="w-5 h-5 text-blue-600" /></div>
@@ -2033,13 +2002,12 @@ export default function FinancialHub() {
           ))}
         </div>
       </div>
-      <BottomNavBar />
     </div>
   );
 
   // ── Me tab ─────────────────────────────────────────────────────────────────
   if (view === "home" && bottomNav === "me") return (
-    <div className="space-y-5 pb-20">
+    <div className="space-y-5 pb-4">
       <div className="flex items-center justify-between pt-1">
         <div><h1 className="font-black text-xl">Profile</h1><p className="text-xs text-muted-foreground">Account &amp; settings</p></div>
         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg font-black text-tsia-green">
@@ -2064,7 +2032,6 @@ export default function FinancialHub() {
           </div>
         ))}
       </div>
-      <BottomNavBar />
     </div>
   );
 
@@ -2072,7 +2039,7 @@ export default function FinancialHub() {
   // HOME VIEW
   // ═════════════════════════════════════════════════════════════════════════
   if (view === "home") return (
-    <div className="space-y-5 pb-20">
+    <div className="space-y-5 pb-4">
 
       {/* ── TOP HEADER ── */}
       <div className="flex items-center justify-between">
@@ -2490,7 +2457,6 @@ export default function FinancialHub() {
         </DialogContent>
       </Dialog>
 
-      <BottomNavBar />
     </div>
   );
 

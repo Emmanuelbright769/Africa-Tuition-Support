@@ -46,7 +46,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
   { id: "plans",        label: "Swift-Pay Plans",        icon: Star },
   { id: "scholarship",  label: "Scholarship Portal",     icon: Trophy, badge: "New" },
-  { id: "msc_plans",    label: "Swift Pay MSc plans",    icon: GraduationCap, badge: "Soon" },
+  { id: "msc_plans",    label: "Swift Pay MSc plans",    icon: GraduationCap },
   { id: "activity",     label: "Activity",               icon: History },
   { id: "loan",               label: "Student loan",      icon: Banknote },
   { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
@@ -1178,6 +1178,37 @@ export default function StudentDashboard() {
                   </h2>
                   <p className="text-muted-foreground text-sm">Postgraduate sponsorship for eligible TSIA students pursuing a Master's degree.</p>
                 </div>
+
+                {/* Masters Scholarship card — mirrored from Scholarship Portal */}
+                <motion.div variants={itemVariants}>
+                  <div
+                    onClick={() => setLocation("/scholarship?type=masters")}
+                    className="relative overflow-hidden rounded-3xl cursor-pointer group"
+                    style={{ background: "linear-gradient(135deg, #1a0a00 0%, #3d1a00 40%, #7c3300 100%)" }}
+                    data-testid="card-masters-scholarship-msc"
+                  >
+                    <div className="absolute inset-0 opacity-10"
+                      style={{ backgroundImage: "radial-gradient(circle at 70% 50%, #f97316 0%, transparent 60%)" }} />
+                    <div className="relative p-6 flex items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Trophy className="w-5 h-5 text-amber-400" />
+                          <span className="text-amber-400 font-black text-xs uppercase tracking-widest">Masters Scholarship</span>
+                        </div>
+                        <p className="text-white font-black text-2xl mb-1">Win $250</p>
+                        <p className="text-white/60 text-xs leading-relaxed">
+                          Validate WAEC · 30-day commitment · Aptitude test · Score 70%+
+                        </p>
+                        <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 transition-colors text-black font-bold text-sm">
+                          Apply Now <ArrowUpRight className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <div className="w-20 h-20 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                        <GraduationCap className="w-10 h-10 text-amber-400" />
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
 
                 {/* Active apply hero */}
                 <div className="flex flex-col items-center justify-center py-10 text-center">

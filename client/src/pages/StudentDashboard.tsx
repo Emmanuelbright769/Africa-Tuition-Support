@@ -688,7 +688,6 @@ export default function StudentDashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <h3 className="font-bold text-base">Master's Degree (MSc) Sponsorship</h3>
-                          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] px-2 py-0.5 font-bold">Coming Soon</Badge>
                         </div>
                         <p className="text-sm text-muted-foreground leading-relaxed">
                           TSIA's postgraduate sponsorship programme — funding verified students pursuing an MSc or equivalent master's qualification. Identity and degree verification required.
@@ -710,7 +709,7 @@ export default function StudentDashboard() {
                         data-testid="button-view-msc-plans"
                         className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-tsia-green hover:bg-tsia-green/90 text-white text-xs font-bold shadow-md shadow-tsia-green/20 transition-all hover:scale-105 active:scale-95"
                       >
-                        <ArrowUpRight className="w-4 h-4" /> Learn More
+                        <ArrowUpRight className="w-4 h-4" /> Apply Now
                       </button>
                     </CardContent>
                   </Card>
@@ -1180,16 +1179,23 @@ export default function StudentDashboard() {
                   <p className="text-muted-foreground text-sm">Postgraduate sponsorship for eligible TSIA students pursuing a Master's degree.</p>
                 </div>
 
-                {/* Coming soon hero */}
-                <div className="flex flex-col items-center justify-center py-12 text-center">
+                {/* Active apply hero */}
+                <div className="flex flex-col items-center justify-center py-10 text-center">
                   <div className="w-24 h-24 bg-tsia-green/10 rounded-full flex items-center justify-center mb-6">
                     <GraduationCap className="w-12 h-12 text-tsia-green" />
                   </div>
-                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-sm px-4 py-1.5 mb-4">Coming Soon</Badge>
-                  <h3 className="text-2xl font-bold mb-3">MSc Sponsorship Launching Soon</h3>
+                  <Badge className="bg-tsia-green/10 text-tsia-green border border-tsia-green/30 text-sm px-4 py-1.5 mb-4 font-bold">Now Open</Badge>
+                  <h3 className="text-2xl font-bold mb-3">Masters Scholarship — $250 Prize</h3>
                   <p className="text-muted-foreground max-w-sm mx-auto leading-relaxed text-sm mb-8">
-                    TSIA is building a dedicated postgraduate sponsorship track. Verified BSc holders admitted to a recognised MSc programme will be eligible to apply for tuition co-funding.
+                    Validate your WAEC results, complete a 30-day commitment window, then sit a timed aptitude test. Score 70% or above to win your $250 prize.
                   </p>
+                  <button
+                    onClick={() => setLocation("/scholarship?type=masters")}
+                    data-testid="button-apply-masters-scholarship"
+                    className="flex items-center gap-2 px-8 py-3 rounded-2xl bg-tsia-green hover:bg-tsia-green/90 text-white font-bold shadow-lg shadow-tsia-green/20 transition-all hover:scale-105 active:scale-95"
+                  >
+                    <Trophy className="w-5 h-5" /> Apply for Masters Scholarship
+                  </button>
                 </div>
 
                 {/* Requirements preview */}
@@ -1198,7 +1204,7 @@ export default function StudentDashboard() {
                     <CardTitle className="text-base flex items-center gap-2">
                       <BookOpen className="w-5 h-5 text-tsia-green" /> Eligibility Requirements (Preview)
                     </CardTitle>
-                    <CardDescription>What you will need when applications open</CardDescription>
+                    <CardDescription>Requirements to complete your application</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">

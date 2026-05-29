@@ -189,8 +189,8 @@ export default function ScholarshipPortal() {
         } else if (scholarshipType) {
           setStep("waec");
         }
-        const w = await apiRequest("GET", "/api/wallet/balance");
-        setWalletBalance(parseFloat((w as any).balance ?? "0"));
+        const w = await apiRequest("GET", "/api/wallet/balances");
+        setWalletBalance(parseFloat((w as any).confirmedBalance ?? "0"));
       } catch { /* not logged in or error */ }
       setPageLoading(false);
     })();

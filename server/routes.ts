@@ -822,14 +822,6 @@ export async function registerRoutes(
 
       let tier: "platinum" | "gold" | "silver" | "none" = payoutInfo.label as any;
 
-      if (tier === "none") {
-        return res.status(400).json({
-          message: "Your WAEC results do not meet the minimum 51% threshold for sponsorship. You need at least a 51% score to qualify.",
-          percentage,
-          waecValidation: waecApiResponse,
-        });
-      }
-
       // Silent age disqualification: estimated age = currentYear - waecYear + 16; if > 29, flag silently
       const currentYear = new Date().getFullYear();
       const estimatedAge = currentYear - parseInt(waecYear, 10) + 16;
@@ -9367,7 +9359,10 @@ export async function registerRoutes(
         }
 
         const totalScore = verbalScore + quantScore;
-        const passed = totalScore >= 21;
+        const testPct = (totalScore / 30) * 100;
+        const waecPct = parseFloat(record.waecPercentage ?? "0");
+        const aggregatePct = (waecPct + testPct) / 2;
+        const passed = aggregatePct >= 70;
         const prizeAmount = type === "masters" ? 250 : 100;
 
         const updated = await storage.updateScholarship(record.id, {
@@ -9383,8 +9378,8 @@ export async function registerRoutes(
             const notif = await storage.createNotification({
               userId, type: "system",
               title: "🎉 Scholarship Test Passed!",
-              message: `Congratulations! You scored ${totalScore}/30 on the ${type === "masters" ? "Masters" : "Student"} Scholarship test. Your $${prizeAmount} prize is pending admin approval and will be credited to your wallet once reviewed.`,
-              data: { verbalScore, quantScore, totalScore, prizeAmount },
+              message: `Congratulations! Your aggregate score is ${aggregatePct.toFixed(1)}% (WAEC: ${waecPct.toFixed(1)}%, Test: ${testPct.toFixed(1)}%) on the ${type === "masters" ? "Masters" : "Student"} Scholarship. Your $${prizeAmount} prize is pending admin approval and will be credited to your wallet once reviewed.`,
+              data: { verbalScore, quantScore, totalScore, waecPct, testPct, aggregatePct, prizeAmount },
               isRead: false,
             });
             pushToUser(userId, "notification", notif);
@@ -9396,14 +9391,14 @@ export async function registerRoutes(
               sendAdminKycEmail({
                 name: `${u.firstName} ${u.lastName}`,
                 email: u.email,
-                kycType: `SCHOLARSHIP PASSED — ${type.toUpperCase()} | Score: ${totalScore}/30 (Verbal: ${verbalScore}, Quant: ${quantScore}) | Prize: $${prizeAmount}`,
+                kycType: `SCHOLARSHIP PASSED — ${type.toUpperCase()} | WAEC: ${waecPct.toFixed(1)}% | Test: ${testPct.toFixed(1)}% | Aggregate: ${aggregatePct.toFixed(1)}% | Score: ${totalScore}/30 | Prize: $${prizeAmount}`,
                 userId,
               }).catch(() => {});
             }
           } catch { /* non-critical */ }
         }
 
-        res.json({ verbalScore, quantScore, totalScore, passed, prizeAmount: passed ? prizeAmount : 0 });
+        res.json({ verbalScore, quantScore, totalScore, waecScore: waecPct, testScore: testPct, aggregateScore: aggregatePct, passed, prizeAmount: passed ? prizeAmount : 0 });
       } catch (e: any) { res.status(500).json({ message: e.message }); }
     });
 

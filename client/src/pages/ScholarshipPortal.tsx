@@ -29,6 +29,9 @@ interface TestResult {
   verbalScore: number;
   quantScore: number;
   totalScore: number;
+  waecScore: number;
+  testScore: number;
+  aggregateScore: number;
   passed: boolean;
   prizeAmount: number;
 }
@@ -188,7 +191,10 @@ export default function ScholarshipPortal() {
     }
     if (s === "test_in_progress") { setStep("test_intro"); return; }
     if (s === "passed" || s === "failed") {
-      setResult({ verbalScore: rec.verbalScore ?? 0, quantScore: rec.quantScore ?? 0, totalScore: (rec.verbalScore ?? 0) + (rec.quantScore ?? 0), passed: s === "passed", prizeAmount: rec.prizeAmount ? parseFloat(rec.prizeAmount) : 0 });
+      const vs = rec.verbalScore ?? 0; const qs = rec.quantScore ?? 0; const ts = vs + qs;
+      const waecPct = parseFloat(rec.waecPercentage ?? "0");
+      const testPct = (ts / 30) * 100;
+      setResult({ verbalScore: vs, quantScore: qs, totalScore: ts, waecScore: waecPct, testScore: testPct, aggregateScore: (waecPct + testPct) / 2, passed: s === "passed", prizeAmount: rec.prizeAmount ? parseFloat(rec.prizeAmount) : 0 });
       setStep("result");
     }
   }
@@ -573,7 +579,9 @@ export default function ScholarshipPortal() {
 
   // ── RESULT SCREEN ──────────────────────────────────────────────────────────
   if (step === "result" && result) {
-    const pct = Math.round((result.totalScore / 30) * 100);
+    const aggPct = Math.round(result.aggregateScore);
+    const waecPct = Math.round(result.waecScore);
+    const testPct = Math.round(result.testScore);
     const typeName = scholarshipType === "masters" ? "Masters" : "Student";
     const prizeAmt = scholarshipType === "masters" ? 250 : 100;
 
@@ -593,31 +601,38 @@ export default function ScholarshipPortal() {
               </h1>
               <p className={`text-sm mb-6 ${result.passed ? "text-emerald-300" : "text-red-300"}`}>
                 {result.passed
-                  ? `You passed the ${typeName} Scholarship test!`
-                  : `You scored below the 70% pass mark. Keep practising!`}
+                  ? `You passed the ${typeName} Scholarship!`
+                  : `Your aggregate score is below the 70% pass mark.`}
               </p>
 
-              {/* Score breakdown */}
-              <div className="grid grid-cols-3 gap-3 mb-5">
+              {/* Aggregate score — hero number */}
+              <div className={`rounded-2xl p-4 mb-5 ${result.passed ? "bg-emerald-500/15 border border-emerald-500/30" : "bg-red-500/10 border border-red-500/20"}`}>
+                <p className="text-white/50 text-xs uppercase tracking-widest mb-1">Aggregate Score</p>
+                <p className={`text-5xl font-black ${result.passed ? "text-emerald-300" : "text-red-400"}`}>{aggPct}%</p>
+                <p className="text-white/40 text-xs mt-1">(WAEC {waecPct}% + Test {testPct}%) ÷ 2</p>
+              </div>
+
+              {/* Score breakdown grid */}
+              <div className="grid grid-cols-4 gap-2 mb-5">
                 {[
-                  { label: "Verbal", score: result.verbalScore, max: 15, color: "text-indigo-400" },
-                  { label: "Quant", score: result.quantScore, max: 15, color: "text-orange-400" },
-                  { label: "Total", score: result.totalScore, max: 30, color: result.passed ? "text-emerald-400" : "text-red-400" },
-                ].map(({ label, score, max, color }) => (
-                  <div key={label} className="bg-white/5 rounded-2xl p-3">
-                    <p className={`text-2xl font-black ${color}`}>{score}</p>
-                    <p className="text-white/40 text-xs">/{max}</p>
-                    <p className="text-white/60 text-xs mt-0.5">{label}</p>
+                  { label: "WAEC", value: `${waecPct}%`, color: "text-sky-400" },
+                  { label: "Verbal", value: `${result.verbalScore}/15`, color: "text-indigo-400" },
+                  { label: "Quant", value: `${result.quantScore}/15`, color: "text-orange-400" },
+                  { label: "Test", value: `${testPct}%`, color: "text-purple-400" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="bg-white/5 rounded-xl p-2.5">
+                    <p className={`text-base font-black ${color}`}>{value}</p>
+                    <p className="text-white/40 text-[10px] mt-0.5">{label}</p>
                   </div>
                 ))}
               </div>
 
-              {/* Score bar */}
+              {/* Aggregate bar */}
               <div className="bg-white/10 rounded-full h-2.5 mb-2">
                 <motion.div className={`h-full rounded-full ${result.passed ? "bg-emerald-400" : "bg-red-400"}`}
-                  initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1, delay: 0.5 }} />
+                  initial={{ width: 0 }} animate={{ width: `${Math.min(aggPct, 100)}%` }} transition={{ duration: 1, delay: 0.5 }} />
               </div>
-              <p className="text-white/60 text-xs">{pct}% — Pass mark: 70% (21/30)</p>
+              <p className="text-white/60 text-xs">{aggPct}% aggregate — Pass mark: 70%</p>
             </div>
 
             {/* Prize info */}
@@ -693,7 +708,7 @@ export default function ScholarshipPortal() {
                       <p className="text-white/70 text-sm mb-3">{s.desc}</p>
                       <div className="flex items-center gap-1.5 text-xs text-white/50">
                         <Zap className="w-3 h-3" />
-                        <span>$3.30 WAEC validation fee · 70% minimum WAEC score · One attempt only</span>
+                        <span>$3.30 WAEC validation fee · 70% aggregate (WAEC + Test ÷ 2) · One attempt only</span>
                       </div>
                     </div>
                   </motion.div>
@@ -705,7 +720,7 @@ export default function ScholarshipPortal() {
                   <AlertTriangle className="w-4 h-4" /> Before you apply
                 </p>
                 <ul className="text-amber-200/70 text-xs space-y-1.5 list-disc list-inside">
-                  <li>You need a minimum 70% WAEC score to proceed</li>
+                  <li>Any WAEC score is accepted — the 70% threshold applies to your aggregate (WAEC score + Test score ÷ 2)</li>
                   <li>A $3.30 validation fee will be deducted from your SwiftWallet</li>
                   <li>15 verbal + 15 quantitative questions, 10 seconds each</li>
                   <li>This is a one-time test — you cannot retake it</li>
@@ -718,7 +733,7 @@ export default function ScholarshipPortal() {
           {step === "waec" && (
             <motion.div key="waec" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
               <h2 className="text-2xl font-black text-white mb-1 mt-4">WAEC Verification</h2>
-              <p className="text-white/60 text-sm mb-4">Enter your WAEC results. You must score <strong className="text-white">70% or above</strong> to qualify.</p>
+              <p className="text-white/60 text-sm mb-4">Enter your WAEC results. All scores are accepted — your final eligibility is determined by the <strong className="text-white">aggregate of your WAEC + Test score ÷ 2</strong>.</p>
 
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 mb-5 flex gap-3 items-start">
                 <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />

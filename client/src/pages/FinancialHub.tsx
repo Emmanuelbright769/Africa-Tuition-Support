@@ -1188,6 +1188,34 @@ export default function FinancialHub() {
 
 
   // ═════════════════════════════════════════════════════════════════════════
+  // BOTTOM NAV BAR — sticky, scoped to Swift Hub scroll container
+  // ═════════════════════════════════════════════════════════════════════════
+  const BottomNavBar = () => (
+    <nav className="sticky bottom-0 left-0 right-0 z-10 bg-background/98 backdrop-blur-md border-t border-border h-[60px] flex items-stretch shadow-[0_-4px_20px_rgba(0,0,0,0.07)] -mx-4">
+      {([
+        { id: "home",    label: "Home",    Icon: HomeIcon },
+        { id: "rewards", label: "Rewards", Icon: Trophy },
+        { id: "finance", label: "Finance", Icon: TrendingUp },
+        { id: "cards",   label: "Cards",   Icon: CreditCard },
+        { id: "me",      label: "Me",      Icon: UserCircle },
+      ] as const).map(({ id, label, Icon }) => {
+        const active = bottomNav === id;
+        return (
+          <button key={id} onClick={() => { setBottomNav(id); if (id === "finance") { setSavingsView("list"); setSelectedGoalId(null); } }}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-all ${active ? "text-tsia-green" : "text-muted-foreground hover:text-foreground"}`}
+            data-testid={`btn-nav-${id}`}>
+            <div className={`relative flex items-center justify-center transition-all ${active ? "scale-110" : ""}`}>
+              <Icon className={`w-[18px] h-[18px] ${active ? "stroke-[2.5px]" : ""}`} />
+              {active && <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-tsia-green" />}
+            </div>
+            <span className={`text-[9px] font-bold uppercase tracking-wider leading-none ${active ? "text-tsia-green" : ""}`}>{label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
   // FINANCE TAB — Savings + Loans
   // ═════════════════════════════════════════════════════════════════════════
   if (view === "home" && bottomNav === "finance") {
@@ -1198,7 +1226,7 @@ export default function FinancialHub() {
     if (savingsView === "detail" && selectedGoalId) {
       const goal = goalDetail?.goal ?? activeGoals.find(g => g.id === selectedGoalId);
       const txs = goalDetail?.transactions ?? [];
-      if (!goal) return <div className="pb-4"></div>;
+      if (!goal) return <div className="pb-20"><BottomNavBar /></div>;
       const cur = parseFloat(goal.currentAmount);
       const tgt = parseFloat(goal.targetAmount);
       const pct = Math.min(100, tgt > 0 ? (cur / tgt) * 100 : 0);
@@ -1387,6 +1415,7 @@ export default function FinancialHub() {
             </DialogContent>
           </Dialog>
 
+        <BottomNavBar />
         </div>
       );
     }
@@ -1468,6 +1497,7 @@ export default function FinancialHub() {
             {createGoalMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Plus className="w-5 h-5 mr-2" />}
             Create Goal
           </Button>
+        <BottomNavBar />
         </div>
       );
     }
@@ -1707,6 +1737,7 @@ export default function FinancialHub() {
           </DialogContent>
         </Dialog>
 
+      <BottomNavBar />
       </div>
     );
   }
@@ -1982,6 +2013,7 @@ export default function FinancialHub() {
         </DialogContent>
       </Dialog>
 
+    <BottomNavBar />
     </div>
   );
 
@@ -2002,6 +2034,7 @@ export default function FinancialHub() {
           ))}
         </div>
       </div>
+    <BottomNavBar />
     </div>
   );
 
@@ -2032,6 +2065,7 @@ export default function FinancialHub() {
           </div>
         ))}
       </div>
+    <BottomNavBar />
     </div>
   );
 
@@ -2457,6 +2491,7 @@ export default function FinancialHub() {
         </DialogContent>
       </Dialog>
 
+    <BottomNavBar />
     </div>
   );
 

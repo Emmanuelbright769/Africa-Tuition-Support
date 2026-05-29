@@ -1012,18 +1012,12 @@ export default function ScholarshipPortal() {
               <div className="flex items-center gap-2 mb-5 px-1">
                 <Wallet className="w-4 h-4 text-white/50" />
                 <span className="text-white/60 text-sm">Your balance: <strong className="text-white">${(walletBalance ?? 0).toFixed(2)}</strong></span>
-                {(walletBalance ?? 0) < 3.30 && (
-                  <Badge className="ml-auto bg-red-500/20 text-red-400 border-red-500/30 text-xs">Insufficient</Badge>
-                )}
               </div>
 
-              <Button onClick={handlePayFee} disabled={loading || (walletBalance !== null && walletBalance < 3.30)}
+              <Button onClick={handlePayFee} disabled={loading}
                 className="w-full h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Pay $3.30 & Continue"}
               </Button>
-              {walletBalance !== null && walletBalance < 3.30 && (
-                <p className="text-red-400 text-xs text-center mt-2">Fund your SwiftWallet with at least ${(3.30 - walletBalance).toFixed(2)} more to continue.</p>
-              )}
             </motion.div>
           )}
 

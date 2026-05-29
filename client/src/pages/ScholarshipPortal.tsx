@@ -104,7 +104,7 @@ function SubjectRow({ index, subject, grade, electives, onSubjectChange, onGrade
             <SelectTrigger className="h-10 rounded-xl">
               <SelectValue placeholder="Select subject" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-56 overflow-y-auto">
               {electives.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -114,7 +114,7 @@ function SubjectRow({ index, subject, grade, electives, onSubjectChange, onGrade
         <SelectTrigger className="h-10 rounded-xl">
           <SelectValue placeholder="Grade" />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="max-h-56 overflow-y-auto">
           {GRADES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
         </SelectContent>
       </Select>
@@ -885,7 +885,7 @@ export default function ScholarshipPortal() {
                     <SelectTrigger className="bg-white/8 border-white/20 text-white rounded-xl h-11">
                       <SelectValue placeholder="Select year" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-56 overflow-y-auto">
                       {TERTIARY_YEARS.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -936,7 +936,7 @@ export default function ScholarshipPortal() {
                       <SelectTrigger className="bg-white/8 border-white/20 text-white rounded-xl h-11">
                         <SelectValue placeholder="Year" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="max-h-56 overflow-y-auto">
                         {YEARS.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
                       </SelectContent>
                     </Select>

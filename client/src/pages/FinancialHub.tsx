@@ -1191,7 +1191,7 @@ export default function FinancialHub() {
   // BOTTOM NAV BAR — sticky, scoped to Swift Hub scroll container
   // ═════════════════════════════════════════════════════════════════════════
   const BottomNavBar = () => (
-    <nav className="sticky bottom-0 left-0 right-0 z-10 bg-background/98 backdrop-blur-md border-t border-border h-[60px] flex items-stretch shadow-[0_-4px_20px_rgba(0,0,0,0.07)] -mx-4">
+    <nav className="fixed bottom-0 left-0 right-0 z-[100] bg-background/98 backdrop-blur-md border-t border-border h-[60px] flex items-stretch shadow-[0_-4px_20px_rgba(0,0,0,0.07)]">
       {([
         { id: "home",    label: "Home",    Icon: HomeIcon },
         { id: "rewards", label: "Rewards", Icon: Trophy },
@@ -1226,7 +1226,7 @@ export default function FinancialHub() {
     if (savingsView === "detail" && selectedGoalId) {
       const goal = goalDetail?.goal ?? activeGoals.find(g => g.id === selectedGoalId);
       const txs = goalDetail?.transactions ?? [];
-      if (!goal) return <div className="pb-20"><BottomNavBar /></div>;
+      if (!goal) return <div className="pb-[76px]"><BottomNavBar /></div>;
       const cur = parseFloat(goal.currentAmount);
       const tgt = parseFloat(goal.targetAmount);
       const pct = Math.min(100, tgt > 0 ? (cur / tgt) * 100 : 0);
@@ -1235,7 +1235,7 @@ export default function FinancialHub() {
         : null;
       const actionAmt = parseFloat(sgActionAmount) || 0;
       return (
-        <div className="space-y-5 pb-4">
+        <div className="space-y-5 pb-[76px]">
           {/* Header */}
           <div className="flex items-center justify-between">
             <button onClick={() => { setSavingsView("list"); setSelectedGoalId(null); setSgDeleteConfirm(false); }}
@@ -1424,7 +1424,7 @@ export default function FinancialHub() {
     if (savingsView === "create") {
       const selectedType = SAVINGS_TYPES.find(t => t.id === sgType) ?? SAVINGS_TYPES[0];
       return (
-        <div className="space-y-5 pb-4">
+        <div className="space-y-5 pb-[76px]">
           <div className="flex items-center justify-between">
             <button onClick={() => setSavingsView("list")} className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
               <ArrowLeft className="w-4 h-4" />
@@ -1504,7 +1504,7 @@ export default function FinancialHub() {
 
     // ── Savings list (default Finance tab view) ───────────────────────────
     return (
-      <div className="space-y-5 pb-4">
+      <div className="space-y-5 pb-[76px]">
         {/* Header */}
         <div className="flex items-center justify-between pt-1">
           <div>
@@ -1744,7 +1744,7 @@ export default function FinancialHub() {
 
   // ── Rewards tab ────────────────────────────────────────────────────────────
   if (view === "home" && bottomNav === "rewards") return (
-    <div className="space-y-5 pb-4">
+    <div className="space-y-5 pb-[76px]">
       <div className="flex items-center justify-between pt-1">
         <div><h1 className="font-black text-xl">Rewards</h1><p className="text-xs text-muted-foreground">Earn &amp; grow with TSIA</p></div>
         <div className="w-10 h-10 rounded-full bg-tsia-gold/15 flex items-center justify-center"><Trophy className="w-5 h-5 text-tsia-gold" /></div>
@@ -2019,7 +2019,7 @@ export default function FinancialHub() {
 
   // ── Cards tab ──────────────────────────────────────────────────────────────
   if (view === "home" && bottomNav === "cards") return (
-    <div className="space-y-5 pb-4">
+    <div className="space-y-5 pb-[76px]">
       <div className="flex items-center justify-between pt-1">
         <div><h1 className="font-black text-xl">Cards</h1><p className="text-xs text-muted-foreground">Virtual &amp; physical cards</p></div>
         <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center"><CreditCard className="w-5 h-5 text-blue-600" /></div>
@@ -2040,7 +2040,7 @@ export default function FinancialHub() {
 
   // ── Me tab ─────────────────────────────────────────────────────────────────
   if (view === "home" && bottomNav === "me") return (
-    <div className="space-y-5 pb-4">
+    <div className="space-y-5 pb-[76px]">
       <div className="flex items-center justify-between pt-1">
         <div><h1 className="font-black text-xl">Profile</h1><p className="text-xs text-muted-foreground">Account &amp; settings</p></div>
         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg font-black text-tsia-green">
@@ -2073,7 +2073,7 @@ export default function FinancialHub() {
   // HOME VIEW
   // ═════════════════════════════════════════════════════════════════════════
   if (view === "home") return (
-    <div className="space-y-5 pb-4">
+    <div className="space-y-5 pb-[76px]">
 
       {/* ── TOP HEADER ── */}
       <div className="flex items-center justify-between">

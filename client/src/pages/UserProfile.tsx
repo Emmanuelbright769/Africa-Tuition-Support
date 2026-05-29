@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, User, Mail, Phone, Globe, Shield, Lock, Eye, EyeOff,
   CheckCircle2, KeyRound, Edit3, Save, X, GraduationCap, Briefcase,
-  MapPin, Loader2
+  MapPin, Loader2, History, CreditCard, ArrowUpRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { queryClient } from "@/lib/queryClient";
@@ -87,6 +87,7 @@ export default function UserProfile() {
   }
 
   const dashPath = user.role === "affiliate" ? "/affiliate-dashboard" : "/dashboard";
+  const { data: transactions = [] } = useQuery<any[]>({ queryKey: ["/api/transactions"] });
 
   /* ─── Start editing personal info ─── */
   const startEdit = () => {
@@ -622,6 +623,54 @@ export default function UserProfile() {
                 Your location is used for referral matching, regional pricing, currency display, and access to country-specific TSIA services.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Activity ── */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                <History className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Activity</CardTitle>
+                <CardDescription className="text-xs">Your complete transaction history</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {transactions.length === 0 ? (
+              <div className="text-center py-10">
+                <History className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">No transactions yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                {transactions.map((tx: any) => (
+                  <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl border hover:shadow-sm transition-shadow" data-testid={`row-profile-tx-${tx.id}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                        tx.type === "sponsorship_credit" ? "bg-green-100 dark:bg-green-900/30 text-green-600" :
+                        tx.type === "withdrawal" ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" :
+                        "bg-muted text-muted-foreground"
+                      }`}>
+                        {tx.type === "sponsorship_credit" ? <CheckCircle2 className="w-4 h-4" /> :
+                         tx.type === "withdrawal" ? <ArrowUpRight className="w-4 h-4" /> :
+                         <CreditCard className="w-4 h-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{tx.description}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    <span className={`font-bold text-sm shrink-0 ml-2 ${parseFloat(tx.amount) >= 0 ? "text-green-600" : "text-destructive"}`}>
+                      {parseFloat(tx.amount) >= 0 ? "+" : ""}${tx.amount}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

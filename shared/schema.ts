@@ -1169,6 +1169,15 @@ export const scholarships = pgTable("scholarships", {
   testData:            jsonb("test_data"),
   prizePaid:           boolean("prize_paid").notNull().default(false),
   prizeAmount:         decimal("prize_amount", { precision: 10, scale: 2 }),
+  // Masters-specific tertiary education details
+  tertiarySchool:      text("tertiary_school"),
+  tertiaryType:        text("tertiary_type"),    // "university" | "polytechnic"
+  tertiaryYear:        text("tertiary_year"),
+  tertiaryGrade:       text("tertiary_grade"),   // "first_class" | "second_upper" | "second_lower"
+  // Masters MSc duration choice & year-2 renewal
+  mscDuration:         text("msc_duration"),     // "1year" | "2year"
+  renewalPaid:         boolean("renewal_paid").default(false),
+  renewalPaidAt:       timestamp("renewal_paid_at"),
   createdAt:           timestamp("created_at").defaultNow().notNull(),
   updatedAt:           timestamp("updated_at").defaultNow().notNull(),
 });

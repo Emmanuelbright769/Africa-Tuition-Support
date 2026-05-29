@@ -14,8 +14,17 @@ import {
 } from "lucide-react";
 
 type ScholarshipType = "student" | "masters";
-type Step = "welcome" | "waec" | "pay_fee" | "commitment" | "test_intro" | "test" | "result";
+type Step = "welcome" | "tertiary" | "waec" | "pay_fee" | "commitment" | "test_intro" | "test" | "result";
 type TestPhase = "verbal" | "transition" | "quant" | "submitting";
+type TertiaryGrade = "first_class" | "second_upper" | "second_lower";
+type MscDuration = "1year" | "2year";
+
+const TERTIARY_GRADES: { value: TertiaryGrade; label: string }[] = [
+  { value: "first_class",   label: "First Class" },
+  { value: "second_upper",  label: "Second Class Upper" },
+  { value: "second_lower",  label: "Second Class Lower" },
+];
+const TERTIARY_YEARS = Array.from({ length: 30 }, (_, i) => String(new Date().getFullYear() - i));
 
 interface TestQuestion {
   id: number;
@@ -128,6 +137,15 @@ export default function ScholarshipPortal() {
   const [scholarshipRecord, setScholarshipRecord] = useState<any>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
 
+  // Tertiary (Masters only)
+  const [tertiarySchool, setTertiarySchool] = useState("");
+  const [tertiaryType, setTertiaryType] = useState<"university" | "polytechnic" | "">("");
+  const [tertiaryYear, setTertiaryYear] = useState("");
+  const [tertiaryGrade, setTertiaryGrade] = useState<TertiaryGrade | "">("");
+
+  // MSc duration choice (Masters only)
+  const [mscDuration, setMscDuration] = useState<MscDuration | "">("");
+
   // WAEC form
   const [waecReg, setWaecReg] = useState("");
   const [waecYear, setWaecYear] = useState("");
@@ -181,11 +199,14 @@ export default function ScholarshipPortal() {
 
   function restoreStep(rec: any, type: ScholarshipType) {
     const s = rec.status;
-    if (s === "started") { setStep("waec"); return; }
+    if (s === "started") {
+      // Masters must fill tertiary info before WAEC (only on first run; after restart it's already saved)
+      if (type === "masters" && !rec.tertiarySchool) { setStep("tertiary"); return; }
+      setStep("waec"); return;
+    }
     if (s === "waec_done") { setStep("pay_fee"); return; }
     if (s === "fee_paid" && type === "student") { setStep("test_intro"); return; }
     if (s === "fee_paid" && type === "masters") {
-      // If commitment window already served, go straight to test; else show countdown
       if (rec.commitmentFeePaid) { setStep("test_intro"); return; }
       setStep("commitment"); return;
     }
@@ -315,12 +336,29 @@ export default function ScholarshipPortal() {
         restoreStep(rec, type);
       } else {
         await apiRequest("POST", "/api/scholarship/start", { type });
-        setStep("waec");
+        // Masters must fill tertiary details first
+        setStep(type === "masters" ? "tertiary" : "waec");
       }
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     }
     setPageLoading(false);
+  }
+
+  function handleTertiaryNext() {
+    if (!tertiarySchool.trim()) {
+      toast({ title: "Missing field", description: "Enter your tertiary institution name.", variant: "destructive" }); return;
+    }
+    if (!tertiaryType) {
+      toast({ title: "Missing field", description: "Select your certificate type (University or Polytechnic).", variant: "destructive" }); return;
+    }
+    if (!tertiaryYear) {
+      toast({ title: "Missing field", description: "Select the year you graduated.", variant: "destructive" }); return;
+    }
+    if (!tertiaryGrade) {
+      toast({ title: "Missing field", description: "Select your degree classification.", variant: "destructive" }); return;
+    }
+    setStep("waec");
   }
 
   async function handleWaecSubmit() {
@@ -338,6 +376,7 @@ export default function ScholarshipPortal() {
       const data = await apiRequest("POST", "/api/scholarship/waec-validate", {
         type: scholarshipType, waecRegNumber: waecReg, waecYear,
         subjects, grades, schoolName, schoolLocation,
+        ...(scholarshipType === "masters" ? { tertiarySchool, tertiaryType, tertiaryYear, tertiaryGrade } : {}),
       });
       setScholarshipRecord(data);
       setStep("pay_fee");
@@ -368,18 +407,35 @@ export default function ScholarshipPortal() {
   }
 
   async function handlePayCommitment() {
+    if (!mscDuration) {
+      toast({ title: "Choose your MSc duration", description: "Select 1-Year or 2-Year before paying.", variant: "destructive" }); return;
+    }
     setLoading(true);
+    const fee = mscDuration === "2year" ? 25 : 10;
     try {
-      const data = await apiRequest("POST", "/api/scholarship/pay-commitment", {});
+      const data = await apiRequest("POST", "/api/scholarship/pay-commitment", { mscDuration });
       setScholarshipRecord(data);
-      // After paying $10, record resets to "started" — user does WAEC fresh
+      // After paying, record resets to "started" — user does WAEC fresh (tertiary already saved)
       setStep("waec");
       setWaecReg(""); setWaecYear(""); setSchoolName(""); setSchoolLocation("");
       setSubjects(["Mathematics", "English Language", "", "", ""]);
       setGrades(["", "", "", "", ""]);
-      setWalletBalance(prev => prev !== null ? prev - 10 : null);
+      setWalletBalance(prev => prev !== null ? prev - fee : null);
     } catch (e: any) {
       toast({ title: "Payment Failed", description: e.message, variant: "destructive" });
+    }
+    setLoading(false);
+  }
+
+  async function handlePayRenewal() {
+    setLoading(true);
+    try {
+      const data = await apiRequest("POST", "/api/scholarship/pay-renewal", {});
+      setScholarshipRecord((prev: any) => ({ ...prev, ...(data as any) }));
+      setWalletBalance(prev => prev !== null ? prev - 25 : null);
+      toast({ title: "Renewal Paid!", description: "Your second $250 prize is pending admin approval.", variant: "default" });
+    } catch (e: any) {
+      toast({ title: "Renewal Failed", description: e.message, variant: "destructive" });
     }
     setLoading(false);
   }
@@ -495,12 +551,21 @@ export default function ScholarshipPortal() {
             <span className="text-white/40 mx-1">•</span>
             <span className="text-white/60">Q{currentIdx + 1}/15</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-white text-sm font-bold">
-              <Star className="w-3.5 h-3.5 text-amber-400" />
+          <div className="flex items-center gap-2">
+            {/* Phase score */}
+            <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/10 text-white text-sm font-bold">
+              <Star className="w-3 h-3 text-amber-400" />
               <span>{phaseScore}</span>
               <span className="text-white/40">/15</span>
             </div>
+            {/* Total running score (show verbal total once in quant section) */}
+            {testPhase === "quant" && (
+              <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-sm font-bold border border-emerald-500/30">
+                <span>Total</span>
+                <span className="text-white font-black">{liveScore.verbal + liveScore.quant}</span>
+                <span className="text-white/40">/30</span>
+              </div>
+            )}
             <SectionTimer seconds={sectionTimer} />
           </div>
         </div>
@@ -645,6 +710,47 @@ export default function ScholarshipPortal() {
               </motion.div>
             )}
 
+            {/* Year-2 MSc renewal section */}
+            {result.passed && scholarshipRecord?.mscDuration === "2year" && (() => {
+              const renewalPaid = !!scholarshipRecord?.renewalPaid;
+              const testDate = scholarshipRecord?.testCompletedAt ? new Date(scholarshipRecord.testCompletedAt) : null;
+              const daysElapsed = testDate ? (Date.now() - testDate.getTime()) / (1000 * 60 * 60 * 24) : 0;
+              const daysLeft = Math.max(0, Math.ceil(365 - daysElapsed));
+              const renewalReady = daysElapsed >= 365;
+
+              return (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}
+                  className={`rounded-2xl p-5 mb-4 border ${renewalPaid ? "bg-emerald-500/10 border-emerald-500/30" : renewalReady ? "bg-indigo-500/10 border-indigo-500/30" : "bg-white/5 border-white/10"}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <GraduationCap className={`w-5 h-5 ${renewalPaid ? "text-emerald-400" : renewalReady ? "text-indigo-400" : "text-white/40"}`} />
+                    <p className={`font-bold text-sm ${renewalPaid ? "text-emerald-300" : renewalReady ? "text-indigo-300" : "text-white/60"}`}>
+                      Year-2 MSc — Second $250 Prize
+                    </p>
+                  </div>
+                  {renewalPaid ? (
+                    <p className="text-emerald-200/70 text-xs">✓ Renewal paid. Your second $250 prize is pending admin approval.</p>
+                  ) : renewalReady ? (
+                    <>
+                      <p className="text-indigo-200/70 text-xs mb-3">Your 1 year has elapsed! Pay $25 to renew and claim your second $250 prize.</p>
+                      <Button onClick={handlePayRenewal} disabled={loading || (walletBalance !== null && walletBalance < 25)}
+                        className="w-full h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pay $25 — Claim Second $250"}
+                      </Button>
+                      {walletBalance !== null && walletBalance < 25 && (
+                        <p className="text-red-400/70 text-xs mt-2 text-center">Insufficient balance (need $25). Fund your wallet first.</p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-white/40 text-xs">
+                      {testDate
+                        ? `Renewal available in ${daysLeft} day${daysLeft !== 1 ? "s" : ""} (1 year from your test date).`
+                        : "Renewal will be available 1 year after your test date."}
+                    </p>
+                  )}
+                </motion.div>
+              );
+            })()}
+
             <Button onClick={() => setLocation("/dashboard")} className="w-full h-12 rounded-2xl bg-white/10 text-white hover:bg-white/20 border border-white/20 font-semibold">
               Return to Dashboard
             </Button>
@@ -659,19 +765,29 @@ export default function ScholarshipPortal() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900">
       {/* Top nav */}
       <div className="sticky top-0 z-30 px-4 py-3 border-b border-white/10 bg-slate-950/80 backdrop-blur-sm flex items-center gap-3">
-        <button onClick={() => step === "welcome" ? setLocation("/dashboard") : setStep(step === "waec" ? "welcome" : step === "pay_fee" ? "waec" : "welcome")}
-          className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/15 transition-colors">
+        <button onClick={() => {
+          if (step === "welcome") { setLocation("/dashboard"); return; }
+          if (step === "tertiary") { setStep("welcome"); return; }
+          if (step === "waec") { setStep(scholarshipType === "masters" && !scholarshipRecord?.tertiarySchool ? "tertiary" : "welcome"); return; }
+          if (step === "pay_fee") { setStep("waec"); return; }
+          setStep("welcome");
+        }} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/15 transition-colors">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <div className="flex items-center gap-2">
           <Trophy className="w-5 h-5 text-amber-400" />
           <span className="text-white font-bold text-sm">TSIA Scholarship Portal</span>
         </div>
-        {scholarshipType && (
-          <Badge className={`ml-auto text-xs ${scholarshipType === "masters" ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : "bg-indigo-500/20 text-indigo-300 border-indigo-500/30"}`}>
-            {scholarshipType === "masters" ? "Masters — $250" : "Student — $100"}
-          </Badge>
-        )}
+        {scholarshipType && (() => {
+          const isMasters = scholarshipType === "masters";
+          const dur = scholarshipRecord?.mscDuration || mscDuration;
+          const prize = isMasters ? (dur === "2year" ? "$500" : "$250") : "$100";
+          return (
+            <Badge className={`ml-auto text-xs ${isMasters ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : "bg-indigo-500/20 text-indigo-300 border-indigo-500/30"}`}>
+              {isMasters ? `Masters — ${prize}` : "Student — $100"}
+            </Badge>
+          );
+        })()}
       </div>
 
       <div className="p-4 sm:p-6 max-w-xl mx-auto">
@@ -726,6 +842,73 @@ export default function ScholarshipPortal() {
                   <li>This is a one-time test — you cannot retake it</li>
                 </ul>
               </div>
+            </motion.div>
+          )}
+
+          {/* ── TERTIARY DETAILS (Masters only) ─────────────────────────── */}
+          {step === "tertiary" && (
+            <motion.div key="tertiary" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
+              <div className="mt-4 mb-6 text-center">
+                <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <GraduationCap className="w-8 h-8 text-amber-400" />
+                </div>
+                <h2 className="text-2xl font-black text-white">Tertiary Education Details</h2>
+                <p className="text-white/60 text-sm mt-1">Tell us about your university or polytechnic education.</p>
+              </div>
+
+              <div className="space-y-4">
+                {/* Institution name */}
+                <div>
+                  <Label className="text-white/70 text-xs mb-1.5 block">Institution Name</Label>
+                  <Input value={tertiarySchool} onChange={e => setTertiarySchool(e.target.value)}
+                    placeholder="e.g. University of Lagos"
+                    className="bg-white/8 border-white/20 text-white placeholder:text-white/30 rounded-xl h-11" />
+                </div>
+
+                {/* Certificate type */}
+                <div>
+                  <Label className="text-white/70 text-xs mb-1.5 block">Certificate Type</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(["university", "polytechnic"] as const).map(t => (
+                      <button key={t} onClick={() => setTertiaryType(t)}
+                        className={`h-11 rounded-xl font-semibold text-sm border transition-all capitalize ${tertiaryType === t ? "bg-amber-500/20 border-amber-500/50 text-amber-300" : "bg-white/5 border-white/20 text-white/70 hover:bg-white/10"}`}>
+                        {t.charAt(0).toUpperCase() + t.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Graduation year */}
+                <div>
+                  <Label className="text-white/70 text-xs mb-1.5 block">Year of Graduation</Label>
+                  <Select value={tertiaryYear} onValueChange={setTertiaryYear}>
+                    <SelectTrigger className="bg-white/8 border-white/20 text-white rounded-xl h-11">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TERTIARY_YEARS.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Degree classification */}
+                <div>
+                  <Label className="text-white/70 text-xs mb-1.5 block">Degree Classification</Label>
+                  <div className="space-y-2">
+                    {TERTIARY_GRADES.map(g => (
+                      <button key={g.value} onClick={() => setTertiaryGrade(g.value)}
+                        className={`w-full h-11 rounded-xl font-semibold text-sm border text-left px-4 transition-all ${tertiaryGrade === g.value ? "bg-amber-500/20 border-amber-500/50 text-amber-300" : "bg-white/5 border-white/20 text-white/70 hover:bg-white/10"}`}>
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-white/40 text-xs mt-2">* Third Class and Pass are not eligible for the Masters Scholarship.</p>
+                </div>
+              </div>
+
+              <Button onClick={handleTertiaryNext} className="w-full h-12 mt-6 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold">
+                <span>Continue to WAEC Details</span><ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
             </motion.div>
           )}
 
@@ -874,20 +1057,40 @@ export default function ScholarshipPortal() {
                   <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                     <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
                     <p className="text-emerald-300 font-bold">Commitment Window Complete!</p>
-                    <p className="text-emerald-300/70 text-xs mt-1">Pay $10 to restart your application from the beginning and proceed to the test.</p>
+                    <p className="text-emerald-300/70 text-xs mt-1">Choose your MSc programme duration and pay to restart your application.</p>
                   </div>
 
-                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
-                    <div className="flex justify-between text-sm text-white/70"><span>Fresh Start Fee</span><span>$10.00</span></div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <Wallet className="w-4 h-4 text-white/50" />
-                      <span className="text-white/60 text-sm">Your balance: <strong className="text-white">${(walletBalance ?? 0).toFixed(2)}</strong></span>
+                  {/* MSc duration selector */}
+                  <p className="text-white/60 text-sm font-semibold px-1">Select your MSc Programme</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {([
+                      { dur: "1year" as MscDuration, label: "1-Year MSc", fee: "$10", prize: "$250", desc: "Unlock test for $10. Win $250 on passing." },
+                      { dur: "2year" as MscDuration, label: "2-Year MSc", fee: "$25", prize: "$500", desc: "Unlock for $25. Win $250 now + $250 after 1 year (renew $25)." },
+                    ]).map(({ dur, label, fee, prize, desc }) => (
+                      <button key={dur} onClick={() => setMscDuration(dur)}
+                        className={`rounded-2xl p-4 border text-left transition-all ${mscDuration === dur ? "bg-amber-500/20 border-amber-500/50" : "bg-white/5 border-white/20 hover:bg-white/10"}`}>
+                        <p className={`font-black text-lg ${mscDuration === dur ? "text-amber-300" : "text-white"}`}>{prize}</p>
+                        <p className={`font-bold text-sm ${mscDuration === dur ? "text-amber-400" : "text-white/80"}`}>{label}</p>
+                        <p className="text-white/50 text-xs mt-1">{fee} unlock fee</p>
+                        <p className="text-white/40 text-[10px] mt-0.5 leading-tight">{desc}</p>
+                      </button>
+                    ))}
+                  </div>
+
+                  {mscDuration && (
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+                      <div className="flex justify-between text-sm text-white/70"><span>MSc Unlock Fee ({mscDuration === "2year" ? "2-Year" : "1-Year"})</span><span>${mscDuration === "2year" ? "25.00" : "10.00"}</span></div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Wallet className="w-4 h-4 text-white/50" />
+                        <span className="text-white/60 text-sm">Your balance: <strong className="text-white">${(walletBalance ?? 0).toFixed(2)}</strong></span>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <Button onClick={handlePayCommitment} disabled={loading || (walletBalance !== null && walletBalance < 10)}
+                  <Button onClick={handlePayCommitment}
+                    disabled={loading || !mscDuration || (walletBalance !== null && walletBalance < (mscDuration === "2year" ? 25 : 10))}
                     className="w-full h-12 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold">
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Pay $10.00 & Start Afresh"}
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : mscDuration ? `Pay $${mscDuration === "2year" ? "25.00" : "10.00"} & Start Afresh` : "Select a programme above"}
                   </Button>
                 </div>
               ) : (

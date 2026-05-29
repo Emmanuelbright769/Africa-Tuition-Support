@@ -9122,7 +9122,8 @@ export async function registerRoutes(
       try {
         const userId = (req.session as any)?.userId;
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
-        const { type, waecRegNumber, waecYear, subjects, grades, schoolName, schoolLocation } = req.body;
+        const { type, waecRegNumber, waecYear, subjects, grades, schoolName, schoolLocation,
+                tertiarySchool, tertiaryType, tertiaryYear, tertiaryGrade } = req.body;
         if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid scholarship type" });
 
         let record = await storage.getScholarship(userId, type);
@@ -9139,17 +9140,22 @@ export async function registerRoutes(
         if (!grades || !Array.isArray(grades) || grades.length !== 5 || grades.some((g: string) => !validGrades.includes(g.toUpperCase())))
           return res.status(400).json({ message: `All 5 grades required. Valid grades: ${validGrades.join(", ")}` });
 
+        // Masters: validate tertiary education fields
+        if (type === "masters") {
+          if (!tertiarySchool) return res.status(400).json({ message: "Tertiary institution name is required for Masters" });
+          if (!["university", "polytechnic"].includes(tertiaryType))
+            return res.status(400).json({ message: "Certificate type must be University or Polytechnic" });
+          if (!tertiaryYear) return res.status(400).json({ message: "Graduation year is required" });
+          const validTertiaryGrades = ["first_class", "second_upper", "second_lower"];
+          if (!validTertiaryGrades.includes(tertiaryGrade))
+            return res.status(400).json({ message: "Grade must be First Class, Second Upper, or Second Class Lower" });
+        }
+
         const gradeScaleRaw = await storage.getPlatformSetting("waec_grade_scale");
         const gradeScale = gradeScaleRaw ? JSON.parse(gradeScaleRaw) : undefined;
         const percentage = calculateWaecPercentage(grades, gradeScale);
 
-        if (percentage < 70) {
-          return res.status(400).json({
-            message: `Your WAEC score is ${percentage.toFixed(1)}%. You need at least 70% to qualify for the scholarship.`,
-            percentage,
-          });
-        }
-
+        // No minimum WAEC gate — eligibility is determined by aggregate (WAEC + test) / 2 >= 70%
         const currentYear = new Date().getFullYear();
         const estimatedAge = currentYear - parseInt(waecYear, 10) + 16;
         const isAgeDisqualified = estimatedAge > 29;
@@ -9161,6 +9167,7 @@ export async function registerRoutes(
           waecPercentage: percentage.toFixed(2) as any,
           ageDisqualified: isAgeDisqualified,
           status: "waec_done",
+          ...(type === "masters" ? { tertiarySchool, tertiaryType, tertiaryYear, tertiaryGrade } : {}),
         });
 
         res.json({ ...record, percentage });
@@ -9231,6 +9238,10 @@ export async function registerRoutes(
         const userId = (req.session as any)?.userId;
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
+        const { mscDuration } = req.body;
+        if (!["1year", "2year"].includes(mscDuration))
+          return res.status(400).json({ message: "Choose your MSc duration: '1year' ($10) or '2year' ($25)" });
+
         const record = await storage.getScholarship(userId, "masters");
         if (!record) return res.status(400).json({ message: "No masters scholarship application found" });
         if (record.status !== "fee_paid") return res.status(400).json({ message: "Pay the WAEC validation fee first" });
@@ -9248,7 +9259,7 @@ export async function registerRoutes(
         }
 
         const wallet = await storage.getOrCreateWallet(userId);
-        const commitmentFee = 10.00;
+        const commitmentFee = mscDuration === "2year" ? 25.00 : 10.00;
         const bal = parseFloat(wallet.balance);
         if (bal < commitmentFee) {
           return res.status(402).json({
@@ -9262,13 +9273,14 @@ export async function registerRoutes(
           userId, type: "plan_payment",
           amount: `-${commitmentFee.toFixed(2)}`, fee: "0.00",
           paymentMethod: "wallet",
-          description: "Masters Scholarship commitment fee — $10.00",
+          description: `Masters Scholarship ${mscDuration === "2year" ? "2-Year" : "1-Year"} MSc unlock fee — $${commitmentFee.toFixed(2)}`,
         });
 
         // Commitment served — reset to "started" so user goes through fresh WAEC + fee,
         // but keep commitmentFeePaid=true so no new 30-day window is triggered.
         const updated = await storage.updateScholarship(record.id, {
           commitmentFeePaid: true,
+          mscDuration,
           status: "started",
           waecRegNumber: null as any,
           waecYear: null as any,
@@ -9279,6 +9291,82 @@ export async function registerRoutes(
           schoolLocation: null as any,
           portalFeePaid: false,
         });
+
+        res.json(updated);
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
+
+    app.post("/api/scholarship/pay-renewal", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+        const record = await storage.getScholarship(userId, "masters");
+        if (!record) return res.status(400).json({ message: "No masters scholarship found" });
+        if (record.status !== "passed") return res.status(400).json({ message: "You must have passed the Masters scholarship test first" });
+        if (record.mscDuration !== "2year") return res.status(400).json({ message: "Year-2 renewal is only available for the 2-Year MSc option" });
+        if (record.renewalPaid) return res.status(400).json({ message: "Year-2 renewal already paid" });
+
+        // Check 1 year has passed since test completion
+        if (!record.testCompletedAt) return res.status(400).json({ message: "Test completion date not found" });
+        const msSinceTest = Date.now() - new Date(record.testCompletedAt).getTime();
+        const daysSinceTest = msSinceTest / (1000 * 60 * 60 * 24);
+        if (daysSinceTest < 365) {
+          const daysLeft = Math.ceil(365 - daysSinceTest);
+          return res.status(403).json({
+            code: "RENEWAL_NOT_DUE",
+            message: `Year-2 renewal is available after 1 year from your test date. ${daysLeft} day${daysLeft !== 1 ? "s" : ""} remaining.`,
+            daysLeft,
+          });
+        }
+
+        const wallet = await storage.getOrCreateWallet(userId);
+        const renewalFee = 25.00;
+        const secondPrize = 250.00;
+        const bal = parseFloat(wallet.balance);
+        if (bal < renewalFee) {
+          return res.status(402).json({
+            code: "INSUFFICIENT_BALANCE",
+            message: `Insufficient balance. You need $${renewalFee.toFixed(2)} but have $${bal.toFixed(2)}.`,
+          });
+        }
+
+        await storage.updateWalletBalance(userId, (bal - renewalFee).toFixed(2));
+        await storage.createTransaction({
+          userId, type: "plan_payment",
+          amount: `-${renewalFee.toFixed(2)}`, fee: "0.00",
+          paymentMethod: "wallet",
+          description: "Masters Scholarship Year-2 renewal fee — $25.00",
+        });
+
+        const updated = await storage.updateScholarship(record.id, {
+          renewalPaid: true,
+          renewalPaidAt: new Date(),
+        });
+
+        // Notify user
+        try {
+          const notif = await storage.createNotification({
+            userId, type: "system",
+            title: "🎓 Year-2 Renewal Submitted!",
+            message: `Your $25 renewal fee has been paid. Your second $${secondPrize.toFixed(0)} prize is pending admin approval and will be credited to your wallet once reviewed.`,
+            data: { renewalFee, secondPrize },
+            isRead: false,
+          });
+          pushToUser(userId, "notification", notif);
+        } catch { /* non-critical */ }
+
+        try {
+          const u = await storage.getUser(userId);
+          if (u) {
+            sendAdminKycEmail({
+              name: `${u.firstName} ${u.lastName}`,
+              email: u.email,
+              kycType: `MASTERS SCHOLARSHIP YEAR-2 RENEWAL | $25 renewal paid | $250 second prize pending | UserId: ${userId}`,
+              userId,
+            }).catch(() => {});
+          }
+        } catch { /* non-critical */ }
 
         res.json(updated);
       } catch (e: any) { res.status(500).json({ message: e.message }); }

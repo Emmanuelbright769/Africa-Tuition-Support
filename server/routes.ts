@@ -6661,7 +6661,7 @@ export async function registerRoutes(
       }
 
       // Conversion rates per network (% of face value paid out)
-      const rates: Record<string, number> = { mtn: 0.20, airtel: 0.20, glo: 0.20, "9mobile": 0.20 };
+      const rates: Record<string, number> = { mtn: 0.80, airtel: 0.80, glo: 0.80, "9mobile": 0.80 };
       const rate = rates[network];
       const cashNgn = Math.floor(ngn * rate);
       const cashUsd = parseFloat((cashNgn / 1600).toFixed(2));

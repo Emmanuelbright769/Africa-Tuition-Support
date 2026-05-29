@@ -9155,7 +9155,15 @@ export async function registerRoutes(
         const gradeScale = gradeScaleRaw ? JSON.parse(gradeScaleRaw) : undefined;
         const percentage = calculateWaecPercentage(grades, gradeScale);
 
-        // No minimum WAEC gate — eligibility is determined by aggregate (WAEC + test) / 2 >= 70%
+        // Students need 70% WAEC to qualify upfront.
+        // Masters have no upfront gate — their eligibility is the aggregate (WAEC + test) / 2 >= 70%.
+        if (type === "student" && percentage < 70) {
+          return res.status(400).json({
+            message: `Your WAEC score is ${percentage.toFixed(1)}%. You need at least 70% to qualify for the Student Scholarship.`,
+            percentage,
+          });
+        }
+
         const currentYear = new Date().getFullYear();
         const estimatedAge = currentYear - parseInt(waecYear, 10) + 16;
         const isAgeDisqualified = estimatedAge > 29;

@@ -429,12 +429,10 @@ export default function StudentDashboard() {
       {activeSection !== "overview" && (
         <button
           onClick={() => setMenuOpen(true)}
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 px-5 py-3 rounded-full bg-card border shadow-xl text-sm font-bold transition-all hover:shadow-2xl active:scale-95"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center justify-center w-12 h-12 rounded-full bg-card border shadow-xl transition-all hover:shadow-2xl active:scale-95"
           data-testid="btn-floating-menu"
         >
-          <Menu className="w-4 h-4" />
-          <span>{NAV_ITEMS.find(n => n.id === activeSection)?.label ?? "Menu"}</span>
-          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          <Menu className="w-5 h-5" />
         </button>
       )}
 

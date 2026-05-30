@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Logo } from "@/components/ui/Logo";
@@ -420,6 +421,65 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
+// ── Cohort Banner ─────────────────────────────────────────────────────────────
+function CohortBanner() {
+  const { data } = useQuery<any>({ queryKey: ["/api/public/batch-status"], retry: false, staleTime: 60_000 });
+  if (!data) return null;
+  const pct = data.totalCapacity > 0 ? Math.round((data.enrolled / data.totalCapacity) * 100) : 0;
+  return (
+    <section className="py-10 px-4 bg-tsia-green/5 border-y border-tsia-green/10">
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-6">
+          <p className="text-xs font-black text-tsia-green uppercase tracking-widest mb-1">Current Enrollment Cohort</p>
+          <h3 className="text-2xl font-black">
+            {data.batchNumber ? `Cohort #${data.batchNumber}` : "Active Cohort"}
+            {data.isFull ? (
+              <span className="ml-3 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700 align-middle">FULL</span>
+            ) : (
+              <span className="ml-3 text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 align-middle">OPEN</span>
+            )}
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            {data.isFull
+              ? "This cohort has reached capacity. Register now to be notified when the next cohort opens."
+              : `${data.remaining} seat${data.remaining === 1 ? "" : "s"} remaining — secure your spot before this cohort fills up.`}
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-4 mb-5">
+          {[
+            { label: "Enrolled", value: data.enrolled.toLocaleString(), color: "text-tsia-green" },
+            { label: "Capacity", value: data.totalCapacity.toLocaleString(), color: "text-slate-700" },
+            { label: "Seats Left", value: data.remaining.toLocaleString(), color: data.remaining > 50 ? "text-tsia-green" : data.remaining > 0 ? "text-amber-600" : "text-red-600" },
+          ].map(s => (
+            <div key={s.label} className="bg-card border border-border rounded-2xl p-4 text-center shadow-sm">
+              <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-muted-foreground">Cohort Fill Rate</span>
+            <span className="text-xs font-black text-tsia-green">{pct}%</span>
+          </div>
+          <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-tsia-green"}`} style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+        {!data.isFull && (
+          <div className="mt-5 text-center">
+            <Link href="/signup">
+              <button className="inline-flex items-center gap-2 bg-tsia-green hover:bg-tsia-green/90 text-white font-black px-8 py-3.5 rounded-2xl shadow-lg transition-all hover:scale-105" data-testid="btn-cohort-apply">
+                Claim Your Spot <ArrowRight className="w-4 h-4" />
+              </button>
+            </Link>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function PromoLanding() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -566,6 +626,9 @@ export default function PromoLanding() {
           </motion.div>
         </div>
       </section>
+
+      {/* ── Sponsorship Cohort Info ── */}
+      <CohortBanner />
 
       {/* ── What is TSIA ── */}
       <section className="py-16 px-4 bg-muted/30">

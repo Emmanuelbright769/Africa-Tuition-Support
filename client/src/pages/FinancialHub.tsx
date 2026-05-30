@@ -2505,10 +2505,10 @@ export default function FinancialHub() {
 
         {/* Tab selector */}
         <div className="flex bg-muted/50 rounded-2xl p-1 text-xs">
-          {(["transfers","bank-transfers","bills"] as const).map(tab => (
-            <button key={tab} onClick={() => { setActiveTab(tab); if (tab==="transfers") setTransferPage(0); if (tab==="bank-transfers") setBankTxPage(0); if (tab==="bills") setBillPage(0); }}
+          {(["transfers","bank-transfers","bills","deposits"] as const).map(tab => (
+            <button key={tab} onClick={() => { setActiveTab(tab); if (tab==="transfers") setTransferPage(0); if (tab==="bank-transfers") setBankTxPage(0); if (tab==="bills") setBillPage(0); if (tab==="deposits") setDepositPage(0); }}
               className={`flex-1 py-2 rounded-xl font-semibold transition-all ${activeTab === tab ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}>
-              {tab === "transfers" ? "Transfers" : tab === "bank-transfers" ? "Bank" : "Bills"}
+              {tab === "transfers" ? "Transfers" : tab === "bank-transfers" ? "Bank" : tab === "bills" ? "Bills" : "Deposits"}
             </button>
           ))}
         </div>
@@ -2687,6 +2687,42 @@ export default function FinancialHub() {
             </div>
           )}
           </div>);
+        })()}
+
+        {/* Deposits */}
+        {activeTab === "deposits" && (() => {
+          const allDeps = walletDeposits as any[];
+          if (allDeps.length === 0) return <EmptyState icon={ArrowDownLeft} msg="No deposits yet" />;
+          const dpTotalPages = Math.ceil(allDeps.length / FH_PAGE_SIZE);
+          const dpPageItems = allDeps.slice(depositPage * FH_PAGE_SIZE, (depositPage + 1) * FH_PAGE_SIZE);
+          return (
+            <div className="space-y-2">
+              {dpPageItems.map((d: any) => (
+                <div key={d.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3" data-testid={`row-deposit-${d.id}`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${d.status === "completed" ? "bg-green-50 dark:bg-green-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
+                    {d.status === "completed" ? <CheckCircle2 className="w-5 h-5 text-tsia-green" /> : <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm capitalize">
+                      {d.walletType === "squad" ? "Squad (Card/Bank)" : d.walletType === "paystack" ? "Card/Bank" : d.walletType === "korapay" ? "Korapay" : d.walletType?.toUpperCase()} Deposit
+                    </p>
+                    <p className="text-xs text-muted-foreground font-mono truncate">{new Date(d.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
+                    <p className={`text-[10px] font-semibold capitalize ${d.status === "completed" ? "text-tsia-green" : "text-amber-500"}`}>{d.status}</p>
+                  </div>
+                </div>
+              ))}
+              {dpTotalPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                  <button onClick={() => setDepositPage(p => Math.max(0, p-1))} disabled={depositPage === 0} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">← Prev</button>
+                  <span className="text-xs text-muted-foreground">Page {depositPage+1} of {dpTotalPages}</span>
+                  <button onClick={() => setDepositPage(p => Math.min(dpTotalPages-1, p+1))} disabled={depositPage >= dpTotalPages-1} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 disabled:opacity-40 transition-colors">Next →</button>
+                </div>
+              )}
+            </div>
+          );
         })()}
 
         {txReceiptProps && (

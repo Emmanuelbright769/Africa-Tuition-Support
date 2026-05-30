@@ -3483,6 +3483,21 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  app.put("/api/admin/scholarship/:id/waec", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const id = parseInt(req.params.id);
+      const { waecPercentage } = req.body;
+      const pct = parseFloat(waecPercentage);
+      if (isNaN(pct) || pct < 0 || pct > 100) return res.status(400).json({ message: "waecPercentage must be 0–100" });
+      const updated = await storage.updateScholarship(id, { waecPercentage: pct.toFixed(2) });
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/admin/verify/:verificationId", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -5189,6 +5204,21 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/public/batch-status", async (_req, res) => {
+    try {
+      const status = await storage.getAdminBatchStatus(BATCH_BASE_MAX);
+      res.json({
+        batchNumber: status.batch?.batchNumber ?? null,
+        enrolled: status.enrolled ?? 0,
+        totalCapacity: status.totalCapacity ?? BATCH_BASE_MAX,
+        remaining: status.remaining ?? BATCH_BASE_MAX,
+        isFull: (status.remaining ?? BATCH_BASE_MAX) <= 0,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/admin/batch/open-slots", async (req, res) => {
     try {
       const adminId = (req.session as any)?.userId;
@@ -6620,7 +6650,6 @@ export async function registerRoutes(
     const wallet = await storage.getOrCreateWallet(userId);
     const balance = parseFloat(wallet.balance);
     if (balance < amountUsd) throw Object.assign(new Error(`Insufficient balance. You have $${balance.toFixed(2)}`), { status: 400 });
-    if (balance - amountUsd < 2) throw Object.assign(new Error(`A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.`), { status: 400 });
     await storage.updateWalletBalance(userId, (balance - amountUsd).toFixed(2));
     await storage.createBillPayment({ userId, service, amount: amountUsd, reference });
     await storage.createTransaction({ userId, type: "bill", amount: (-amountUsd).toFixed(2), fee: "0.00", paymentMethod: "wallet", description });
@@ -6880,11 +6909,6 @@ export async function registerRoutes(
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
-      const wallet = await storage.getOrCreateWallet(userId);
-      const balance = parseFloat(wallet.balance);
-      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
-
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
       // VTU.ng service_id must be lowercase: mtn, airtel, glo, 9mobile
       const serviceId = network.toLowerCase() === "etisalat" ? "9mobile" : network.toLowerCase();
@@ -6933,11 +6957,6 @@ export async function registerRoutes(
       if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
-
-      const wallet = await storage.getOrCreateWallet(userId);
-      const balance = parseFloat(wallet.balance);
-      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
 
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
       const serviceId = network.toLowerCase() === "etisalat" ? "9mobile" : network.toLowerCase();
@@ -6991,11 +7010,6 @@ export async function registerRoutes(
       if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
-
-      const wallet = await storage.getOrCreateWallet(userId);
-      const balance = parseFloat(wallet.balance);
-      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
 
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
 
@@ -7053,11 +7067,6 @@ export async function registerRoutes(
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
-      const wallet = await storage.getOrCreateWallet(userId);
-      const balance = parseFloat(wallet.balance);
-      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
-
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
       const result = await vtuBuyTv(smartcardNumber, serviceId, variationId, subscriptionType, amount ? amountNgn : undefined);
       if (!result.ok) {
@@ -7104,11 +7113,6 @@ export async function registerRoutes(
       if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
-
-      const wallet = await storage.getOrCreateWallet(userId);
-      const balance = parseFloat(wallet.balance);
-      if (balance < amountUsd) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (balance - amountUsd < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
 
       const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
       // VTU.ng service_id must match exactly: Bet9ja, 1xBet, BetKing, etc.

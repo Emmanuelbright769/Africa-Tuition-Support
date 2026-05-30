@@ -100,7 +100,6 @@ const NAV = [
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
   { id: "trade_withdrawals", icon: ArrowUpRight, label: "Trade W/D" },
   { id: "deposits",      icon: Coins,          label: "Deposit History" },
-  { id: "withdrawals",  icon: Banknote,       label: "Bank W/D",      badgeKey: "pendingWithdrawals" },
   { id: "crypto_withdrawals", icon: Coins,    label: "Crypto W/D",    badgeKey: "pendingCryptoWd" },
   { id: "bank_transfers", icon: Send,         label: "Bank Transfers", badgeKey: "pendingBankTransfers" },
   { id: "reserve",      icon: ShieldCheck,    label: "Str. Reserve" },
@@ -195,6 +194,8 @@ export default function AdminDashboard() {
   const [tfAdjustDialog, setTfAdjustDialog] = useState<{ userId: number; name: string; earnedAmount: number; availableAmount: number; sharePercentage: string; withdrawnAmount: string } | null>(null);
   const [tfAdjustSharePct, setTfAdjustSharePct] = useState("");
   const [tfGrantAmount, setTfGrantAmount] = useState("");
+  const [waecEditDialog, setWaecEditDialog] = useState<{ id: number; current: string } | null>(null);
+  const [waecEditValue, setWaecEditValue] = useState("");
 
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -748,6 +749,21 @@ export default function AdminDashboard() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const waecEditMutation = useMutation({
+    mutationFn: async ({ id, waecPercentage }: { id: number; waecPercentage: string }) => {
+      const res = await apiRequest("PUT", `/api/admin/scholarship/${id}/waec`, { waecPercentage });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-scholarships"] });
+      setWaecEditDialog(null);
+      setWaecEditValue("");
+      toast({ title: "WAEC Grade Updated ✓", description: "The scholarship record has been updated." });
+    },
+    onError: (e: any) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+  });
+
   const approveBankTransferMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("POST", `/api/admin/pending-bank-transfer/${id}/approve`);
@@ -857,9 +873,8 @@ export default function AdminDashboard() {
     pendingVerifications: (pendingVerifications as any[]).length,
     pendingDisbursements: (pendingDisbursements as any[]).length,
     pendingLoans: (allLoans as any[]).filter((l: any) => l.status === "pending").length,
-    pendingWithdrawals: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && (w.type === "bank" || w.type === "trade_bank")).length,
     pendingCryptoWd: (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && w.type === "crypto").length,
-    pendingBankTransfers: (pendingBankTransfers as any[]).filter((t: any) => t.status === "pending").length,
+    pendingBankTransfers: (pendingBankTransfers as any[]).filter((t: any) => t.status === "pending").length + (allWithdrawals as any[]).filter((w: any) => w.status === "pending" && (w.type === "bank" || w.type === "trade_bank")).length,
   };
 
   // ─── Sidebar nav ───────────────────────────────────────────────────────────
@@ -2367,9 +2382,9 @@ export default function AdminDashboard() {
               </motion.div>
             )}
 
-            {/* ═══════════════════════════ BANK WITHDRAWALS ═══════════════════════════ */}
-            {activeTab === "withdrawals" && (
-              <motion.div key="withdrawals" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
+            {/* ═══════════════════════════ BANK WITHDRAWALS (merged into Bank Transfers) ═══════════════════════════ */}
+            {activeTab === "bank_transfers" && (
+              <div className="space-y-5 border-t pt-4 mt-2">
                 {/* Summary bar */}
                 <div className="grid grid-cols-3 gap-3">
                   {[
@@ -2604,7 +2619,7 @@ export default function AdminDashboard() {
                     </>
                   );
                 })()}
-              </motion.div>
+              </div>
             )}
 
             {/* ═══════════════════════════ CRYPTO WITHDRAWALS ═══════════════════════════ */}
@@ -3363,14 +3378,21 @@ export default function AdminDashboard() {
                                 </TableCell>
                                 <TableCell className="text-xs text-slate-500">{fmtDate(s.createdAt)}</TableCell>
                                 <TableCell>
-                                  {s.status === "passed" && !s.prizePaid ? (
-                                    <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90 text-white"
-                                      disabled={markScholarshipPrizePaidMutation.isPending}
-                                      onClick={() => markScholarshipPrizePaidMutation.mutate(s.id)}
-                                      data-testid={`btn-mark-prize-paid-${s.id}`}>
-                                      Mark Paid
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {s.status === "passed" && !s.prizePaid && (
+                                      <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90 text-white"
+                                        disabled={markScholarshipPrizePaidMutation.isPending}
+                                        onClick={() => markScholarshipPrizePaidMutation.mutate(s.id)}
+                                        data-testid={`btn-mark-prize-paid-${s.id}`}>
+                                        Mark Paid
+                                      </Button>
+                                    )}
+                                    <Button size="sm" variant="outline" className="h-7 text-xs"
+                                      onClick={() => { setWaecEditDialog({ id: s.id, current: s.waecPercentage ?? "0" }); setWaecEditValue(s.waecPercentage ?? ""); }}
+                                      data-testid={`btn-edit-waec-${s.id}`}>
+                                      Edit WAEC
                                     </Button>
-                                  ) : "—"}
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
@@ -3379,6 +3401,39 @@ export default function AdminDashboard() {
                       </Table>
                     </div>
                   </Card>
+
+                  {/* WAEC Edit Dialog */}
+                  <Dialog open={waecEditDialog !== null} onOpenChange={open => { if (!open) { setWaecEditDialog(null); setWaecEditValue(""); } }}>
+                    <DialogContent className="max-w-sm">
+                      <DialogHeader>
+                        <DialogTitle>Edit WAEC Grade</DialogTitle>
+                        <DialogDescription>Enter the corrected WAEC percentage (0–100) for this scholarship record. This will update the aggregate score.</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-3 py-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">WAEC Percentage (%)</Label>
+                          <Input
+                            type="number" min="0" max="100" step="0.01"
+                            value={waecEditValue}
+                            onChange={e => setWaecEditValue(e.target.value)}
+                            placeholder="e.g. 72.5"
+                            className="mt-1.5"
+                            data-testid="input-waec-edit"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">Current value: {parseFloat(waecEditDialog?.current ?? "0").toFixed(1)}%</p>
+                        </div>
+                      </div>
+                      <DialogFooter className="gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => { setWaecEditDialog(null); setWaecEditValue(""); }}>Cancel</Button>
+                        <Button size="sm" className="bg-tsia-green hover:bg-tsia-green/90"
+                          disabled={waecEditMutation.isPending || !waecEditValue.trim()}
+                          onClick={() => waecEditMutation.mutate({ id: waecEditDialog!.id, waecPercentage: waecEditValue })}
+                          data-testid="btn-confirm-waec-edit">
+                          {waecEditMutation.isPending ? "Saving…" : "Save WAEC Grade"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </motion.div>
               );
             })()}

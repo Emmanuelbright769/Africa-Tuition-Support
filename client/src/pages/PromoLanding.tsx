@@ -421,58 +421,122 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
-// ── Cohort Banner ─────────────────────────────────────────────────────────────
+// ── Cohort / Batch Info Section ───────────────────────────────────────────────
 function CohortBanner() {
   const { data } = useQuery<any>({ queryKey: ["/api/public/batch-status"], retry: false, staleTime: 60_000 });
-  if (!data) return null;
-  const pct = data.totalCapacity > 0 ? Math.round((data.enrolled / data.totalCapacity) * 100) : 0;
+
+  const steps = [
+    {
+      number: "01",
+      title: "A Cohort Opens",
+      body: "TSIA enrolls students in structured cohorts — limited groups of sponsored students that go through the programme together. Each cohort has a fixed capacity to ensure every student receives full support and timely disbursements.",
+    },
+    {
+      number: "02",
+      title: "You Register & Get Verified",
+      body: "Once you join a cohort, you complete your profile, submit your academic credentials, and go through WAEC result verification. Your aggregate score determines the sponsorship tier you qualify for.",
+    },
+    {
+      number: "03",
+      title: "Funding Is Disbursed",
+      body: "After verification, your sponsorship funds are released in structured payouts based on your tier. All students in the same cohort are processed together, so there are no individual delays.",
+    },
+    {
+      number: "04",
+      title: "The Cohort Closes, the Next Opens",
+      body: "When a cohort reaches capacity, it is closed and a new one is opened. This ensures TSIA can manage funding responsibly while continuously bringing new students into the programme.",
+    },
+  ];
+
+  const pct = data && data.totalCapacity > 0 ? Math.round((data.enrolled / data.totalCapacity) * 100) : null;
+
   return (
-    <section className="py-10 px-4 bg-tsia-green/5 border-y border-tsia-green/10">
-      <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-6">
-          <p className="text-xs font-black text-tsia-green uppercase tracking-widest mb-1">Current Enrollment Cohort</p>
-          <h3 className="text-2xl font-black">
-            {data.batchNumber ? `Cohort #${data.batchNumber}` : "Active Cohort"}
-            {data.isFull ? (
-              <span className="ml-3 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700 align-middle">FULL</span>
-            ) : (
-              <span className="ml-3 text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 align-middle">OPEN</span>
-            )}
-          </h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            {data.isFull
-              ? "This cohort has reached capacity. Register now to be notified when the next cohort opens."
-              : `${data.remaining} seat${data.remaining === 1 ? "" : "s"} remaining — secure your spot before this cohort fills up.`}
+    <section className="py-16 px-4">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <p className="text-xs font-black text-tsia-green uppercase tracking-widest mb-2">How Sponsorship Cohorts Work</p>
+          <h2 className="text-3xl font-black mb-3">You Don't Apply Alone — You Join a Cohort</h2>
+          <p className="text-muted-foreground max-w-2xl mx-auto text-sm leading-relaxed">
+            TSIA doesn't process students one by one. Instead, we enrol students in <strong>cohorts</strong> — structured batches with a defined size. This makes funding predictable, disbursements timely, and support consistent for every student in the group.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-4 mb-5">
-          {[
-            { label: "Enrolled", value: data.enrolled.toLocaleString(), color: "text-tsia-green" },
-            { label: "Capacity", value: data.totalCapacity.toLocaleString(), color: "text-slate-700" },
-            { label: "Seats Left", value: data.remaining.toLocaleString(), color: data.remaining > 50 ? "text-tsia-green" : data.remaining > 0 ? "text-amber-600" : "text-red-600" },
-          ].map(s => (
-            <div key={s.label} className="bg-card border border-border rounded-2xl p-4 text-center shadow-sm">
-              <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+
+        {/* Steps */}
+        <div className="grid sm:grid-cols-2 gap-5 mb-12">
+          {steps.map(s => (
+            <div key={s.number} className="bg-card border border-border rounded-2xl p-5 flex gap-4">
+              <div className="w-10 h-10 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
+                <span className="text-xs font-black text-tsia-green">{s.number}</span>
+              </div>
+              <div>
+                <p className="font-bold text-sm mb-1">{s.title}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{s.body}</p>
+              </div>
             </div>
           ))}
         </div>
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-muted-foreground">Cohort Fill Rate</span>
-            <span className="text-xs font-black text-tsia-green">{pct}%</span>
-          </div>
-          <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-            <div className={`h-full rounded-full transition-all ${pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-tsia-green"}`} style={{ width: `${pct}%` }} />
-          </div>
+
+        {/* Key facts */}
+        <div className="bg-tsia-green/5 border border-tsia-green/15 rounded-2xl p-6 mb-8">
+          <p className="text-xs font-black text-tsia-green uppercase tracking-widest mb-4">Key Facts About Cohorts</p>
+          <ul className="space-y-2.5 text-sm">
+            {[
+              "Each cohort has a fixed number of seats — once it's full, no more students can join that batch.",
+              "All students in a cohort are verified and disbursed at the same time, ensuring fairness and transparency.",
+              "Cohorts are numbered sequentially — Cohort 1, Cohort 2, and so on — so you always know which group you belong to.",
+              "Joining earlier in a cohort does not change your payout; what matters is your academic tier.",
+              "When one cohort closes, a new one opens automatically — you are never permanently locked out.",
+            ].map((fact, i) => (
+              <li key={i} className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0 mt-0.5" />
+                <span className="text-muted-foreground">{fact}</span>
+              </li>
+            ))}
+          </ul>
         </div>
-        {!data.isFull && (
-          <div className="mt-5 text-center">
-            <Link href="/signup">
-              <button className="inline-flex items-center gap-2 bg-tsia-green hover:bg-tsia-green/90 text-white font-black px-8 py-3.5 rounded-2xl shadow-lg transition-all hover:scale-105" data-testid="btn-cohort-apply">
-                Claim Your Spot <ArrowRight className="w-4 h-4" />
-              </button>
-            </Link>
+
+        {/* Live status — secondary element */}
+        {data && (
+          <div className="bg-card border border-border rounded-2xl p-5">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+              <div>
+                <p className="font-bold text-sm">
+                  {data.batchNumber ? `Cohort #${data.batchNumber} — ` : "Active Cohort — "}
+                  {data.isFull ? (
+                    <span className="text-red-600">Currently Full</span>
+                  ) : (
+                    <span className="text-tsia-green">Now Enrolling</span>
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {data.isFull
+                    ? "This cohort has reached capacity. The next cohort will open shortly."
+                    : `${data.remaining.toLocaleString()} seat${data.remaining === 1 ? "" : "s"} remaining out of ${data.totalCapacity.toLocaleString()} total.`}
+                </p>
+              </div>
+              {!data.isFull && (
+                <Link href="/signup">
+                  <button className="inline-flex items-center gap-2 bg-tsia-green hover:bg-tsia-green/90 text-white font-black px-5 py-2.5 rounded-xl text-sm transition-all" data-testid="btn-cohort-apply">
+                    Join This Cohort <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </Link>
+              )}
+            </div>
+            {pct !== null && (
+              <>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-muted-foreground">Cohort fill rate</span>
+                  <span className="text-xs font-bold">{data.enrolled.toLocaleString()} / {data.totalCapacity.toLocaleString()} enrolled ({pct}%)</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-tsia-green"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

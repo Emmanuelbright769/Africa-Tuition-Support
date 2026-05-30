@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 type ScholarshipType = "student" | "masters";
-type Step = "welcome" | "tertiary" | "waec" | "pay_fee" | "commitment" | "test_intro" | "test" | "result";
+type Step = "welcome" | "tertiary" | "waec" | "pay_fee" | "commitment" | "test_intro" | "test" | "result" | "cooldown";
 type TestPhase = "verbal" | "transition" | "quant" | "submitting";
 type TertiaryGrade = "first_class" | "second_upper" | "second_lower";
 type MscDuration = "1year" | "2year";
@@ -145,6 +145,8 @@ export default function ScholarshipPortal() {
 
   // MSc duration choice (Masters only)
   const [mscDuration, setMscDuration] = useState<MscDuration | "">("");
+  // 365-day cooldown
+  const [cooldownDaysLeft, setCooldownDaysLeft] = useState(0);
 
   // WAEC form
   const [waecReg, setWaecReg] = useState("");
@@ -212,6 +214,16 @@ export default function ScholarshipPortal() {
     }
     if (s === "test_in_progress") { setStep("test_intro"); return; }
     if (s === "passed" || s === "failed") {
+      // 365-day cooldown: if test was completed less than 365 days ago, block re-enrollment
+      if (rec.testCompletedAt) {
+        const daysSince = (Date.now() - new Date(rec.testCompletedAt).getTime()) / 86400000;
+        if (daysSince < 365) {
+          setCooldownDaysLeft(Math.ceil(365 - daysSince));
+          setStep("cooldown");
+          return;
+        }
+      }
+      // 365+ days passed: show previous result (user can start fresh from welcome)
       const vs = rec.verbalScore ?? 0; const qs = rec.quantScore ?? 0; const ts = vs + qs;
       const waecPct = parseFloat(rec.waecPercentage ?? "0");
       const testPct = (ts / 30) * 100;
@@ -332,6 +344,23 @@ export default function ScholarshipPortal() {
       const data = await apiRequest("GET", "/api/scholarship/my");
       const rec = (data as any)[type];
       if (rec) {
+        // Completed test: check cooldown before allowing re-enrollment
+        if ((rec.status === "passed" || rec.status === "failed") && rec.testCompletedAt) {
+          const daysSince = (Date.now() - new Date(rec.testCompletedAt).getTime()) / 86400000;
+          if (daysSince < 365) {
+            setScholarshipRecord(rec);
+            setCooldownDaysLeft(Math.ceil(365 - daysSince));
+            setStep("cooldown");
+            setPageLoading(false);
+            return;
+          }
+          // 365 days passed — start fresh enrollment
+          const fresh = await apiRequest("POST", "/api/scholarship/start", { type });
+          setScholarshipRecord(fresh as any);
+          setStep(type === "masters" ? "tertiary" : "waec");
+          setPageLoading(false);
+          return;
+        }
         setScholarshipRecord(rec);
         restoreStep(rec, type);
       } else {
@@ -760,6 +789,54 @@ export default function ScholarshipPortal() {
     );
   }
 
+  // ── COOLDOWN SCREEN ───────────────────────────────────────────────────────
+  if (step === "cooldown") {
+    const typeName = scholarshipType === "masters" ? "Masters" : "Student";
+    const testDoneDate = scholarshipRecord?.testCompletedAt ? new Date(scholarshipRecord.testCompletedAt) : null;
+    const reopenDate = testDoneDate ? new Date(testDoneDate.getTime() + 365 * 86400000) : null;
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 flex items-center justify-center p-4">
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 180 }} className="w-full max-w-md">
+          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 text-center">
+            <div className="w-20 h-20 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-5">
+              <Clock className="w-10 h-10 text-amber-400" />
+            </div>
+            <h2 className="text-2xl font-black text-white mb-2">Re-Enrollment Locked</h2>
+            <p className="text-white/60 text-sm mb-6">
+              You already took the {typeName} Scholarship CBT. A <span className="text-amber-300 font-semibold">365-day window</span> applies between attempts.
+            </p>
+
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-5 mb-6">
+              <p className="text-amber-300 text-4xl font-black mb-1">{cooldownDaysLeft}</p>
+              <p className="text-amber-400/80 text-sm font-semibold">day{cooldownDaysLeft !== 1 ? "s" : ""} remaining</p>
+              {reopenDate && (
+                <p className="text-white/40 text-xs mt-2">
+                  Re-enrollment opens: {reopenDate.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}
+                </p>
+              )}
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 text-left space-y-2">
+              <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">Your last attempt</p>
+              {scholarshipRecord?.status === "passed"
+                ? <p className="text-emerald-400 text-sm font-semibold flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Passed — prize pending admin review</p>
+                : <p className="text-red-400 text-sm font-semibold flex items-center gap-2"><XCircle className="w-4 h-4" /> Did not pass — keep studying!</p>
+              }
+              {testDoneDate && (
+                <p className="text-white/40 text-xs">Completed: {testDoneDate.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}</p>
+              )}
+            </div>
+
+            <button onClick={() => { setStep("welcome"); setScholarshipType(null as any); setScholarshipRecord(null); }}
+              className="w-full h-12 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-colors">
+              ← Back to Portal
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   // ── STEPPED FLOW (welcome → waec → pay_fee → commitment → test_intro) ────
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900">
@@ -776,7 +853,7 @@ export default function ScholarshipPortal() {
         </button>
         <div className="flex items-center gap-2">
           <Trophy className="w-5 h-5 text-amber-400" />
-          <span className="text-white font-bold text-sm">TSIA Scholarship Portal</span>
+          <span className="text-white font-bold text-sm">TSIA Scholarship CBT</span>
         </div>
         {scholarshipType && (() => {
           const isMasters = scholarshipType === "masters";
@@ -801,14 +878,14 @@ export default function ScholarshipPortal() {
                   className="w-20 h-20 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-5">
                   <Trophy className="w-10 h-10 text-amber-400" />
                 </motion.div>
-                <h1 className="text-3xl font-black text-white mb-2">Scholarship Portal</h1>
-                <p className="text-white/60 text-sm max-w-xs mx-auto">One-time merit scholarship for exceptional students. Prove your aptitude, win your prize.</p>
+                <h1 className="text-3xl font-black text-white mb-2">Scholarship CBT</h1>
+                <p className="text-white/60 text-sm max-w-xs mx-auto">Merit-based Computer-Based Test for exceptional students. Pass the CBT, win your prize.</p>
               </div>
 
               <div className="grid gap-4 mb-8">
                 {[
-                  { type: "student" as const, label: "Student Scholarship", prize: "$100", icon: GraduationCap, gradient: "from-indigo-600 to-purple-700", desc: "Open to all verified students. Take the aptitude test and win $100 credited to your wallet." },
-                  { type: "masters" as const, label: "Masters Scholarship", prize: "$250", icon: Trophy, gradient: "from-amber-500 to-orange-600", desc: "Advanced track. 30-day commitment window, then a $10 unlock fee before the test. Win $250." },
+                  { type: "student" as const, label: "Student Scholarship", prize: "$100", icon: GraduationCap, gradient: "from-indigo-600 to-purple-700", desc: "Open to all verified students. Sit the CBT — 30 tough A–D objective questions — and win $100." },
+                  { type: "masters" as const, label: "Masters Scholarship", prize: "$250", icon: Trophy, gradient: "from-amber-500 to-orange-600", desc: "Advanced track. 30-day commitment window, then a $10 unlock fee before the CBT. Win $250." },
                 ].map(s => (
                   <motion.div key={s.type} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
                     onClick={() => handleSelectType(s.type)}
@@ -824,7 +901,7 @@ export default function ScholarshipPortal() {
                       <p className="text-white/70 text-sm mb-3">{s.desc}</p>
                       <div className="flex items-center gap-1.5 text-xs text-white/50">
                         <Zap className="w-3 h-3" />
-                        <span>$3.30 WAEC validation fee · 70% aggregate (WAEC + Test ÷ 2) · One attempt only</span>
+                        <span>$3.30 WAEC validation fee · 70% aggregate (WAEC + CBT ÷ 2) · One attempt per 365 days</span>
                       </div>
                     </div>
                   </motion.div>
@@ -836,10 +913,10 @@ export default function ScholarshipPortal() {
                   <AlertTriangle className="w-4 h-4" /> Before you apply
                 </p>
                 <ul className="text-amber-200/70 text-xs space-y-1.5 list-disc list-inside">
-                  <li>Any WAEC score is accepted — the 70% threshold applies to your aggregate (WAEC score + Test score ÷ 2)</li>
+                  <li>Any WAEC score is accepted — the 70% threshold applies to your aggregate (WAEC + CBT ÷ 2)</li>
                   <li>A $3.30 validation fee will be deducted from your SwiftWallet</li>
-                  <li>15 verbal + 15 quantitative questions, 10 seconds each</li>
-                  <li>This is a one-time test — you cannot retake it</li>
+                  <li>30 tough 4-option (A–D) objective questions: 15 Verbal + 15 Quantitative, 10 seconds each</li>
+                  <li>One attempt per 365 days — re-enrollment opens one year after your last test</li>
                 </ul>
               </div>
             </motion.div>
@@ -1106,32 +1183,46 @@ export default function ScholarshipPortal() {
                   className="w-20 h-20 bg-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-5">
                   <Zap className="w-10 h-10 text-indigo-400" />
                 </motion.div>
-                <h2 className="text-2xl font-black text-white mb-2">Ready to Take Your Test?</h2>
-                <p className="text-white/60 text-sm">Read the rules carefully. This is your one and only attempt.</p>
+                <h2 className="text-2xl font-black text-white mb-1">Scholarship CBT</h2>
+                <p className="text-indigo-300 text-xs font-semibold uppercase tracking-wider mb-2">Computer-Based Test</p>
+                <p className="text-white/60 text-sm">Read every rule below. This is your <span className="text-amber-300 font-semibold">one shot</span> — once started, you cannot pause or restart.</p>
               </div>
 
-              <div className="space-y-3 mb-6">
+              {/* Sections */}
+              <div className="space-y-3 mb-5">
                 {[
-                  { icon: BookOpen, label: "Verbal Reasoning", desc: "15 questions on analogies, critical reasoning, vocabulary, and grammar.", color: "text-indigo-400", bg: "bg-indigo-500/10 border-indigo-500/20" },
-                  { icon: Calculator, label: "Quantitative Reasoning", desc: "15 questions on arithmetic, algebra, percentages, and data analysis.", color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20" },
+                  { icon: BookOpen, label: "Section 1 — Verbal Reasoning", desc: "15 objective questions (A – D) testing analogies, critical reasoning, vocabulary, comprehension, and grammar. Questions are tough — read each one carefully.", color: "text-indigo-400", bg: "bg-indigo-500/10 border-indigo-500/20" },
+                  { icon: Calculator, label: "Section 2 — Quantitative Reasoning", desc: "15 objective questions (A – D) testing arithmetic, algebra, percentages, ratios, number series, and data interpretation. Expect challenging calculations.", color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20" },
                 ].map(({ icon: Icon, label, desc, color, bg }) => (
                   <div key={label} className={`${bg} border rounded-2xl p-4 flex gap-3 items-start`}>
                     <Icon className={`w-5 h-5 ${color} mt-0.5 shrink-0`} />
                     <div>
                       <p className="text-white font-semibold text-sm">{label}</p>
-                      <p className="text-white/60 text-xs mt-0.5">{desc}</p>
+                      <p className="text-white/60 text-xs mt-1 leading-relaxed">{desc}</p>
                     </div>
                   </div>
                 ))}
               </div>
 
+              {/* Format badge */}
+              <div className="flex items-center gap-2 mb-5 bg-white/5 border border-white/10 rounded-2xl p-3">
+                <div className="flex gap-1.5">
+                  {["A", "B", "C", "D"].map(l => (
+                    <span key={l} className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-black text-xs">{l}</span>
+                  ))}
+                </div>
+                <p className="text-white/60 text-xs ml-1">All questions are <span className="text-white font-semibold">4-option multiple choice</span> — pick the single best answer.</p>
+              </div>
+
+              {/* Rules */}
               <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 space-y-2.5">
                 {[
-                  ["⏱️", "10 seconds per question — answer quickly!"],
-                  ["⏰", "15 minutes per section — both timers run simultaneously"],
-                  ["📊", "Watch your score update live as you answer"],
-                  ["🚫", "No going back — each question auto-advances"],
-                  ["✅", "Pass mark: 21 out of 30 (70%)"],
+                  ["⏱️", "10 seconds per question — answer or it auto-skips"],
+                  ["⏰", "15 minutes per section — both section timers run live"],
+                  ["📊", "Your running score updates in real time as you answer"],
+                  ["🚫", "No going back — each question auto-advances after selection"],
+                  ["✅", "Pass mark: 70% aggregate (WAEC % + Test %) ÷ 2"],
+                  ["🔒", "One attempt per 365 days — make it count"],
                 ].map(([emoji, text]) => (
                   <div key={text} className="flex items-start gap-2.5 text-sm text-white/70">
                     <span className="text-base shrink-0">{emoji}</span>
@@ -1142,9 +1233,9 @@ export default function ScholarshipPortal() {
 
               <Button onClick={handleStartTest} disabled={loading}
                 className="w-full h-14 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-lg shadow-lg shadow-indigo-900/40">
-                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : "Start Test Now →"}
+                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : "Start Scholarship CBT →"}
               </Button>
-              <p className="text-white/40 text-xs text-center mt-3">Once started, the timer cannot be paused</p>
+              <p className="text-white/40 text-xs text-center mt-3">Once started, the timer cannot be paused or stopped</p>
             </motion.div>
           )}
 

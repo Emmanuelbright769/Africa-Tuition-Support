@@ -9135,7 +9135,20 @@ export async function registerRoutes(
         const { type } = req.body;
         if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid scholarship type" });
         const existing = await storage.getScholarship(userId, type);
-        if (existing) return res.json(existing);
+        if (existing) {
+          // Completed test: enforce 365-day cooldown
+          if (["passed", "failed"].includes(existing.status) && existing.testCompletedAt) {
+            const daysSince = (Date.now() - new Date(existing.testCompletedAt).getTime()) / 86400000;
+            if (daysSince < 365) {
+              const daysLeft = Math.ceil(365 - daysSince);
+              return res.status(429).json({ code: "COOLDOWN", message: `You can re-enroll in ${daysLeft} day${daysLeft !== 1 ? "s" : ""}.`, daysLeft });
+            }
+            // 365 days have passed — create a fresh record for re-enrollment
+            const fresh = await storage.createScholarship({ userId, type, status: "started" });
+            return res.json(fresh);
+          }
+          return res.json(existing);
+        }
         const record = await storage.createScholarship({ userId, type, status: "started" });
         res.json(record);
       } catch (e: any) { res.status(500).json({ message: e.message }); }

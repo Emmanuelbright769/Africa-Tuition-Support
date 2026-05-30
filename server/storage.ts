@@ -2247,7 +2247,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getScholarship(userId: number, type: string): Promise<Scholarship | undefined> {
-    const [row] = await db.select().from(scholarships).where(and(eq(scholarships.userId, userId), eq(scholarships.type, type))).limit(1);
+    const [row] = await db.select().from(scholarships).where(and(eq(scholarships.userId, userId), eq(scholarships.type, type))).orderBy(desc(scholarships.createdAt)).limit(1);
     return row;
   }
 

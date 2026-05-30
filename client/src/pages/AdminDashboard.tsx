@@ -196,6 +196,8 @@ export default function AdminDashboard() {
   const [tfGrantAmount, setTfGrantAmount] = useState("");
   const [waecEditDialog, setWaecEditDialog] = useState<{ id: number; current: string } | null>(null);
   const [waecEditValue, setWaecEditValue] = useState("");
+  const [schDetailDialog, setSchDetailDialog] = useState<any>(null);
+  const [declineSchDialog, setDeclineSchDialog] = useState<{ id: number; name: string } | null>(null);
 
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -745,6 +747,20 @@ export default function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/all-scholarships"] });
       toast({ title: "Prize Marked Paid ✓", description: "Scholarship prize has been marked as paid." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const declineScholarshipMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("PUT", `/api/admin/scholarship/${id}/decline`);
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-scholarships"] });
+      setDeclineSchDialog(null);
+      toast({ title: "Enrollment Declined", description: "The scholarship enrollment has been marked as declined." });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -3342,6 +3358,7 @@ export default function AdminDashboard() {
                               test_in_progress: "bg-purple-100 text-purple-700",
                               passed: "bg-green-100 text-green-700",
                               failed: "bg-red-100 text-red-700",
+                              declined: "bg-red-100 text-red-800",
                             };
                             return (
                               <TableRow key={s.id} className="hover:bg-slate-50/50" data-testid={`row-scholarship-${s.id}`}>
@@ -3378,7 +3395,12 @@ export default function AdminDashboard() {
                                 </TableCell>
                                 <TableCell className="text-xs text-slate-500">{fmtDate(s.createdAt)}</TableCell>
                                 <TableCell>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <Button size="sm" variant="outline" className="h-7 w-7 p-0" title="View full grades & details"
+                                      onClick={() => setSchDetailDialog(s)}
+                                      data-testid={`btn-view-sch-${s.id}`}>
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </Button>
                                     {s.status === "passed" && !s.prizePaid && (
                                       <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90 text-white"
                                         disabled={markScholarshipPrizePaidMutation.isPending}
@@ -3391,6 +3413,18 @@ export default function AdminDashboard() {
                                       onClick={() => { setWaecEditDialog({ id: s.id, current: s.waecPercentage ?? "0" }); setWaecEditValue(s.waecPercentage ?? ""); }}
                                       data-testid={`btn-edit-waec-${s.id}`}>
                                       Edit WAEC
+                                    </Button>
+                                    {s.status !== "declined" && (
+                                      <Button size="sm" variant="outline" className="h-7 text-xs border-red-300 text-red-600 hover:bg-red-50"
+                                        onClick={() => setDeclineSchDialog({ id: s.id, name: `${s.user?.firstName ?? ""} ${s.user?.lastName ?? ""}`.trim() })}
+                                        data-testid={`btn-decline-sch-${s.id}`}>
+                                        <XCircle className="w-3 h-3 mr-1" /> Decline
+                                      </Button>
+                                    )}
+                                    <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() => setDeleteUserDialog({ open: true, user: s.user })}
+                                      data-testid={`btn-delete-user-sch-${s.id}`}>
+                                      <Trash2 className="w-3 h-3 mr-1" /> Delete
                                     </Button>
                                   </div>
                                 </TableCell>
@@ -3430,6 +3464,158 @@ export default function AdminDashboard() {
                           onClick={() => waecEditMutation.mutate({ id: waecEditDialog!.id, waecPercentage: waecEditValue })}
                           data-testid="btn-confirm-waec-edit">
                           {waecEditMutation.isPending ? "Saving…" : "Save WAEC Grade"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* ── Scholarship Detail Dialog ── */}
+                  <Dialog open={schDetailDialog !== null} onOpenChange={open => { if (!open) setSchDetailDialog(null); }}>
+                    <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Scholarship Record — {schDetailDialog?.user?.firstName} {schDetailDialog?.user?.lastName}</DialogTitle>
+                        <DialogDescription>Full academic grades, CBT results, and enrollment details for this student.</DialogDescription>
+                      </DialogHeader>
+                      {schDetailDialog && (() => {
+                        const s = schDetailDialog;
+                        const subjects: string[] = (s.waecSubjects || "").split(",").filter(Boolean);
+                        const grades: string[] = (s.waecGrades || "").split(" ").filter(Boolean);
+                        const verbal: number | null = s.verbalScore ?? null;
+                        const quant: number | null = s.quantScore ?? null;
+                        const total = verbal !== null && quant !== null ? verbal + quant : null;
+                        const testPctNum = total !== null ? (total / 30) * 100 : null;
+                        const waecPctNum = s.waecPercentage ? parseFloat(s.waecPercentage) : null;
+                        const aggregate = waecPctNum !== null && testPctNum !== null ? ((waecPctNum + testPctNum) / 2).toFixed(1) : null;
+                        return (
+                          <div className="space-y-4 py-1">
+                            {/* Student + WAEC Info */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="bg-slate-50 border rounded-xl p-4 space-y-1.5">
+                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Student</h4>
+                                <p className="text-sm"><span className="text-slate-500">Name:</span> <strong>{s.user?.firstName} {s.user?.lastName}</strong></p>
+                                <p className="text-sm"><span className="text-slate-500">Email:</span> <span className="font-mono text-xs break-all">{s.user?.email}</span></p>
+                                <p className="text-sm"><span className="text-slate-500">Type:</span> <strong className="capitalize">{s.type}</strong></p>
+                                <p className="text-sm"><span className="text-slate-500">Status:</span> <strong>{s.status.replace(/_/g, " ")}</strong></p>
+                                <p className="text-sm"><span className="text-slate-500">Portal Fee:</span> <strong>{s.portalFeePaid ? "✓ Paid" : "Not paid"}</strong></p>
+                              </div>
+                              <div className="bg-slate-50 border rounded-xl p-4 space-y-1.5">
+                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">WAEC Registration</h4>
+                                <p className="text-sm"><span className="text-slate-500">Reg No:</span> <span className="font-mono font-semibold">{s.waecRegNumber || "—"}</span></p>
+                                <p className="text-sm"><span className="text-slate-500">Year:</span> <strong>{s.waecYear || "—"}</strong></p>
+                                <p className="text-sm"><span className="text-slate-500">School:</span> <strong>{s.schoolName || "—"}</strong></p>
+                                <p className="text-sm"><span className="text-slate-500">Location:</span> <strong>{s.schoolLocation || "—"}</strong></p>
+                              </div>
+                            </div>
+
+                            {/* WAEC Subject Grades */}
+                            <div className="bg-slate-50 border rounded-xl p-4 space-y-3">
+                              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">WAEC Subject Grades</h4>
+                              {subjects.length > 0 ? (
+                                <>
+                                  <div className="flex flex-wrap gap-2">
+                                    {subjects.map((sub: string, i: number) => {
+                                      const grade = grades[i] || "—";
+                                      const isPass = ["A1","B2","B3","C4","C5","C6"].includes(grade);
+                                      return (
+                                        <div key={i} className={`border rounded-lg px-3 py-1.5 text-xs flex items-center gap-2 ${isPass ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+                                          <span className="text-slate-600">{sub.trim()}</span>
+                                          <span className={`font-bold ${isPass ? "text-green-700" : "text-red-600"}`}>{grade}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="flex items-center gap-4 pt-1 border-t border-slate-200">
+                                    <div><span className="text-xs text-slate-500">WAEC Score:</span> <span className="font-bold text-base ml-1">{waecPctNum !== null ? `${waecPctNum.toFixed(1)}%` : "—"}</span></div>
+                                  </div>
+                                </>
+                              ) : (
+                                <p className="text-sm text-slate-400 italic">No WAEC subject grades submitted yet.</p>
+                              )}
+                            </div>
+
+                            {/* CBT Test Results */}
+                            <div className="bg-slate-50 border rounded-xl p-4 space-y-3">
+                              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">CBT Test Results</h4>
+                              {verbal !== null || quant !== null ? (
+                                <>
+                                  <div className="grid grid-cols-3 gap-3">
+                                    <div className="bg-white border rounded-xl p-3 text-center">
+                                      <p className="text-2xl font-black text-blue-600">{verbal ?? "—"}</p>
+                                      <p className="text-xs font-semibold text-slate-600 mt-1">Verbal</p>
+                                      <p className="text-[10px] text-slate-400">out of 15</p>
+                                    </div>
+                                    <div className="bg-white border rounded-xl p-3 text-center">
+                                      <p className="text-2xl font-black text-purple-600">{quant ?? "—"}</p>
+                                      <p className="text-xs font-semibold text-slate-600 mt-1">Quantitative</p>
+                                      <p className="text-[10px] text-slate-400">out of 15</p>
+                                    </div>
+                                    <div className="bg-white border rounded-xl p-3 text-center">
+                                      <p className="text-2xl font-black text-tsia-green">{total ?? "—"}<span className="text-sm font-medium text-slate-400">/30</span></p>
+                                      <p className="text-xs font-semibold text-slate-600 mt-1">Total Score</p>
+                                      <p className="text-[10px] text-slate-400">{testPctNum !== null ? `${testPctNum.toFixed(1)}%` : "—"}</p>
+                                    </div>
+                                  </div>
+                                  {s.testStartedAt && <p className="text-xs text-slate-500">Started: {fmtDate(s.testStartedAt)}{s.testCompletedAt ? ` · Completed: ${fmtDate(s.testCompletedAt)}` : ""}</p>}
+                                </>
+                              ) : (
+                                <p className="text-sm text-slate-400 italic">CBT test not yet taken.</p>
+                              )}
+                            </div>
+
+                            {/* Aggregate */}
+                            {aggregate !== null && (
+                              <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-4 flex items-center justify-between">
+                                <span className="text-sm font-semibold text-slate-700">Aggregate Score <span className="text-xs font-normal text-slate-400">(WAEC + CBT ÷ 2)</span></span>
+                                <span className="text-2xl font-black text-tsia-green">{aggregate}%</span>
+                              </div>
+                            )}
+
+                            {/* Masters tertiary info */}
+                            {s.type === "masters" && (s.tertiarySchool || s.tertiaryType) && (
+                              <div className="bg-slate-50 border rounded-xl p-4 space-y-1.5">
+                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tertiary Education</h4>
+                                <p className="text-sm"><span className="text-slate-500">School:</span> <strong>{s.tertiarySchool || "—"}</strong></p>
+                                <p className="text-sm"><span className="text-slate-500">Type:</span> <strong className="capitalize">{s.tertiaryType || "—"}</strong></p>
+                                <p className="text-sm"><span className="text-slate-500">Year:</span> <strong>{s.tertiaryYear || "—"}</strong></p>
+                                <p className="text-sm"><span className="text-slate-500">Grade:</span> <strong>{(s.tertiaryGrade || "—").replace(/_/g, " ")}</strong></p>
+                                {s.mscDuration && <p className="text-sm"><span className="text-slate-500">MSc Duration:</span> <strong>{s.mscDuration}</strong></p>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      <DialogFooter className="gap-2 border-t pt-4 flex-col sm:flex-row">
+                        <Button variant="ghost" size="sm" onClick={() => setSchDetailDialog(null)} className="sm:mr-auto">Close</Button>
+                        {schDetailDialog?.status !== "declined" && (
+                          <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50"
+                            onClick={() => { setDeclineSchDialog({ id: schDetailDialog.id, name: `${schDetailDialog.user?.firstName ?? ""} ${schDetailDialog.user?.lastName ?? ""}`.trim() }); setSchDetailDialog(null); }}>
+                            <XCircle className="w-3 h-3 mr-1" /> Decline Enrollment
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline"
+                          onClick={() => { setWaecEditDialog({ id: schDetailDialog.id, current: schDetailDialog.waecPercentage ?? "0" }); setWaecEditValue(schDetailDialog.waecPercentage ?? ""); setSchDetailDialog(null); }}>
+                          Edit WAEC Grade
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* ── Decline Enrollment Confirmation ── */}
+                  <Dialog open={declineSchDialog !== null} onOpenChange={open => { if (!open) setDeclineSchDialog(null); }}>
+                    <DialogContent className="max-w-sm">
+                      <DialogHeader>
+                        <DialogTitle>Decline Enrollment</DialogTitle>
+                        <DialogDescription>
+                          Are you sure you want to decline the scholarship enrollment for <strong>{declineSchDialog?.name}</strong>? Their status will be set to <em>declined</em>.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter className="gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => setDeclineSchDialog(null)}>Cancel</Button>
+                        <Button variant="destructive" size="sm"
+                          disabled={declineScholarshipMutation.isPending}
+                          onClick={() => declineScholarshipMutation.mutate(declineSchDialog!.id)}
+                          data-testid="btn-confirm-decline-sch">
+                          {declineScholarshipMutation.isPending ? "Declining…" : "Decline Enrollment"}
                         </Button>
                       </DialogFooter>
                     </DialogContent>

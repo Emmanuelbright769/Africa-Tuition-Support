@@ -3460,6 +3460,29 @@ export async function registerRoutes(
     res.json(all);
   });
 
+  app.get("/api/admin/all-scholarships", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const all = await storage.getAllScholarships();
+      res.json(all);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/admin/scholarship/:id/mark-prize-paid", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateScholarship(id, { prizePaid: true });
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/admin/verify/:verificationId", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -9128,7 +9151,10 @@ export async function registerRoutes(
 
         let record = await storage.getScholarship(userId, type);
         if (!record) record = await storage.createScholarship({ userId, type, status: "started" });
-        if (record.status !== "started") return res.status(400).json({ message: "WAEC already validated for this scholarship" });
+        // Block re-validation only if the user has already paid the fee or taken the test
+        if (record.portalFeePaid || record.status === "test_in_progress" || record.status === "passed" || record.status === "failed") {
+          return res.status(400).json({ message: "WAEC already validated for this scholarship" });
+        }
 
         if (!waecRegNumber || !waecYear) return res.status(400).json({ message: "WAEC registration number and year are required" });
         if (!schoolName || !schoolLocation) return res.status(400).json({ message: "School name and location are required" });

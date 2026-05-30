@@ -107,6 +107,7 @@ const NAV = [
   { id: "trustfunders", icon: Award,          label: "Affiliate Trust Fund" },
   { id: "messages",     icon: MessageSquare,  label: "Forum Messages" },
   { id: "notifications", icon: Bell,          label: "Notifications" },
+  { id: "scholarships",  icon: GraduationCap,  label: "Scholarships" },
   { id: "enrollment",   icon: UserPlus,       label: "Enrollment" },
   { id: "settings",     icon: Settings,      label: "Plan Settings" },
 ];
@@ -226,6 +227,7 @@ export default function AdminDashboard() {
   const { data: waecScaleData, refetch: refetchWaecScale } = useQuery<{ scale: Record<string, number> }>({ queryKey: ["/api/admin/waec-grade-scale"], enabled: activeTab === "settings" });
   const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number; bankTransfersEnabled: boolean; bankTransfersWeekendOverrideUntil: number }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" || activeTab === "bank_transfers" });
   const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
+  const { data: allScholarships = [], refetch: refetchScholarships } = useQuery<any[]>({ queryKey: ["/api/admin/all-scholarships"], enabled: activeTab === "scholarships" });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
   const verifyMutation = useMutation({
@@ -730,6 +732,18 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/batch-status"] });
       setOpenSlotsInput("1");
       toast({ title: "Slots Opened", description: `Batch now has ${data.remaining} open seat${data.remaining === 1 ? "" : "s"} available.` });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const markScholarshipPrizePaidMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/admin/scholarship/${id}/mark-prize-paid`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-scholarships"] });
+      toast({ title: "Prize Marked Paid ✓", description: "Scholarship prize has been marked as paid." });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -3249,6 +3263,125 @@ export default function AdminDashboard() {
                 </Card>
               </motion.div>
             )}
+
+            {activeTab === "scholarships" && (() => {
+              const schFilter = (allScholarships as any[]).filter(s => !q || `${s.user?.firstName} ${s.user?.lastName} ${s.user?.email} ${s.type} ${s.status}`.toLowerCase().includes(q));
+              const passedUnpaid = schFilter.filter((s: any) => s.status === "passed" && !s.prizePaid);
+              return (
+                <motion.div key="scholarships" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><GraduationCap className="w-5 h-5 text-tsia-green" /> Scholarship Enrollments</h2>
+                    <Button size="sm" variant="outline" onClick={() => refetchScholarships()} className="gap-1.5 h-8 text-xs"><RefreshCw className="w-3.5 h-3.5" /> Refresh</Button>
+                  </div>
+
+                  {/* Summary cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <StatCard title="Total Enrolled" value={(allScholarships as any[]).length} icon={GraduationCap} color="tsia" />
+                    <StatCard title="Student" value={(allScholarships as any[]).filter((s: any) => s.type === "student").length} icon={UserCheck} color="blue" />
+                    <StatCard title="Masters" value={(allScholarships as any[]).filter((s: any) => s.type === "masters").length} icon={Award} color="purple" />
+                    <StatCard title="Passed (Prize Due)" value={passedUnpaid.length} icon={DollarSign} color={passedUnpaid.length > 0 ? "amber" : "green"} />
+                  </div>
+
+                  {/* Prize-due alert */}
+                  {passedUnpaid.length > 0 && (
+                    <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-amber-800 text-sm">{passedUnpaid.length} scholarship prize{passedUnpaid.length > 1 ? "s" : ""} pending payment</p>
+                        <p className="text-amber-700 text-xs mt-0.5">Review the table below and mark as paid after disbursing the prize amount.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Table */}
+                  <Card className="border-0 shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-slate-50">
+                            <TableHead className="text-xs font-semibold text-slate-600">Student</TableHead>
+                            <TableHead className="text-xs font-semibold text-slate-600">Type</TableHead>
+                            <TableHead className="text-xs font-semibold text-slate-600">Status</TableHead>
+                            <TableHead className="text-xs font-semibold text-slate-600">WAEC %</TableHead>
+                            <TableHead className="text-xs font-semibold text-slate-600">Test Score</TableHead>
+                            <TableHead className="text-xs font-semibold text-slate-600">Aggregate</TableHead>
+                            <TableHead className="text-xs font-semibold text-slate-600">Fee Paid</TableHead>
+                            <TableHead className="text-xs font-semibold text-slate-600">Prize</TableHead>
+                            <TableHead className="text-xs font-semibold text-slate-600">Enrolled</TableHead>
+                            <TableHead className="text-xs font-semibold text-slate-600">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {schFilter.length === 0 ? (
+                            <TableRow><TableCell colSpan={10} className="text-center text-slate-400 py-12 text-sm">No scholarship enrollments yet.</TableCell></TableRow>
+                          ) : schFilter.map((s: any) => {
+                            const waecPct = parseFloat(s.waecPercentage ?? "0");
+                            const totalQ = (s.verbalScore ?? 0) + (s.quantScore ?? 0);
+                            const testPct = (totalQ / 30) * 100;
+                            const aggregate = (waecPct + testPct) / 2;
+                            const statusColors: Record<string, string> = {
+                              started: "bg-slate-100 text-slate-600",
+                              waec_done: "bg-blue-100 text-blue-700",
+                              fee_paid: "bg-amber-100 text-amber-700",
+                              commitment: "bg-orange-100 text-orange-700",
+                              test_in_progress: "bg-purple-100 text-purple-700",
+                              passed: "bg-green-100 text-green-700",
+                              failed: "bg-red-100 text-red-700",
+                            };
+                            return (
+                              <TableRow key={s.id} className="hover:bg-slate-50/50" data-testid={`row-scholarship-${s.id}`}>
+                                <TableCell>
+                                  <div>
+                                    <p className="font-semibold text-sm text-slate-800">{s.user?.firstName} {s.user?.lastName}</p>
+                                    <p className="text-xs text-slate-400">{s.user?.email}</p>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={`text-xs capitalize ${s.type === "masters" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                                    {s.type}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColors[s.status] ?? "bg-slate-100 text-slate-600"}`}>
+                                    {s.status.replace(/_/g, " ")}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-sm text-slate-700">{s.waecPercentage ? `${parseFloat(s.waecPercentage).toFixed(1)}%` : "—"}</TableCell>
+                                <TableCell className="text-sm text-slate-700">{s.status === "passed" || s.status === "failed" ? `${totalQ}/30` : "—"}</TableCell>
+                                <TableCell className="text-sm font-semibold text-slate-800">{s.status === "passed" || s.status === "failed" ? `${aggregate.toFixed(1)}%` : "—"}</TableCell>
+                                <TableCell>
+                                  <span className={`text-xs font-semibold ${s.portalFeePaid ? "text-green-600" : "text-slate-400"}`}>
+                                    {s.portalFeePaid ? "✓ Paid" : "—"}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  {s.status === "passed" ? (
+                                    s.prizePaid
+                                      ? <span className="text-xs font-semibold text-green-600">✓ Paid {fmtUSD(s.prizeAmount)}</span>
+                                      : <span className="text-xs font-semibold text-amber-600">{fmtUSD(s.prizeAmount)} Due</span>
+                                  ) : "—"}
+                                </TableCell>
+                                <TableCell className="text-xs text-slate-500">{fmtDate(s.createdAt)}</TableCell>
+                                <TableCell>
+                                  {s.status === "passed" && !s.prizePaid ? (
+                                    <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90 text-white"
+                                      disabled={markScholarshipPrizePaidMutation.isPending}
+                                      onClick={() => markScholarshipPrizePaidMutation.mutate(s.id)}
+                                      data-testid={`btn-mark-prize-paid-${s.id}`}>
+                                      Mark Paid
+                                    </Button>
+                                  ) : "—"}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </Card>
+                </motion.div>
+              );
+            })()}
 
             {activeTab === "enrollment" && (
               <motion.div key="enrollment" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} className="space-y-6">

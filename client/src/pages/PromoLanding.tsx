@@ -578,9 +578,10 @@ export default function PromoLanding() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {[
               { icon: GraduationCap, label: "Student Sponsorship", desc: "Merit-based semester funding", color: "text-tsia-green bg-tsia-green/10" },
+              { icon: Award, label: "Scholarship CBT", desc: "Win $100–$250 via merit test", color: "text-amber-600 bg-amber-50 dark:bg-amber-900/20" },
               { icon: Wallet, label: "Digital Wallet", desc: "USD/NGN wallet", color: "text-blue-600 bg-blue-50 dark:bg-blue-900/20" },
               { icon: TrendingUp, label: "Trade Market", desc: "AI bot investing", color: "text-purple-600 bg-purple-50 dark:bg-purple-900/20" },
-              { icon: Trophy, label: "Co-Affiliate Fund", desc: "Lifetime profit share", color: "text-amber-600 bg-amber-50 dark:bg-amber-900/20" },
+              { icon: Trophy, label: "Co-Affiliate Fund", desc: "Lifetime profit share", color: "text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20" },
               { icon: Home, label: "Tenancy Programme", desc: "Affordable housing", color: "text-rose-600 bg-rose-50 dark:bg-rose-900/20" },
               { icon: Banknote, label: "Quick Loans", desc: "Tier-based borrowing", color: "text-orange-600 bg-orange-50 dark:bg-orange-900/20" },
               { icon: ShoppingBag, label: "TS-Mart Online Stores", desc: "Buy & sell products", color: "text-teal-600 bg-teal-50 dark:bg-teal-900/20" },

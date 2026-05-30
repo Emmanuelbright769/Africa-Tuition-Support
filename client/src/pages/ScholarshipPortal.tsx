@@ -1191,8 +1191,8 @@ export default function ScholarshipPortal() {
               {/* Sections */}
               <div className="space-y-3 mb-5">
                 {[
-                  { icon: BookOpen, label: "Section 1 — Verbal Reasoning", desc: "15 objective questions (A – D) testing analogies, critical reasoning, vocabulary, comprehension, and grammar. Questions are tough — read each one carefully.", color: "text-indigo-400", bg: "bg-indigo-500/10 border-indigo-500/20" },
-                  { icon: Calculator, label: "Section 2 — Quantitative Reasoning", desc: "15 objective questions (A – D) testing arithmetic, algebra, percentages, ratios, number series, and data interpretation. Expect challenging calculations.", color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20" },
+                  { icon: BookOpen, label: "Section 1 — Verbal Reasoning", desc: "15 objective questions (A – D) on analogies, critical reasoning, vocabulary, comprehension, and grammar.", color: "text-indigo-400", bg: "bg-indigo-500/10 border-indigo-500/20" },
+                  { icon: Calculator, label: "Section 2 — Quantitative Reasoning", desc: "15 objective questions (A – D) on arithmetic, algebra, percentages, ratios, number series, and data interpretation.", color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20" },
                 ].map(({ icon: Icon, label, desc, color, bg }) => (
                   <div key={label} className={`${bg} border rounded-2xl p-4 flex gap-3 items-start`}>
                     <Icon className={`w-5 h-5 ${color} mt-0.5 shrink-0`} />

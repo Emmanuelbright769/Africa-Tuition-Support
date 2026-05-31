@@ -423,22 +423,22 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
     if (phase === "processing") {
       clearTimers();
       const image = captureFrame();
-      if (image) {
+      const sendToPrembly = (imageData: string | null) => {
+        if (!imageData) { stopCamera(); setPhase("failed"); return; }
         fetch("/api/verification/face-liveness", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ image }),
+          body: JSON.stringify({ image: imageData }),
         })
           .then(r => r.json())
           .then(d => {
             if (d.live === false) { stopCamera(); setPhase("failed"); }
             else setTimeout(() => setPhase("complete"), 1600);
           })
-          .catch(() => setTimeout(() => setPhase("complete"), 2000));
-      } else {
-        setTimeout(() => setPhase("complete"), 3200);
-      }
+          .catch(() => { stopCamera(); setPhase("failed"); });
+      };
+      sendToPrembly(image);
     }
     if (phase === "complete") {
       stopCamera();

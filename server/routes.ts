@@ -1095,15 +1095,17 @@ export async function registerRoutes(
       const PREMBLY_KEY = process.env.PREMBLY_API_KEY || "";
       const PREMBLY_APP = process.env.PREMBLY_APP_ID  || "";
 
-      // If keys not configured, approve automatically (dev/staging fallback)
       if (!PREMBLY_KEY || !PREMBLY_APP) {
-        console.warn("[FaceLiveness] PREMBLY keys not set — auto-approving liveness check");
-        return res.json({ live: true, confidence: 99, demo: true });
+        console.error("[FaceLiveness] PREMBLY_API_KEY / PREMBLY_APP_ID not configured");
+        return res.status(503).json({ live: false, reason: "Verification service not configured. Contact support." });
       }
 
+      const imageData = image.replace(/^data:image\/\w+;base64,/, "");
+
+      let pfRes: Response;
+      let pfJson: any;
       try {
-        const imageData = image.replace(/^data:image\/\w+;base64,/, "");
-        const pfRes = await fetch("https://api.prembly.com/identitypass/verification/biometrics/face/liveliness_check", {
+        pfRes = await fetch("https://api.prembly.com/identitypass/verification/biometrics/face/liveliness_check", {
           method: "POST",
           headers: {
             "x-api-key":    PREMBLY_KEY,
@@ -1111,30 +1113,30 @@ export async function registerRoutes(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ image: imageData }),
-          signal: AbortSignal.timeout(20000),
+          signal: AbortSignal.timeout(25000),
         });
-        const pfJson = await pfRes.json();
-
-        if (!pfRes.ok) {
-          // Network/server error from Prembly — allow through (don't block onboarding)
-          console.warn("[FaceLiveness] Prembly HTTP error:", pfRes.status, pfJson?.detail);
-          return res.json({ live: true, confidence: 0, fallback: true });
-        }
-
-        const isLive      = pfJson.status === true && pfJson.verification?.status === "VERIFIED";
-        const isNotLive   = pfJson.status === false && pfJson.verification?.status === "NOT VERIFIED";
-        const confidence  = pfJson.data?.confidence_in_percentage ?? (isLive ? 95 : 10);
-
-        if (isNotLive) {
-          return res.json({ live: false, confidence, reason: pfJson.detail || "Liveness not detected" });
-        }
-
-        return res.json({ live: true, confidence });
+        pfJson = await pfRes.json();
       } catch (fetchErr: any) {
-        // Prembly unreachable — allow through
-        console.warn("[FaceLiveness] Prembly unreachable:", fetchErr?.message);
-        return res.json({ live: true, confidence: 0, fallback: true });
+        console.error("[FaceLiveness] Prembly unreachable:", fetchErr?.message);
+        return res.status(503).json({ live: false, reason: "Verification service is temporarily unavailable. Please try again." });
       }
+
+      if (!pfRes.ok) {
+        console.error("[FaceLiveness] Prembly HTTP error:", pfRes.status, pfJson?.detail);
+        return res.json({ live: false, confidence: 0, reason: pfJson?.detail || "Verification failed. Please try again." });
+      }
+
+      const isLive    = pfJson.status === true && pfJson.verification?.status === "VERIFIED";
+      const isNotLive = pfJson.status === false || pfJson.verification?.status === "NOT VERIFIED";
+      const confidence = pfJson.data?.confidence_in_percentage ?? (isLive ? 95 : 10);
+
+      console.log(`[FaceLiveness] userId=${userId} live=${isLive} confidence=${confidence} status=${pfJson.verification?.status}`);
+
+      if (isNotLive && !isLive) {
+        return res.json({ live: false, confidence, reason: pfJson.detail || "Liveness not detected. Ensure your face is clearly visible and well-lit." });
+      }
+
+      return res.json({ live: true, confidence });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

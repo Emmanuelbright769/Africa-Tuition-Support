@@ -9011,6 +9011,50 @@ export async function registerRoutes(
   setInterval(runDepositReverify, 2 * 60 * 1000);
   console.log("[DEPOSIT-REVERIFY] Background re-verify job started — checks pending fiat deposits every 2 min (first run in 15 s)");
 
+  // ── Masters Commitment Window Auto-Expiry Job ─────────────────────────────
+  // Deletes masters scholarship records where the 30-day payment window has
+  // elapsed without the commitment fee being paid, so the student can start fresh.
+  async function runCommitmentExpiry() {
+    try {
+      const all = await storage.getAllScholarships();
+      const now = Date.now();
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+      let deleted = 0;
+      for (const rec of all) {
+        if (
+          rec.type === "masters" &&
+          rec.status === "fee_paid" &&
+          !rec.commitmentFeePaid &&
+          rec.commitmentStartDate &&
+          (now - new Date(rec.commitmentStartDate).getTime()) >= THIRTY_DAYS_MS
+        ) {
+          await storage.deleteScholarship(rec.id);
+          deleted++;
+          console.log(`[COMMITMENT-EXPIRY] Deleted expired masters enrollment id=${rec.id} user=${rec.userId}`);
+          // Notify the user their window expired
+          try {
+            const expiredNotif = await storage.createNotification({
+              userId: rec.userId,
+              type: "verification_update",
+              title: "Masters Commitment Window Expired",
+              message: "Your 30-day commitment payment window has passed without payment. Your enrollment has been reset — you can start a fresh application whenever you're ready.",
+              data: {},
+              isRead: false,
+            });
+            pushToUser(rec.userId, "notification", expiredNotif);
+          } catch { /* non-critical */ }
+        }
+      }
+      if (deleted > 0) console.log(`[COMMITMENT-EXPIRY] Expired and removed ${deleted} masters enrollment(s).`);
+    } catch (e: any) {
+      console.error("[COMMITMENT-EXPIRY] Job error:", e.message);
+    }
+  }
+
+  setTimeout(() => runCommitmentExpiry(), 30_000); // 30 s after startup
+  setInterval(runCommitmentExpiry, 60 * 60 * 1000); // every hour
+  console.log("[COMMITMENT-EXPIRY] Masters commitment expiry job started — checks every hour.");
+
   // ── Weekly TS-Mart digest — every Monday at 08:00 WAT (UTC+1) ───────────────
   async function sendWeeklyMartDigest() {
     try {
@@ -9316,12 +9360,12 @@ export async function registerRoutes(
 
         if (!record.commitmentStartDate) return res.status(400).json({ message: "Commitment window not started" });
         const daysSince = (Date.now() - new Date(record.commitmentStartDate).getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSince < 30) {
-          const daysLeft = Math.ceil(30 - daysSince);
-          return res.status(403).json({
-            code: "COMMITMENT_PENDING",
-            message: `You are still in the 30-day commitment window. ${daysLeft} day${daysLeft !== 1 ? "s" : ""} remaining.`,
-            daysLeft,
+        if (daysSince >= 30) {
+          // Window has expired — delete the record so the user can start completely fresh
+          await storage.deleteScholarship(record.id);
+          return res.status(410).json({
+            code: "COMMITMENT_EXPIRED",
+            message: "Your 30-day commitment window has expired. Your enrollment has been reset — start a fresh application.",
           });
         }
 

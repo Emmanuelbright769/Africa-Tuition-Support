@@ -450,7 +450,16 @@ export default function ScholarshipPortal() {
     setLoading(true);
     const fee = mscDuration === "2year" ? 25 : 10;
     try {
-      const data = await (await apiRequest("POST", "/api/scholarship/pay-commitment", { mscDuration })).json();
+      const res = await apiRequest("POST", "/api/scholarship/pay-commitment", { mscDuration });
+      const data = await res.json();
+      if ((data as any).code === "COMMITMENT_EXPIRED") {
+        // Record was deleted server-side — reset to fresh welcome
+        toast({ title: "Window Expired", description: "Your 30-day window has passed. Starting fresh.", variant: "destructive" });
+        setScholarshipRecord(null);
+        setStep("welcome");
+        setLoading(false);
+        return;
+      }
       setScholarshipRecord(data);
       // After paying, record resets to "started" — user does WAEC fresh (tertiary already saved)
       setStep("waec");
@@ -515,11 +524,11 @@ export default function ScholarshipPortal() {
     }
   }
 
-  // Commitment window days remaining
+  // Commitment window: days remaining to pay. windowExpired = deadline passed.
   const daysLeft = scholarshipRecord?.commitmentStartDate
     ? Math.max(0, 30 - Math.floor((Date.now() - new Date(scholarshipRecord.commitmentStartDate).getTime()) / 86400000))
     : 30;
-  const commitmentComplete = daysLeft === 0;
+  const windowExpired = daysLeft === 0 && !!scholarshipRecord?.commitmentStartDate;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -894,7 +903,7 @@ export default function ScholarshipPortal() {
               <div className="grid gap-4 mb-8">
                 {[
                   { type: "student" as const, label: "Student Scholarship", prize: "$100", icon: GraduationCap, gradient: "from-indigo-600 to-purple-700", desc: "Open to all verified students. Sit the CBT — 30 tough A–D objective questions — and win $100." },
-                  { type: "masters" as const, label: "Masters Scholarship", prize: "$250", icon: Trophy, gradient: "from-amber-500 to-orange-600", desc: "Advanced track. 30-day commitment window, then a $10 unlock fee before the CBT. Win $250." },
+                  { type: "masters" as const, label: "Masters Scholarship", prize: "$250", icon: Trophy, gradient: "from-amber-500 to-orange-600", desc: "Advanced track. After paying the portal fee, you get 30 days to pay the $10–$25 unlock fee and take the CBT. Win $250–$500." },
                 ].map(s => (
                   <motion.div key={s.type} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
                     onClick={() => handleSelectType(s.type)}
@@ -1134,33 +1143,45 @@ export default function ScholarshipPortal() {
           {step === "commitment" && (
             <motion.div key="commitment" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
               <div className="mt-4 mb-6 text-center">
-                <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Clock className="w-8 h-8 text-amber-400" />
+                <div className={`w-16 h-16 ${windowExpired ? "bg-red-500/20" : "bg-amber-500/20"} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                  <Clock className={`w-8 h-8 ${windowExpired ? "text-red-400" : "text-amber-400"}`} />
                 </div>
                 <h2 className="text-2xl font-black text-white">30-Day Commitment Window</h2>
-                <p className="text-white/60 text-sm mt-1 max-w-xs mx-auto">The Masters Scholarship requires a 30-day commitment period. Once it elapses, pay $10 to start your application afresh and take the test.</p>
-              </div>
-
-              {/* Countdown */}
-              <div className="bg-gradient-to-br from-amber-900/40 to-orange-900/30 border border-amber-700/40 rounded-3xl p-8 mb-6 text-center">
-                <motion.div className="text-7xl font-black text-amber-300 mb-2"
-                  animate={{ scale: [1, 1.04, 1] }} transition={{ duration: 2, repeat: Infinity }}>
-                  {daysLeft}
-                </motion.div>
-                <p className="text-amber-400 font-bold text-lg">{daysLeft === 1 ? "day" : "days"} remaining</p>
-                <p className="text-amber-300/60 text-xs mt-2">
-                  {scholarshipRecord?.commitmentStartDate
-                    ? `Started: ${new Date(scholarshipRecord.commitmentStartDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`
-                    : "Commitment window active"}
+                <p className="text-white/60 text-sm mt-1 max-w-xs mx-auto">
+                  {windowExpired
+                    ? "Your 30-day payment window has passed. Your enrollment has been reset — you can start a fresh application."
+                    : "You have 30 days to choose your MSc programme and pay the unlock fee. You may pay at any time before the deadline."}
                 </p>
               </div>
 
-              {commitmentComplete ? (
+              {windowExpired ? (
+                /* ── Expired ─────────────────────────────────────────────── */
                 <div className="space-y-4">
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
-                    <p className="text-emerald-300 font-bold">Commitment Window Complete!</p>
-                    <p className="text-emerald-300/70 text-xs mt-1">Choose your MSc programme duration and pay to restart your application.</p>
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5 text-center">
+                    <XCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+                    <p className="text-red-300 font-bold text-lg">Window Expired</p>
+                    <p className="text-red-300/70 text-sm mt-1">Your 30-day commitment window elapsed without payment. Your previous enrollment has been cleared.</p>
+                  </div>
+                  <Button onClick={() => { setScholarshipRecord(null); setStep("welcome"); }}
+                    className="w-full h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
+                    Start Fresh Application
+                  </Button>
+                </div>
+              ) : (
+                /* ── Active window — pay anytime ────────────────────────── */
+                <div className="space-y-5">
+                  {/* Countdown */}
+                  <div className="bg-gradient-to-br from-amber-900/40 to-orange-900/30 border border-amber-700/40 rounded-3xl p-6 text-center">
+                    <motion.div className="text-7xl font-black text-amber-300 mb-1"
+                      animate={{ scale: [1, 1.04, 1] }} transition={{ duration: 2, repeat: Infinity }}>
+                      {daysLeft}
+                    </motion.div>
+                    <p className="text-amber-400 font-bold text-lg">{daysLeft === 1 ? "day" : "days"} remaining</p>
+                    <p className="text-amber-300/60 text-xs mt-1.5">
+                      {scholarshipRecord?.commitmentStartDate
+                        ? `Deadline: ${new Date(new Date(scholarshipRecord.commitmentStartDate).getTime() + 30 * 86400000).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`
+                        : "Commitment window active"}
+                    </p>
                   </div>
 
                   {/* MSc duration selector */}
@@ -1193,14 +1214,11 @@ export default function ScholarshipPortal() {
                   <Button onClick={handlePayCommitment}
                     disabled={loading || !mscDuration || (walletBalance !== null && walletBalance < (mscDuration === "2year" ? 25 : 10))}
                     className="w-full h-12 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold">
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : mscDuration ? `Pay $${mscDuration === "2year" ? "25.00" : "10.00"} & Start Afresh` : "Select a programme above"}
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : mscDuration ? `Pay $${mscDuration === "2year" ? "25.00" : "10.00"} & Begin Application` : "Select a programme above"}
                   </Button>
-                </div>
-              ) : (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-                  <p className="text-white/60 text-sm">Come back in <strong className="text-white">{daysLeft} day{daysLeft !== 1 ? "s" : ""}</strong> to pay the $10 fresh start fee and begin your application.</p>
-                  <Button onClick={() => setLocation("/dashboard")} variant="ghost" className="mt-3 text-white/60 hover:text-white text-sm">
-                    Return to Dashboard
+
+                  <Button onClick={() => setLocation("/dashboard")} variant="ghost" className="w-full text-white/50 hover:text-white text-sm">
+                    Return to Dashboard — pay later
                   </Button>
                 </div>
               )}

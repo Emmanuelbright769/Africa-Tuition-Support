@@ -93,16 +93,17 @@ function SubjectRow({ index, subject, grade, electives, onSubjectChange, onGrade
   onSubjectChange: (v: string) => void; onGradeChange: (v: string) => void;
 }) {
   const isCompulsory = index < 2;
+  const triggerCls = "h-10 rounded-xl bg-white/10 border-white/20 text-white [&>span]:text-white [&>span[data-placeholder]]:text-white/40 focus:ring-white/30";
   return (
     <div className="grid grid-cols-2 gap-2">
       <div>
         {isCompulsory ? (
-          <div className="h-10 flex items-center px-3 rounded-xl bg-muted/60 text-sm font-medium border border-border">
+          <div className="h-10 flex items-center px-3 rounded-xl bg-white/10 text-white text-sm font-medium border border-white/20">
             {SUBJECTS_COMPULSORY[index]}
           </div>
         ) : (
           <Select value={subject} onValueChange={onSubjectChange}>
-            <SelectTrigger className="h-10 rounded-xl">
+            <SelectTrigger className={triggerCls}>
               <SelectValue placeholder="Select subject" />
             </SelectTrigger>
             <SelectContent className="max-h-56 overflow-y-auto">
@@ -112,7 +113,7 @@ function SubjectRow({ index, subject, grade, electives, onSubjectChange, onGrade
         )}
       </div>
       <Select value={grade} onValueChange={onGradeChange}>
-        <SelectTrigger className="h-10 rounded-xl">
+        <SelectTrigger className={triggerCls}>
           <SelectValue placeholder="Grade" />
         </SelectTrigger>
         <SelectContent className="max-h-56 overflow-y-auto">

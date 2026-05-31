@@ -238,6 +238,7 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
   const [stepError, setStepError]       = useState<StepError>(null);
   const [totalFails, setTotalFails]     = useState(0);
   const [currentTimeout, setCurrentTimeout] = useState(STEP_MS);
+  const [cameraError, setCameraError]   = useState<string | null>(null);
 
   const videoRef    = useRef<HTMLVideoElement>(null);
   const canvasRef   = useRef<HTMLCanvasElement>(null);    // hidden analysis canvas
@@ -377,6 +378,7 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
 
   // ── Start verification flow ───────────────────────────────────────────────
   const handleStart = async () => {
+    setCameraError(null);
     setPhase("permissions");
     setTotalFails(0);
     setStepError(null);
@@ -385,9 +387,23 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
       advanceTo("positioning");
       startAnalysisLoop();
       startCountdown(POSITION_MS);
-    } catch {
+    } catch (err: any) {
       setPhase("intro");
+      if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
+        setCameraError("Camera access was denied. Please tap 'Allow' when prompted, or enable camera access in your browser settings, then try again.");
+      } else if (err?.name === "NotFoundError" || err?.name === "DevicesNotFoundError") {
+        setCameraError("No camera found on this device.");
+      } else {
+        setCameraError("Could not start the camera. Please check your browser settings and try again.");
+      }
     }
+  };
+
+  // ── Skip camera — proceed without liveness (fallback) ────────────────────
+  const handleSkip = () => {
+    clearTimers();
+    stopCamera();
+    setPhase("processing");
   };
 
   // ── Capture frame as base64 JPEG for server liveness check ───────────────
@@ -515,6 +531,17 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
                   <div key={tip.t} className="flex items-start gap-2"><span className="text-base leading-5">{tip.i}</span><span className="text-muted-foreground text-xs leading-5">{tip.t}</span></div>
                 ))}
               </div>
+              {cameraError && (
+                <div className="w-full bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700 leading-relaxed">{cameraError}</p>
+                  </div>
+                  <button onClick={handleSkip} className="w-full text-xs text-indigo-600 font-semibold underline underline-offset-2 text-left pl-6" data-testid="button-biometric-skip">
+                    Continue without camera check →
+                  </button>
+                </div>
+              )}
               <div className="flex gap-3 w-full">
                 <Button variant="outline" onClick={onCancel} className="flex-1 h-11 border-[#1A3C34]/30" data-testid="button-biometric-cancel">Cancel</Button>
                 <Button onClick={handleStart} className="flex-1 h-11 bg-[#1A3C34] hover:bg-[#1A3C34]/90 text-white font-semibold" data-testid="button-biometric-start">Start Verification →</Button>

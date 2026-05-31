@@ -433,6 +433,8 @@ export class DatabaseStorage implements IStorage {
       }
       // 32. tour bookings
       await tx.delete(tourBookings).where(eq(tourBookings.userId, id));
+      // 32a. scholarships
+      await tx.delete(scholarships).where(eq(scholarships.userId, id));
       // 33. finally delete the user
       await tx.delete(users).where(eq(users.id, id));
     });

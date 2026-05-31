@@ -162,7 +162,7 @@ export default function ScholarshipPortal() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [liveScore, setLiveScore] = useState({ verbal: 0, quant: 0 });
-  const [questionTimer, setQuestionTimer] = useState(10);
+  const [questionTimer, setQuestionTimer] = useState(15);
   const [sectionTimer, setSectionTimer] = useState(900);
   const [testPhase, setTestPhase] = useState<TestPhase>("verbal");
   const [showFeedback, setShowFeedback] = useState<{ selected: number; correct: number } | null>(null);
@@ -233,7 +233,7 @@ export default function ScholarshipPortal() {
     }
   }
 
-  // ── Question timer (10s per question) ───────────────────────────────────────
+  // ── Question timer (15s per question) ───────────────────────────────────────
   const clearTimers = useCallback(() => {
     if (questionTimerRef.current) clearInterval(questionTimerRef.current);
     if (sectionTimerRef.current) clearInterval(sectionTimerRef.current);
@@ -277,13 +277,13 @@ export default function ScholarshipPortal() {
 
   useEffect(() => {
     if (step !== "test" || (testPhase !== "verbal" && testPhase !== "quant") || !currentQ) return;
-    setQuestionTimer(10);
+    setQuestionTimer(15);
     questionTimerRef.current = setInterval(() => {
       setQuestionTimer(prev => {
         if (prev <= 1) {
           const qs = testPhase === "verbal" ? verbalQs : quantQs;
           advanceQuestion(null, qs, currentIdx, testPhase);
-          return 10;
+          return 15;
         }
         return prev - 1;
       });
@@ -633,7 +633,7 @@ export default function ScholarshipPortal() {
                 >
                   {/* Timer ring + question */}
                   <div className="flex items-start gap-4 mb-6">
-                    <TimerRing seconds={questionTimer} max={10} size={72} color={accentColor} />
+                    <TimerRing seconds={questionTimer} max={15} size={72} color={accentColor} />
                     <div className="flex-1">
                       <p className="text-white/50 text-xs mb-1.5">Question {currentIdx + 1} of 15</p>
                       <p className="text-white text-lg sm:text-xl font-semibold leading-relaxed">{currentQ.text}</p>
@@ -926,7 +926,7 @@ export default function ScholarshipPortal() {
                 <ul className="text-amber-200/70 text-xs space-y-1.5 list-disc list-inside">
                   <li>Any WAEC score is accepted — the 70% threshold applies to your aggregate (WAEC + CBT ÷ 2)</li>
                   <li>A $3.30 validation fee will be deducted from your SwiftWallet</li>
-                  <li>30 tough 4-option (A–D) objective questions: 15 Verbal + 15 Quantitative, 10 seconds each</li>
+                  <li>30 tough 4-option (A–D) objective questions: 15 Verbal + 15 Quantitative, 15 seconds each</li>
                   <li>One attempt per 365 days — re-enrollment opens one year after your last test</li>
                 </ul>
               </div>
@@ -1237,7 +1237,7 @@ export default function ScholarshipPortal() {
               {/* Rules */}
               <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 space-y-2.5">
                 {[
-                  ["⏱️", "10 seconds per question — answer or it auto-skips"],
+                  ["⏱️", "15 seconds per question — answer or it auto-skips"],
                   ["⏰", "15 minutes per section — both section timers run live"],
                   ["📊", "Your running score updates in real time as you answer"],
                   ["🚫", "No going back — each question auto-advances after selection"],

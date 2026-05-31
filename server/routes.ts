@@ -3662,6 +3662,16 @@ export async function registerRoutes(
         description: `Sponsorship payout $${disbursement.amount} (₦${(parseFloat(disbursement.amount) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()})`,
       });
 
+      // Auto-place lien on the student's wallet for the disbursed amount
+      try {
+        const currentWallet = await storage.getOrCreateWallet(disbursement.userId);
+        const existingLien = parseFloat(currentWallet.lienAmount ?? "0");
+        const newLienAmount = (existingLien + parseFloat(disbursement.amount)).toFixed(2);
+        const semLabel = disbursement.semesterNum === 2 ? "Semester 2" : "Semester 1";
+        await storage.setWalletLien(disbursement.userId, newLienAmount, `Scholarship disbursement hold (${semLabel}) — funds locked until admin releases`);
+        await storage.createNotification({ userId: disbursement.userId, type: "lien_placed", title: "Wallet Funds Locked 🔒", message: `$${parseFloat(disbursement.amount).toFixed(2)} from your ${semLabel} scholarship has been credited but is temporarily locked. It will be released by admin once verified.`, data: { lienAmount: newLienAmount }, isRead: false });
+      } catch { /* non-critical */ }
+
       // If Semester 1 just processed, ensure Semester 2 exists (backward-compat: older enrollments may only have Sem 1)
       if ((disbursement.semesterNum ?? 1) === 1) {
         try {
@@ -3724,11 +3734,11 @@ export async function registerRoutes(
       if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
       const admin = await storage.getUser(sessionUserId);
       if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-      const [withLiens, eligible] = await Promise.all([
+      const [withLiens, disbursed] = await Promise.all([
         storage.getStudentsWithLiens(),
-        storage.getEligibleStudentsForLien(),
+        storage.getStudentsWithProcessedDisbursements(),
       ]);
-      res.json({ withLiens, eligible });
+      res.json({ withLiens, disbursed });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

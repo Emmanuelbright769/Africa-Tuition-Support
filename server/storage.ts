@@ -99,7 +99,7 @@ export interface IStorage {
   setWalletLien(userId: number, amount: string, reason: string): Promise<WalletRecord>;
   releaseWalletLien(userId: number): Promise<WalletRecord>;
   getStudentsWithLiens(): Promise<(WalletRecord & { user: User })[]>;
-  getEligibleStudentsForLien(): Promise<(WalletRecord & { user: User; pendingDisbursementCount: number; pendingDisbursementTotal: string })[]>;
+  getStudentsWithProcessedDisbursements(): Promise<(WalletRecord & { user: User; completedDisbursementCount: number; totalDisbursed: string })[]>;
 
   createTransaction(tx: InsertTransaction): Promise<Transaction>;
   getTransactionsByUser(userId: number): Promise<Transaction[]>;
@@ -702,22 +702,33 @@ export class DatabaseStorage implements IStorage {
     return rows.map(r => ({ ...r.wallet, user: r.user }));
   }
 
-  async getEligibleStudentsForLien(): Promise<(WalletRecord & { user: User; pendingDisbursementCount: number; pendingDisbursementTotal: string })[]> {
+  async getStudentsWithProcessedDisbursements(): Promise<(WalletRecord & { user: User; completedDisbursementCount: number; totalDisbursed: string })[]> {
+    // Find all students who have at least one completed (processed) disbursement
+    const completedDisbs = await db
+      .select({ userId: disbursements.userId, amount: disbursements.amount })
+      .from(disbursements)
+      .where(eq(disbursements.status, "completed"));
+    // Group by userId
+    const byUser: Record<number, number> = {};
+    const countByUser: Record<number, number> = {};
+    for (const d of completedDisbs) {
+      byUser[d.userId] = (byUser[d.userId] ?? 0) + parseFloat(d.amount);
+      countByUser[d.userId] = (countByUser[d.userId] ?? 0) + 1;
+    }
+    const userIds = Object.keys(byUser).map(Number);
+    if (userIds.length === 0) return [];
     const rows = await db
       .select({ wallet: wallets, user: users })
       .from(wallets)
       .innerJoin(users, eq(wallets.userId, users.id))
-      .innerJoin(sponsorshipPlans, eq(sponsorshipPlans.userId, users.id))
-      .where(and(eq(users.role, "student"), eq(sponsorshipPlans.active, true)))
+      .where(inArray(wallets.userId, userIds))
       .orderBy(desc(wallets.lienPlacedAt));
-    const result: (WalletRecord & { user: User; pendingDisbursementCount: number; pendingDisbursementTotal: string })[] = [];
-    for (const r of rows) {
-      const pending = await db.select().from(disbursements)
-        .where(and(eq(disbursements.userId, r.user.id), eq(disbursements.status, "pending")));
-      const total = pending.reduce((s, d) => s + parseFloat(d.amount), 0);
-      result.push({ ...r.wallet, user: r.user, pendingDisbursementCount: pending.length, pendingDisbursementTotal: total.toFixed(2) });
-    }
-    return result;
+    return rows.map(r => ({
+      ...r.wallet,
+      user: r.user,
+      completedDisbursementCount: countByUser[r.user.id] ?? 0,
+      totalDisbursed: (byUser[r.user.id] ?? 0).toFixed(2),
+    }));
   }
 
   async createTransaction(tx: InsertTransaction): Promise<Transaction> {

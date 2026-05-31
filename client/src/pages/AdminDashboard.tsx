@@ -213,7 +213,7 @@ export default function AdminDashboard() {
   const { data: allVerifications = [] }    = useQuery({ queryKey: ["/api/admin/all-verifications"], enabled: activeTab === "applications" });
   const { data: pendingDisbursements = [] } = useQuery({ queryKey: ["/api/admin/pending-disbursements"] });
   const { data: allDisbursements = [] }     = useQuery({ queryKey: ["/api/admin/all-disbursements"], enabled: activeTab === "payouts" });
-  const { data: walletLiensData, refetch: refetchWalletLiens } = useQuery<{ withLiens: any[]; eligible: any[] }>({ queryKey: ["/api/admin/wallet-liens"], enabled: activeTab === "payouts" });
+  const { data: walletLiensData, refetch: refetchWalletLiens } = useQuery<{ withLiens: any[]; disbursed: any[] }>({ queryKey: ["/api/admin/wallet-liens"], enabled: activeTab === "payouts" });
   const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: activeTab === "users" });
   const { data: allAffiliates = [] }       = useQuery({ queryKey: ["/api/admin/affiliates-all"], enabled: activeTab === "affiliates" });
   const { data: allLoans = [] }            = useQuery({ queryKey: ["/api/admin/loans-all"], enabled: activeTab === "loans" });
@@ -1359,8 +1359,8 @@ export default function AdminDashboard() {
                 {/* ── Wallet Liens ─────────────────────────────────────────────── */}
                 {(() => {
                   const withLiens  = walletLiensData?.withLiens ?? [];
-                  const eligible   = walletLiensData?.eligible  ?? [];
-                  const noLienYet  = eligible.filter((e: any) => parseFloat(e.lienAmount ?? "0") === 0);
+                  const disbursed  = walletLiensData?.disbursed ?? [];
+                  const noLienYet  = disbursed.filter((e: any) => parseFloat(e.lienAmount ?? "0") === 0);
                   return (
                     <Card className="border-0 shadow-sm overflow-hidden">
                       <CardHeader className="border-b bg-white py-4 px-6">
@@ -1369,7 +1369,11 @@ export default function AdminDashboard() {
                             <CardTitle className="text-base flex items-center gap-2">
                               <Lock className="w-4 h-4 text-red-500" /> Wallet Liens
                             </CardTitle>
-                            <CardDescription>{withLiens.length} active lien{withLiens.length !== 1 ? "s" : ""} · {noLienYet.length} eligible student{noLienYet.length !== 1 ? "s" : ""} without a lien</CardDescription>
+                            <CardDescription>
+                              Lien is automatically placed when admin processes a disbursement. Only students who have received scholarship funds appear here.
+                              {withLiens.length > 0 && <> · <strong>{withLiens.length}</strong> active lien{withLiens.length !== 1 ? "s" : ""}</>}
+                              {noLienYet.length > 0 && <> · <strong>{noLienYet.length}</strong> disbursed without a lien</>}
+                            </CardDescription>
                           </div>
                         </div>
                       </CardHeader>
@@ -1433,14 +1437,14 @@ export default function AdminDashboard() {
                       {/* Eligible students without a lien */}
                       {noLienYet.length > 0 && (
                         <div className="overflow-x-auto">
-                          <p className="px-6 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Eligible Students — No Lien Yet</p>
+                          <p className="px-6 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Disbursed — No Lien Active</p>
                           <Table>
                             <TableHeader className="bg-slate-50">
                               <TableRow>
                                 <TableHead className="px-6 font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
                                 <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet Balance</TableHead>
-                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Pending Disbursements</TableHead>
-                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Pending Total</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Disbursements</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Total Disbursed</TableHead>
                                 <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -1453,12 +1457,12 @@ export default function AdminDashboard() {
                                   </TableCell>
                                   <TableCell className="font-bold text-slate-900">{fmtUSD(e.balance)}</TableCell>
                                   <TableCell>
-                                    <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">{e.pendingDisbursementCount} pending</span>
+                                    <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">{e.completedDisbursementCount} completed</span>
                                   </TableCell>
-                                  <TableCell className="font-semibold text-slate-700">{fmtUSD(e.pendingDisbursementTotal)}</TableCell>
+                                  <TableCell className="font-semibold text-slate-700">{fmtUSD(e.totalDisbursed)}</TableCell>
                                   <TableCell className="text-right px-6">
                                     <Button size="sm" className="h-7 text-xs bg-red-600 hover:bg-red-700 text-white"
-                                      onClick={() => { setLienDialog({ open: true, user: e.user, wallet: e }); setLienAmount(e.pendingDisbursementTotal); setLienReason("Scholarship disbursement hold"); }}
+                                      onClick={() => { setLienDialog({ open: true, user: e.user, wallet: e }); setLienAmount(e.totalDisbursed); setLienReason("Scholarship disbursement hold — funds locked until admin releases"); }}
                                       data-testid={`button-place-lien-${e.userId}`}>
                                       <Lock className="w-3 h-3 mr-1" /> Place Lien
                                     </Button>
@@ -1471,7 +1475,7 @@ export default function AdminDashboard() {
                       )}
 
                       {withLiens.length === 0 && noLienYet.length === 0 && (
-                        <div className="py-10 text-center text-slate-500 text-sm">No eligible students with active sponsorship plans found.</div>
+                        <div className="py-10 text-center text-slate-500 text-sm">No students with processed disbursements found. Liens are placed automatically when a disbursement is processed.</div>
                       )}
                     </Card>
                   );

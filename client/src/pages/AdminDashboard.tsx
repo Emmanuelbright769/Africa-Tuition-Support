@@ -203,7 +203,6 @@ export default function AdminDashboard() {
   const [lienSaving, setLienSaving]   = useState(false);
   const [releaseConfirm, setReleaseConfirm] = useState<{ userId: number; name: string } | null>(null);
   const [declineSchDialog, setDeclineSchDialog] = useState<{ id: number; name: string } | null>(null);
-  const [deleteSchRecordDialog, setDeleteSchRecordDialog] = useState<{ id: number; name: string } | null>(null);
 
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -3564,9 +3563,9 @@ export default function AdminDashboard() {
                                       </Button>
                                     )}
                                     <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
-                                      onClick={() => setDeleteSchRecordDialog({ id: s.id, name: `${s.user?.firstName ?? ""} ${s.user?.lastName ?? ""}`.trim() })}
-                                      data-testid={`btn-delete-sch-record-${s.id}`}>
-                                      <Trash2 className="w-3 h-3 mr-1" /> Delete Record
+                                      onClick={() => setDeleteUserDialog({ open: true, user: s.user })}
+                                      data-testid={`btn-delete-user-sch-${s.id}`}>
+                                      <Trash2 className="w-3 h-3 mr-1" /> Delete
                                     </Button>
                                   </div>
                                 </TableCell>
@@ -3768,28 +3767,6 @@ export default function AdminDashboard() {
                           onClick={() => declineScholarshipMutation.mutate(declineSchDialog!.id)}
                           data-testid="btn-confirm-decline-sch">
                           {declineScholarshipMutation.isPending ? "Declining…" : "Decline Enrollment"}
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-
-                  {/* ── Delete Scholarship Record Dialog ── */}
-                  <Dialog open={deleteSchRecordDialog !== null} onOpenChange={open => { if (!open) setDeleteSchRecordDialog(null); }}>
-                    <DialogContent className="max-w-sm">
-                      <DialogHeader>
-                        <DialogTitle>Delete Scholarship Record</DialogTitle>
-                        <DialogDescription>
-                          This will permanently remove the scholarship enrollment record for <strong>{deleteSchRecordDialog?.name}</strong>. <br /><br />
-                          <span className="font-semibold text-slate-700">The user's account will remain completely intact</span> — only the enrollment record is deleted.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <DialogFooter className="gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => setDeleteSchRecordDialog(null)}>Cancel</Button>
-                        <Button variant="destructive" size="sm"
-                          disabled={deleteScholarshipMutation.isPending}
-                          onClick={() => deleteScholarshipMutation.mutate(deleteSchRecordDialog!.id)}
-                          data-testid="btn-confirm-delete-sch-record">
-                          {deleteScholarshipMutation.isPending ? "Deleting…" : "Delete Enrollment Record"}
                         </Button>
                       </DialogFooter>
                     </DialogContent>

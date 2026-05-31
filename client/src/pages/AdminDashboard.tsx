@@ -197,6 +197,11 @@ export default function AdminDashboard() {
   const [waecEditDialog, setWaecEditDialog] = useState<{ id: number; current: string } | null>(null);
   const [waecEditValue, setWaecEditValue] = useState("");
   const [schDetailDialog, setSchDetailDialog] = useState<any>(null);
+  const [lienDialog, setLienDialog]   = useState<{ open: boolean; user: any; wallet: any } | null>(null);
+  const [lienAmount, setLienAmount]   = useState("");
+  const [lienReason, setLienReason]   = useState("");
+  const [lienSaving, setLienSaving]   = useState(false);
+  const [releaseConfirm, setReleaseConfirm] = useState<{ userId: number; name: string } | null>(null);
   const [declineSchDialog, setDeclineSchDialog] = useState<{ id: number; name: string } | null>(null);
 
   const { user, logout, isLoading: authLoading } = useAuth();
@@ -208,6 +213,7 @@ export default function AdminDashboard() {
   const { data: allVerifications = [] }    = useQuery({ queryKey: ["/api/admin/all-verifications"], enabled: activeTab === "applications" });
   const { data: pendingDisbursements = [] } = useQuery({ queryKey: ["/api/admin/pending-disbursements"] });
   const { data: allDisbursements = [] }     = useQuery({ queryKey: ["/api/admin/all-disbursements"], enabled: activeTab === "payouts" });
+  const { data: walletLiensData, refetch: refetchWalletLiens } = useQuery<{ withLiens: any[]; eligible: any[] }>({ queryKey: ["/api/admin/wallet-liens"], enabled: activeTab === "payouts" });
   const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: activeTab === "users" });
   const { data: allAffiliates = [] }       = useQuery({ queryKey: ["/api/admin/affiliates-all"], enabled: activeTab === "affiliates" });
   const { data: allLoans = [] }            = useQuery({ queryKey: ["/api/admin/loans-all"], enabled: activeTab === "loans" });
@@ -1346,6 +1352,127 @@ export default function AdminDashboard() {
                           </TableBody>
                         </Table>
                       </div>
+                    </Card>
+                  );
+                })()}
+
+                {/* ── Wallet Liens ─────────────────────────────────────────────── */}
+                {(() => {
+                  const withLiens  = walletLiensData?.withLiens ?? [];
+                  const eligible   = walletLiensData?.eligible  ?? [];
+                  const noLienYet  = eligible.filter((e: any) => parseFloat(e.lienAmount ?? "0") === 0);
+                  return (
+                    <Card className="border-0 shadow-sm overflow-hidden">
+                      <CardHeader className="border-b bg-white py-4 px-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="text-base flex items-center gap-2">
+                              <Lock className="w-4 h-4 text-red-500" /> Wallet Liens
+                            </CardTitle>
+                            <CardDescription>{withLiens.length} active lien{withLiens.length !== 1 ? "s" : ""} · {noLienYet.length} eligible student{noLienYet.length !== 1 ? "s" : ""} without a lien</CardDescription>
+                          </div>
+                        </div>
+                      </CardHeader>
+
+                      {/* Active liens */}
+                      {withLiens.length > 0 && (
+                        <div className="overflow-x-auto border-b">
+                          <p className="px-6 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Active Liens</p>
+                          <Table>
+                            <TableHeader className="bg-slate-50">
+                              <TableRow>
+                                <TableHead className="px-6 font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet Balance</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Lien Amount</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Available</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Reason</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Placed</TableHead>
+                                <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {withLiens.map((w: any) => {
+                                const bal  = parseFloat(w.balance ?? "0");
+                                const lien = parseFloat(w.lienAmount ?? "0");
+                                const avail = Math.max(0, bal - lien);
+                                return (
+                                  <TableRow key={w.userId} className="hover:bg-slate-50/50">
+                                    <TableCell className="px-6">
+                                      <div className="font-medium text-sm text-slate-900">{w.user?.firstName} {w.user?.lastName}</div>
+                                      <div className="text-xs text-slate-500">{w.user?.email}</div>
+                                    </TableCell>
+                                    <TableCell className="font-bold text-slate-900">{fmtUSD(w.balance)}</TableCell>
+                                    <TableCell>
+                                      <span className="inline-block text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">{fmtUSD(w.lienAmount)}</span>
+                                    </TableCell>
+                                    <TableCell className="font-semibold text-tsia-green">{fmtUSD(avail.toFixed(2))}</TableCell>
+                                    <TableCell className="text-xs text-slate-600 max-w-[180px] truncate">{w.lienReason ?? "—"}</TableCell>
+                                    <TableCell className="text-sm text-slate-500">{fmtDate(w.lienPlacedAt)}</TableCell>
+                                    <TableCell className="text-right px-6">
+                                      <div className="flex gap-1.5 justify-end">
+                                        <Button size="sm" variant="outline" className="h-7 text-xs border-amber-400 text-amber-600 hover:bg-amber-50"
+                                          onClick={() => { setLienDialog({ open: true, user: w.user, wallet: w }); setLienAmount(lien.toFixed(2)); setLienReason(w.lienReason ?? ""); }}
+                                          data-testid={`button-edit-lien-${w.userId}`}>
+                                          <Edit className="w-3 h-3 mr-1" /> Edit
+                                        </Button>
+                                        <Button size="sm" variant="outline" className="h-7 text-xs border-green-400 text-green-600 hover:bg-green-50"
+                                          onClick={() => setReleaseConfirm({ userId: w.userId, name: `${w.user?.firstName} ${w.user?.lastName}` })}
+                                          data-testid={`button-release-lien-${w.userId}`}>
+                                          <LockOpen className="w-3 h-3 mr-1" /> Release
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+
+                      {/* Eligible students without a lien */}
+                      {noLienYet.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <p className="px-6 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Eligible Students — No Lien Yet</p>
+                          <Table>
+                            <TableHeader className="bg-slate-50">
+                              <TableRow>
+                                <TableHead className="px-6 font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet Balance</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Pending Disbursements</TableHead>
+                                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Pending Total</TableHead>
+                                <TableHead className="text-right font-semibold text-slate-600 text-xs uppercase tracking-wide px-6">Action</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {noLienYet.map((e: any) => (
+                                <TableRow key={e.userId} className="hover:bg-slate-50/50">
+                                  <TableCell className="px-6">
+                                    <div className="font-medium text-sm text-slate-900">{e.user?.firstName} {e.user?.lastName}</div>
+                                    <div className="text-xs text-slate-500">{e.user?.email}</div>
+                                  </TableCell>
+                                  <TableCell className="font-bold text-slate-900">{fmtUSD(e.balance)}</TableCell>
+                                  <TableCell>
+                                    <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">{e.pendingDisbursementCount} pending</span>
+                                  </TableCell>
+                                  <TableCell className="font-semibold text-slate-700">{fmtUSD(e.pendingDisbursementTotal)}</TableCell>
+                                  <TableCell className="text-right px-6">
+                                    <Button size="sm" className="h-7 text-xs bg-red-600 hover:bg-red-700 text-white"
+                                      onClick={() => { setLienDialog({ open: true, user: e.user, wallet: e }); setLienAmount(e.pendingDisbursementTotal); setLienReason("Scholarship disbursement hold"); }}
+                                      data-testid={`button-place-lien-${e.userId}`}>
+                                      <Lock className="w-3 h-3 mr-1" /> Place Lien
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+
+                      {withLiens.length === 0 && noLienYet.length === 0 && (
+                        <div className="py-10 text-center text-slate-500 text-sm">No eligible students with active sponsorship plans found.</div>
+                      )}
                     </Card>
                   );
                 })()}
@@ -4602,6 +4729,94 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => { setRejectDialog({ open: false, verification: null }); setRejectReason(""); }}>Cancel</Button>
             <Button variant="destructive" disabled={!rejectReason.trim() || verifyMutation.isPending} onClick={() => verifyMutation.mutate({ id: rejectDialog.verification?.id, approve: false, reason: rejectReason })} data-testid="button-confirm-reject">
               {verifyMutation.isPending ? "Processing..." : "Decline & Notify Student"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Place / Edit Lien dialog */}
+      <Dialog open={!!lienDialog?.open} onOpenChange={open => { if (!open) setLienDialog(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{lienDialog?.wallet?.lienAmount && parseFloat(lienDialog.wallet.lienAmount) > 0 ? "Edit Wallet Lien" : "Place Wallet Lien"}</DialogTitle>
+            <DialogDescription>
+              A lien restricts the student's ability to withdraw or transfer the held amount. They will be notified immediately.
+            </DialogDescription>
+          </DialogHeader>
+          {lienDialog && (
+            <div className="space-y-4 py-2">
+              <div className="flex justify-between text-sm border rounded-lg px-3 py-2 bg-slate-50">
+                <span className="text-slate-500">Student</span>
+                <span className="font-semibold">{lienDialog.user?.firstName} {lienDialog.user?.lastName}</span>
+              </div>
+              <div className="flex justify-between text-sm border rounded-lg px-3 py-2 bg-slate-50">
+                <span className="text-slate-500">Current Balance</span>
+                <span className="font-bold text-tsia-green">{fmtUSD(lienDialog.wallet?.balance)}</span>
+              </div>
+              <div>
+                <Label className="text-sm font-semibold mb-1.5 block">Lien Amount ($)</Label>
+                <Input type="number" min="0" step="0.01"
+                  value={lienAmount} onChange={e => setLienAmount(e.target.value)}
+                  placeholder="e.g. 112.50" className="h-10"
+                  data-testid="input-lien-amount" />
+              </div>
+              <div>
+                <Label className="text-sm font-semibold mb-1.5 block">Reason</Label>
+                <Textarea value={lienReason} onChange={e => setLienReason(e.target.value)}
+                  placeholder="e.g. Scholarship disbursement hold pending enrollment confirmation"
+                  className="resize-none" rows={2}
+                  data-testid="input-lien-reason" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLienDialog(null)}>Cancel</Button>
+            <Button className="bg-red-600 hover:bg-red-700 text-white" disabled={lienSaving || !lienAmount || !lienReason.trim()}
+              data-testid="button-confirm-lien"
+              onClick={async () => {
+                if (!lienDialog) return;
+                setLienSaving(true);
+                try {
+                  const res = await apiRequest("POST", `/api/admin/wallet-liens/${lienDialog.user.id}`, { amount: lienAmount, reason: lienReason });
+                  const d = await res.json();
+                  if (!res.ok) throw new Error(d.message);
+                  toast({ title: "Lien placed ✓", description: `$${parseFloat(lienAmount).toFixed(2)} lien placed on ${lienDialog.user.firstName}'s wallet.`, className: "border-tsia-green" });
+                  refetchWalletLiens();
+                  setLienDialog(null);
+                } catch (e: any) {
+                  toast({ title: "Error", description: e.message, variant: "destructive" });
+                } finally { setLienSaving(false); }
+              }}>
+              {lienSaving ? "Saving…" : "Place Lien"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Release lien confirmation */}
+      <Dialog open={!!releaseConfirm} onOpenChange={open => { if (!open) setReleaseConfirm(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Release Wallet Lien</DialogTitle>
+            <DialogDescription>This will remove the lien on {releaseConfirm?.name}'s wallet. They will be notified and their full balance will be available.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReleaseConfirm(null)}>Cancel</Button>
+            <Button className="bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-confirm-release-lien"
+              onClick={async () => {
+                if (!releaseConfirm) return;
+                try {
+                  const res = await apiRequest("DELETE", `/api/admin/wallet-liens/${releaseConfirm.userId}`, {});
+                  const d = await res.json();
+                  if (!res.ok) throw new Error(d.message);
+                  toast({ title: "Lien released ✓", description: `Lien removed from ${releaseConfirm.name}'s wallet.`, className: "border-tsia-green" });
+                  refetchWalletLiens();
+                  setReleaseConfirm(null);
+                } catch (e: any) {
+                  toast({ title: "Error", description: e.message, variant: "destructive" });
+                }
+              }}>
+              Confirm Release
             </Button>
           </DialogFooter>
         </DialogContent>

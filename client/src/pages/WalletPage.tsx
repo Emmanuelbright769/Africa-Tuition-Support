@@ -37,7 +37,7 @@ const TSIA_WALLETS = {
   bep20: "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977",
 };
 
-type WalletData      = { id: number; userId: number; balance: string };
+type WalletData      = { id: number; userId: number; balance: string; lienAmount?: string; lienReason?: string | null; lienPlacedAt?: string | null };
 type DepositRecord   = { id: number; amountUsd: string; txHash: string; walletType: string; status: string; createdAt: string };
 type BillRecord      = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
 type TxRecord        = { id: number; type: string; amount: string; fee: string; paymentMethod: string | null; description: string; createdAt: string };
@@ -134,7 +134,10 @@ export default function WalletPage() {
     return () => { document.removeEventListener("visibilitychange", onVisibility); closeSSE(); };
   }, []);
 
-  const balance = parseFloat(wallet?.balance ?? "0");
+  const balance    = parseFloat(wallet?.balance ?? "0");
+  const lienAmount = parseFloat(wallet?.lienAmount ?? "0");
+  const hasLien    = lienAmount > 0;
+  const available  = Math.max(0, balance - lienAmount);
   const walletKycDone = verification?.biometricVerified === true;
   const portalFeePaid = verification?.portalFeePaid === true;
   const needsKyc = portalFeePaid && !walletKycDone;
@@ -551,7 +554,16 @@ export default function WalletPage() {
                       {currency && currency.code !== "USD" && <span className="ml-1.5 text-[10px] font-normal bg-white/10 px-1.5 py-0.5 rounded-full">{currency.code}</span>}
                     </p>
                   )}
-                  <p className="text-white/50 text-xs mb-1">Available balance · Use Fintech to send money to a bank account</p>
+                  {hasLien && !hidden && (
+                    <div className="flex items-center gap-2 bg-red-500/20 border border-red-400/30 rounded-xl px-3 py-2 mb-3" data-testid="wallet-lien-notice">
+                      <Lock className="w-3.5 h-3.5 text-red-300 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-red-200 text-[11px] font-bold">Account Lien Active</p>
+                        <p className="text-red-300/80 text-[10px]">Held: ${lienAmount.toFixed(2)} · Available: ${available.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-white/50 text-xs mb-1">{hasLien ? `Available: $${available.toFixed(2)} · $${lienAmount.toFixed(2)} under lien` : "Available balance · Use Fintech to send money to a bank account"}</p>
                   <p className="text-white/40 text-[10px] mb-5">Fund your wallet to access all platform services</p>
                   <Button onClick={() => openFund("squad")} className="w-full h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl" data-testid="btn-fund-wallet">
                     <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet

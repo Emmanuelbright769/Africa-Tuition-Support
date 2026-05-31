@@ -3717,6 +3717,69 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Wallet Liens ───────────────────────────────────────────────────
+  app.get("/api/admin/wallet-liens", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const [withLiens, eligible] = await Promise.all([
+        storage.getStudentsWithLiens(),
+        storage.getEligibleStudentsForLien(),
+      ]);
+      res.json({ withLiens, eligible });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/admin/wallet-liens/:userId", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const targetId = parseInt(req.params.userId, 10);
+      const { amount, reason } = req.body;
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) < 0) {
+        return res.status(400).json({ message: "A valid lien amount is required" });
+      }
+      if (!reason || reason.trim().length < 3) {
+        return res.status(400).json({ message: "A lien reason is required (min 3 characters)" });
+      }
+      const wallet = await storage.setWalletLien(targetId, parseFloat(amount).toFixed(2), reason.trim());
+      // Notify the student
+      const notif = await storage.createNotification({
+        userId: targetId, type: "system",
+        title: "Account Lien Placed 🔒",
+        message: `A lien of $${parseFloat(amount).toFixed(2)} has been placed on your SwiftWallet by TSIA administration. Reason: ${reason.trim()}. Your available balance has been adjusted. Contact support for more information.`,
+        data: { lienAmount: amount, reason: reason.trim() }, isRead: false,
+      });
+      pushToUser(targetId, "notification", notif);
+      invalidateCacheKey(`wallet:${targetId}`);
+      res.json({ success: true, wallet });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/admin/wallet-liens/:userId", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(sessionUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const targetId = parseInt(req.params.userId, 10);
+      const wallet = await storage.releaseWalletLien(targetId);
+      const notif = await storage.createNotification({
+        userId: targetId, type: "system",
+        title: "Account Lien Released ✅",
+        message: "The lien on your SwiftWallet has been released by TSIA administration. Your full wallet balance is now available.",
+        data: {}, isRead: false,
+      });
+      pushToUser(targetId, "notification", notif);
+      invalidateCacheKey(`wallet:${targetId}`);
+      res.json({ success: true, wallet });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── ADMIN: Edit disbursement amount ──────────────────────────────────────
   app.patch("/api/admin/edit-disbursement/:disbursementId", async (req, res) => {
     try {
@@ -6549,9 +6612,12 @@ export async function registerRoutes(
 
       const senderWallet    = await storage.getOrCreateWallet(userId);
       const senderBalance   = parseFloat(senderWallet.balance);
+      const senderLien      = parseFloat(senderWallet.lienAmount ?? "0");
+      const senderAvailable = Math.max(0, senderBalance - senderLien);
       const WALLET_MIN_BALANCE = 2;
+      if (senderLien > 0 && senderAvailable < amount) return res.status(400).json({ message: `Your wallet has an active lien of $${senderLien.toFixed(2)}. Available balance: $${senderAvailable.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (senderBalance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${senderBalance.toFixed(2)}` });
-      if (senderBalance - amount < WALLET_MIN_BALANCE) return res.status(400).json({ message: `A minimum of $${WALLET_MIN_BALANCE}.00 must remain in your wallet at all times. You can send up to $${Math.max(0, senderBalance - WALLET_MIN_BALANCE).toFixed(2)}.` });
+      if (senderBalance - amount < WALLET_MIN_BALANCE) return res.status(400).json({ message: `A minimum of $${WALLET_MIN_BALANCE}.00 must remain in your wallet at all times. You can send up to $${Math.max(0, senderAvailable - WALLET_MIN_BALANCE).toFixed(2)}.` });
       const recipient = await storage.getUser(resolvedId);
       if (!recipient) return res.status(404).json({ message: "Recipient not found" });
       const sender = await storage.getUser(userId);
@@ -6673,6 +6739,9 @@ export async function registerRoutes(
   ) {
     const wallet = await storage.getOrCreateWallet(userId);
     const balance = parseFloat(wallet.balance);
+    const lienAmt = parseFloat(wallet.lienAmount ?? "0");
+    const availableForBill = Math.max(0, balance - lienAmt);
+    if (lienAmt > 0 && availableForBill < amountUsd) throw Object.assign(new Error(`Your wallet has an active lien of $${lienAmt.toFixed(2)}. Available balance: $${availableForBill.toFixed(2)}.`), { status: 400, code: "LIEN_BLOCKED" });
     if (balance < amountUsd) throw Object.assign(new Error(`Insufficient balance. You have $${balance.toFixed(2)}`), { status: 400 });
     await storage.updateWalletBalance(userId, (balance - amountUsd).toFixed(2));
     await storage.createBillPayment({ userId, service, amount: amountUsd, reference });
@@ -6852,8 +6921,11 @@ export async function registerRoutes(
 
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
+      const lien    = parseFloat(wallet.lienAmount ?? "0");
+      const availBal = Math.max(0, balance - lien);
+      if (lien > 0 && availBal < transferAmount) return res.status(400).json({ message: `Your wallet has an active lien of $${lien.toFixed(2)}. Available balance: $${availBal.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (balance < transferAmount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (balance - transferAmount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can transfer up to $${Math.max(0, balance - 2).toFixed(2)}.` });
+      if (balance - transferAmount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can transfer up to $${Math.max(0, availBal - 2).toFixed(2)}.` });
 
       const vatAmount   = parseFloat((transferAmount * 0.075).toFixed(2));
       const netAmountUsd = parseFloat((transferAmount - vatAmount).toFixed(2));
@@ -7278,8 +7350,11 @@ export async function registerRoutes(
     try {
       const wallet  = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
+      const lienW   = parseFloat(wallet.lienAmount ?? "0");
+      const availW  = Math.max(0, balance - lienW);
+      if (lienW > 0 && availW < amount) return res.status(400).json({ message: `Your wallet has an active lien of $${lienW.toFixed(2)}. Available balance: $${availW.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (balance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (balance - amount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, balance - 2).toFixed(2)}.` });
+      if (balance - amount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, availW - 2).toFixed(2)}.` });
       await storage.updateWalletBalance(userId, (balance - amount).toFixed(2));
       const reference = `TSIA-BILL-${service.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
       await storage.createBillPayment({ userId, service, amount, reference });

@@ -96,6 +96,10 @@ export interface IStorage {
 
   getOrCreateWallet(userId: number): Promise<WalletRecord>;
   updateWalletBalance(userId: number, amount: string): Promise<WalletRecord>;
+  setWalletLien(userId: number, amount: string, reason: string): Promise<WalletRecord>;
+  releaseWalletLien(userId: number): Promise<WalletRecord>;
+  getStudentsWithLiens(): Promise<(WalletRecord & { user: User })[]>;
+  getEligibleStudentsForLien(): Promise<(WalletRecord & { user: User; pendingDisbursementCount: number; pendingDisbursementTotal: string })[]>;
 
   createTransaction(tx: InsertTransaction): Promise<Transaction>;
   getTransactionsByUser(userId: number): Promise<Transaction[]>;
@@ -668,6 +672,52 @@ export class DatabaseStorage implements IStorage {
     await this.getOrCreateWallet(userId);
     const [updated] = await db.update(wallets).set({ balance: newBalance }).where(eq(wallets.userId, userId)).returning();
     return updated;
+  }
+
+  async setWalletLien(userId: number, amount: string, reason: string): Promise<WalletRecord> {
+    await this.getOrCreateWallet(userId);
+    const [updated] = await db.update(wallets)
+      .set({ lienAmount: amount, lienReason: reason, lienPlacedAt: new Date() })
+      .where(eq(wallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async releaseWalletLien(userId: number): Promise<WalletRecord> {
+    await this.getOrCreateWallet(userId);
+    const [updated] = await db.update(wallets)
+      .set({ lienAmount: "0.00", lienReason: null, lienPlacedAt: null })
+      .where(eq(wallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async getStudentsWithLiens(): Promise<(WalletRecord & { user: User })[]> {
+    const rows = await db
+      .select({ wallet: wallets, user: users })
+      .from(wallets)
+      .innerJoin(users, eq(wallets.userId, users.id))
+      .where(gt(wallets.lienAmount, "0"))
+      .orderBy(desc(wallets.lienPlacedAt));
+    return rows.map(r => ({ ...r.wallet, user: r.user }));
+  }
+
+  async getEligibleStudentsForLien(): Promise<(WalletRecord & { user: User; pendingDisbursementCount: number; pendingDisbursementTotal: string })[]> {
+    const rows = await db
+      .select({ wallet: wallets, user: users })
+      .from(wallets)
+      .innerJoin(users, eq(wallets.userId, users.id))
+      .innerJoin(sponsorshipPlans, eq(sponsorshipPlans.userId, users.id))
+      .where(and(eq(users.role, "student"), eq(sponsorshipPlans.active, true)))
+      .orderBy(desc(wallets.lienPlacedAt));
+    const result: (WalletRecord & { user: User; pendingDisbursementCount: number; pendingDisbursementTotal: string })[] = [];
+    for (const r of rows) {
+      const pending = await db.select().from(disbursements)
+        .where(and(eq(disbursements.userId, r.user.id), eq(disbursements.status, "pending")));
+      const total = pending.reduce((s, d) => s + parseFloat(d.amount), 0);
+      result.push({ ...r.wallet, user: r.user, pendingDisbursementCount: pending.length, pendingDisbursementTotal: total.toFixed(2) });
+    }
+    return result;
   }
 
   async createTransaction(tx: InsertTransaction): Promise<Transaction> {

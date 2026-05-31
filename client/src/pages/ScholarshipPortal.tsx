@@ -183,7 +183,7 @@ export default function ScholarshipPortal() {
   useEffect(() => {
     (async () => {
       try {
-        const data = await apiRequest("GET", "/api/scholarship/my");
+        const data = await (await apiRequest("GET", "/api/scholarship/my")).json();
         const rec = scholarshipType ? (data as any)[scholarshipType] : null;
         if (rec) {
           setScholarshipRecord(rec);
@@ -191,7 +191,7 @@ export default function ScholarshipPortal() {
         } else if (scholarshipType) {
           setStep("waec");
         }
-        const w = await apiRequest("GET", "/api/wallet/balances");
+        const w = await (await apiRequest("GET", "/api/wallet/balances")).json();
         setWalletBalance(parseFloat((w as any).confirmedBalance ?? "0"));
       } catch { /* not logged in or error */ }
       setPageLoading(false);
@@ -341,7 +341,7 @@ export default function ScholarshipPortal() {
     setScholarshipType(type);
     setPageLoading(true);
     try {
-      const data = await apiRequest("GET", "/api/scholarship/my");
+      const data = await (await apiRequest("GET", "/api/scholarship/my")).json();
       const rec = (data as any)[type];
       if (rec) {
         // Completed test: check cooldown before allowing re-enrollment
@@ -355,7 +355,7 @@ export default function ScholarshipPortal() {
             return;
           }
           // 365 days passed — start fresh enrollment
-          const fresh = await apiRequest("POST", "/api/scholarship/start", { type });
+          const fresh = await (await apiRequest("POST", "/api/scholarship/start", { type })).json();
           setScholarshipRecord(fresh as any);
           setStep(type === "masters" ? "tertiary" : "waec");
           setPageLoading(false);
@@ -402,11 +402,11 @@ export default function ScholarshipPortal() {
     }
     setLoading(true);
     try {
-      const data = await apiRequest("POST", "/api/scholarship/waec-validate", {
+      const data = await (await apiRequest("POST", "/api/scholarship/waec-validate", {
         type: scholarshipType, waecRegNumber: waecReg, waecYear,
         subjects, grades, schoolName, schoolLocation,
         ...(scholarshipType === "masters" ? { tertiarySchool, tertiaryType, tertiaryYear, tertiaryGrade } : {}),
-      });
+      })).json();
       setScholarshipRecord(data);
       setStep("pay_fee");
     } catch (e: any) {
@@ -419,7 +419,7 @@ export default function ScholarshipPortal() {
     if (!scholarshipType) return;
     setLoading(true);
     try {
-      const data = await apiRequest("POST", "/api/scholarship/pay-fee", { type: scholarshipType });
+      const data = await (await apiRequest("POST", "/api/scholarship/pay-fee", { type: scholarshipType })).json();
       setScholarshipRecord(data);
       if (scholarshipType === "masters") {
         // commitmentFeePaid=true means 30-day window already served → go to test
@@ -442,7 +442,7 @@ export default function ScholarshipPortal() {
     setLoading(true);
     const fee = mscDuration === "2year" ? 25 : 10;
     try {
-      const data = await apiRequest("POST", "/api/scholarship/pay-commitment", { mscDuration });
+      const data = await (await apiRequest("POST", "/api/scholarship/pay-commitment", { mscDuration })).json();
       setScholarshipRecord(data);
       // After paying, record resets to "started" — user does WAEC fresh (tertiary already saved)
       setStep("waec");
@@ -459,7 +459,7 @@ export default function ScholarshipPortal() {
   async function handlePayRenewal() {
     setLoading(true);
     try {
-      const data = await apiRequest("POST", "/api/scholarship/pay-renewal", {});
+      const data = await (await apiRequest("POST", "/api/scholarship/pay-renewal", {})).json();
       setScholarshipRecord((prev: any) => ({ ...prev, ...(data as any) }));
       setWalletBalance(prev => prev !== null ? prev - 25 : null);
       toast({ title: "Renewal Paid!", description: "Your second $250 prize is pending admin approval.", variant: "default" });
@@ -473,7 +473,7 @@ export default function ScholarshipPortal() {
     if (!scholarshipType) return;
     setLoading(true);
     try {
-      const data = await apiRequest("POST", "/api/scholarship/start-test", { type: scholarshipType }) as unknown as { verbal: TestQuestion[]; quant: TestQuestion[] };
+      const data = await (await apiRequest("POST", "/api/scholarship/start-test", { type: scholarshipType })).json() as { verbal: TestQuestion[]; quant: TestQuestion[] };
       setQuestions([...data.verbal, ...data.quant]);
       setCurrentIdx(0);
       setAnswers({});
@@ -494,9 +494,9 @@ export default function ScholarshipPortal() {
     const allQs = [...verbalQs, ...quantQs];
     const answerPayload = allQs.map(q => ({ questionId: q.id, selectedIndex: answers[q.id] ?? -1 }));
     try {
-      const data = await apiRequest("POST", "/api/scholarship/submit-test", {
+      const data = await (await apiRequest("POST", "/api/scholarship/submit-test", {
         type: scholarshipType, answers: answerPayload,
-      }) as unknown as TestResult;
+      })).json() as TestResult;
       clearTimers();
       setResult(data);
       setStep("result");

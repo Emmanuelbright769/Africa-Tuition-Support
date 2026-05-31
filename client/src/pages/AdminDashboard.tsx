@@ -765,6 +765,20 @@ export default function AdminDashboard() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const deleteScholarshipMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/scholarship/${id}`);
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-scholarships"] });
+      setSchDetailDialog(null);
+      toast({ title: "Record Deleted", description: "The scholarship record has been permanently removed." });
+    },
+    onError: (e: any) => toast({ title: "Delete Failed", description: e.message, variant: "destructive" }),
+  });
+
   const waecEditMutation = useMutation({
     mutationFn: async ({ id, waecPercentage }: { id: number; waecPercentage: string }) => {
       const res = await apiRequest("PUT", `/api/admin/scholarship/${id}/waec`, { waecPercentage });
@@ -3586,6 +3600,16 @@ export default function AdminDashboard() {
                       })()}
                       <DialogFooter className="gap-2 border-t pt-4 flex-col sm:flex-row">
                         <Button variant="ghost" size="sm" onClick={() => setSchDetailDialog(null)} className="sm:mr-auto">Close</Button>
+                        <Button size="sm" variant="outline" className="border-red-600 text-red-700 hover:bg-red-50"
+                          disabled={deleteScholarshipMutation.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Permanently delete the scholarship record for ${schDetailDialog?.user?.firstName ?? ""} ${schDetailDialog?.user?.lastName ?? ""}? This cannot be undone.`)) {
+                              deleteScholarshipMutation.mutate(schDetailDialog!.id);
+                            }
+                          }}
+                          data-testid={`button-delete-scholarship-${schDetailDialog?.id}`}>
+                          {deleteScholarshipMutation.isPending ? "Deleting…" : "Delete Record"}
+                        </Button>
                         {schDetailDialog?.status !== "declined" && (
                           <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50"
                             onClick={() => { setDeclineSchDialog({ id: schDetailDialog.id, name: `${schDetailDialog.user?.firstName ?? ""} ${schDetailDialog.user?.lastName ?? ""}`.trim() }); setSchDetailDialog(null); }}>

@@ -226,6 +226,7 @@ export interface IStorage {
   getScholarship(userId: number, type: string): Promise<Scholarship | undefined>;
   createScholarship(data: Partial<InsertScholarship> & { userId: number; type: string }): Promise<Scholarship>;
   updateScholarship(id: number, data: Partial<Scholarship>): Promise<Scholarship>;
+  deleteScholarship(id: number): Promise<void>;
   getAllScholarships(): Promise<(Scholarship & { user: User })[]>;
 
   // Tour Africa Bookings
@@ -2260,6 +2261,10 @@ export class DatabaseStorage implements IStorage {
   async updateScholarship(id: number, data: Partial<Scholarship>): Promise<Scholarship> {
     const [row] = await db.update(scholarships).set({ ...data, updatedAt: new Date() } as any).where(eq(scholarships.id, id)).returning();
     return row;
+  }
+
+  async deleteScholarship(id: number): Promise<void> {
+    await db.delete(scholarships).where(eq(scholarships.id, id));
   }
 
   async getAllScholarships(): Promise<(Scholarship & { user: User })[]> {

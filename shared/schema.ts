@@ -281,9 +281,17 @@ export const WAEC_ELECTIVE_SUBJECTS = [
 
 export function calculateWaecPercentage(
   grades: string[],
-  customWeights?: Record<string, number>,
+  customWeights?: Record<string, number> | null,
 ): number {
-  const weights = customWeights ?? WAEC_GRADE_WEIGHTS;
+  // Normalize custom weights: uppercase keys, fall back to defaults if empty/null
+  let weights: Record<string, number> = WAEC_GRADE_WEIGHTS;
+  if (customWeights && Object.keys(customWeights).length > 0) {
+    const normalized: Record<string, number> = {};
+    for (const [k, v] of Object.entries(customWeights)) {
+      normalized[k.toUpperCase()] = v;
+    }
+    weights = normalized;
+  }
   const gradePoints = grades.map(g => weights[g.toUpperCase()] ?? 0);
   const totalWeight = gradePoints.reduce((sum, w) => sum + w, 0);
   const maxPoint = Math.max(...Object.values(weights), 1);

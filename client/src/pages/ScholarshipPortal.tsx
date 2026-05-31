@@ -8,14 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import BiometricVerification from "@/components/ui/BiometricVerification";
 import {
   Trophy, ArrowLeft, ArrowRight, CheckCircle2, XCircle, Clock, Loader2,
   BookOpen, Calculator, AlertTriangle, Star, Wallet, GraduationCap, Zap,
 } from "lucide-react";
 
 type ScholarshipType = "student" | "masters";
-type Step = "welcome" | "tertiary" | "waec" | "biometric" | "pay_fee" | "commitment" | "test_intro" | "test" | "result" | "cooldown";
+type Step = "welcome" | "tertiary" | "waec" | "pay_fee" | "commitment" | "test_intro" | "test" | "result" | "cooldown";
 type TestPhase = "verbal" | "transition" | "quant" | "submitting";
 type TertiaryGrade = "first_class" | "second_upper" | "second_lower";
 type MscDuration = "1year" | "2year";
@@ -402,12 +401,6 @@ export default function ScholarshipPortal() {
     if (!allSubjectsFilled || !allGradesFilled) {
       toast({ title: "Missing fields", description: "Select all 5 subjects and their grades.", variant: "destructive" }); return;
     }
-    // Validate form first, then go to biometric step before calling the API
-    setStep("biometric");
-  }
-
-  async function handleBiometricComplete() {
-    if (!scholarshipType) return;
     setLoading(true);
     try {
       const data = await (await apiRequest("POST", "/api/scholarship/waec-validate", {
@@ -864,7 +857,6 @@ export default function ScholarshipPortal() {
           if (step === "welcome") { setLocation("/dashboard"); return; }
           if (step === "tertiary") { setStep("welcome"); return; }
           if (step === "waec") { setStep(scholarshipType === "masters" && !scholarshipRecord?.tertiarySchool ? "tertiary" : "welcome"); return; }
-          if (step === "biometric") { setStep("waec"); return; }
           if (step === "pay_fee") { setStep("waec"); return; }
           setStep("welcome");
         }} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/15 transition-colors">
@@ -1071,29 +1063,6 @@ export default function ScholarshipPortal() {
               <Button onClick={handleWaecSubmit} disabled={loading} className="w-full h-12 mt-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><span>Validate WAEC Results</span><ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
-            </motion.div>
-          )}
-
-          {/* ── BIOMETRIC VERIFICATION ──────────────────────────────────────── */}
-          {step === "biometric" && (
-            <motion.div key="biometric" initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
-              <div className="mt-4 mb-5 text-center">
-                <h2 className="text-2xl font-black text-white">Identity Verification</h2>
-                <p className="text-white/60 text-sm mt-1">Complete a quick facial liveness check to confirm your identity before we validate your WAEC results.</p>
-              </div>
-              {loading ? (
-                <div className="flex flex-col items-center gap-4 py-12">
-                  <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
-                  <p className="text-white/60 text-sm">Validating your WAEC results…</p>
-                </div>
-              ) : (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                  <BiometricVerification
-                    onComplete={handleBiometricComplete}
-                    onCancel={() => setStep("waec")}
-                  />
-                </div>
-              )}
             </motion.div>
           )}
 

@@ -137,6 +137,7 @@ export default function ScholarshipPortal() {
 
   const [scholarshipRecord, setScholarshipRecord] = useState<any>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [walletActivated, setWalletActivated] = useState<boolean | null>(null);
 
   // Tertiary (Masters only)
   const [tertiarySchool, setTertiarySchool] = useState("");
@@ -194,6 +195,7 @@ export default function ScholarshipPortal() {
         }
         const w = await (await apiRequest("GET", "/api/wallet/balances")).json();
         setWalletBalance(parseFloat((w as any).confirmedBalance ?? "0"));
+        setWalletActivated(!!(w as any).activated);
       } catch { /* not logged in or error */ }
       setPageLoading(false);
     })();
@@ -533,6 +535,34 @@ export default function ScholarshipPortal() {
           <Loader2 className="w-10 h-10 animate-spin text-indigo-400" />
           <p className="text-sm text-indigo-300">Loading scholarship portal…</p>
         </div>
+      </div>
+    );
+  }
+
+  // ── WALLET ACTIVATION GATE ────────────────────────────────────────────────
+  if (walletActivated === false) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 flex items-center justify-center p-4">
+        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
+          className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl">
+          <div className="w-20 h-20 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Wallet className="w-10 h-10 text-amber-400" />
+          </div>
+          <h2 className="text-2xl font-black text-white mb-3">Activate Your Wallet First</h2>
+          <p className="text-white/70 text-sm mb-6 leading-relaxed">
+            You need an active SwiftWallet to access the Scholarship Portal. Fund your wallet with at least $5 to unlock all platform features including scholarships.
+          </p>
+          <div className="flex flex-col gap-3">
+            <Button onClick={() => setLocation("/dashboard?section=fintech")}
+              className="w-full bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-2xl h-12">
+              <Wallet className="w-4 h-4 mr-2" /> Fund My Wallet
+            </Button>
+            <Button variant="ghost" onClick={() => setLocation("/dashboard")}
+              className="w-full text-white/60 hover:text-white hover:bg-white/10 rounded-2xl h-10">
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
+            </Button>
+          </div>
+        </motion.div>
       </div>
     );
   }

@@ -1201,13 +1201,15 @@ export async function registerRoutes(
 
       // ── Debit wallet — must have sufficient balance ──────────────────────────
       const feeWalletBalance = parseFloat(feeWallet.balance);
-      if (feeWalletBalance < totalCharged) {
-        const shortfall = (totalCharged - feeWalletBalance).toFixed(2);
+      const feeWalletLien = parseFloat(feeWallet.lienAmount ?? "0");
+      const feeWalletAvailable = Math.max(0, feeWalletBalance - feeWalletLien);
+      if (feeWalletAvailable < totalCharged) {
+        const shortfall = (totalCharged - feeWalletAvailable).toFixed(2);
         return res.status(402).json({
           code: "INSUFFICIENT_BALANCE",
-          message: `Insufficient wallet balance. You need $${totalCharged.toFixed(2)} (fee + $${serviceCharge.toFixed(2)} service charge) but have $${feeWalletBalance.toFixed(2)}. Please fund your wallet with at least $${shortfall} more to continue.`,
+          message: `Insufficient wallet balance. You need $${totalCharged.toFixed(2)} (fee + $${serviceCharge.toFixed(2)} service charge) but your available balance is $${feeWalletAvailable.toFixed(2)}${feeWalletLien > 0 ? ` ($${feeWalletLien.toFixed(2)} is locked by an active lien)` : ""}. Please fund your wallet with at least $${shortfall} more to continue.`,
           required: totalCharged,
-          available: feeWalletBalance,
+          available: feeWalletAvailable,
         });
       }
       await storage.updateWalletBalance(userId, (feeWalletBalance - totalCharged).toFixed(2));
@@ -1397,6 +1399,8 @@ export async function registerRoutes(
         tradeBalance: tradeBalance.toFixed(2),
         referralBalance: referralBalance.toFixed(2),
         totalAffiliateBalance: totalAffiliateBalance.toFixed(2),
+        activated: wallet.activated,
+        lienAmount: wallet.lienAmount ?? "0.00",
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message ?? "Failed to fetch balances" });
@@ -9293,6 +9297,8 @@ export async function registerRoutes(
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
         const { type } = req.body;
         if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid scholarship type" });
+        const walletCheck = await storage.getOrCreateWallet(userId);
+        if (!walletCheck.activated) return res.status(403).json({ code: "WALLET_NOT_ACTIVATED", message: "You need to activate your SwiftWallet before accessing the Scholarship Portal." });
         const existing = await storage.getScholarship(userId, type);
         if (existing) {
           // Completed test: enforce 365-day cooldown
@@ -9317,6 +9323,8 @@ export async function registerRoutes(
       try {
         const userId = (req.session as any)?.userId;
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
+        const walletCheck2 = await storage.getOrCreateWallet(userId);
+        if (!walletCheck2.activated) return res.status(403).json({ code: "WALLET_NOT_ACTIVATED", message: "You need to activate your SwiftWallet before accessing the Scholarship Portal." });
         const { type, waecRegNumber, waecYear, subjects, grades, schoolName, schoolLocation,
                 tertiarySchool, tertiaryType, tertiaryYear, tertiaryGrade } = req.body;
         if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid scholarship type" });
@@ -9391,10 +9399,12 @@ export async function registerRoutes(
         const serviceCharge = 0.30;
         const totalCharged = portalFee + serviceCharge;
         const bal = parseFloat(wallet.balance);
-        if (bal < totalCharged) {
+        const lienAmtFee = parseFloat(wallet.lienAmount ?? "0");
+        const availableFee = Math.max(0, bal - lienAmtFee);
+        if (availableFee < totalCharged) {
           return res.status(402).json({
             code: "INSUFFICIENT_BALANCE",
-            message: `Insufficient balance. You need $${totalCharged.toFixed(2)} but have $${bal.toFixed(2)}.`,
+            message: `Insufficient balance. You need $${totalCharged.toFixed(2)} but your available balance is $${availableFee.toFixed(2)}${lienAmtFee > 0 ? ` ($${lienAmtFee.toFixed(2)} is locked by an active lien)` : ""}.`,
           });
         }
 
@@ -9459,10 +9469,12 @@ export async function registerRoutes(
         const wallet = await storage.getOrCreateWallet(userId);
         const commitmentFee = mscDuration === "2year" ? 25.00 : 10.00;
         const bal = parseFloat(wallet.balance);
-        if (bal < commitmentFee) {
+        const lienAmtCommit = parseFloat(wallet.lienAmount ?? "0");
+        const availableCommit = Math.max(0, bal - lienAmtCommit);
+        if (availableCommit < commitmentFee) {
           return res.status(402).json({
             code: "INSUFFICIENT_BALANCE",
-            message: `Insufficient balance. You need $${commitmentFee.toFixed(2)} but have $${bal.toFixed(2)}.`,
+            message: `Insufficient balance. You need $${commitmentFee.toFixed(2)} but your available balance is $${availableCommit.toFixed(2)}${lienAmtCommit > 0 ? ` ($${lienAmtCommit.toFixed(2)} is locked by an active lien)` : ""}.`,
           });
         }
 
@@ -9522,10 +9534,12 @@ export async function registerRoutes(
         const renewalFee = 25.00;
         const secondPrize = 250.00;
         const bal = parseFloat(wallet.balance);
-        if (bal < renewalFee) {
+        const lienAmtRenewal = parseFloat(wallet.lienAmount ?? "0");
+        const availableRenewal = Math.max(0, bal - lienAmtRenewal);
+        if (availableRenewal < renewalFee) {
           return res.status(402).json({
             code: "INSUFFICIENT_BALANCE",
-            message: `Insufficient balance. You need $${renewalFee.toFixed(2)} but have $${bal.toFixed(2)}.`,
+            message: `Insufficient balance. You need $${renewalFee.toFixed(2)} but your available balance is $${availableRenewal.toFixed(2)}${lienAmtRenewal > 0 ? ` ($${lienAmtRenewal.toFixed(2)} is locked by an active lien)` : ""}.`,
           });
         }
 
@@ -9646,7 +9660,17 @@ export async function registerRoutes(
 
         const totalScore = verbalScore + quantScore;
         const testPct = (totalScore / 30) * 100;
-        const waecPct = parseFloat(record.waecPercentage ?? "0");
+        // Always recalculate WAEC % from stored grades + current grade scale so admin grade-scale
+        // edits take effect immediately. Fall back to stored waecPercentage if no grades exist.
+        let waecPct: number;
+        if (record.waecGrades) {
+          const gradeScaleRaw = await storage.getPlatformSetting("waec_grade_scale");
+          const gradeScale = gradeScaleRaw ? JSON.parse(gradeScaleRaw) : undefined;
+          const gradesArr = (record.waecGrades as string).trim().split(/\s+/);
+          waecPct = calculateWaecPercentage(gradesArr, gradeScale);
+        } else {
+          waecPct = parseFloat(record.waecPercentage ?? "0");
+        }
         const aggregatePct = (waecPct + testPct) / 2;
         const passed = aggregatePct >= 70;
         const prizeAmount = type === "masters" ? 250 : 100;

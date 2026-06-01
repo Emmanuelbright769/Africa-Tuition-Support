@@ -4236,16 +4236,9 @@ export default function AdminDashboard() {
                           <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border dark:border-slate-700 p-4 space-y-2">
                             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score Preview</p>
                             {(() => {
-                              const vals = GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0);
-                              const maxP = Math.max(...vals, 1);
-                              const minP = Math.min(...vals.filter(v => v >= 0));
-                              const denom = maxP - minP;
                               const calcPct = (gradeKeys: string[]) => {
-                                if (denom === 0) return "—";
                                 const pts = gradeKeys.reduce((s, k) => s + (parseFloat(getValue(k)) || 0), 0);
-                                const max = gradeKeys.length * maxP;
-                                const min = gradeKeys.length * minP;
-                                return (((pts - min) / (max - min)) * 100).toFixed(1) + "%";
+                                return Math.min(pts, 100).toFixed(1) + "%";
                               };
                               const rows: [string, string][] = [
                                 ["5 × A1", calcPct(["A1","A1","A1","A1","A1"])],
@@ -4266,7 +4259,7 @@ export default function AdminDashboard() {
                                 </div>
                               );
                             })()}
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500 pt-1">Scores ≥ 70% pass the WAEC component. Aggregate (WAEC + CBT) must be ≥ 70% overall.</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 pt-1">Score = direct sum of grade values. For 5 A1s to equal 100%, set A1 = 20. Aggregate (WAEC + CBT) must be ≥ 70%.</p>
                           </div>
 
                           <div className="flex gap-2">

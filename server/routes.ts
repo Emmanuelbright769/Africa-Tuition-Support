@@ -4354,6 +4354,8 @@ export async function registerRoutes(
       if (isNaN(newBal) || newBal < 0) return res.status(400).json({ message: "Invalid balance amount" });
       const curWal = await storage.getOrCreateWallet(targetId);
       await storage.updateWalletBalance(targetId, newBal.toFixed(2));
+      // Bust the per-user wallet cache so the updated balance is visible immediately
+      invalidateCacheKey(`wallet:${targetId}`);
       // Auto-activate wallet if balance reaches $2 minimum and fire referral commission once
       if (!curWal.activated && newBal > 2) {
         await storage.activateWallet(targetId);
@@ -4382,6 +4384,8 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(targetId);
       const newBal = (parseFloat(wallet.balance) + credit).toFixed(2);
       await storage.updateWalletBalance(targetId, newBal);
+      // Bust the per-user wallet cache so the credited amount is visible immediately
+      invalidateCacheKey(`wallet:${targetId}`);
       // Auto-activate wallet if balance now meets $2 minimum
       if (!wallet.activated && parseFloat(newBal) > 2) await storage.activateWallet(targetId);
       await storage.createTransaction({ userId: targetId, type: "admin_credit", amount: credit.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin credit: ${note}` : "Admin credit" });

@@ -372,6 +372,7 @@ export default function AdminDashboard() {
       setEditBalanceNote("");
       toast({ title: "Wallet Updated ✓", description: "User wallet balance has been updated." });
     },
+    onError: (e: any) => toast({ title: "Wallet Update Failed", description: e.message, variant: "destructive" }),
   });
 
   const manualCreditMutation = useMutation({

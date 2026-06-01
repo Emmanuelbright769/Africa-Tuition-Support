@@ -4238,17 +4238,23 @@ export default function AdminDashboard() {
                               A student with 5 A1s would score{" "}
                               <strong className="text-tsia-green">
                                 {(() => {
+                                  const vals = GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0);
+                                  const maxP = Math.max(...vals, 1);
+                                  const minP = Math.min(...vals.filter(v => v >= 0));
                                   const a1 = parseFloat(getValue("A1")) || 0;
-                                  const maxP = Math.max(...GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0), 1);
-                                  return ((a1 / maxP) * 100).toFixed(1);
+                                  const denom = maxP - minP;
+                                  return denom === 0 ? "100.0" : (((a1 - minP) / denom) * 100).toFixed(1);
                                 })()}%
                               </strong>
                               . A student with 5 F9s would score{" "}
                               <strong className="text-red-500">
                                 {(() => {
+                                  const vals = GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0);
+                                  const maxP = Math.max(...vals, 1);
+                                  const minP = Math.min(...vals.filter(v => v >= 0));
                                   const f9 = parseFloat(getValue("F9")) || 0;
-                                  const maxP = Math.max(...GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0), 1);
-                                  return ((f9 / maxP) * 100).toFixed(1);
+                                  const denom = maxP - minP;
+                                  return denom === 0 ? "0.0" : (((f9 - minP) / denom) * 100).toFixed(1);
                                 })()}%
                               </strong>.
                             </p>

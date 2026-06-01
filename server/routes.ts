@@ -9660,17 +9660,9 @@ export async function registerRoutes(
 
         const totalScore = verbalScore + quantScore;
         const testPct = (totalScore / 30) * 100;
-        // Always recalculate WAEC % from stored grades + current grade scale so admin grade-scale
-        // edits take effect immediately. Fall back to stored waecPercentage if no grades exist.
-        let waecPct: number;
-        if (record.waecGrades) {
-          const gradeScaleRaw = await storage.getPlatformSetting("waec_grade_scale");
-          const gradeScale = gradeScaleRaw ? JSON.parse(gradeScaleRaw) : undefined;
-          const gradesArr = (record.waecGrades as string).trim().split(/\s+/);
-          waecPct = calculateWaecPercentage(gradesArr, gradeScale);
-        } else {
-          waecPct = parseFloat(record.waecPercentage ?? "0");
-        }
+        // Use stored waecPercentage (which was calculated with the current grade scale at
+        // validation time, and can be overridden per-student by admin via the dashboard).
+        const waecPct = parseFloat(record.waecPercentage ?? "0");
         const aggregatePct = (waecPct + testPct) / 2;
         const passed = aggregatePct >= 70;
         const prizeAmount = type === "masters" ? 250 : 100;

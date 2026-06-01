@@ -297,10 +297,14 @@ export function calculateWaecPercentage(
   }
   const gradePoints = grades.map(g => weights[g.toUpperCase()] ?? 0);
   const totalWeight = gradePoints.reduce((sum, w) => sum + w, 0);
-  const maxPoint = Math.max(...Object.values(weights), 1);
-  const maxPossible = grades.length * maxPoint;
-  if (maxPossible === 0) return 0;
-  return Math.round((totalWeight / maxPossible) * 100 * 100) / 100;
+  const weightValues = Object.values(weights);
+  const maxPoint = Math.max(...weightValues, 1);
+  const minPoint = Math.min(...weightValues.filter(v => v >= 0));
+  const n = grades.length;
+  // Normalized scale: lowest grade (F9) → 0%, highest grade (A1) → 100%
+  const denominator = n * (maxPoint - minPoint);
+  if (denominator === 0) return 0;
+  return Math.round(((totalWeight - n * minPoint) / denominator) * 100 * 100) / 100;
 }
 
 export function getPayoutTier(percentage: number): { min: number; max: number; label: string } {

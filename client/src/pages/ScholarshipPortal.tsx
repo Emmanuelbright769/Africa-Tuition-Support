@@ -207,6 +207,13 @@ export default function ScholarshipPortal() {
     if (s === "started") {
       // Masters must fill tertiary info before WAEC (only on first run; after restart it's already saved)
       if (type === "masters" && !rec.tertiarySchool) { setStep("tertiary"); return; }
+      // Restore tertiary state from the saved record so waec-validate doesn't get blank fields
+      if (type === "masters" && rec.tertiarySchool) {
+        setTertiarySchool(rec.tertiarySchool ?? "");
+        setTertiaryType(rec.tertiaryType ?? "");
+        setTertiaryYear(rec.tertiaryYear ?? "");
+        setTertiaryGrade(rec.tertiaryGrade ?? "");
+      }
       setStep("waec"); return;
     }
     if (s === "waec_done") { setStep("pay_fee"); return; }

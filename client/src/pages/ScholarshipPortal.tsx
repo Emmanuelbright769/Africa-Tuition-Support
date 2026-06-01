@@ -213,9 +213,10 @@ export default function ScholarshipPortal() {
 
   // Re-fetch wallet balance whenever the user lands on a payment step so it's always fresh
   useEffect(() => {
-    if (step === "pay_fee" || step === "commitment") {
-      refreshWalletBalance();
-    }
+    if (step !== "pay_fee" && step !== "commitment") return;
+    refreshWalletBalance(); // immediate fetch on entry
+    const interval = setInterval(refreshWalletBalance, 15_000); // keep refreshing every 15s
+    return () => clearInterval(interval);
   }, [step, refreshWalletBalance]);
 
   function restoreStep(rec: any, type: ScholarshipType) {

@@ -181,26 +181,42 @@ export default function ScholarshipPortal() {
   const currentQ = currentPhaseQs[currentIdx];
   const phaseScore = testPhase === "verbal" ? liveScore.verbal : liveScore.quant;
 
+  // Refresh wallet balance independently so payment screens always show the real balance
+  const refreshWalletBalance = useCallback(async () => {
+    try {
+      const w = await (await apiRequest("GET", "/api/wallet/balances")).json();
+      setWalletBalance(parseFloat((w as any).confirmedBalance ?? "0"));
+      setWalletActivated(!!(w as any).activated);
+    } catch { /* ignore */ }
+  }, []);
+
   // Load existing scholarship status
   useEffect(() => {
     (async () => {
       try {
-        const data = await (await apiRequest("GET", "/api/scholarship/my")).json();
-        const rec = scholarshipType ? (data as any)[scholarshipType] : null;
+        const [schData] = await Promise.all([
+          apiRequest("GET", "/api/scholarship/my").then(r => r.json()),
+          refreshWalletBalance(),
+        ]);
+        const rec = scholarshipType ? (schData as any)[scholarshipType] : null;
         if (rec) {
           setScholarshipRecord(rec);
           restoreStep(rec, scholarshipType!);
         } else if (scholarshipType) {
           setStep("waec");
         }
-        const w = await (await apiRequest("GET", "/api/wallet/balances")).json();
-        setWalletBalance(parseFloat((w as any).confirmedBalance ?? "0"));
-        setWalletActivated(!!(w as any).activated);
       } catch { /* not logged in or error */ }
       setPageLoading(false);
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scholarshipType]);
+
+  // Re-fetch wallet balance whenever the user lands on a payment step so it's always fresh
+  useEffect(() => {
+    if (step === "pay_fee" || step === "commitment") {
+      refreshWalletBalance();
+    }
+  }, [step, refreshWalletBalance]);
 
   function restoreStep(rec: any, type: ScholarshipType) {
     const s = rec.status;

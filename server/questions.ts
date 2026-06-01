@@ -137,6 +137,101 @@ export const VERBAL_QUESTIONS: ScholarQuestion[] = [
     ],
     correctIndex: 1,
   },
+  {
+    id: 41, category: "verbal",
+    text: "EQUIVOCATE most nearly means:",
+    options: ["To speak with absolute certainty", "To use ambiguous language to avoid commitment", "To argue aggressively", "To remain completely silent"],
+    correctIndex: 1,
+  },
+  {
+    id: 42, category: "verbal",
+    text: "TORPID most nearly means:",
+    options: ["Energetic and enthusiastic", "Sluggish and inactive", "Quick to anger", "Deeply focused"],
+    correctIndex: 1,
+  },
+  {
+    id: 43, category: "verbal",
+    text: "VINDICATE most nearly means:",
+    options: ["To accuse formally", "To punish severely", "To clear of blame or suspicion", "To delay indefinitely"],
+    correctIndex: 2,
+  },
+  {
+    id: 44, category: "verbal",
+    text: "CARTOGRAPHER : MAPS :: NUMISMATIST : ___",
+    options: ["Stamps", "Coins", "Antiques", "Paintings"],
+    correctIndex: 1,
+  },
+  {
+    id: 45, category: "verbal",
+    text: "The manager's decision was IMPETUOUS, meaning it was:",
+    options: ["Carefully considered", "Hasty and impulsive", "Delayed unnecessarily", "Widely applauded"],
+    correctIndex: 1,
+  },
+  {
+    id: 46, category: "verbal",
+    text: "RECALCITRANT most nearly means:",
+    options: ["Eagerly cooperative", "Stubbornly defiant of authority", "Deeply remorseful", "Easily distracted"],
+    correctIndex: 1,
+  },
+  {
+    id: 47, category: "verbal",
+    text: "No Oaks are Shrubs. All Bonsais are Oaks. Which conclusion MUST follow?",
+    options: ["Some Bonsais are Shrubs", "No Bonsais are Shrubs", "All Shrubs are Oaks", "Some Oaks are Bonsais"],
+    correctIndex: 1,
+  },
+  {
+    id: 48, category: "verbal",
+    text: "PROSAIC most nearly means:",
+    options: ["Highly imaginative", "Technically complex", "Ordinary and dull", "Elegantly poetic"],
+    correctIndex: 2,
+  },
+  {
+    id: 49, category: "verbal",
+    text: "The scientist's data ___ her hypothesis, leaving it completely unsupported.",
+    options: ["Corroborated", "Vindicated", "Refuted", "Amplified"],
+    correctIndex: 2,
+  },
+  {
+    id: 50, category: "verbal",
+    text: "AUSPICIOUS most nearly means the OPPOSITE of:",
+    options: ["Promising", "Ill-omened", "Successful", "Celebrated"],
+    correctIndex: 1,
+  },
+  {
+    id: 51, category: "verbal",
+    text: "PHLEGMATIC most nearly means:",
+    options: ["Easily excited", "Calm and unemotional", "Prone to anger", "Overly talkative"],
+    correctIndex: 1,
+  },
+  {
+    id: 52, category: "verbal",
+    text: "ENERVATE most nearly means:",
+    options: ["To energise completely", "To drain of strength or vitality", "To encourage boldly", "To reorganise efficiently"],
+    correctIndex: 1,
+  },
+  {
+    id: 53, category: "verbal",
+    text: "All politicians are public servants. Some public servants are corrupt. Which conclusion is VALID?",
+    options: [
+      "All politicians are corrupt.",
+      "Some politicians may be corrupt.",
+      "No politicians are corrupt.",
+      "All public servants are politicians.",
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: 54, category: "verbal",
+    text: "GARRULOUS : SILENT :: MISERLY : ___",
+    options: ["Wealthy", "Generous", "Frugal", "Envious"],
+    correctIndex: 1,
+  },
+  {
+    id: 55, category: "verbal",
+    text: "Despite years of ACRIMONY, the two parties finally reached an agreement. ACRIMONY means:",
+    options: ["Patient negotiation", "Bitter hostility", "Mutual admiration", "Formal ceremony"],
+    correctIndex: 1,
+  },
 ];
 
 export const QUANT_QUESTIONS: ScholarQuestion[] = [
@@ -260,11 +355,79 @@ export const QUANT_QUESTIONS: ScholarQuestion[] = [
     options: ["2/15", "4/25", "3/20", "1/6"],
     correctIndex: 0,
   },
+  {
+    id: 56, category: "quant",
+    text: "A ladder 13 m long leans against a wall. If its foot is 5 m from the wall, how high does it reach?",
+    options: ["10 m", "11 m", "12 m", "13 m"],
+    correctIndex: 2,
+  },
+  {
+    id: 57, category: "quant",
+    text: "Simple interest on $2,400 at 5% per annum for 3 years is:",
+    options: ["$240", "$300", "$360", "$420"],
+    correctIndex: 2,
+  },
+  {
+    id: 58, category: "quant",
+    text: "The next number in the pattern 1, 4, 9, 16, 25, ___ is:",
+    options: ["30", "36", "49", "64"],
+    correctIndex: 1,
+  },
+  {
+    id: 59, category: "quant",
+    text: "If 20% of a number is 50, what is 35% of the same number?",
+    options: ["75.5", "85.0", "87.5", "90.0"],
+    correctIndex: 2,
+  },
+  {
+    id: 60, category: "quant",
+    text: "A triangle has sides 7 cm, 24 cm, and 25 cm. What is its area?",
+    options: ["64 cm²", "80 cm²", "84 cm²", "96 cm²"],
+    correctIndex: 2,
+  },
+  {
+    id: 61, category: "quant",
+    text: "Two numbers are in the ratio 4:7. Their sum is 99. Find the larger number.",
+    options: ["36", "54", "63", "72"],
+    correctIndex: 2,
+  },
+  {
+    id: 62, category: "quant",
+    text: "A bus covers 240 km at 60 km/h and returns at 80 km/h. What is the average speed for the whole journey?",
+    options: ["68.6 km/h", "69.5 km/h", "70.0 km/h", "72.0 km/h"],
+    correctIndex: 0,
+  },
+  {
+    id: 63, category: "quant",
+    text: "How many prime numbers are there between 20 and 40?",
+    options: ["3", "4", "5", "6"],
+    correctIndex: 1,
+  },
+  {
+    id: 64, category: "quant",
+    text: "A square has a diagonal of 10√2 cm. What is its area?",
+    options: ["50 cm²", "100 cm²", "150 cm²", "200 cm²"],
+    correctIndex: 1,
+  },
+  {
+    id: 65, category: "quant",
+    text: "Evaluate: 3³ + 4² − 2⁵",
+    options: ["11", "13", "15", "17"],
+    correctIndex: 0,
+  },
 ];
 
+function fisherYates<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export function pickQuestions(count: number, pool: ScholarQuestion[]): ScholarQuestion[] {
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
+  return fisherYates(pool).slice(0, count);
 }
 
 export function stripAnswers(q: ScholarQuestion): Omit<ScholarQuestion, "correctIndex"> {

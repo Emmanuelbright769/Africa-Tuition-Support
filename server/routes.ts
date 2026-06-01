@@ -3989,6 +3989,18 @@ export async function registerRoutes(
         if (vals[i] > vals[i - 1]) return res.status(400).json({ message: `Points must be in descending order (${WAEC_GRADE_KEYS[i]} cannot exceed ${WAEC_GRADE_KEYS[i-1]})` });
       }
       await storage.setPlatformSetting("waec_grade_scale", JSON.stringify(validated));
+
+      // Retroactively recalculate waecPercentage for every scholarship record
+      // that already has WAEC grades saved, so they reflect the new scale immediately.
+      try {
+        const all = await storage.getAllScholarships();
+        const toUpdate = all.filter((s: any) => s.waecGrades && Object.keys(s.waecGrades).length > 0);
+        await Promise.all(toUpdate.map((s: any) => {
+          const newPct = calculateWaecPercentage(s.waecGrades as Record<string, string>, validated);
+          return storage.updateScholarship(s.id, { waecPercentage: newPct.toFixed(2) });
+        }));
+      } catch { /* non-fatal — scale is saved even if recalculation partially fails */ }
+
       res.json({ message: "WAEC grade scale updated successfully", scale: validated });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

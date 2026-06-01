@@ -534,7 +534,7 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/waec-grade-scale"] });
       setWaecScaleSaved(true);
       setTimeout(() => setWaecScaleSaved(false), 3000);
-      toast({ title: "Grade Scale Updated ✓", description: "All future WAEC applications will use the new point values." });
+      toast({ title: "Grade Scale Updated ✓", description: "All existing and future WAEC scores have been recalculated with the new point values." });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
@@ -972,7 +972,7 @@ export default function AdminDashboard() {
       {/* Main */}
       <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Header */}
-        <header className="h-14 bg-white border-b flex items-center justify-between px-4 md:px-6 shrink-0 shadow-sm z-10 sticky top-0">
+        <header className="h-14 bg-white dark:bg-slate-900 border-b dark:border-slate-800 flex items-center justify-between px-4 md:px-6 shrink-0 shadow-sm z-10 sticky top-0">
           <div className="flex items-center gap-3">
             <button className="md:hidden p-1.5 rounded-lg hover:bg-slate-100" onClick={() => setSidebarOpen(true)}>
               <Menu className="w-5 h-5 text-slate-600" />
@@ -995,7 +995,7 @@ export default function AdminDashboard() {
 
         {/* Mobile search */}
         {mobileSearchOpen && (
-          <div className="sm:hidden px-4 py-2 bg-white border-b">
+          <div className="sm:hidden px-4 py-2 bg-white dark:bg-slate-900 border-b dark:border-slate-800">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input autoFocus placeholder="Search users, emails, NIN..." className="pl-9 h-9 bg-slate-100 border-0 rounded-xl text-sm" value={search} onChange={e => setSearch(e.target.value)} />
@@ -1033,7 +1033,7 @@ export default function AdminDashboard() {
                     <CardHeader className="pb-3"><CardTitle className="text-base">Pending Applications</CardTitle><CardDescription>Require admin review</CardDescription></CardHeader>
                     <CardContent className="space-y-2">
                       {(pendingVerifications as any[]).slice(0, 5).map((v: any) => (
-                        <div key={v.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border hover:bg-white transition-colors">
+                        <div key={v.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-colors">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center font-semibold text-amber-700 text-sm">
                               {v.user?.firstName?.charAt(0)}
@@ -1108,7 +1108,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6 flex flex-row items-center justify-between">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6 flex flex-row items-center justify-between">
                     <div>
                       <CardTitle className="text-base">Student Applications</CardTitle>
                       <CardDescription>
@@ -1129,7 +1129,7 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">NIN</TableHead>
@@ -1146,7 +1146,7 @@ export default function AdminDashboard() {
                         {filteredVerifications.length === 0 ? (
                           <TableRow><TableCell colSpan={9} className="text-center py-10 text-slate-500">No applications found.</TableCell></TableRow>
                         ) : filteredVerifications.map((v: any) => (
-                          <TableRow key={v.id} className="hover:bg-slate-50/50">
+                          <TableRow key={v.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6">
                               <div className="font-medium text-slate-900 text-sm">{v.user?.firstName} {v.user?.lastName}</div>
                               <div className="text-xs text-slate-500">{v.user?.email}</div>
@@ -1242,13 +1242,13 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">Pending Disbursements</CardTitle>
                     <CardDescription>{filteredDisbursements.length} payouts awaiting processing</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Ref</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
@@ -1261,7 +1261,7 @@ export default function AdminDashboard() {
                         {filteredDisbursements.length === 0 ? (
                           <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-500">No pending payouts.</TableCell></TableRow>
                         ) : filteredDisbursements.map((d: any) => (
-                          <TableRow key={d.id} className="hover:bg-slate-50/50">
+                          <TableRow key={d.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6 font-mono text-xs text-slate-400">DIS-{String(d.id).padStart(5, "0")}</TableCell>
                             <TableCell>
                               <div className="font-medium text-sm text-slate-900">{d.user?.firstName} {d.user?.lastName}</div>
@@ -1309,13 +1309,13 @@ export default function AdminDashboard() {
                   if (filtered.length === 0) return null;
                   return (
                     <Card className="border-0 shadow-sm overflow-hidden">
-                      <CardHeader className="border-b bg-white py-4 px-6">
+                      <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                         <CardTitle className="text-base">Disbursement History</CardTitle>
                         <CardDescription>{filtered.length} processed — full record of all completed, declined &amp; adjusted payouts</CardDescription>
                       </CardHeader>
                       <div className="overflow-x-auto">
                         <Table>
-                          <TableHeader className="bg-slate-50">
+                          <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                             <TableRow>
                               <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Ref</TableHead>
                               <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
@@ -1326,7 +1326,7 @@ export default function AdminDashboard() {
                           </TableHeader>
                           <TableBody>
                             {filtered.map((d: any) => (
-                              <TableRow key={d.id} className="hover:bg-slate-50/50">
+                              <TableRow key={d.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                                 <TableCell className="px-6 font-mono text-xs text-slate-400">DIS-{String(d.id).padStart(5, "0")}</TableCell>
                                 <TableCell>
                                   <div className="font-medium text-sm text-slate-900">{d.user?.firstName} {d.user?.lastName}</div>
@@ -1364,7 +1364,7 @@ export default function AdminDashboard() {
                   const noLienYet  = disbursed.filter((e: any) => parseFloat(e.lienAmount ?? "0") === 0);
                   return (
                     <Card className="border-0 shadow-sm overflow-hidden">
-                      <CardHeader className="border-b bg-white py-4 px-6">
+                      <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                         <div className="flex items-center justify-between">
                           <div>
                             <CardTitle className="text-base flex items-center gap-2">
@@ -1384,7 +1384,7 @@ export default function AdminDashboard() {
                         <div className="overflow-x-auto border-b">
                           <p className="px-6 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Active Liens</p>
                           <Table>
-                            <TableHeader className="bg-slate-50">
+                            <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                               <TableRow>
                                 <TableHead className="px-6 font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
                                 <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet Balance</TableHead>
@@ -1401,7 +1401,7 @@ export default function AdminDashboard() {
                                 const lien = parseFloat(w.lienAmount ?? "0");
                                 const avail = Math.max(0, bal - lien);
                                 return (
-                                  <TableRow key={w.userId} className="hover:bg-slate-50/50">
+                                  <TableRow key={w.userId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                                     <TableCell className="px-6">
                                       <div className="font-medium text-sm text-slate-900">{w.user?.firstName} {w.user?.lastName}</div>
                                       <div className="text-xs text-slate-500">{w.user?.email}</div>
@@ -1440,7 +1440,7 @@ export default function AdminDashboard() {
                         <div className="overflow-x-auto">
                           <p className="px-6 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Disbursed — No Lien Active</p>
                           <Table>
-                            <TableHeader className="bg-slate-50">
+                            <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                               <TableRow>
                                 <TableHead className="px-6 font-semibold text-slate-600 text-xs uppercase tracking-wide">Student</TableHead>
                                 <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Wallet Balance</TableHead>
@@ -1451,7 +1451,7 @@ export default function AdminDashboard() {
                             </TableHeader>
                             <TableBody>
                               {noLienYet.map((e: any) => (
-                                <TableRow key={e.userId} className="hover:bg-slate-50/50">
+                                <TableRow key={e.userId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                                   <TableCell className="px-6">
                                     <div className="font-medium text-sm text-slate-900">{e.user?.firstName} {e.user?.lastName}</div>
                                     <div className="text-xs text-slate-500">{e.user?.email}</div>
@@ -1488,13 +1488,13 @@ export default function AdminDashboard() {
             {activeTab === "loans" && (
               <motion.div key="loans" variants={slide} initial="hidden" animate="visible" exit="exit">
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">All Loan Applications</CardTitle>
                     <CardDescription>{(allLoans as any[]).length} total — {(allLoans as any[]).filter((l: any) => l.status === "pending").length} pending action</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Role</TableHead>
@@ -1511,7 +1511,7 @@ export default function AdminDashboard() {
                         {filteredLoans.length === 0 ? (
                           <TableRow><TableCell colSpan={9} className="text-center py-10 text-slate-500">No loans found.</TableCell></TableRow>
                         ) : filteredLoans.map((l: any) => (
-                          <TableRow key={l.id} className="hover:bg-slate-50/50">
+                          <TableRow key={l.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6">
                               <div className="font-medium text-sm text-slate-900">{l.user?.firstName} {l.user?.lastName}</div>
                               <div className="text-xs text-slate-500">{l.user?.email}</div>
@@ -1562,13 +1562,13 @@ export default function AdminDashboard() {
                 </Card>
 
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">All Platform Users</CardTitle>
                     <CardDescription>{(allUsers as any[]).length} users registered (students + affiliates)</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Role</TableHead>
@@ -1584,7 +1584,7 @@ export default function AdminDashboard() {
                         {filteredUsers.length === 0 ? (
                           <TableRow><TableCell colSpan={8} className="text-center py-10 text-slate-500">No users found.</TableCell></TableRow>
                         ) : filteredUsers.map((u: any) => (
-                          <TableRow key={u.id} className="hover:bg-slate-50/50">
+                          <TableRow key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6">
                               <div className="font-medium text-sm text-slate-900">{u.firstName} {u.lastName}</div>
                               <div className="text-xs text-slate-500">{u.email}</div>
@@ -1656,13 +1656,13 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">Affiliate Directory</CardTitle>
                     <CardDescription>{(allAffiliates as any[]).length} registered affiliates</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Affiliate</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Code</TableHead>
@@ -1679,7 +1679,7 @@ export default function AdminDashboard() {
                         {filteredAffiliates.length === 0 ? (
                           <TableRow><TableCell colSpan={9} className="text-center py-10 text-slate-500">No users with affiliate codes found.</TableCell></TableRow>
                         ) : filteredAffiliates.map((a: any) => (
-                          <TableRow key={a.id} className="hover:bg-slate-50/50">
+                          <TableRow key={a.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6">
                               <div className="font-medium text-sm text-slate-900">{a.firstName} {a.lastName}</div>
                               <div className="text-xs text-slate-500">{a.email}</div>
@@ -1749,13 +1749,13 @@ export default function AdminDashboard() {
 
                 {/* Commission history table */}
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">Referral Commission History</CardTitle>
                     <CardDescription>All 5% referral commissions credited to members (latest 200)</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">#</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Referrer</TableHead>
@@ -1773,7 +1773,7 @@ export default function AdminDashboard() {
                             </TableCell>
                           </TableRow>
                         ) : (referralsData as any).commissions?.map((r: any, idx: number) => (
-                          <TableRow key={r.id} className="hover:bg-slate-50/50">
+                          <TableRow key={r.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6 text-xs text-slate-400">{idx + 1}</TableCell>
                             <TableCell>
                               <div className="font-medium text-sm text-slate-900">{r.referrer_name}</div>
@@ -1799,7 +1799,7 @@ export default function AdminDashboard() {
               <motion.div key="transactions" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
                 <div className="flex items-center gap-3">
                   <Select value={txFilter} onValueChange={setTxFilter}>
-                    <SelectTrigger className="w-52 h-9 bg-white border text-sm">
+                    <SelectTrigger className="w-52 h-9 bg-white dark:bg-slate-800 border text-sm">
                       <SelectValue placeholder="Filter by type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1815,7 +1815,7 @@ export default function AdminDashboard() {
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">ID</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
@@ -1830,7 +1830,7 @@ export default function AdminDashboard() {
                         {filteredTxns.length === 0 ? (
                           <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-500">No transactions found.</TableCell></TableRow>
                         ) : filteredTxns.slice(0, 100).map((t: any) => (
-                          <TableRow key={t.id} className="hover:bg-slate-50/50">
+                          <TableRow key={t.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6 font-mono text-xs text-slate-400">#{t.id}</TableCell>
                             <TableCell>
                               <div className="text-sm font-medium text-slate-900">{t.user?.firstName} {t.user?.lastName}</div>
@@ -1866,13 +1866,13 @@ export default function AdminDashboard() {
                   <StatCard title="Commission Earned" value={fmtUSD(ecommerceStats?.totalCommission)} icon={DollarSign} color="tsia" sub="8% per sale" />
                 </div>
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">Recent Orders</CardTitle>
                     <CardDescription>Latest {filteredOrders.length} marketplace transactions</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Ref</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Product</TableHead>
@@ -1888,7 +1888,7 @@ export default function AdminDashboard() {
                         {filteredOrders.length === 0 ? (
                           <TableRow><TableCell colSpan={8} className="text-center py-10 text-slate-500">No orders found.</TableCell></TableRow>
                         ) : filteredOrders.slice(0, 50).map((o: any) => (
-                          <TableRow key={o.id} className="hover:bg-slate-50/50">
+                          <TableRow key={o.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6 font-mono text-xs text-slate-400">ORD-{String(o.id).padStart(5,"0")}</TableCell>
                             <TableCell className="text-sm font-medium text-slate-900 max-w-[180px] truncate">{o.product?.title || "—"}</TableCell>
                             <TableCell className="text-xs text-slate-600">{o.buyer?.firstName} {o.buyer?.lastName}</TableCell>
@@ -1907,13 +1907,13 @@ export default function AdminDashboard() {
                 {/* All Listings table */}
                 {(ecommerceStats as any)?.allProducts?.length > 0 && (
                   <Card className="border-0 shadow-sm overflow-hidden">
-                    <CardHeader className="border-b bg-white py-4 px-6">
+                    <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                       <CardTitle className="text-base">All Listings</CardTitle>
                       <CardDescription>Remove any listing that violates marketplace rules</CardDescription>
                     </CardHeader>
                     <div className="overflow-x-auto">
                       <Table>
-                        <TableHeader className="bg-slate-50">
+                        <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                           <TableRow>
                             <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">ID</TableHead>
                             <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Title</TableHead>
@@ -1926,7 +1926,7 @@ export default function AdminDashboard() {
                         </TableHeader>
                         <TableBody>
                           {((ecommerceStats as any).allProducts as any[]).map((p: any) => (
-                            <TableRow key={p.id} className="hover:bg-slate-50/50" data-testid={`row-admin-listing-${p.id}`}>
+                            <TableRow key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30" data-testid={`row-admin-listing-${p.id}`}>
                               <TableCell className="px-6 font-mono text-xs text-slate-400">#{p.id}</TableCell>
                               <TableCell className="text-sm font-medium text-slate-900 max-w-[180px] truncate">{p.title}</TableCell>
                               <TableCell className="text-xs text-slate-600">{p.sellerName ?? "—"}</TableCell>
@@ -1990,7 +1990,7 @@ export default function AdminDashboard() {
 
                 {/* ─── Per-User Bot Session Management ─────────────────────────────── */}
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <div className="flex items-center justify-between">
                       <div>
                         <CardTitle className="text-base flex items-center gap-2"><Users2 className="w-4 h-4 text-purple-500" /> Trade Wallet Management</CardTitle>
@@ -2005,7 +2005,7 @@ export default function AdminDashboard() {
                     ) : (tradeUsers as any[]).map((u: any) => (
                       <div key={u.userId}>
                         {/* User row — two-line layout so actions never overflow the name */}
-                        <div className="flex flex-col px-4 sm:px-6 py-3 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 cursor-pointer gap-2"
+                        <div className="flex flex-col px-4 sm:px-6 py-3 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 dark:hover:bg-slate-800/30 cursor-pointer gap-2"
                           onClick={() => setTradeExpandedUser(tradeExpandedUser === u.userId ? null : u.userId)}
                           data-testid={`row-trade-user-${u.userId}`}>
                           {/* Row 1: avatar + name/email + status + chevron */}
@@ -2149,13 +2149,13 @@ export default function AdminDashboard() {
 
                 {/* ─── Recent Transactions (collapsed) ─────────────────────────────── */}
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">Recent Trade Transactions</CardTitle>
                     <CardDescription>Latest bot trading and affiliate pool activity</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">ID</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Type</TableHead>
@@ -2168,7 +2168,7 @@ export default function AdminDashboard() {
                         {(tradeStats?.recentTransactions || []).length === 0 ? (
                           <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-500">No trade transactions yet.</TableCell></TableRow>
                         ) : (tradeStats?.recentTransactions || []).map((t: any) => (
-                          <TableRow key={t.id} className="hover:bg-slate-50/50">
+                          <TableRow key={t.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6 font-mono text-xs text-slate-400">#{t.id}</TableCell>
                             <TableCell>
                               <Badge variant="outline" className={`text-xs ${t.type === "bot_earning" ? "bg-green-50 text-green-700 border-green-200" : t.type === "deposit" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-50 text-slate-600"}`}>
@@ -2338,13 +2338,13 @@ export default function AdminDashboard() {
             {activeTab === "deposits" && (
               <motion.div key="deposits" variants={slide} initial="hidden" animate="visible" exit="exit">
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">Wallet Deposits</CardTitle>
                     <CardDescription>All crypto and fiat deposits. Deposits are auto-confirmed by payment gateways — no manual approval needed.</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
@@ -2359,7 +2359,7 @@ export default function AdminDashboard() {
                         {(allDeposits as any[]).length === 0 ? (
                           <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-500">No deposits yet.</TableCell></TableRow>
                         ) : (allDeposits as any[]).map((d: any) => (
-                          <TableRow key={d.id} className="hover:bg-slate-50/50">
+                          <TableRow key={d.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6">
                               <div className="font-medium text-sm text-slate-900">{d.userName}</div>
                               <div className="text-xs text-slate-500">{d.userEmail}</div>
@@ -2455,7 +2455,7 @@ export default function AdminDashboard() {
                 </Card>
 
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Banknote className="w-4 h-4 text-tsia-green" /> Bank Transfers
                     </CardTitle>
@@ -2463,7 +2463,7 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
@@ -2491,7 +2491,7 @@ export default function AdminDashboard() {
                           };
                           const sm = statusMeta[t.status] ?? { label: t.status, cls: "bg-slate-100 text-slate-600 border-slate-300" };
                           return (
-                            <TableRow key={t.id} className={`hover:bg-slate-50/50 ${!isPending ? "opacity-80" : ""}`}>
+                            <TableRow key={t.id} className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/30 ${!isPending ? "opacity-80" : ""}`}>
                               <TableCell className="px-6">
                                 <div className="font-medium text-sm text-slate-900">{t.userName}</div>
                                 <div className="text-xs text-slate-500">{t.userEmail}</div>
@@ -2959,7 +2959,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base flex items-center gap-2">
                       <ArrowUpRight className="w-4 h-4 text-tsia-green" /> Trade → Fintech Wallet Transfers
                     </CardTitle>
@@ -3022,7 +3022,7 @@ export default function AdminDashboard() {
                 </div>
                 {/* Wallet floor detail */}
                 <Card className="border-0 shadow-sm">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-tsia-green" /> Wallet Floor Reserve Detail</CardTitle>
                     <CardDescription>$2 minimum locked in {(reserveFundData as any)?.walletsAtMin ?? 0} of {(reserveFundData as any)?.totalWallets ?? 0} activated wallets</CardDescription>
                   </CardHeader>
@@ -3038,7 +3038,7 @@ export default function AdminDashboard() {
                 </Card>
                 {/* Commission profits */}
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">Platform Commission Profits</CardTitle>
                     <CardDescription>TS-Mart Online Stores commissions + withdrawal fees, minus affiliate pool payouts</CardDescription>
                   </CardHeader>
@@ -3070,7 +3070,7 @@ export default function AdminDashboard() {
                   )}
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Month</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">E-com Commission</TableHead>
@@ -3083,7 +3083,7 @@ export default function AdminDashboard() {
                         {((reserveProfitData as any)?.chartData ?? []).length === 0 ? (
                           <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-500">No profit data yet.</TableCell></TableRow>
                         ) : ((reserveProfitData as any)?.chartData ?? []).map((r: any, i: number) => (
-                          <TableRow key={i} className="hover:bg-slate-50/50">
+                          <TableRow key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6 font-medium text-sm">{r.month}</TableCell>
                             <TableCell className="text-blue-600 font-semibold text-sm">{fmtUSD(r.ecomCommission)}</TableCell>
                             <TableCell className="text-purple-600 font-semibold text-sm">{fmtUSD(r.withdrawalFees)}</TableCell>
@@ -3146,7 +3146,7 @@ export default function AdminDashboard() {
 
                 {/* ─── Trust Funders table ──────────────────────────────────────── */}
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <div className="flex items-center justify-between">
                       <div>
                         <CardTitle className="text-base flex items-center gap-2"><Award className="w-4 h-4 text-amber-500" /> Trust Funders (Co-Affiliates)</CardTitle>
@@ -3156,7 +3156,7 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Name / Email</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Tier</TableHead>
@@ -3188,7 +3188,7 @@ export default function AdminDashboard() {
                           const available = tf.availableAmount ?? 0;
                           const withdrawn = parseFloat(tf.withdrawnAmount ?? "0");
                           return (
-                            <TableRow key={tf.id} className="hover:bg-slate-50/50">
+                            <TableRow key={tf.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                               <TableCell className="px-6">
                                 <p className="font-medium text-sm text-slate-900">{tf.userName}</p>
                                 <p className="text-xs text-slate-500">{tf.userEmail}</p>
@@ -3306,13 +3306,13 @@ export default function AdminDashboard() {
             {activeTab === "messages" && (
               <motion.div key="messages" variants={slide} initial="hidden" animate="visible" exit="exit">
                 <Card className="border-0 shadow-sm overflow-hidden">
-                  <CardHeader className="border-b bg-white py-4 px-6">
+                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base">Forum Messages</CardTitle>
                     <CardDescription>Latest 500 forum posts. Delete inappropriate content.</CardDescription>
                   </CardHeader>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-slate-50">
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
                         <TableRow>
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Author</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Topic</TableHead>
@@ -3326,7 +3326,7 @@ export default function AdminDashboard() {
                         {(allMessages as any[]).length === 0 ? (
                           <TableRow><TableCell colSpan={6} className="text-center py-10 text-slate-500">No messages yet.</TableCell></TableRow>
                         ) : (allMessages as any[]).map((m: any) => (
-                          <TableRow key={m.id} className="hover:bg-slate-50/50">
+                          <TableRow key={m.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                             <TableCell className="px-6">
                               <div className="font-medium text-sm text-slate-900">{m.authorName}</div>
                               <div className="text-xs text-slate-500">{m.authorEmail}</div>
@@ -3507,7 +3507,7 @@ export default function AdminDashboard() {
                               declined: "bg-red-100 text-red-800",
                             };
                             return (
-                              <TableRow key={s.id} className="hover:bg-slate-50/50" data-testid={`row-scholarship-${s.id}`}>
+                              <TableRow key={s.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30" data-testid={`row-scholarship-${s.id}`}>
                                 <TableCell>
                                   <div>
                                     <p className="font-semibold text-sm text-slate-800">{s.user?.firstName} {s.user?.lastName}</p>
@@ -4233,32 +4233,40 @@ export default function AdminDashboard() {
                             ))}
                           </div>
 
-                          <div className="bg-slate-50 rounded-xl border p-4">
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Score Preview</p>
-                            <p className="text-xs text-slate-500">
-                              A student with 5 A1s would score{" "}
-                              <strong className="text-tsia-green">
-                                {(() => {
-                                  const vals = GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0);
-                                  const maxP = Math.max(...vals, 1);
-                                  const minP = Math.min(...vals.filter(v => v >= 0));
-                                  const a1 = parseFloat(getValue("A1")) || 0;
-                                  const denom = maxP - minP;
-                                  return denom === 0 ? "100.0" : (((a1 - minP) / denom) * 100).toFixed(1);
-                                })()}%
-                              </strong>
-                              . A student with 5 F9s would score{" "}
-                              <strong className="text-red-500">
-                                {(() => {
-                                  const vals = GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0);
-                                  const maxP = Math.max(...vals, 1);
-                                  const minP = Math.min(...vals.filter(v => v >= 0));
-                                  const f9 = parseFloat(getValue("F9")) || 0;
-                                  const denom = maxP - minP;
-                                  return denom === 0 ? "0.0" : (((f9 - minP) / denom) * 100).toFixed(1);
-                                })()}%
-                              </strong>.
-                            </p>
+                          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border dark:border-slate-700 p-4 space-y-2">
+                            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Score Preview</p>
+                            {(() => {
+                              const vals = GRADE_KEYS.map(k => parseFloat(getValue(k)) || 0);
+                              const maxP = Math.max(...vals, 1);
+                              const minP = Math.min(...vals.filter(v => v >= 0));
+                              const denom = maxP - minP;
+                              const calcPct = (gradeKeys: string[]) => {
+                                if (denom === 0) return "—";
+                                const pts = gradeKeys.reduce((s, k) => s + (parseFloat(getValue(k)) || 0), 0);
+                                const max = gradeKeys.length * maxP;
+                                const min = gradeKeys.length * minP;
+                                return (((pts - min) / (max - min)) * 100).toFixed(1) + "%";
+                              };
+                              const rows: [string, string][] = [
+                                ["5 × A1", calcPct(["A1","A1","A1","A1","A1"])],
+                                ["3 × A1 + 2 × B2", calcPct(["A1","A1","A1","B2","B2"])],
+                                ["2 × A1 + 2 × B2 + 1 × C4", calcPct(["A1","A1","B2","B2","C4"])],
+                                ["5 × B3", calcPct(["B3","B3","B3","B3","B3"])],
+                                ["3 × C4 + 2 × C6", calcPct(["C4","C4","C4","C6","C6"])],
+                                ["5 × F9", calcPct(["F9","F9","F9","F9","F9"])],
+                              ];
+                              return (
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                  {rows.map(([label, score]) => (
+                                    <div key={label} className="flex justify-between items-center text-xs">
+                                      <span className="text-slate-500 dark:text-slate-400">{label}</span>
+                                      <strong className={parseFloat(score) >= 70 ? "text-tsia-green" : parseFloat(score) >= 50 ? "text-amber-500" : "text-red-500"}>{score}</strong>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 pt-1">Scores ≥ 70% pass the WAEC component. Aggregate (WAEC + CBT) must be ≥ 70% overall.</p>
                           </div>
 
                           <div className="flex gap-2">

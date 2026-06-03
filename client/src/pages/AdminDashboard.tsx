@@ -186,6 +186,7 @@ export default function AdminDashboard() {
   const [stopBotConfirm, setStopBotConfirm] = useState<{ userId: number; name: string } | null>(null);
   const [removeTradeConfirm, setRemoveTradeConfirm] = useState<{ userId: number; name: string } | null>(null);
   const [tradeAdjustAmount, setTradeAdjustAmount] = useState("");
+  const [tradeAdjustDays,   setTradeAdjustDays]   = useState("");
   const [tradeAdjustNote, setTradeAdjustNote]   = useState("");
   const [sessionOverrideDialog, setSessionOverrideDialog] = useState<{ txId: number; userId: number; currentAmt: number } | null>(null);
   const [sessionOverrideAmt, setSessionOverrideAmt] = useState("");
@@ -612,15 +613,15 @@ export default function AdminDashboard() {
   });
 
   const tradeAdjustMutation = useMutation({
-    mutationFn: async ({ userId, amount, note }: { userId: number; amount: string; note: string }) => {
-      const res = await apiRequest("POST", `/api/admin/trade-wallets/${userId}/adjust`, { amount, note });
+    mutationFn: async ({ userId, amount, days, note }: { userId: number; amount: string; days: string; note: string }) => {
+      const res = await apiRequest("POST", `/api/admin/trade-wallets/${userId}/adjust`, { amount, days, note });
       const d = await res.json(); if (!res.ok) throw new Error(d.message); return d;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-stats"] });
-      setTradeAdjustDialog(null); setTradeAdjustAmount(""); setTradeAdjustNote("");
-      toast({ title: "Trade Balance Adjusted ✓", description: "User's trade capital updated." });
+      setTradeAdjustDialog(null); setTradeAdjustAmount(""); setTradeAdjustDays(""); setTradeAdjustNote("");
+      toast({ title: "Trade Adjusted ✓", description: "User's trade capital and/or days updated." });
     },
     onError: (e: any) => toast({ title: "Adjustment failed", description: e.message, variant: "destructive" }),
   });
@@ -2221,17 +2222,24 @@ export default function AdminDashboard() {
                   <DialogContent className="max-w-sm">
                     <DialogHeader>
                       <DialogTitle>Adjust Trade Capital — {tradeAdjustDialog?.name}</DialogTitle>
-                      <DialogDescription>Use a positive value to credit, negative to debit. A transaction record will be created.</DialogDescription>
+                      <DialogDescription>Use positive values to add, negative to deduct. At least one field (capital or days) is required.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3 py-2">
                       <div>
-                        <Label>Amount (USD)</Label>
+                        <Label>Capital Adjustment (USD)</Label>
                         <div className="relative mt-1">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
                           <Input type="number" step="0.01" className="pl-7" placeholder="e.g. 10.00 or -5.00"
                             value={tradeAdjustAmount} onChange={e => setTradeAdjustAmount(e.target.value)}
                             data-testid="input-trade-adjust-amount" />
                         </div>
+                      </div>
+                      <div>
+                        <Label>Trading Days Adjustment</Label>
+                        <Input type="number" step="1" className="mt-1" placeholder="e.g. 5 or -3"
+                          value={tradeAdjustDays} onChange={e => setTradeAdjustDays(e.target.value)}
+                          data-testid="input-trade-adjust-days" />
+                        <p className="text-xs text-muted-foreground mt-1">Adds or subtracts from the user's current day number.</p>
                       </div>
                       <div>
                         <Label>Note (optional)</Label>
@@ -2241,10 +2249,10 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setTradeAdjustDialog(null)}>Cancel</Button>
+                      <Button variant="outline" onClick={() => { setTradeAdjustDialog(null); setTradeAdjustAmount(""); setTradeAdjustDays(""); setTradeAdjustNote(""); }}>Cancel</Button>
                       <Button className="bg-tsia-green hover:bg-tsia-green/90 text-white"
-                        disabled={!tradeAdjustAmount || tradeAdjustMutation.isPending}
-                        onClick={() => tradeAdjustDialog && tradeAdjustMutation.mutate({ userId: tradeAdjustDialog.userId, amount: tradeAdjustAmount, note: tradeAdjustNote })}
+                        disabled={(!tradeAdjustAmount && !tradeAdjustDays) || tradeAdjustMutation.isPending}
+                        onClick={() => tradeAdjustDialog && tradeAdjustMutation.mutate({ userId: tradeAdjustDialog.userId, amount: tradeAdjustAmount || "0", days: tradeAdjustDays, note: tradeAdjustNote })}
                         data-testid="button-confirm-trade-adjust">
                         {tradeAdjustMutation.isPending ? "Saving…" : "Apply Adjustment"}
                       </Button>

@@ -5082,14 +5082,16 @@ export async function registerRoutes(
       if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
 
       const targetId = parseInt(req.params.userId);
-      const { amount, note } = req.body;
+      const { amount, note, days } = req.body;
       if (!amount || isNaN(parseFloat(amount))) return res.status(400).json({ message: "amount required" });
       const amt = parseFloat(parseFloat(amount).toFixed(6));
+      const daysDelta = days !== undefined && days !== "" ? parseInt(days) : 0;
 
       await db.execute(sql`
         UPDATE trade_wallets
         SET trade_balance = GREATEST(0, CAST(trade_balance AS numeric) + ${amt}),
             locked_principal = CASE WHEN ${amt} > 0 THEN CAST(locked_principal AS numeric) + ${amt} ELSE locked_principal END,
+            trading_day_number = GREATEST(0, trading_day_number + ${daysDelta}),
             updated_at = NOW()
         WHERE user_id = ${targetId}
       `);
@@ -5162,6 +5164,14 @@ export async function registerRoutes(
       const targetId = parseInt(req.params.userId);
       if (isNaN(targetId)) return res.status(400).json({ message: "Invalid user ID" });
 
+      // Nullify FK references in affiliate_trade_shares before deleting trade_transactions
+      await db.execute(sql`
+        UPDATE affiliate_trade_shares
+        SET trade_transaction_id = NULL
+        WHERE trade_transaction_id IN (
+          SELECT id FROM trade_transactions WHERE user_id = ${targetId}
+        )
+      `);
       // Delete all trade transactions for this user
       await db.execute(sql`DELETE FROM trade_transactions WHERE user_id = ${targetId}`);
       // Delete the trade wallet

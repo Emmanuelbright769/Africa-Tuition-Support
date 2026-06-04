@@ -134,6 +134,7 @@ export interface IStorage {
   addReferralCommission(userId: number, amount: string): Promise<TradeWallet>;
   subtractReferralCommission(userId: number, amount: string): Promise<TradeWallet>;
   setBotActivatedAt(userId: number, ts: Date | null): Promise<TradeWallet>;
+  setBotLocked(userId: number, locked: boolean): Promise<TradeWallet>;
   creditBotEarnings(userId: number, earningAmount: string): Promise<TradeWallet>;
   applyBotLoss(userId: number, lossAmount: string): Promise<TradeWallet>;
   assignLossDays(userId: number, days: number[]): Promise<TradeWallet>;
@@ -907,6 +908,14 @@ export class DatabaseStorage implements IStorage {
   async setBotActivatedAt(userId: number, ts: Date | null): Promise<TradeWallet> {
     const [updated] = await db.update(tradeWallets)
       .set({ botActivatedAt: ts, updatedAt: new Date() })
+      .where(eq(tradeWallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async setBotLocked(userId: number, locked: boolean): Promise<TradeWallet> {
+    const [updated] = await db.update(tradeWallets)
+      .set({ botLocked: locked, updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId))
       .returning();
     return updated;

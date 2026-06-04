@@ -2956,6 +2956,7 @@ export async function registerRoutes(
       if (isWeekend) return res.status(400).json({ message: "The market is closed on weekends. Trading resumes Monday at 1:00 PM GMT." });
       if (isBeforeOpen) return res.status(400).json({ message: "The activation window opens at 1:00 PM GMT (Mon–Fri)." });
       const wallet = await storage.getOrCreateTradeWallet(userId);
+      if (wallet.botLocked) return res.status(403).json({ message: "Your bot access has been suspended by the platform. Please contact support to restore access." });
       if (wallet.roiComplete) return res.status(400).json({ message: "Trading cycle complete. Your 120-day trading cycle has ended. Make a new top-up to start a fresh cycle." });
       if ((wallet.tradingDayNumber ?? 0) >= TRADE_CYCLE_DAYS) return res.status(400).json({ message: "Trading cycle complete. Your 120-day trading cycle has ended. Make a new top-up to start a fresh cycle." });
       if (parseFloat(wallet.tradeBalance) <= 0) return res.status(400).json({ message: "No trade balance." });
@@ -4984,12 +4985,13 @@ export async function registerRoutes(
           u.id, u.first_name, u.last_name, u.email,
           tw.trade_balance, tw.locked_principal, tw.trading_day_number,
           tw.roi_complete, tw.bot_activated_at, tw.total_bot_earnings,
-          tw.referral_commission_balance
+          tw.referral_commission_balance, tw.bot_locked
         FROM trade_wallets tw
         JOIN users u ON u.id = tw.user_id
         WHERE CAST(tw.trade_balance AS numeric) > 0
            OR CAST(tw.locked_principal AS numeric) > 0
            OR tw.trading_day_number > 0
+           OR tw.bot_locked = true
         ORDER BY CAST(tw.trade_balance AS numeric) DESC
       `);
       const nowMs = Date.now();
@@ -5005,6 +5007,7 @@ export async function registerRoutes(
         totalBotEarnings: parseFloat(r.total_bot_earnings ?? "0"),
         referralCommission: parseFloat(r.referral_commission_balance ?? "0"),
         botActivatedAt: r.bot_activated_at,
+        botLocked: r.bot_locked ?? false,
         isActive: r.bot_activated_at
           ? (nowMs - new Date(r.bot_activated_at).getTime()) < BOT_MAX_MS
           : false,
@@ -5194,11 +5197,13 @@ export async function registerRoutes(
       const targetId = parseInt(req.params.userId);
       if (isNaN(targetId)) return res.status(400).json({ message: "Invalid user ID" });
 
-      // Reset bot session state — unlocks capital, clears trading day counter
+      // Reset bot session state, clear bot activated timestamp, and lock the bot
       await db.execute(sql`
         UPDATE trade_wallets
         SET locked_principal = '0.000000',
             trading_day_number = 0,
+            bot_activated_at = NULL,
+            bot_locked = TRUE,
             updated_at = NOW()
         WHERE user_id = ${targetId}
       `);
@@ -5212,10 +5217,53 @@ export async function registerRoutes(
         affiliateShareDeduction: "0",
         netAmount: "0.000000",
         status: "completed",
-        note: `Bot session stopped by admin (${admin.firstName} ${admin.lastName})`,
+        note: `Bot session stopped and locked by admin (${admin.firstName} ${admin.lastName})`,
       });
 
-      res.json({ ok: true, message: "Bot session stopped successfully." });
+      // Send in-app notification to user
+      try {
+        const notif = await storage.createNotification({
+          userId: targetId,
+          type: "trade_warning",
+          title: "Bot Access Suspended",
+          message: "Your Itera Trading BOT has been stopped and your access suspended by the platform. You will not be able to re-activate it until access is restored by an administrator. Please contact support if you have questions.",
+          read: false,
+        });
+        pushToUser(targetId, "notification", notif);
+      } catch (_) {}
+
+      res.json({ ok: true, message: "Bot session stopped and locked successfully." });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN: Unlock a user's bot (re-grant access after a stop-lock) ──────────
+  app.post("/api/admin/trade-users/:userId/unlock-bot", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const targetId = parseInt(req.params.userId);
+      if (isNaN(targetId)) return res.status(400).json({ message: "Invalid user ID" });
+
+      await storage.setBotLocked(targetId, false);
+
+      // Notify user
+      try {
+        const notif = await storage.createNotification({
+          userId: targetId,
+          type: "trade_warning",
+          title: "Bot Access Restored",
+          message: "Your Itera Trading BOT access has been restored by the platform. You may now re-activate your bot during the next trading window.",
+          read: false,
+        });
+        pushToUser(targetId, "notification", notif);
+      } catch (_) {}
+
+      res.json({ ok: true, message: "Bot access restored successfully." });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

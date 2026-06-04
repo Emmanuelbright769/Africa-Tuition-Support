@@ -184,6 +184,7 @@ export default function AdminDashboard() {
   const [tradeExpandedUser, setTradeExpandedUser] = useState<number | null>(null);
   const [tradeAdjustDialog, setTradeAdjustDialog] = useState<{ userId: number; name: string } | null>(null);
   const [stopBotConfirm, setStopBotConfirm] = useState<{ userId: number; name: string } | null>(null);
+  const [unlockBotConfirm, setUnlockBotConfirm] = useState<{ userId: number; name: string } | null>(null);
   const [removeTradeConfirm, setRemoveTradeConfirm] = useState<{ userId: number; name: string } | null>(null);
   const [tradeAdjustAmount, setTradeAdjustAmount] = useState("");
   const [tradeAdjustDays,   setTradeAdjustDays]   = useState("");
@@ -566,9 +567,22 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-stats"] });
       setStopBotConfirm(null);
-      toast({ title: "Bot Stopped ✓", description: "User's active bot trade session has been stopped." });
+      toast({ title: "Bot Stopped & Locked ✓", description: "User's bot session has been stopped and bot access suspended until you unlock it." });
     },
     onError: (e: any) => toast({ title: "Stop failed", description: e.message, variant: "destructive" }),
+  });
+
+  const unlockBotMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await apiRequest("POST", `/api/admin/trade-users/${userId}/unlock-bot`, {});
+      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/trade-users"] });
+      setUnlockBotConfirm(null);
+      toast({ title: "Bot Unlocked ✓", description: "User can now re-activate their bot during the next trading window.", className: "border-green-500" });
+    },
+    onError: (e: any) => toast({ title: "Unlock failed", description: e.message, variant: "destructive" }),
   });
 
   const removeFromTradeMutation = useMutation({
@@ -2020,12 +2034,15 @@ export default function AdminDashboard() {
                               <p className="font-semibold text-sm truncate">{u.name}</p>
                               <p className="text-xs text-slate-500 truncate">{u.email}</p>
                             </div>
-                            <div className="shrink-0">
+                            <div className="shrink-0 flex items-center gap-1.5">
+                              {u.botLocked && (
+                                <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px]">🔒 BOT LOCKED</Badge>
+                              )}
                               {u.isActive
                                 ? <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">● BOT ACTIVE</Badge>
-                                : u.tradingDayNumber > 0
+                                : u.tradingDayNumber > 0 && !u.botLocked
                                   ? <Badge variant="outline" className="text-[10px] text-slate-500">Day {u.tradingDayNumber}/120</Badge>
-                                  : <Badge variant="outline" className="text-[10px] text-slate-400">No sessions</Badge>}
+                                  : !u.botLocked && <Badge variant="outline" className="text-[10px] text-slate-400">No sessions</Badge>}
                             </div>
                             <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${tradeExpandedUser === u.userId ? "rotate-180" : ""}`} />
                           </div>
@@ -2039,11 +2056,18 @@ export default function AdminDashboard() {
                               data-testid={`button-trade-adjust-${u.userId}`}>
                               Adjust Capital
                             </Button>
-                            {u.isActive && (
+                            {u.isActive && !u.botLocked && (
                               <Button size="sm" variant="outline" className="text-[11px] h-6 px-2.5 shrink-0 border-amber-300 text-amber-700 hover:bg-amber-50"
                                 onClick={() => setStopBotConfirm({ userId: u.userId, name: u.name })}
                                 data-testid={`button-stop-bot-${u.userId}`}>
-                                <XCircle className="w-3 h-3 mr-1" /> Stop Bot
+                                <XCircle className="w-3 h-3 mr-1" /> Stop & Lock
+                              </Button>
+                            )}
+                            {u.botLocked && (
+                              <Button size="sm" variant="outline" className="text-[11px] h-6 px-2.5 shrink-0 border-green-400 text-green-700 hover:bg-green-50"
+                                onClick={() => setUnlockBotConfirm({ userId: u.userId, name: u.name })}
+                                data-testid={`button-unlock-bot-${u.userId}`}>
+                                <LockOpen className="w-3 h-3 mr-1" /> Unlock Bot
                               </Button>
                             )}
                             <Button size="sm" variant="outline" className="text-[11px] h-6 px-2.5 shrink-0 border-orange-300 text-orange-700 hover:bg-orange-50"
@@ -2262,15 +2286,15 @@ export default function AdminDashboard() {
                   </DialogContent>
                 </Dialog>
 
-                {/* ─── Stop Bot Confirm Dialog ──────────────────────────────────────── */}
+                {/* ─── Stop & Lock Bot Confirm Dialog ──────────────────────────────── */}
                 <Dialog open={!!stopBotConfirm} onOpenChange={o => !o && setStopBotConfirm(null)}>
                   <DialogContent className="max-w-sm">
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2">
-                        <XCircle className="w-5 h-5 text-amber-500" /> Stop Bot — {stopBotConfirm?.name}
+                        <XCircle className="w-5 h-5 text-amber-500" /> Stop & Lock Bot — {stopBotConfirm?.name}
                       </DialogTitle>
                       <DialogDescription>
-                        This will immediately stop the user's active bot trade session and unlock their capital. Their earnings history and balance will be preserved.
+                        This will immediately stop the user's active bot session, unlock their capital, and <strong>suspend their bot access</strong>. They will not be able to re-activate their bot until you explicitly unlock it. The user will be notified.
                       </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="gap-2">
@@ -2281,7 +2305,32 @@ export default function AdminDashboard() {
                         onClick={() => stopBotConfirm && stopBotMutation.mutate(stopBotConfirm.userId)}
                         data-testid="button-confirm-stop-bot"
                       >
-                        {stopBotMutation.isPending ? "Stopping…" : "Stop Bot Session"}
+                        {stopBotMutation.isPending ? "Stopping…" : "Stop & Lock Bot"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* ─── Unlock Bot Confirm Dialog ────────────────────────────────────── */}
+                <Dialog open={!!unlockBotConfirm} onOpenChange={o => !o && setUnlockBotConfirm(null)}>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <LockOpen className="w-5 h-5 text-green-600" /> Restore Bot Access — {unlockBotConfirm?.name}
+                      </DialogTitle>
+                      <DialogDescription>
+                        This will restore the user's ability to activate their Itera Trading BOT. They will be notified and can re-activate during the next trading window.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                      <Button variant="outline" onClick={() => setUnlockBotConfirm(null)}>Cancel</Button>
+                      <Button
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        disabled={unlockBotMutation.isPending}
+                        onClick={() => unlockBotConfirm && unlockBotMutation.mutate(unlockBotConfirm.userId)}
+                        data-testid="button-confirm-unlock-bot"
+                      >
+                        {unlockBotMutation.isPending ? "Unlocking…" : "Restore Bot Access"}
                       </Button>
                     </DialogFooter>
                   </DialogContent>

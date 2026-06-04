@@ -786,6 +786,7 @@ export default function AffiliateDashboard() {
 
   // Sync bot session from DB when wallet data loads — handles server restarts where localStorage is gone
   const tradeWalletRaw = useQuery({ queryKey: ["/api/trade/wallet"] }).data as any;
+  const isBotLocked = !!(tradeWalletRaw?.botLocked);
   useEffect(() => {
     if (!tradeWalletRaw?.botActivatedAt) return;
     // Skip if we're currently in the middle of completing a session (race-condition guard)
@@ -1537,6 +1538,17 @@ export default function AffiliateDashboard() {
                                   : <><Power className="w-3.5 h-3.5 mr-1" /> Turn Off</>}
                               </Button>
                             </>
+                          ) : isBotLocked ? (
+                            // Bot access suspended by admin
+                            <div className="flex-1 flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                                <Lock className="w-4 h-4 text-red-500" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-red-600 dark:text-red-400">Bot access suspended</p>
+                                <p className="text-xs text-muted-foreground">Your Itera Trading BOT has been suspended by the platform. Contact support to have access restored.</p>
+                              </div>
+                            </div>
                           ) : !selectedBroker ? (
                             // No broker selected — block the bot (only shown when bot is NOT active)
                             <div className="flex-1 flex items-center gap-3">

@@ -1,0 +1,1 @@
+- [Exchange rate system](exchange-rate-system.md) — multi-currency rates stored as `{code}_ngn_buying_rate`/`_selling_rate` in platform_settings; `getAllRates()` helper + 5-min cache; separate `PUT /api/admin/exchange-rates` endpoint.

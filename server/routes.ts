@@ -58,6 +58,27 @@ async function getUsdNgnRates(): Promise<{ buying: number; selling: number }> {
 }
 function invalidateUsdNgnRatesCache() { _usdNgnRatesCache = null; }
 
+// ── Multi-currency exchange rates ──────────────────────────────────────────
+const RATE_CURRENCIES = ["usd", "gbp", "eur", "cad", "aud", "ghs", "kes", "zar"] as const;
+const RATE_DEFAULTS_BUY:  Record<string, number> = { usd: 1600, gbp: 2100, eur: 1750, cad: 1180, aud: 1020, ghs: 90, kes: 12, zar: 85 };
+const RATE_DEFAULTS_SELL: Record<string, number> = { usd: 1550, gbp: 2000, eur: 1680, cad: 1130, aud: 970,  ghs: 85, kes: 11, zar: 80 };
+let _allRatesCache: { data: Record<string, { buying: number; selling: number }>; cachedAt: number } | null = null;
+async function getAllRates(): Promise<Record<string, { buying: number; selling: number }>> {
+  if (_allRatesCache && Date.now() - _allRatesCache.cachedAt < 5 * 60 * 1000) return _allRatesCache.data;
+  const data: Record<string, { buying: number; selling: number }> = {};
+  for (const code of RATE_CURRENCIES) {
+    const buyStr  = await storage.getPlatformSetting(`${code}_ngn_buying_rate`);
+    const sellStr = await storage.getPlatformSetting(`${code}_ngn_selling_rate`);
+    data[code] = {
+      buying:  parseFloat(buyStr  ?? String(RATE_DEFAULTS_BUY[code])),
+      selling: parseFloat(sellStr ?? String(RATE_DEFAULTS_SELL[code])),
+    };
+  }
+  _allRatesCache = { data, cachedAt: Date.now() };
+  return data;
+}
+function invalidateAllRatesCache() { _allRatesCache = null; _usdNgnRatesCache = null; }
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -3943,11 +3964,34 @@ export async function registerRoutes(
   // ── Public: exchange rates (no auth required) ─────────────────────────────
   app.get("/api/exchange-rates", async (_req, res) => {
     try {
-      const rates = await getUsdNgnRates();
-      res.json(rates);
+      const currencies = await getAllRates();
+      const usd = currencies.usd ?? { buying: 1600, selling: 1550 };
+      res.json({ buying: usd.buying, selling: usd.selling, currencies, updatedAt: Date.now() });
     } catch (e: any) {
-      res.json({ buying: 1480, selling: 1280 }); // safe fallback
+      res.json({ buying: 1600, selling: 1550, currencies: {}, updatedAt: Date.now() });
     }
+  });
+
+  app.put("/api/admin/exchange-rates", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    try {
+      const rates = req.body as Record<string, { buying: string; selling: string }>;
+      for (const code of RATE_CURRENCIES) {
+        const pair = rates[code];
+        if (!pair) continue;
+        const br = parseFloat(pair.buying);
+        const sr = parseFloat(pair.selling);
+        if (!isNaN(br) && br > 0) await storage.setPlatformSetting(`${code}_ngn_buying_rate`, br.toString());
+        if (!isNaN(sr) && sr > 0) await storage.setPlatformSetting(`${code}_ngn_selling_rate`, sr.toString());
+      }
+      invalidateAllRatesCache();
+      const currencies = await getAllRates();
+      const usd = currencies.usd;
+      res.json({ ok: true, currencies, buying: usd.buying, selling: usd.selling });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   app.get("/api/admin/platform-settings", async (req, res) => {
@@ -3959,12 +4003,9 @@ export async function registerRoutes(
       const settings = await storage.getAllPlatformSettings();
       const prices = await storage.getPlanPrices();
       const tiers = await storage.getTierPayouts();
-      const buyingStr  = await storage.getPlatformSetting("usd_ngn_buying_rate");
-      const sellingStr = await storage.getPlatformSetting("usd_ngn_selling_rate");
-      const exchangeRates = {
-        buying:  parseFloat(buyingStr  ?? "1480"),
-        selling: parseFloat(sellingStr ?? "1280"),
-      };
+      const currencies = await getAllRates();
+      const usd = currencies.usd;
+      const exchangeRates = { buying: usd.buying, selling: usd.selling, currencies };
       res.json({ settings, prices, tiers, exchangeRates });
     } catch (e: any) {
       res.status(500).json({ message: e.message });

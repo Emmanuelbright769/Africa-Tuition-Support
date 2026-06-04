@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { TransactionReceipt, type ReceiptRow } from "@/components/ui/TransactionReceipt";
 import {
   ArrowUpRight, ArrowDownLeft, RefreshCw, Receipt, Wifi, Eye, EyeOff,
-  ChevronRight, ArrowLeft, ArrowRight, Send, Bell, TrendingUp, TrendingDown,
+  ChevronRight, ChevronLeft, ArrowLeft, ArrowRight, Send, Bell, TrendingUp, TrendingDown,
   Loader2, CheckCircle2, X, Zap, Phone, Wallet, Gamepad2, Delete,
   Copy, Search, ChevronDown, AlertCircle, Users, Building2, Clock,
   CreditCard, Shield, Lock, Coins, Smartphone, ExternalLink, Banknote,
@@ -151,7 +151,18 @@ function LocalEquiv({ usd, country }: { usd: number; country?: string }) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
-type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "bill-otp" | "receipt" | "history";
+type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "bill-otp" | "receipt" | "history" | "rates";
+
+const RATE_CURRENCIES_META = [
+  { code: "usd", label: "US Dollar",           symbol: "$",   flag: "🇺🇸", defaultBuy: 1600, defaultSell: 1550 },
+  { code: "gbp", label: "British Pound",        symbol: "£",   flag: "🇬🇧", defaultBuy: 2100, defaultSell: 2000 },
+  { code: "eur", label: "Euro",                 symbol: "€",   flag: "🇪🇺", defaultBuy: 1750, defaultSell: 1680 },
+  { code: "cad", label: "Canadian Dollar",      symbol: "CA$", flag: "🇨🇦", defaultBuy: 1180, defaultSell: 1130 },
+  { code: "aud", label: "Australian Dollar",    symbol: "A$",  flag: "🇦🇺", defaultBuy: 1020, defaultSell: 970  },
+  { code: "ghs", label: "Ghanaian Cedi",        symbol: "₵",   flag: "🇬🇭", defaultBuy: 90,   defaultSell: 85   },
+  { code: "kes", label: "Kenyan Shilling",      symbol: "KSh", flag: "🇰🇪", defaultBuy: 12,   defaultSell: 11   },
+  { code: "zar", label: "South African Rand",   symbol: "R",   flag: "🇿🇦", defaultBuy: 85,   defaultSell: 80   },
+] as const;
 
 // ── TSIA Receiving Wallet Addresses ───────────────────────────────────────────
 const TSIA_WALLETS = {
@@ -528,6 +539,7 @@ export default function FinancialHub() {
   const { data: banks = [] }     = useQuery<Bank[]>({ queryKey: ["/api/wallet/banks"] });
   const { data: vcData, refetch: refetchCard } = useQuery<{ card: any | null }>({ queryKey: ["/api/fintech/virtual-card"] });
   const { data: cashbackData, refetch: refetchCashback } = useQuery<{ balance: string }>({ queryKey: ["/api/wallet/cashback"], staleTime: 30_000 });
+  const { data: exchangeRatesData } = useQuery<{ buying: number; selling: number; currencies: Record<string, { buying: number; selling: number }>; updatedAt: number }>({ queryKey: ["/api/exchange-rates"], staleTime: 5 * 60 * 1000 });
   const { data: loanLimit, isLoading: loanLimitLoading } = useQuery<{ eligible: boolean; reason?: string; limitUsd: number; tier?: string; activeLoan?: any; interestRate?: number; terms?: number[] }>({ queryKey: ["/api/loans/limit"], staleTime: 60_000, enabled: bottomNav === "finance" });
   const { data: myLoans = [], refetch: refetchLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"], staleTime: 60_000, enabled: bottomNav === "finance" });
 
@@ -2072,6 +2084,89 @@ export default function FinancialHub() {
   // ═════════════════════════════════════════════════════════════════════════
   // HOME VIEW
   // ═════════════════════════════════════════════════════════════════════════
+  if (view === "rates") {
+    const updatedAt = exchangeRatesData?.updatedAt;
+    return (
+      <div className="space-y-4 pb-[76px]">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <button onClick={() => setView("home")}
+            className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors"
+            data-testid="btn-rates-back">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="font-black text-lg leading-tight">Exchange Rates</h2>
+            <p className="text-[11px] text-muted-foreground">
+              {updatedAt ? `Updated ${new Date(updatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "Live rates"}
+            </p>
+          </div>
+        </div>
+
+        {/* Dark board header */}
+        <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-[#1a3a28] p-4 relative overflow-hidden">
+          <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
+          <div className="absolute bottom-0 left-16 w-20 h-20 rounded-full bg-tsia-green/10 pointer-events-none" />
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
+                <ArrowLeftRight className="w-3.5 h-3.5 text-white" />
+              </div>
+              <span className="text-white font-black text-sm">TSIA Swift Exchange</span>
+            </div>
+            <p className="text-white/50 text-[11px]">All rates in Nigerian Naira (₦) per 1 unit of foreign currency.</p>
+            <p className="text-white/40 text-[10px] mt-1">Rates set and managed by TSIA · Subject to change without notice.</p>
+          </div>
+        </div>
+
+        {/* Column headers */}
+        <div className="grid grid-cols-[2fr_1fr_1fr] gap-x-2 px-1 text-[10px] font-bold uppercase tracking-wider">
+          <span className="text-muted-foreground">Currency</span>
+          <span className="text-center text-amber-500">You Pay (Buy)</span>
+          <span className="text-center text-tsia-green">You Get (Sell)</span>
+        </div>
+
+        {/* Currency rows */}
+        <div className="space-y-2">
+          {RATE_CURRENCIES_META.map(cur => {
+            const pair = exchangeRatesData?.currencies?.[cur.code];
+            const buy  = pair?.buying  ?? cur.defaultBuy;
+            const sell = pair?.selling ?? cur.defaultSell;
+            const spread = buy > 0 ? (((buy - sell) / buy) * 100).toFixed(1) : "—";
+            return (
+              <div key={cur.code}
+                className="bg-card border border-border rounded-2xl px-4 py-3 grid grid-cols-[2fr_1fr_1fr] gap-x-2 items-center"
+                data-testid={`rate-row-${cur.code}`}>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl leading-none">{cur.flag}</span>
+                  <div>
+                    <p className="font-black text-sm leading-tight">{cur.label}</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold">{cur.code.toUpperCase()} · {cur.symbol}&nbsp;·&nbsp;<span className="text-slate-400">Δ {spread}%</span></p>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <p className="font-black text-sm text-amber-600 dark:text-amber-400">₦{buy.toLocaleString()}</p>
+                  <p className="text-[9px] text-muted-foreground">per 1 {cur.code.toUpperCase()}</p>
+                </div>
+                <div className="text-center">
+                  <p className="font-black text-sm text-tsia-green">₦{sell.toLocaleString()}</p>
+                  <p className="text-[9px] text-muted-foreground">per 1 {cur.code.toUpperCase()}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Disclaimer */}
+        <p className="text-[11px] text-muted-foreground text-center px-6 pb-2 leading-relaxed">
+          These are the rates applied when you fund or withdraw from your TSIA SwiftWallet. Actual amounts may vary slightly due to fees.
+        </p>
+
+        <BottomNavBar />
+      </div>
+    );
+  }
+
   if (view === "home") return (
     <div className="space-y-5 pb-[76px]">
 
@@ -2229,6 +2324,25 @@ export default function FinancialHub() {
         </div>
       </div>
 
+
+      {/* ── TODAY'S EXCHANGE RATES PREVIEW ── */}
+      <button
+        onClick={() => setView("rates")}
+        className="w-full rounded-2xl border border-border bg-card p-4 flex items-center gap-3 hover:bg-muted/40 active:scale-[0.99] transition-all text-left"
+        data-testid="btn-rates-preview">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 flex items-center justify-center shrink-0">
+          <ArrowLeftRight className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-black text-sm">Today's Exchange Rates</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+            🇺🇸 $1 = ₦{(exchangeRatesData?.currencies?.usd?.buying ?? exchangeRatesData?.buying ?? 1600).toLocaleString()} buy
+            &nbsp;·&nbsp;
+            🇬🇧 £1 = ₦{(exchangeRatesData?.currencies?.gbp?.buying ?? 2100).toLocaleString()} buy
+          </p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+      </button>
 
       {/* Virtual Card — hidden until live */}
       {false && <div>

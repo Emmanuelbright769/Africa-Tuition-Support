@@ -3473,7 +3473,7 @@ export default function AdminDashboard() {
                       <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                       <div>
                         <p className="font-semibold text-amber-800 text-sm">{passedUnpaid.length} scholarship prize{passedUnpaid.length > 1 ? "s" : ""} pending payment</p>
-                        <p className="text-amber-700 text-xs mt-0.5">Review the table below and mark as paid after disbursing the prize amount.</p>
+                        <p className="text-amber-700 text-xs mt-0.5">Click "Credit &amp; Lock" to automatically credit the prize to the student's wallet and place a lien. Release the lien from the Wallet Liens panel once verified.</p>
                       </div>
                     </div>
                   )}
@@ -3560,7 +3560,7 @@ export default function AdminDashboard() {
                                         disabled={markScholarshipPrizePaidMutation.isPending}
                                         onClick={() => markScholarshipPrizePaidMutation.mutate(s.id)}
                                         data-testid={`btn-mark-prize-paid-${s.id}`}>
-                                        Mark Paid
+                                        Credit &amp; Lock
                                       </Button>
                                     )}
                                     <Button size="sm" variant="outline" className="h-7 text-xs"

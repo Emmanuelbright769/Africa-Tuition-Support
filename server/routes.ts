@@ -3479,12 +3479,56 @@ export async function registerRoutes(
 
   app.post("/api/admin/scholarship/:id/mark-prize-paid", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const adminUserId = (req.session as any)?.userId;
+      if (!adminUserId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminUserId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
       const id = parseInt(req.params.id);
+      const scholarships = await storage.getAllScholarships();
+      const record = scholarships.find((s: any) => s.id === id);
+      if (!record) return res.status(404).json({ message: "Scholarship record not found" });
+      if (record.prizePaid) return res.status(400).json({ message: "Prize already marked as paid" });
+
+      const prizeAmt = parseFloat(record.prizeAmount ?? "0");
+      if (prizeAmt <= 0) return res.status(400).json({ message: "No prize amount set on this record" });
+
+      const studentId = record.userId;
+
+      // 1. Credit the prize to the student's wallet
+      const wallet = await storage.getOrCreateWallet(studentId);
+      const newBalance = (parseFloat(wallet.balance) + prizeAmt).toFixed(2);
+      await storage.updateWalletBalance(studentId, newBalance);
+
+      // 2. Record the transaction
+      const typeLabel = record.type === "masters" ? "Masters" : "Student";
+      await storage.createTransaction({
+        userId: studentId,
+        type: "sponsorship_credit",
+        amount: prizeAmt.toFixed(2),
+        fee: "0.00",
+        paymentMethod: "wallet",
+        description: `${typeLabel} Scholarship prize — $${prizeAmt.toFixed(2)} credited to wallet`,
+      });
+
+      // 3. Place a lien for the full credited amount (funds locked until admin releases)
+      try {
+        const freshWallet = await storage.getOrCreateWallet(studentId);
+        const existingLien = parseFloat(freshWallet.lienAmount ?? "0");
+        const newLien = (existingLien + prizeAmt).toFixed(2);
+        await storage.setWalletLien(studentId, newLien, `${typeLabel} Scholarship prize hold — $${prizeAmt.toFixed(2)} locked until admin releases`);
+        await storage.createNotification({
+          userId: studentId, type: "lien_placed",
+          title: "Scholarship Prize Credited 🔒",
+          message: `Your $${prizeAmt.toFixed(2)} ${typeLabel} Scholarship prize has been credited to your wallet but is temporarily locked. It will be released by admin once verified.`,
+          data: { prizeAmount: prizeAmt, lienAmount: newLien },
+          isRead: false,
+        });
+      } catch { /* non-critical */ }
+
+      // 4. Mark prize as paid
       const updated = await storage.updateScholarship(id, { prizePaid: true });
+
       res.json(updated);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

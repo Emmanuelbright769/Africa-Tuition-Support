@@ -3557,8 +3557,8 @@ export async function registerRoutes(
               type: "scholarship_declined",
               title: "Scholarship Enrollment Declined",
               message: reason
-                ? `Your scholarship enrollment has been declined. Reason: ${reason}`
-                : "Your scholarship enrollment application has not been approved at this time. Please contact support for more information.",
+                ? `Your scholarship enrollment has been declined. Reason: ${reason}. You may restart the application process from the Scholarship Portal whenever you are ready.`
+                : "Your scholarship enrollment application has not been approved at this time. You may restart the application process from the Scholarship Portal whenever you are ready.",
               read: false,
             });
             pushToUser(student.id, "notification", notif);
@@ -9726,6 +9726,60 @@ export async function registerRoutes(
       } catch (e: any) { res.status(500).json({ message: e.message }); }
     });
 
+    app.post("/api/scholarship/restart-after-decline", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+        const { type } = req.body;
+        if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid type" });
+
+        const record = await storage.getScholarship(userId, type);
+        if (!record) return res.status(400).json({ message: "No scholarship record found" });
+        if (record.status !== "declined") return res.status(400).json({ message: "Scholarship is not in declined status" });
+
+        // Accumulate all previously seen question IDs so they won't be shown again
+        const td = (record.testData ?? {}) as any;
+        const prevUsedVerbal: number[] = Array.from(new Set([
+          ...(td.usedVerbalIds ?? []),
+          ...(td.verbalIds ?? []),
+        ]));
+        const prevUsedQuant: number[] = Array.from(new Set([
+          ...(td.usedQuantIds ?? []),
+          ...(td.quantIds ?? []),
+        ]));
+
+        // Reset the record to a fresh started state, preserving used question IDs
+        const reset = await storage.updateScholarship(record.id, {
+          status: "started",
+          portalFeePaid: false,
+          commitmentFeePaid: false,
+          waecRegNumber: null,
+          waecYear: null,
+          waecSubjects: null,
+          waecGrades: null,
+          waecPercentage: null as any,
+          schoolName: null,
+          schoolLocation: null,
+          ageDisqualified: false,
+          testStartedAt: null,
+          testCompletedAt: null,
+          verbalScore: null,
+          quantScore: null,
+          prizePaid: false,
+          prizeAmount: null as any,
+          tertiarySchool: null,
+          tertiaryType: null,
+          tertiaryYear: null,
+          tertiaryGrade: null,
+          mscDuration: null,
+          commitmentStartDate: null,
+          testData: { usedVerbalIds: prevUsedVerbal, usedQuantIds: prevUsedQuant } as any,
+        });
+
+        res.json(reset);
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
+
     app.post("/api/scholarship/start-test", async (req, res) => {
       try {
         const userId = (req.session as any)?.userId;
@@ -9747,6 +9801,7 @@ export async function registerRoutes(
         let quantQs: any[];
 
         if (record.status === "test_in_progress" && record.testData) {
+          // Resume an in-progress test — serve the same questions as before
           const td = record.testData as any;
           const allQuestions = [...VERBAL_QUESTIONS, ...QUANT_QUESTIONS];
           const qMap = Object.fromEntries(allQuestions.map(q => [q.id, q]));
@@ -9759,12 +9814,24 @@ export async function registerRoutes(
             return { ...rest, correctIndex };
           });
         } else {
-          verbalQs = pickQuestions(15, VERBAL_QUESTIONS);
-          quantQs = pickQuestions(15, QUANT_QUESTIONS);
+          // Fresh test start — exclude any previously seen question IDs
+          const td = (record.testData ?? {}) as any;
+          const usedVerbalIds: number[] = td.usedVerbalIds ?? [];
+          const usedQuantIds: number[] = td.usedQuantIds ?? [];
+
+          const freshVerbalPool = VERBAL_QUESTIONS.filter(q => !usedVerbalIds.includes(q.id));
+          const freshQuantPool = QUANT_QUESTIONS.filter(q => !usedQuantIds.includes(q.id));
+
+          // If the remaining pool is too small (shouldn't happen with 200-question pools), fall back to full pool
+          verbalQs = pickQuestions(15, freshVerbalPool.length >= 15 ? freshVerbalPool : VERBAL_QUESTIONS);
+          quantQs = pickQuestions(15, freshQuantPool.length >= 15 ? freshQuantPool : QUANT_QUESTIONS);
+
           await storage.updateScholarship(record.id, {
             status: "test_in_progress",
             testStartedAt: new Date(),
             testData: {
+              usedVerbalIds,
+              usedQuantIds,
               verbalIds: verbalQs.map((q: any) => q.id),
               quantIds: quantQs.map((q: any) => q.id),
             } as any,

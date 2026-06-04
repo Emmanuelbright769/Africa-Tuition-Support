@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 type ScholarshipType = "student" | "masters";
-type Step = "welcome" | "tertiary" | "waec" | "pay_fee" | "commitment" | "test_intro" | "test" | "result" | "cooldown";
+type Step = "welcome" | "tertiary" | "waec" | "pay_fee" | "commitment" | "test_intro" | "test" | "result" | "cooldown" | "declined";
 type TestPhase = "verbal" | "transition" | "quant" | "submitting";
 type TertiaryGrade = "first_class" | "second_upper" | "second_lower";
 type MscDuration = "1year" | "2year";
@@ -241,6 +241,10 @@ export default function ScholarshipPortal() {
       setStep("commitment"); return;
     }
     if (s === "test_in_progress") { setStep("test_intro"); return; }
+    if (s === "declined") {
+      setStep("declined");
+      return;
+    }
     if (s === "passed" || s === "failed") {
       // 365-day cooldown: if test was completed less than 365 days ago, block re-enrollment
       if (rec.testCompletedAt) {
@@ -389,6 +393,12 @@ export default function ScholarshipPortal() {
           setPageLoading(false);
           return;
         }
+        if (rec.status === "declined") {
+          setScholarshipRecord(rec);
+          setStep("declined");
+          setPageLoading(false);
+          return;
+        }
         setScholarshipRecord(rec);
         restoreStep(rec, type);
       } else {
@@ -503,6 +513,24 @@ export default function ScholarshipPortal() {
       toast({ title: "Renewal Paid!", description: "Your second $250 prize is pending admin approval.", variant: "default" });
     } catch (e: any) {
       toast({ title: "Renewal Failed", description: e.message, variant: "destructive" });
+    }
+    setLoading(false);
+  }
+
+  async function handleRestartAfterDecline() {
+    if (!scholarshipType) return;
+    setLoading(true);
+    try {
+      const data = await (await apiRequest("POST", "/api/scholarship/restart-after-decline", { type: scholarshipType })).json();
+      setScholarshipRecord(data);
+      // Reset all WAEC form state for a clean fresh start
+      setWaecReg(""); setWaecYear(""); setSchoolName(""); setSchoolLocation("");
+      setSubjects(["Mathematics", "English Language", "", "", ""]);
+      setGrades(["", "", "", "", ""]);
+      setTertiarySchool(""); setTertiaryType(""); setTertiaryYear(""); setTertiaryGrade("");
+      setStep(scholarshipType === "masters" ? "tertiary" : "waec");
+    } catch (e: any) {
+      toast({ title: "Could not restart", description: e.message, variant: "destructive" });
     }
     setLoading(false);
   }
@@ -856,6 +884,64 @@ export default function ScholarshipPortal() {
   }
 
   // ── COOLDOWN SCREEN ───────────────────────────────────────────────────────
+  if (step === "declined") {
+    const typeName = scholarshipType === "masters" ? "Masters" : "Student";
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 flex items-center justify-center p-4">
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 180 }} className="w-full max-w-md">
+          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 text-center">
+            <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-5">
+              <XCircle className="w-10 h-10 text-red-400" />
+            </div>
+            <h2 className="text-2xl font-black text-white mb-2">Application Declined</h2>
+            <p className="text-white/60 text-sm mb-6">
+              Your {typeName} Scholarship application was not approved this time. You can restart the entire process — pay the portal fee, re-submit your WAEC details, and take the CBT again with a fresh set of questions.
+            </p>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 text-left space-y-2.5">
+              <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">What happens when you restart</p>
+              <div className="flex items-start gap-2.5">
+                <div className="w-5 h-5 rounded-full bg-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-indigo-400 text-[10px] font-bold">1</span>
+                </div>
+                <p className="text-white/60 text-xs">Pay the $3.30 portal fee again to unlock a fresh enrollment</p>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <div className="w-5 h-5 rounded-full bg-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-indigo-400 text-[10px] font-bold">2</span>
+                </div>
+                <p className="text-white/60 text-xs">Re-submit your WAEC results and school details for fresh review</p>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <div className="w-5 h-5 rounded-full bg-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-indigo-400 text-[10px] font-bold">3</span>
+                </div>
+                <p className="text-white/60 text-xs">Take the CBT with a completely different set of questions — none you've seen before</p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleRestartAfterDecline}
+              disabled={loading}
+              data-testid="button-restart-after-decline"
+              className="w-full h-12 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 mb-3"
+            >
+              {loading
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Restarting…</>
+                : <><ArrowRight className="w-4 h-4" /> Restart My Application</>}
+            </button>
+            <button
+              onClick={() => { setStep("welcome"); setScholarshipType(null as any); setScholarshipRecord(null); }}
+              className="w-full h-10 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-colors"
+            >
+              ← Back to Portal
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   if (step === "cooldown") {
     const typeName = scholarshipType === "masters" ? "Masters" : "Student";
     const testDoneDate = scholarshipRecord?.testCompletedAt ? new Date(scholarshipRecord.testCompletedAt) : null;

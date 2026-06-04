@@ -133,6 +133,7 @@ export default function ScholarshipPortal() {
   const [scholarshipType, setScholarshipType] = useState<ScholarshipType | null>(urlType);
   const [step, setStep] = useState<Step>("welcome");
   const [loading, setLoading] = useState(false);
+  const [cheatAck, setCheatAck] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
 
   const [scholarshipRecord, setScholarshipRecord] = useState<any>(null);
@@ -1305,11 +1306,50 @@ export default function ScholarshipPortal() {
                 ))}
               </div>
 
-              <Button onClick={handleStartTest} disabled={loading}
-                className="w-full h-14 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-lg shadow-lg shadow-indigo-900/40">
+              {/* Anti-Cheating Warning */}
+              <div className="bg-red-900/30 border border-red-500/40 rounded-2xl p-4 mb-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xl">🚨</span>
+                  <p className="text-red-300 font-black text-sm uppercase tracking-wide">Strict Anti-Cheating Policy</p>
+                </div>
+                <ul className="space-y-2 mb-4">
+                  {[
+                    "Do NOT use Google, textbooks, calculators, or any external resource during the test.",
+                    "Do NOT share questions or answers with anyone — before, during, or after the test.",
+                    "Do NOT allow another person to take this test on your behalf.",
+                    "Switching browser tabs or windows during the test may be flagged as suspicious activity.",
+                    "All submissions are reviewed. Any candidate found cheating will be permanently declined and banned from the platform.",
+                  ].map(rule => (
+                    <li key={rule} className="flex items-start gap-2 text-red-200/80 text-xs leading-relaxed">
+                      <span className="text-red-400 mt-0.5 shrink-0">✗</span>
+                      <span>{rule}</span>
+                    </li>
+                  ))}
+                </ul>
+                <label className="flex items-start gap-3 cursor-pointer select-none group">
+                  <div className="relative mt-0.5 shrink-0">
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={cheatAck}
+                      onChange={e => setCheatAck(e.target.checked)}
+                      data-testid="chk-cheat-ack"
+                    />
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${cheatAck ? "bg-red-500 border-red-500" : "border-red-400/60 bg-transparent group-hover:border-red-400"}`}>
+                      {cheatAck && <span className="text-white text-xs font-black">✓</span>}
+                    </div>
+                  </div>
+                  <span className="text-red-200 text-xs leading-relaxed">
+                    I have read and understood the anti-cheating policy. I confirm that I will complete this test <strong className="text-red-300">honestly and entirely on my own</strong>. I understand that cheating will result in <strong className="text-red-300">permanent disqualification</strong> from the TSIA scholarship programme.
+                  </span>
+                </label>
+              </div>
+
+              <Button onClick={handleStartTest} disabled={loading || !cheatAck}
+                className="w-full h-14 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-lg shadow-lg shadow-indigo-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity">
                 {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : "Start Scholarship CBT →"}
               </Button>
-              <p className="text-white/40 text-xs text-center mt-3">Once started, the timer cannot be paused or stopped</p>
+              <p className="text-white/40 text-xs text-center mt-3">You must acknowledge the policy above before starting</p>
             </motion.div>
           )}
 

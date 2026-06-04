@@ -2114,7 +2114,7 @@ export default function FinancialHub() {
               </div>
               <span className="text-white font-black text-sm">TSIA Swift Exchange</span>
             </div>
-            <p className="text-white/50 text-[11px]">All rates in Nigerian Naira (₦) per 1 unit of foreign currency.</p>
+            <p className="text-white/50 text-[11px]">USD is the base currency. USD/NGN rates are shown in Naira. All other pairs are expressed in US Dollars.</p>
             <p className="text-white/40 text-[10px] mt-1">Rates set and managed by TSIA · Subject to change without notice.</p>
           </div>
         </div>
@@ -2122,44 +2122,85 @@ export default function FinancialHub() {
         {/* Column headers */}
         <div className="grid grid-cols-[2fr_1fr_1fr] gap-x-2 px-1 text-[10px] font-bold uppercase tracking-wider">
           <span className="text-muted-foreground">Currency</span>
-          <span className="text-center text-amber-500">You Pay (Buy)</span>
-          <span className="text-center text-tsia-green">You Get (Sell)</span>
+          <span className="text-center text-amber-500">Buy Rate</span>
+          <span className="text-center text-tsia-green">Sell Rate</span>
         </div>
 
         {/* Currency rows */}
         <div className="space-y-2">
-          {RATE_CURRENCIES_META.map(cur => {
-            const pair = exchangeRatesData?.currencies?.[cur.code];
-            const buy  = pair?.buying  ?? cur.defaultBuy;
-            const sell = pair?.selling ?? cur.defaultSell;
-            const spread = buy > 0 ? (((buy - sell) / buy) * 100).toFixed(1) : "—";
-            return (
-              <div key={cur.code}
-                className="bg-card border border-border rounded-2xl px-4 py-3 grid grid-cols-[2fr_1fr_1fr] gap-x-2 items-center"
-                data-testid={`rate-row-${cur.code}`}>
-                <div className="flex items-center gap-2.5">
-                  <span className="text-2xl leading-none">{cur.flag}</span>
-                  <div>
-                    <p className="font-black text-sm leading-tight">{cur.label}</p>
-                    <p className="text-[10px] text-muted-foreground font-semibold">{cur.code.toUpperCase()} · {cur.symbol}&nbsp;·&nbsp;<span className="text-slate-400">Δ {spread}%</span></p>
+          {(() => {
+            const usdPair  = exchangeRatesData?.currencies?.usd;
+            const usdBuyNgn  = usdPair?.buying  ?? 1600;
+            const usdSellNgn = usdPair?.selling ?? 1550;
+
+            // Format USD cross-rate smartly based on magnitude
+            const fmtUsd = (v: number) => {
+              if (v >= 100)  return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              if (v >= 1)    return v.toFixed(3);
+              if (v >= 0.01) return v.toFixed(4);
+              return v.toFixed(5);
+            };
+
+            return RATE_CURRENCIES_META.map(cur => {
+              const pair = exchangeRatesData?.currencies?.[cur.code];
+              const buyNgn  = pair?.buying  ?? cur.defaultBuy;
+              const sellNgn = pair?.selling ?? cur.defaultSell;
+
+              const isUsd = cur.code === "usd";
+
+              // For USD: display NGN rates (₦ per $1)
+              // For others: derive USD equivalent from NGN cross-rates
+              //   buy-in-usd  = curBuyNgn  / usdSellNgn  (how many $ to buy 1 unit of cur)
+              //   sell-in-usd = curSellNgn / usdBuyNgn   (how many $ you get selling 1 unit of cur)
+              const buyDisplay  = isUsd ? `₦${buyNgn.toLocaleString()}`  : `$${fmtUsd(buyNgn  / usdSellNgn)}`;
+              const sellDisplay = isUsd ? `₦${sellNgn.toLocaleString()}` : `$${fmtUsd(sellNgn / usdBuyNgn)}`;
+              const perLabel    = isUsd ? "per $1" : `per 1 ${cur.code.toUpperCase()}`;
+
+              const spreadPct = isUsd
+                ? (buyNgn > 0  ? (((buyNgn  - sellNgn)  / buyNgn)  * 100).toFixed(1) : "—")
+                : (usdSellNgn > 0 && usdBuyNgn > 0
+                    ? ((((buyNgn / usdSellNgn) - (sellNgn / usdBuyNgn)) / (buyNgn / usdSellNgn)) * 100).toFixed(1)
+                    : "—");
+
+              return (
+                <div key={cur.code}
+                  className="bg-card border border-border rounded-2xl px-4 py-3 grid grid-cols-[2fr_1fr_1fr] gap-x-2 items-center"
+                  data-testid={`rate-row-${cur.code}`}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-2xl leading-none">{cur.flag}</span>
+                    <div>
+                      <p className="font-black text-sm leading-tight">{cur.label}</p>
+                      <p className="text-[10px] text-muted-foreground font-semibold">
+                        {cur.code.toUpperCase()} · {cur.symbol}
+                        {isUsd && <span className="ml-1 text-tsia-green font-bold">BASE</span>}
+                        {!isUsd && <span className="text-slate-400">&nbsp;·&nbsp;Δ {spreadPct}%</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-black text-sm text-amber-600 dark:text-amber-400">{buyDisplay}</p>
+                    <p className="text-[9px] text-muted-foreground">{perLabel}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-black text-sm text-tsia-green">{sellDisplay}</p>
+                    <p className="text-[9px] text-muted-foreground">{perLabel}</p>
                   </div>
                 </div>
-                <div className="text-center">
-                  <p className="font-black text-sm text-amber-600 dark:text-amber-400">₦{buy.toLocaleString()}</p>
-                  <p className="text-[9px] text-muted-foreground">per 1 {cur.code.toUpperCase()}</p>
-                </div>
-                <div className="text-center">
-                  <p className="font-black text-sm text-tsia-green">₦{sell.toLocaleString()}</p>
-                  <p className="text-[9px] text-muted-foreground">per 1 {cur.code.toUpperCase()}</p>
-                </div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
+        </div>
+
+        {/* Legend */}
+        <div className="rounded-xl bg-muted/40 border border-border px-4 py-3 space-y-1 text-[11px] text-muted-foreground">
+          <p><span className="font-bold text-amber-600">Buy Rate</span> — what you pay to acquire 1 unit of that currency.</p>
+          <p><span className="font-bold text-tsia-green">Sell Rate</span> — what you receive when you sell 1 unit back.</p>
+          <p className="text-[10px] pt-1">USD shown in ₦ · All other currencies shown in $ (calculated from NGN cross-rates).</p>
         </div>
 
         {/* Disclaimer */}
         <p className="text-[11px] text-muted-foreground text-center px-6 pb-2 leading-relaxed">
-          These are the rates applied when you fund or withdraw from your TSIA SwiftWallet. Actual amounts may vary slightly due to fees.
+          Rates set by TSIA and may change at any time. Actual amounts may vary slightly due to platform fees.
         </p>
 
         <BottomNavBar />
@@ -2336,9 +2377,13 @@ export default function FinancialHub() {
         <div className="flex-1 min-w-0">
           <p className="font-black text-sm">Today's Exchange Rates</p>
           <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-            🇺🇸 $1 = ₦{(exchangeRatesData?.currencies?.usd?.buying ?? exchangeRatesData?.buying ?? 1600).toLocaleString()} buy
-            &nbsp;·&nbsp;
-            🇬🇧 £1 = ₦{(exchangeRatesData?.currencies?.gbp?.buying ?? 2100).toLocaleString()} buy
+            {(() => {
+              const usdBuy  = exchangeRatesData?.currencies?.usd?.buying  ?? exchangeRatesData?.buying  ?? 1600;
+              const usdSell = exchangeRatesData?.currencies?.usd?.selling ?? exchangeRatesData?.selling ?? 1550;
+              const gbpBuy  = exchangeRatesData?.currencies?.gbp?.buying  ?? 2100;
+              const gbpUsd  = usdSell > 0 ? (gbpBuy / usdSell).toFixed(3) : "—";
+              return <>🇺🇸 $1 = ₦{usdBuy.toLocaleString()} &nbsp;·&nbsp; 🇬🇧 £1 = ${gbpUsd}</>;
+            })()}
           </p>
         </div>
         <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />

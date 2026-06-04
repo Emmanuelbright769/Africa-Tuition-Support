@@ -39,3 +39,14 @@ accidentally overwriting plan settings when only saving exchange rates.
 - `multiRates: Record<string, { buying: string; selling: string }>` state
 - `saveMultiRatesMutation` calls `PUT /api/admin/exchange-rates`
 - useEffect auto-populates `multiRates` from `platformSettingsData.exchangeRates.currencies`
+
+## Display logic (FinancialHub rates view)
+USD is the dominant/base currency:
+- **USD row**: shows NGN rates (₦ per $1) — the primary deposit/withdrawal pair
+- **All other rows**: shows USD-equivalent cross-rates derived from admin NGN settings:
+  - buy-in-usd  = cur_buy_ngn  / usd_sell_ngn
+  - sell-in-usd = cur_sell_ngn / usd_buy_ngn
+- `fmtUsd()` helper: ≥100→2dp, ≥1→3dp, ≥0.01→4dp, else 5dp
+- USD row shows "BASE" badge; non-USD rows show spread %
+- Home preview card: USD shown as "₦X,XXX" · GBP shown as "$X.XXX"
+- Admin dashboard keeps setting all rates in NGN — display conversion is frontend-only

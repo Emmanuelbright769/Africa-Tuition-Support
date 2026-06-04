@@ -204,6 +204,7 @@ export default function AdminDashboard() {
   const [lienSaving, setLienSaving]   = useState(false);
   const [releaseConfirm, setReleaseConfirm] = useState<{ userId: number; name: string } | null>(null);
   const [declineSchDialog, setDeclineSchDialog] = useState<{ id: number; name: string } | null>(null);
+  const [declineSchReason, setDeclineSchReason] = useState("");
 
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -760,15 +761,16 @@ export default function AdminDashboard() {
   });
 
   const declineScholarshipMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("PUT", `/api/admin/scholarship/${id}/decline`);
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      const res = await apiRequest("PUT", `/api/admin/scholarship/${id}/decline`, { reason: reason.trim() || undefined });
       if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/all-scholarships"] });
       setDeclineSchDialog(null);
-      toast({ title: "Enrollment Declined", description: "The scholarship enrollment has been marked as declined." });
+      setDeclineSchReason("");
+      toast({ title: "Enrollment Declined", description: "The student has been notified by email and in-app notification." });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -3765,19 +3767,30 @@ export default function AdminDashboard() {
                   </Dialog>
 
                   {/* ── Decline Enrollment Confirmation ── */}
-                  <Dialog open={declineSchDialog !== null} onOpenChange={open => { if (!open) setDeclineSchDialog(null); }}>
+                  <Dialog open={declineSchDialog !== null} onOpenChange={open => { if (!open) { setDeclineSchDialog(null); setDeclineSchReason(""); } }}>
                     <DialogContent className="max-w-sm">
                       <DialogHeader>
                         <DialogTitle>Decline Enrollment</DialogTitle>
                         <DialogDescription>
-                          Are you sure you want to decline the scholarship enrollment for <strong>{declineSchDialog?.name}</strong>? Their status will be set to <em>declined</em>.
+                          You are about to decline the scholarship enrollment for <strong>{declineSchDialog?.name}</strong>. The student will be notified by email and in-app notification.
                         </DialogDescription>
                       </DialogHeader>
+                      <div className="py-2">
+                        <label className="text-sm font-medium text-slate-700 mb-1 block">Reason for declining <span className="text-slate-400 font-normal">(optional, sent to student)</span></label>
+                        <textarea
+                          className="w-full border border-slate-200 rounded-lg p-2.5 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-red-300"
+                          rows={3}
+                          placeholder="e.g. Incomplete documentation, eligibility criteria not met…"
+                          value={declineSchReason}
+                          onChange={e => setDeclineSchReason(e.target.value)}
+                          data-testid="input-decline-sch-reason"
+                        />
+                      </div>
                       <DialogFooter className="gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => setDeclineSchDialog(null)}>Cancel</Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setDeclineSchDialog(null); setDeclineSchReason(""); }}>Cancel</Button>
                         <Button variant="destructive" size="sm"
                           disabled={declineScholarshipMutation.isPending}
-                          onClick={() => declineScholarshipMutation.mutate(declineSchDialog!.id)}
+                          onClick={() => declineScholarshipMutation.mutate({ id: declineSchDialog!.id, reason: declineSchReason })}
                           data-testid="btn-confirm-decline-sch">
                           {declineScholarshipMutation.isPending ? "Declining…" : "Decline Enrollment"}
                         </Button>

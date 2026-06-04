@@ -1698,3 +1698,31 @@ export async function sendNewMovieEmail(to: string, firstName: string, movieTitl
   `);
   await sendEmail(to, subject, html);
 }
+
+export async function sendScholarshipDeclinedEmail(data: {
+  to: string; firstName: string; reason?: string;
+}): Promise<void> {
+  const subject = `TSIA Scholarship Enrollment — Application Not Approved`;
+  const html = baseTemplate(`
+    <h2 style="color:#b91c1c;margin:0 0 8px;font-size:22px;">❌ Scholarship Enrollment Declined</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;line-height:1.6;">
+      Hi <strong>${data.firstName}</strong>, after careful review, we regret to inform you that your TSIA scholarship enrollment application has not been approved at this time.
+    </p>
+    ${data.reason ? `
+    <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:16px;margin:0 0 20px;">
+      <p style="color:#7f1d1d;font-size:13px;font-weight:700;margin:0 0 4px;text-transform:uppercase;letter-spacing:0.5px;">Reason for Decline</p>
+      <p style="color:#991b1b;font-size:14px;margin:0;line-height:1.6;">${data.reason}</p>
+    </div>` : ""}
+    <div style="background:#fff8e1;border-left:4px solid #c9a227;border-radius:8px;padding:12px 16px;margin:0 0 20px;">
+      <p style="color:#92400e;font-size:13px;margin:0;line-height:1.6;">
+        If you believe this decision was made in error or would like further clarification, please reach out to our support team at
+        <a href="mailto:support@tsiforafrica.com" style="color:#1a6b3c;text-decoration:none;font-weight:600;">support@tsiforafrica.com</a>.
+      </p>
+    </div>
+    <p style="color:#6b7c72;font-size:13px;margin:0 0 20px;line-height:1.6;">
+      You may also re-apply when a new enrollment batch opens. We encourage you to stay engaged with the platform and keep your profile up to date.
+    </p>
+    ${btn("https://tsiforafrica.com/dashboard", "Go to Dashboard")}
+  `);
+  await sendEmail(data.to, subject, html);
+}

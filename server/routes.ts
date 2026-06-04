@@ -21,7 +21,7 @@ import {
   sendAdminVerificationEmail, sendAdminPortalFeeEmail, sendAdminLoanEmail,
   sendAdminSponsorshipEmail, sendStudentPlanReceiptEmail, sendAdminKycEmail, sendAdminOrderEmail,
   sendAdminCommissionWithdrawalEmail, sendAdminDepositConfirmedEmail,
-  sendDisbursementProcessedEmail, sendDisbursementDeclinedEmail, sendDisbursementEditedEmail,
+  sendDisbursementProcessedEmail, sendDisbursementDeclinedEmail, sendDisbursementEditedEmail, sendScholarshipDeclinedEmail,
   sendAdminBankTransferEmail,
   sendAdminWalletTransferEmail,
   sendWithdrawalOtpEmail,
@@ -3537,10 +3537,34 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const adminUser = await storage.getUser(userId);
+      if (!adminUser || adminUser.role !== "admin") return res.status(403).json({ message: "Forbidden" });
       const id = parseInt(req.params.id);
+      const { reason } = req.body as { reason?: string };
+
       const updated = await storage.updateScholarship(id, { status: "declined" });
+
+      if (updated?.userId) {
+        const student = await storage.getUser(updated.userId);
+        if (student) {
+          try {
+            await sendScholarshipDeclinedEmail({ to: student.email, firstName: student.firstName, reason: reason || undefined });
+          } catch (_) {}
+          try {
+            const notif = await storage.createNotification({
+              userId: student.id,
+              type: "scholarship_declined",
+              title: "Scholarship Enrollment Declined",
+              message: reason
+                ? `Your scholarship enrollment has been declined. Reason: ${reason}`
+                : "Your scholarship enrollment application has not been approved at this time. Please contact support for more information.",
+              read: false,
+            });
+            pushToUser(student.id, "notification", notif);
+          } catch (_) {}
+        }
+      }
+
       res.json(updated);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

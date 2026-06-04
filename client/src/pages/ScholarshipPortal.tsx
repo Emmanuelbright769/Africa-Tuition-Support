@@ -163,7 +163,7 @@ export default function ScholarshipPortal() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [liveScore, setLiveScore] = useState({ verbal: 0, quant: 0 });
-  const [questionTimer, setQuestionTimer] = useState(20);
+  const [questionTimer, setQuestionTimer] = useState(15);
   const [sectionTimer, setSectionTimer] = useState(900);
   const [testPhase, setTestPhase] = useState<TestPhase>("verbal");
   const [showFeedback, setShowFeedback] = useState<{ selected: number; correct: number } | null>(null);
@@ -303,7 +303,7 @@ export default function ScholarshipPortal() {
 
   useEffect(() => {
     if (step !== "test" || (testPhase !== "verbal" && testPhase !== "quant") || !currentQ) return;
-    setQuestionTimer(20);
+    setQuestionTimer(15);
     questionTimerRef.current = setInterval(() => {
       setQuestionTimer(prev => {
         if (prev <= 1) {
@@ -687,7 +687,7 @@ export default function ScholarshipPortal() {
                 >
                   {/* Timer ring + question */}
                   <div className="flex items-start gap-4 mb-6">
-                    <TimerRing seconds={questionTimer} max={20} size={72} color={accentColor} />
+                    <TimerRing seconds={questionTimer} max={15} size={72} color={accentColor} />
                     <div className="flex-1">
                       <p className="text-white/50 text-xs mb-1.5">Question {currentIdx + 1} of 15</p>
                       <p className="text-white text-lg sm:text-xl font-semibold leading-relaxed">{currentQ.text}</p>

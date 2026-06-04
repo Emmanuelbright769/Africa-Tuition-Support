@@ -1178,6 +1178,7 @@ export const scholarships = pgTable("scholarships", {
   verbalScore:         integer("verbal_score"),
   quantScore:          integer("quant_score"),
   testData:            jsonb("test_data"),
+  cheatingFlag:        boolean("cheating_flag").notNull().default(false),
   prizePaid:           boolean("prize_paid").notNull().default(false),
   prizeAmount:         decimal("prize_amount", { precision: 10, scale: 2 }),
   // Masters-specific tertiary education details

@@ -3571,6 +3571,11 @@ export default function AdminDashboard() {
                                   <div>
                                     <p className="font-semibold text-sm text-slate-800">{s.user?.firstName} {s.user?.lastName}</p>
                                     <p className="text-xs text-slate-400">{s.user?.email}</p>
+                                    {s.cheatingFlag && (
+                                      <div className="flex items-center gap-1 mt-1 text-[10px] text-red-600 font-semibold">
+                                        <AlertTriangle className="w-3 h-3" /> Cheat flag
+                                      </div>
+                                    )}
                                   </div>
                                 </TableCell>
                                 <TableCell>
@@ -3766,6 +3771,38 @@ export default function AdminDashboard() {
                                 <p className="text-sm text-slate-400 italic">CBT test not yet taken.</p>
                               )}
                             </div>
+
+                            {/* Cheating Activity Log */}
+                            {(() => {
+                              const events: any[] = (s.testData as any)?.cheatingEvents ?? [];
+                              if (!s.cheatingFlag && events.length === 0) return null;
+                              return (
+                                <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+                                  <div className="flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                                    <h4 className="text-xs font-bold text-red-700 uppercase tracking-wider">Cheating Activity Detected</h4>
+                                    <span className="ml-auto text-xs font-bold text-red-600 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">{events.length} event{events.length !== 1 ? "s" : ""}</span>
+                                  </div>
+                                  {events.length === 0 ? (
+                                    <p className="text-xs text-red-500 italic">Flag set manually — no event log available.</p>
+                                  ) : (
+                                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                      {events.map((ev: any, i: number) => (
+                                        <div key={i} className="flex items-start gap-2 bg-white border border-red-100 rounded-lg px-3 py-2">
+                                          <span className="text-red-400 text-xs font-mono shrink-0 mt-0.5">{i + 1}.</span>
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-semibold text-red-700 capitalize">{(ev.eventType ?? "unknown").replace(/_/g, " ")}</p>
+                                            <p className="text-[11px] text-slate-500 truncate">{ev.description ?? "—"}</p>
+                                          </div>
+                                          <p className="text-[10px] text-slate-400 shrink-0 mt-0.5">{ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <p className="text-[11px] text-red-500 italic">This candidate's CBT session was flagged for suspicious behaviour. Review carefully before approving.</p>
+                                </div>
+                              );
+                            })()}
 
                             {/* Aggregate */}
                             {aggregate !== null && (

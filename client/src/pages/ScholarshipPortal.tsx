@@ -175,6 +175,9 @@ export default function ScholarshipPortal() {
   const sectionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSubmitRef = useRef(false);
+  const cheatCountRef = useRef(0);
+  const cheatAutoSubmittedRef = useRef(false);
+  const lastFocusLossRef = useRef(0);
 
   const verbalQs = questions.filter(q => q.category === "verbal");
   const quantQs = questions.filter(q => q.category === "quant");
@@ -367,6 +370,88 @@ export default function ScholarshipPortal() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testPhase]);
 
+  // ── Anti-cheat detection (active only during the live test) ───────────────
+  useEffect(() => {
+    if (step !== "test" || (testPhase !== "verbal" && testPhase !== "quant")) return;
+
+    const reportCheat = async (eventType: string, description: string) => {
+      cheatCountRef.current += 1;
+      const count = cheatCountRef.current;
+
+      // Fire-and-forget — never block the UI
+      apiRequest("POST", "/api/scholarship/report-cheat", {
+        type: scholarshipType,
+        eventType,
+        description,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
+
+      if (count === 1) {
+        toast({ title: "⚠️ Warning", description: "Suspicious activity detected and logged. Your test is being monitored.", variant: "destructive" });
+      } else if (count === 3) {
+        toast({ title: "⚠️ Final Warning", description: "Multiple suspicious activities recorded. Continued violations will submit your test automatically.", variant: "destructive" });
+      }
+
+      // High-severity events (data access) or exceeding 5 events → auto-submit
+      const isHighSeverity = ["copy_attempt", "paste_attempt", "cut_attempt"].includes(eventType);
+      if ((count >= 5 || isHighSeverity) && !cheatAutoSubmittedRef.current) {
+        cheatAutoSubmittedRef.current = true;
+        toast({ title: "🚫 Test Auto-Submitted", description: "Your test has been submitted automatically due to detected cheating activity.", variant: "destructive" });
+        clearTimers();
+        setTestPhase("submitting");
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) return;
+      const now = Date.now();
+      if (now - lastFocusLossRef.current < 1500) return;
+      lastFocusLossRef.current = now;
+      reportCheat("tab_switch", "Switched to another browser tab or minimized window");
+    };
+
+    const handleBlur = () => {
+      const now = Date.now();
+      if (now - lastFocusLossRef.current < 1500) return;
+      lastFocusLossRef.current = now;
+      reportCheat("window_blur", "Browser window lost focus");
+    };
+
+    const handleCopy = (e: Event) => { e.preventDefault(); reportCheat("copy_attempt", "Attempted to copy text during test"); };
+    const handleCut  = (e: Event) => { e.preventDefault(); reportCheat("cut_attempt",  "Attempted to cut text during test"); };
+    const handlePaste = (e: Event) => { e.preventDefault(); reportCheat("paste_attempt", "Attempted to paste text during test"); };
+
+    const handleContextMenu = (e: Event) => { e.preventDefault(); reportCheat("right_click", "Right-clicked during test"); };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      const key  = e.key.toLowerCase();
+      const suspicious = (ctrl && ["c","v","a","f","u","s","p"].includes(key)) || e.key === "F12" || e.key === "PrintScreen";
+      if (!suspicious) return;
+      e.preventDefault();
+      reportCheat("keyboard_shortcut", `Suspicious key: ${ctrl ? "Ctrl+" : ""}${e.key}`);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("copy", handleCopy);
+    document.addEventListener("cut", handleCut);
+    document.addEventListener("paste", handlePaste);
+    document.addEventListener("contextmenu", handleContextMenu);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("copy", handleCopy);
+      document.removeEventListener("cut", handleCut);
+      document.removeEventListener("paste", handlePaste);
+      document.removeEventListener("contextmenu", handleContextMenu);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, testPhase, scholarshipType]);
+
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   async function handleSelectType(type: ScholarshipType) {
@@ -548,6 +633,9 @@ export default function ScholarshipPortal() {
       setShowFeedback(null);
       setVerbalsComplete(false);
       autoSubmitRef.current = false;
+      cheatCountRef.current = 0;
+      cheatAutoSubmittedRef.current = false;
+      lastFocusLossRef.current = 0;
       setStep("test");
     } catch (e: any) {
       toast({ title: "Could not start test", description: e.message, variant: "destructive" });

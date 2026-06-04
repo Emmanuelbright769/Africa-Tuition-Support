@@ -9726,6 +9726,36 @@ export async function registerRoutes(
       } catch (e: any) { res.status(500).json({ message: e.message }); }
     });
 
+    app.post("/api/scholarship/report-cheat", async (req, res) => {
+      try {
+        const userId = (req.session as any)?.userId;
+        if (!userId) return res.status(401).json({ message: "Not authenticated" });
+        const { type, eventType, description, timestamp } = req.body;
+        if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid type" });
+
+        const record = await storage.getScholarship(userId, type);
+        if (!record || record.status !== "test_in_progress") {
+          return res.status(400).json({ message: "No active test session" });
+        }
+
+        const td = (record.testData ?? {}) as any;
+        const existing: any[] = td.cheatingEvents ?? [];
+        const newEvent = {
+          eventType: eventType ?? "unknown",
+          description: description ?? "",
+          timestamp: timestamp ?? new Date().toISOString(),
+        };
+        const updatedEvents = [...existing, newEvent];
+
+        await storage.updateScholarship(record.id, {
+          cheatingFlag: true,
+          testData: { ...td, cheatingEvents: updatedEvents } as any,
+        });
+
+        res.json({ ok: true, totalEvents: updatedEvents.length });
+      } catch (e: any) { res.status(500).json({ message: e.message }); }
+    });
+
     app.post("/api/scholarship/restart-after-decline", async (req, res) => {
       try {
         const userId = (req.session as any)?.userId;

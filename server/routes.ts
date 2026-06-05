@@ -3618,6 +3618,54 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  app.post("/api/admin/scholarship/:id/reset-cbt", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const adminUser = await storage.getUser(userId);
+      if (!adminUser || adminUser.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+
+      const scholarships = await storage.getAllScholarships();
+      const record = scholarships.find((s: any) => s.id === id);
+      if (!record) return res.status(404).json({ message: "Scholarship record not found" });
+      if (record.status !== "failed") return res.status(400).json({ message: "CBT reset is only allowed for failed records" });
+
+      const td = (record.testData ?? {}) as any;
+      const updated = await storage.updateScholarship(id, {
+        status: "fee_paid",
+        testStartedAt: null,
+        testCompletedAt: null,
+        verbalScore: null,
+        quantScore: null,
+        prizePaid: false,
+        prizeAmount: null as any,
+        cheatingFlag: false,
+        testData: {
+          usedVerbalIds: [...(td.usedVerbalIds ?? []), ...(td.verbalIds ?? [])],
+          usedQuantIds:  [...(td.usedQuantIds  ?? []), ...(td.quantIds  ?? [])],
+        } as any,
+      });
+
+      if (updated?.userId) {
+        try {
+          await storage.createNotification({
+            userId: updated.userId,
+            type: "general",
+            title: "CBT Retry Approved ✅",
+            message: `Your request to retake the ${record.type === "masters" ? "Masters" : "Student"} Scholarship CBT has been approved. Log in to the Scholarship Portal to sit the test again — you'll get a fresh set of questions.`,
+            data: {},
+            isRead: false,
+          });
+        } catch { /* non-critical */ }
+      }
+
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/admin/verify/:verificationId", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

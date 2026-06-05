@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Trophy, ArrowLeft, ArrowRight, CheckCircle2, XCircle, Clock, Loader2,
-  BookOpen, Calculator, AlertTriangle, Star, Wallet, GraduationCap, Zap,
+  BookOpen, Calculator, AlertTriangle, Star, Wallet, GraduationCap, Zap, Mail,
 } from "lucide-react";
 
 type ScholarshipType = "student" | "masters";
@@ -161,6 +161,7 @@ export default function ScholarshipPortal() {
 
   // Test state
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
+  const [shuffleMap, setShuffleMap] = useState<Record<number, number[]>>({});
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [liveScore, setLiveScore] = useState({ verbal: 0, quant: 0 });
@@ -625,7 +626,19 @@ export default function ScholarshipPortal() {
     setLoading(true);
     try {
       const data = await (await apiRequest("POST", "/api/scholarship/start-test", { type: scholarshipType })).json() as { verbal: TestQuestion[]; quant: TestQuestion[] };
-      setQuestions([...data.verbal, ...data.quant]);
+      const allQs = [...data.verbal, ...data.quant];
+      setQuestions(allQs);
+      // Build a per-question shuffle permutation of option positions [0,1,2,3]
+      const newShuffleMap: Record<number, number[]> = {};
+      for (const q of allQs) {
+        const perm = [0, 1, 2, 3];
+        for (let j = perm.length - 1; j > 0; j--) {
+          const k = Math.floor(Math.random() * (j + 1));
+          [perm[j], perm[k]] = [perm[k], perm[j]];
+        }
+        newShuffleMap[q.id] = perm;
+      }
+      setShuffleMap(newShuffleMap);
       setCurrentIdx(0);
       setAnswers({});
       setLiveScore({ verbal: 0, quant: 0 });
@@ -811,13 +824,15 @@ export default function ScholarshipPortal() {
                     </div>
                   </div>
 
-                  {/* Options */}
+                  {/* Options — shuffled per question per session */}
                   <div className="grid gap-3">
-                    {currentQ.options.map((opt, i) => {
+                    {[0, 1, 2, 3].map((i) => {
+                      const origIdx = shuffleMap[currentQ.id]?.[i] ?? i;
+                      const opt = currentQ.options[origIdx];
                       const letter = ["A", "B", "C", "D"][i];
                       const isFeedback = showFeedback !== null;
-                      const isSelected = showFeedback?.selected === i;
-                      const isCorrectAnswer = showFeedback?.correct === i;
+                      const isSelected = showFeedback?.selected === origIdx;
+                      const isCorrectAnswer = showFeedback?.correct === origIdx;
 
                       let optStyle = "bg-white/8 border-white/20 hover:bg-white/15 hover:border-white/40 cursor-pointer";
                       if (isFeedback) {
@@ -830,7 +845,7 @@ export default function ScholarshipPortal() {
                         <motion.button key={i}
                           whileHover={!isFeedback ? { scale: 1.01 } : {}}
                           whileTap={!isFeedback ? { scale: 0.99 } : {}}
-                          onClick={() => !isFeedback && advanceQuestion(i, currentPhaseQs, currentIdx, testPhase)}
+                          onClick={() => !isFeedback && advanceQuestion(origIdx, currentPhaseQs, currentIdx, testPhase)}
                           className={`w-full flex items-center gap-4 p-4 rounded-2xl border text-left text-white transition-all ${optStyle}`}
                         >
                           <span className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm shrink-0"
@@ -961,6 +976,32 @@ export default function ScholarshipPortal() {
                 </motion.div>
               );
             })()}
+
+            {/* Retry request — only for failed students */}
+            {!result.passed && (
+              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
+                className="bg-white/5 border border-white/15 rounded-2xl p-5 mb-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <Mail className="w-4.5 h-4.5 text-indigo-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold text-sm mb-1">Want another chance?</p>
+                    <p className="text-white/55 text-xs leading-relaxed mb-3">
+                      If you believe you deserve a retry, email us with your reason. Our team will review your request and, if approved, reset your CBT slot so you can sit a fresh set of questions.
+                    </p>
+                    <a
+                      href={`mailto:support@tsiforafrica.com?subject=${encodeURIComponent(`CBT Retry Request – ${scholarshipType === "masters" ? "Masters" : "Student"} Scholarship`)}&body=${encodeURIComponent(`Hello TSIA Support,\n\nI would like to request a retry for the ${scholarshipType === "masters" ? "Masters" : "Student"} Scholarship CBT.\n\nMy details:\n  Name: [Your Full Name]\n  Email: [Your Registered Email]\n  Score: ${Math.round(result.aggregateScore)}% aggregate\n\nReason for retry request:\n[Please explain clearly why you think you deserve another attempt]\n\nThank you.`)}`}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors"
+                      data-testid="btn-request-retry"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      Email support@tsiforafrica.com
+                    </a>
+                  </div>
+                </div>
+              </motion.div>
+            )}
 
             <Button onClick={() => setLocation("/dashboard")} className="w-full h-12 rounded-2xl bg-white/10 text-white hover:bg-white/20 border border-white/20 font-semibold">
               Return to Dashboard

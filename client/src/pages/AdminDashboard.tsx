@@ -848,6 +848,19 @@ export default function AdminDashboard() {
     onError: (e: any) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
   });
 
+  const resetCbtMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/admin/scholarship/${id}/reset-cbt`);
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/all-scholarships"] });
+      toast({ title: "CBT Reset ✓", description: "The student's CBT slot has been reset. They have been notified and can retake the test." });
+    },
+    onError: (e: any) => toast({ title: "Reset Failed", description: e.message, variant: "destructive" }),
+  });
+
   const approveBankTransferMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("POST", `/api/admin/pending-bank-transfer/${id}/approve`);
@@ -3667,6 +3680,14 @@ export default function AdminDashboard() {
                                       data-testid={`btn-edit-waec-${s.id}`}>
                                       Edit WAEC
                                     </Button>
+                                    {s.status === "failed" && (
+                                      <Button size="sm" variant="outline" className="h-7 text-xs border-indigo-300 text-indigo-600 hover:bg-indigo-50"
+                                        disabled={resetCbtMutation.isPending}
+                                        onClick={() => resetCbtMutation.mutate(s.id)}
+                                        data-testid={`btn-reset-cbt-${s.id}`}>
+                                        <ArrowRight className="w-3 h-3 mr-1" /> Reset CBT
+                                      </Button>
+                                    )}
                                     {s.status !== "declined" && (
                                       <Button size="sm" variant="outline" className="h-7 text-xs border-red-300 text-red-600 hover:bg-red-50"
                                         onClick={() => setDeclineSchDialog({ id: s.id, name: `${s.user?.firstName ?? ""} ${s.user?.lastName ?? ""}`.trim() })}

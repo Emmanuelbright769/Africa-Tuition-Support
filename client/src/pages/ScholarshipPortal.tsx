@@ -165,7 +165,7 @@ export default function ScholarshipPortal() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [liveScore, setLiveScore] = useState({ verbal: 0, quant: 0 });
-  const [questionTimer, setQuestionTimer] = useState(15);
+  const [questionTimer, setQuestionTimer] = useState(30);
   const [sectionTimer, setSectionTimer] = useState(900);
   const [testPhase, setTestPhase] = useState<TestPhase>("verbal");
   const [showFeedback, setShowFeedback] = useState<{ selected: number; correct: number } | null>(null);
@@ -296,7 +296,7 @@ export default function ScholarshipPortal() {
       const nextIdx = idx + 1;
       if (nextIdx < qs.length) {
         setCurrentIdx(nextIdx);
-        setQuestionTimer(10);
+        setQuestionTimer(30);
       } else {
         // Section complete
         if (sectionTimerRef.current) clearInterval(sectionTimerRef.current);
@@ -312,7 +312,7 @@ export default function ScholarshipPortal() {
 
   useEffect(() => {
     if (step !== "test" || (testPhase !== "verbal" && testPhase !== "quant") || !currentQ) return;
-    setQuestionTimer(15);
+    setQuestionTimer(30);
     questionTimerRef.current = setInterval(() => {
       setQuestionTimer(prev => {
         if (prev <= 1) {
@@ -356,7 +356,7 @@ export default function ScholarshipPortal() {
       const t = setTimeout(() => {
         setTestPhase("quant");
         setCurrentIdx(0);
-        setQuestionTimer(10);
+        setQuestionTimer(30);
       }, 3500);
       return () => clearTimeout(t);
     }
@@ -817,7 +817,7 @@ export default function ScholarshipPortal() {
                 >
                   {/* Timer ring + question */}
                   <div className="flex items-start gap-4 mb-6">
-                    <TimerRing seconds={questionTimer} max={15} size={72} color={accentColor} />
+                    <TimerRing seconds={questionTimer} max={30} size={72} color={accentColor} />
                     <div className="flex-1">
                       <p className="text-white/50 text-xs mb-1.5">Question {currentIdx + 1} of 15</p>
                       <p className="text-white text-lg sm:text-xl font-semibold leading-relaxed">{currentQ.text}</p>

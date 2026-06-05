@@ -3635,7 +3635,9 @@ export async function registerRoutes(
 
       const td = (record.testData ?? {}) as any;
       const updated = await storage.updateScholarship(id, {
-        status: "fee_paid",
+        status: "waec_done",      // sends them back to the portal-fee payment step
+        portalFeePaid: false,
+        commitmentFeePaid: false, // masters must also re-pay commitment fee
         testStartedAt: null,
         testCompletedAt: null,
         verbalScore: null,

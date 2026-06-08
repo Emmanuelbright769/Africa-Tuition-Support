@@ -5295,7 +5295,7 @@ export default function AdminDashboard() {
               disabled={editUserMutation.isPending}
               onClick={() => editUserMutation.mutate({
                 id: editUserDialog.user?.id,
-                email: editUserEmail || undefined,
+                email: editUserEmail && editUserEmail !== editUserDialog.user?.email ? editUserEmail : undefined,
                 firstName: editUserFirst || undefined,
                 lastName: editUserLast || undefined,
                 newPassword: editUserPassword || undefined,

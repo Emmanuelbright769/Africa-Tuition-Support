@@ -533,7 +533,9 @@ export default function AffiliateDashboard() {
   const { mode, setMode } = useTheme();
   const { toast } = useToast();
 
-  const [activeSection, setActiveSection] = useState<Section>("overview");
+  const [activeSection, setActiveSection] = useState<Section>(
+    (() => { const p = new URLSearchParams(typeof window !== "undefined" ? window.location.search : ""); const s = p.get("section"); return (s as Section) || "overview"; })()
+  );
   const navHistory = useRef<Section[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
@@ -1253,28 +1255,6 @@ export default function AffiliateDashboard() {
           <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
 
-            {/* ── WALLET GATE: blocks all sections except overview & fintech when wallet not yet funded ── */}
-            {!walletActivated && activeSection !== "overview" && activeSection !== "fintech" && (
-              <motion.div variants={itemVariants} className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-                <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
-                  <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />
-                </div>
-                <h2 className="text-2xl font-bold mb-3">Fund Your Account First</h2>
-                <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  To access this feature, fund your TSIA wallet with above <strong>$2</strong> via Swift Hub. This unlocks the trade market, TS-Mart, QCE SwiftVault, and all other services.
-                </p>
-                <Button
-                  size="lg"
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-8"
-                  onClick={() => navigate("fintech")}
-                  data-testid="button-wallet-gate-activate-affiliate"
-                >
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Fund via Swift Hub
-                </Button>
-                <p className="text-xs text-muted-foreground mt-4">Deposit above $2 · Activates immediately on confirmation</p>
-              </motion.div>
-            )}
 
             {/* ── OVERVIEW ── */}
             {activeSection === "overview" && (

@@ -5995,57 +5995,10 @@ export async function registerRoutes(
       const amountKoboFromSquad = data.data?.transaction_amount ?? 0;
       const rates = await getUsdNgnRates();
       const gross = parseFloat(existing?.amountUsd ?? (amountKoboFromSquad / Math.round(rates.buying * 100)).toFixed(2));
-      // Credit 100% to wallet — service fees apply on transactions, not deposits
-      const sqUserCredit = gross;
-      const sqReserveCut = 0;
-      const sqAffiliateCut = 0;
-      const squadWallet = await storage.getOrCreateWallet(userId);
-      const newBalance = (parseFloat(squadWallet.balance) + sqUserCredit).toFixed(2);
-      await storage.updateWalletBalance(userId, newBalance);
-      // Activate wallet on first funding ≥ $2 and credit referral commission
-      if (!squadWallet.activated && parseFloat(newBalance) > 2) {
-        try {
-          await storage.activateWallet(userId);
-          const activationReferralResult = await creditReferrerCommissionOnce(userId, gross, "personal wallet activation");
-          if (!activationReferralResult.credited) console.log(`[REFERRAL] No Squad wallet activation commission credited for user ${userId}`);
-          const sqUser = await storage.getUser(userId);
-          if (sqUser?.referredBy) {
-            const sqReferrer = await storage.getUserByAffiliateCode(sqUser.referredBy);
-            if (sqReferrer) {
-              const refN = await storage.createNotification({
-                userId: sqReferrer.id, type: "referral_activated",
-                title: "Referral Activated 🎉",
-                message: `${sqUser.firstName} ${sqUser.lastName.charAt(0)}. (one of your referrals) has activated their TSIA wallet. Your referral commission is now active!`,
-                data: { referredUserId: sqUser.id }, isRead: false,
-              });
-              pushToUser(sqReferrer.id, "notification", refN);
-            }
-          }
-        } catch { /* non-critical */ }
-      }
-      // Record credited transaction
-      await storage.createTransaction({ userId, type: "deposit", amount: sqUserCredit.toFixed(2), fee: "0.00", paymentMethod: "squad", description: `Wallet funded via Squad (${transactionRef}) — $${sqUserCredit.toFixed(2)} credited (100%)` });
-      // Mark deposit record as completed
-      if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
-      // Push live notification
-      const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${gross.toFixed(2)} received and fully credited to your TSIA SwiftWallet`, data: { transactionRef }, isRead: false });
-      pushToUser(userId, "notification", notif);
-      const sqDepositUser = await storage.getUser(userId);
-      if (sqDepositUser) {
-        sendAdminDepositConfirmedEmail({
-          name: `${sqDepositUser.firstName} ${sqDepositUser.lastName}`,
-          email: sqDepositUser.email,
-          gross: gross.toFixed(2),
-          credited: sqUserCredit.toFixed(2),
-          reserveCut: "0.00",
-          affiliateCut: "0.00",
-          newBalance,
-          walletType: "squad",
-          txHash: transactionRef,
-          userId,
-        }).catch((err: any) => console.error("[EMAIL] Admin Squad confirmed deposit email failed:", err?.message ?? err));
-      }
-      res.json({ message: `$${sqUserCredit.toFixed(2)} has been credited to your TSIA SwiftWallet`, amountUsd: sqUserCredit });
+      // Credit wallet using shared helper (95% to user, 5% affiliate pool) — same as Korapay
+      await creditWalletWithSplit(userId, gross, "squad", transactionRef, existing ? { id: existing.id, amountUsd: existing.amountUsd, status: existing.status } : undefined);
+      const userCredit = parseFloat((gross * 0.95).toFixed(2));
+      res.json({ message: `$${userCredit.toFixed(2)} has been credited to your TSIA SwiftWallet`, amountUsd: userCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -6092,35 +6045,8 @@ export async function registerRoutes(
             // raw Pool rows are snake_case — use user_id and amount_usd
             const userId = allDeposits.user_id ?? allDeposits.userId;
             const wkGross = parseFloat(allDeposits.amount_usd ?? allDeposits.amountUsd);
-            // Credit 100% to wallet — service fees apply on transactions, not deposits
-            const wkUserCredit = wkGross;
-            const wl = await storage.getOrCreateWallet(userId);
-            const newBal = (parseFloat(wl.balance) + wkUserCredit).toFixed(2);
-            await storage.updateWalletBalance(userId, newBal);
-            if (!wl.activated && parseFloat(newBal) > 2) {
-              await storage.activateWallet(userId);
-              const webhookReferralResult = await creditReferrerCommissionOnce(userId, wkGross, "personal wallet activation");
-              if (!webhookReferralResult.credited) console.log(`[REFERRAL] No Squad webhook wallet activation commission credited for user ${userId}`);
-            }
-            await storage.createTransaction({ userId, type: "deposit", amount: wkUserCredit.toFixed(2), fee: "0.00", paymentMethod: "squad", description: `Wallet funded via Squad webhook (${ref}) — $${wkUserCredit.toFixed(2)} credited (100%)` });
-            await storage.updateWalletDeposit(allDeposits.id, { status: "completed" });
-            const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${wkGross.toFixed(2)} received and fully credited to your TSIA SwiftWallet`, data: { ref }, isRead: false });
-            pushToUser(userId, "notification", notif);
-            const wkUser = await storage.getUser(userId);
-            if (wkUser) {
-              sendAdminDepositConfirmedEmail({
-                name: `${wkUser.firstName} ${wkUser.lastName}`,
-                email: wkUser.email,
-                gross: wkGross.toFixed(2),
-                credited: wkUserCredit.toFixed(2),
-                reserveCut: "0.00",
-                affiliateCut: "0.00",
-                newBalance: newBal,
-                walletType: "squad",
-                txHash: ref,
-                userId,
-              }).catch((err: any) => console.error("[EMAIL] Admin Squad webhook deposit email failed:", err?.message ?? err));
-            }
+            // Credit using shared helper (95% user, 5% affiliate pool) — same as Korapay
+            await creditWalletWithSplit(userId, wkGross, "squad", ref, { id: allDeposits.id, amountUsd: allDeposits.amount_usd ?? allDeposits.amountUsd, status: allDeposits.status });
           }
         }
       }
@@ -9186,7 +9112,7 @@ export async function registerRoutes(
     if (!name || !email || !message) {
       return res.status(400).json({ message: "Name, email and message are required." });
     }
-    const adminEmail = process.env.BREVO_SENDER_EMAIL || "emmanuelbright769@gmail.com";
+    const adminEmail = process.env.ADMIN_EMAIL || "support@tsiforafrica.com";
     const subjectLabel = subject || "General Inquiry";
     try {
       await Promise.all([

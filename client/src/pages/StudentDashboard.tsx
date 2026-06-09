@@ -455,29 +455,6 @@ export default function StudentDashboard() {
             className="space-y-6"
           >
 
-            {/* ── WALLET GATE: blocks all sections except overview & fintech when wallet not yet funded ── */}
-            {!walletActivated && activeSection !== "overview" && activeSection !== "fintech" && (
-              <motion.div variants={itemVariants} className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-                <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6">
-                  <Wallet className="w-10 h-10 text-amber-600 dark:text-amber-400" />
-                </div>
-                <h2 className="text-2xl font-bold mb-3">Fund Your Account First</h2>
-                <p className="text-muted-foreground max-w-md mb-6 leading-relaxed">
-                  To access this feature, you need to fund your TSIA wallet with above <strong>$2</strong> via Swift Hub. This unlocks all platform services including sponsorship, loans, e-commerce, and more.
-                </p>
-                <Button
-                  size="lg"
-                  className="bg-primary text-primary-foreground font-bold px-8"
-                  onClick={() => navigate("fintech")}
-                  data-testid="button-wallet-gate-activate"
-                >
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Fund via Swift Hub
-                </Button>
-                <p className="text-xs text-muted-foreground mt-4">Deposit above $2 · Activates immediately on confirmation</p>
-              </motion.div>
-            )}
-
             {/* ── OVERVIEW ── */}
             {activeSection === "overview" && (
               <>
@@ -617,21 +594,6 @@ export default function StudentDashboard() {
                   </motion.div>
                 )}
 
-                {/* Wallet gate banner — shown below greeting when wallet not yet activated */}
-                {!walletActivated && (
-                  <motion.div variants={itemVariants} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <div className="w-10 h-10 bg-amber-100 dark:bg-amber-800/50 rounded-full flex items-center justify-center shrink-0">
-                      <Wallet className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">Activate Your Account to Unlock All Features</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">Fund your TSIA wallet with above <strong>$2</strong> via Swift Hub to access all platform services.</p>
-                    </div>
-                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => navigate("fintech")} data-testid="button-overview-wallet-activate">
-                      Fund via Swift Hub
-                    </Button>
-                  </motion.div>
-                )}
 
                 <motion.div variants={itemVariants}>
                   <Card className="shadow-md border-0 overflow-hidden relative group">
@@ -755,10 +717,10 @@ export default function StudentDashboard() {
             )}
 
             {/* ── QCE ── */}
-            {activeSection === "qce" && walletActivated && <QCESection />}
+            {activeSection === "qce" && <QCESection />}
 
             {/* ── PLANS ── */}
-            {activeSection === "plans" && walletActivated && (
+            {activeSection === "plans" && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Swift-Pay Plans</h2>
@@ -992,7 +954,7 @@ export default function StudentDashboard() {
             )}
 
             {/* ── ACTIVITY ── */}
-            {activeSection === "activity" && walletActivated && (
+            {activeSection === "activity" && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Activity</h2>
@@ -1040,14 +1002,14 @@ export default function StudentDashboard() {
             )}
 
             {/* ── E-COMMERCE ── */}
-            {activeSection === "ecommerce" && walletActivated && (
+            {activeSection === "ecommerce" && (
               <motion.div variants={itemVariants}>
                 <EcommerceSection initialOpenChatId={openChatId} />
               </motion.div>
             )}
 
             {/* ── EMERGENCY RESPONSE ── */}
-            {activeSection === "emergency_response" && walletActivated && (
+            {activeSection === "emergency_response" && (
               <motion.div variants={itemVariants} className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
@@ -1107,7 +1069,7 @@ export default function StudentDashboard() {
             )}
 
             {/* ── COMMUNITY FORUM ── */}
-            {activeSection === "forum" && walletActivated && (
+            {activeSection === "forum" && (
               <motion.div variants={itemVariants}>
                 <ForumSection userSection="student" />
               </motion.div>
@@ -1273,7 +1235,7 @@ export default function StudentDashboard() {
             )}
 
             {/* ── STRATEGIC RESERVE FUND ── */}
-            {activeSection === "reserve_fund" && walletActivated && (
+            {activeSection === "reserve_fund" && (
               <motion.div variants={itemVariants}>
                 <div className="mb-5">
                   <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -1293,7 +1255,7 @@ export default function StudentDashboard() {
             )}
 
             {/* ── STUDENT LOAN ── */}
-            {activeSection === "loan" && walletActivated && (
+            {activeSection === "loan" && (
               <>
                 <motion.div variants={itemVariants}>
                   <h2 className="text-2xl font-bold mb-1">Student loan programme</h2>
@@ -1482,50 +1444,45 @@ export default function StudentDashboard() {
         </div>
       </main>
 
-      {/* ── Wallet Activation Popup ── */}
+      {/* ── Welcome Popup (first login) ── */}
       <Dialog open={activationPopupOpen} onOpenChange={() => {}}>
         <DialogContent className="sm:max-w-md" onInteractOutside={e => e.preventDefault()}>
           <DialogHeader>
             <div className="flex items-center gap-3 mb-1">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-tsia-green to-emerald-600 flex items-center justify-center shadow-md">
-                <Wallet className="w-6 h-6 text-white" />
+                <GraduationCap className="w-6 h-6 text-white" />
               </div>
               <div>
-                <DialogTitle className="text-lg">Activate Your Wallet</DialogTitle>
-                <p className="text-xs text-muted-foreground">Required to unlock all TSIA features</p>
+                <DialogTitle className="text-lg">Welcome to TSIA! 🎉</DialogTitle>
+                <p className="text-xs text-muted-foreground">Your journey starts here</p>
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              To access QCE SwiftVault, loans, e-commerce, the trade market, and all other platform features, please <strong>fund your SwiftWallet with above $2</strong>.
+              You now have full access to explore everything TSIA has to offer — scholarships, loans, e-commerce, community, and more.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-4 flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
-                <Zap className="w-4 h-4 text-tsia-green" />
+          <div className="space-y-2.5 py-2">
+            {[
+              { icon: Trophy, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-900/20", title: "Browse Scholarships & Plans", desc: "Explore sponsorship tiers and funding options." },
+              { icon: BookOpen, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20", title: "Forum & Community", desc: "Connect with fellow students across Africa." },
+              { icon: Wallet, color: "text-tsia-green", bg: "bg-tsia-green/10", title: "Swift Hub — Fund & Transact", desc: "Deposit funds when you're ready to start your application." },
+            ].map(({ icon: Icon, color, bg, title, desc }) => (
+              <div key={title} className={`${bg} rounded-xl p-3 flex items-center gap-3`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${bg}`}>
+                  <Icon className={`w-4 h-4 ${color}`} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{title}</p>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Activate with above $2</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Go to Swift Hub → Fund Account to deposit via card, bank transfer, or USDT crypto. Admin confirms within 30 minutes.</p>
-              </div>
-            </div>
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-start gap-2">
-              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-800 dark:text-amber-200">
-                <strong>Minimum balance:</strong> At least <strong>$2 must remain</strong> in your wallet at all times to keep platform services running — payments, transfers, and features stay active.
-              </p>
-            </div>
+            ))}
           </div>
-          <DialogFooter className="gap-2 flex-col sm:flex-row">
-            <Button variant="outline" className="flex-1"
+          <DialogFooter>
+            <Button className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white"
               onClick={() => { localStorage.setItem("tsia_wallet_activation_dismissed_" + user?.id, "1"); setActivationPopupOpen(false); }}
-              data-testid="button-activation-later">
-              Remind Me Later
-            </Button>
-            <Button className="flex-1 bg-tsia-green hover:bg-tsia-green/90 text-white"
-              onClick={() => { localStorage.setItem("tsia_wallet_activation_dismissed_" + user?.id, "1"); setActivationPopupOpen(false); navigate("fintech"); }}
-              data-testid="button-activation-goto-wallet">
-              <CreditCard className="w-4 h-4 mr-2" /> Fund via Swift Hub
+              data-testid="button-welcome-explore">
+              Explore the Platform
             </Button>
           </DialogFooter>
         </DialogContent>

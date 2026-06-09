@@ -81,6 +81,7 @@ function Router() {
       <Route path="/contact" component={ContactUs} />
       <Route path="/affiliate-signup" component={AffiliateSignup} />
       <Route path="/affiliate-dashboard" component={AffiliateDashboard} />
+      <Route path="/trade-market">{() => { window.location.replace("/affiliate-dashboard?section=trade"); return null; }}</Route>
       <Route path="/tour-africa" component={TourAfrica} />
       <Route path="/tenancy" component={TenancyPage} />
       <Route path="/terms" component={TermsAndConditions} />

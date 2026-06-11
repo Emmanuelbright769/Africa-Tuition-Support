@@ -877,9 +877,12 @@ export default function FinancialHub() {
     onError: (e: any) => toast({ title: "Submission failed", description: e.message, variant: "destructive" }),
   });
 
-  const balance      = parseFloat(wallet?.balance ?? "0");
-  const isLoanLien   = (wallet?.lienReason ?? "").startsWith("loan_active:");
-  const lienAmountUsd = parseFloat(wallet?.lienAmount ?? "0");
+  const balance        = parseFloat(wallet?.balance ?? "0");
+  const lienReason_    = wallet?.lienReason ?? "";
+  const isLoanActive   = lienReason_.startsWith("loan_active:");
+  const isLoanWithdrawn = lienReason_.startsWith("loan_withdrawn:");
+  const isLoanLien     = isLoanActive || isLoanWithdrawn;
+  const lienAmountUsd  = parseFloat(wallet?.lienAmount ?? "0");
   const totalIn  = (txHistory as any[]).filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
   const totalOut = Math.abs((txHistory as any[]).filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + parseFloat(t.amount), 0));
 
@@ -2499,14 +2502,27 @@ export default function FinancialHub() {
       </div>
 
       {/* ── LOAN LIEN BANNER ── */}
-      {isLoanLien && (
+      {isLoanActive && (
         <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300/60 dark:border-amber-700/50 px-4 py-3.5 flex gap-3 items-start">
           <span className="text-xl shrink-0 mt-0.5">🔒</span>
           <div className="flex-1 min-w-0">
             <p className="font-bold text-amber-800 dark:text-amber-300 text-sm leading-snug">Wallet Frozen — Active Loan</p>
             <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5 leading-snug">
-              Your wallet has an active loan of <strong>${lienAmountUsd.toFixed(2)}</strong> (total repayable).
-              All transactions are blocked. You may only withdraw the loan to your bank account.
+              Your wallet carries an active loan of <strong>${lienAmountUsd.toFixed(2)}</strong> (total repayable).
+              All transactions are blocked except one: you may withdraw the loan to your bank account.
+              Once you withdraw, all wallet operations including bank transfers will be fully locked until repayment.
+            </p>
+          </div>
+        </div>
+      )}
+      {isLoanWithdrawn && (
+        <div className="rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-300/60 dark:border-red-700/50 px-4 py-3.5 flex gap-3 items-start">
+          <span className="text-xl shrink-0 mt-0.5">🚫</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-red-800 dark:text-red-300 text-sm leading-snug">Wallet Fully Locked — Loan Withdrawn</p>
+            <p className="text-red-700 dark:text-red-400 text-xs mt-0.5 leading-snug">
+              You have withdrawn your loan of <strong>${lienAmountUsd.toFixed(2)}</strong> (total repayable).
+              All wallet transactions — including bank transfers — are now blocked.
               Your wallet will be fully restored once the loan is repaid.
             </p>
           </div>

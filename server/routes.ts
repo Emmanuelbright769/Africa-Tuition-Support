@@ -7108,8 +7108,11 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
       const lien    = parseFloat(wallet.lienAmount ?? "0");
-      // Loan-liened wallets: bank withdrawal IS the intended use — allow it, skip lien restriction
-      const isLoanLienActive = (wallet.lienReason ?? "").startsWith("loan_active:");
+      const lienReason = wallet.lienReason ?? "";
+      // If user already withdrew their loan, all transactions (including bank transfers) are now blocked
+      if (lienReason.startsWith("loan_withdrawn:")) return res.status(403).json({ message: "You have already withdrawn your loan. All wallet transactions are blocked until the loan is repaid. Please repay to restore full access.", code: "LOAN_LIEN" });
+      // First-time loan withdrawal: allow it and bypass the lien restriction
+      const isLoanLienActive = lienReason.startsWith("loan_active:");
       const effectiveLien = isLoanLienActive ? 0 : lien;
       const availBal = Math.max(0, balance - effectiveLien);
       if (!isLoanLienActive && lien > 0 && availBal < transferAmount) return res.status(400).json({ message: `Your wallet has an active lien of $${lien.toFixed(2)}. Available balance: $${availBal.toFixed(2)}.`, code: "LIEN_BLOCKED" });
@@ -7134,6 +7137,12 @@ export async function registerRoutes(
       const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) is pending. Admin will process it within 24 hours. Ref: ${txRef}`;
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Pending ⏳", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
+
+      // ── After loan withdrawal: upgrade lien so bank transfers are also blocked ──
+      if (isLoanLienActive) {
+        const loanId = lienReason.slice("loan_active:".length);
+        await storage.setWalletLien(userId, wallet.lienAmount ?? "0", `loan_withdrawn:${loanId}`);
+      }
 
       invalidateCacheKey(`wallet:${userId}`);
       invalidateCacheKey(`transactions:${userId}`);

@@ -545,9 +545,14 @@ export default function FinancialHub() {
 
   // ── Loan application state ────────────────────────────────────────────────
   const [loanDialogOpen, setLoanDialogOpen]   = useState(false);
+  const [loanStep, setLoanStep]               = useState<1 | 2>(1);
   const [loanAmount, setLoanAmount]           = useState("");
   const [loanTerm, setLoanTerm]               = useState<number | null>(null);
   const [loanPurpose, setLoanPurpose]         = useState("");
+  const [loanBvn, setLoanBvn]                 = useState("");
+  const [loanNin, setLoanNin]                 = useState("");
+  const [loanAddress, setLoanAddress]         = useState("");
+  const [loanAgreed, setLoanAgreed]           = useState(false);
 
   // ── Cashback withdraw state ───────────────────────────────────────────────
   const [cashbackWithdrawOpen, setCashbackWithdrawOpen] = useState(false);
@@ -658,17 +663,19 @@ export default function FinancialHub() {
   });
 
   const applyLoanMutation = useMutation({
-    mutationFn: async (data: { amountUsd: string; termMonths: number; purpose: string }) => {
+    mutationFn: async (data: { amountUsd: string; termMonths: number; purpose: string; bvn: string; nin: string; fullAddress: string }) => {
       const res = await apiRequest("POST", "/api/loans/apply", data);
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
     onSuccess: () => {
       setLoanDialogOpen(false);
+      setLoanStep(1);
       setLoanAmount(""); setLoanTerm(null); setLoanPurpose("");
+      setLoanBvn(""); setLoanNin(""); setLoanAddress(""); setLoanAgreed(false);
       refetchLoans();
       queryClient.invalidateQueries({ queryKey: ["/api/loans/limit"] });
-      toast({ title: "Loan Application Submitted!", description: "Your application is under review. We'll notify you once it's approved." });
+      toast({ title: "✅ Application Submitted!", description: "Your loan offer and repayment schedule have been sent to your email." });
     },
     onError: (e: any) => toast({ title: "Application Failed", description: e.message, variant: "destructive" }),
   });
@@ -1671,7 +1678,12 @@ export default function FinancialHub() {
                 </div>
               )}
               <button
-                onClick={() => { setLoanAmount(""); setLoanTerm(loanLimit.terms?.[0] ?? 6); setLoanPurpose(""); setLoanDialogOpen(true); }}
+                onClick={() => {
+                  setLoanAmount(loanLimit.limitUsd.toFixed(2));
+                  setLoanTerm(loanLimit.terms?.[0] ?? 6);
+                  setLoanPurpose(""); setLoanBvn(""); setLoanNin(""); setLoanAddress(""); setLoanAgreed(false); setLoanStep(1);
+                  setLoanDialogOpen(true);
+                }}
                 className="w-full bg-amber-500 hover:bg-amber-600 text-white font-black text-sm rounded-xl py-3 transition-colors"
                 data-testid="btn-apply-loan"
               >
@@ -1691,61 +1703,186 @@ export default function FinancialHub() {
           <Sparkles className="w-5 h-5 text-tsia-gold shrink-0" />
         </div>
 
-        {/* Loan Application Dialog */}
-        <Dialog open={loanDialogOpen} onOpenChange={setLoanDialogOpen}>
-          <DialogContent className="sm:max-w-sm">
+        {/* Loan Application Dialog — multi-step */}
+        <Dialog open={loanDialogOpen} onOpenChange={open => { setLoanDialogOpen(open); if (!open) setLoanStep(1); }}>
+          <DialogContent className="sm:max-w-md max-h-[92dvh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2"><Banknote className="w-5 h-5 text-amber-600" /> Loan Application</DialogTitle>
-              <DialogDescription>Fill in your loan details. Applications are reviewed within 24 hours.</DialogDescription>
+              <DialogTitle className="flex items-center gap-2">
+                <Banknote className="w-5 h-5 text-amber-600" />
+                Loan Application
+                <span className="ml-auto text-xs font-normal text-muted-foreground">Step {loanStep} of 2</span>
+              </DialogTitle>
+              <DialogDescription>
+                {loanStep === 1 ? "Provide your KYC details — required to process your application." : "Review your personalised offer and agree to the terms."}
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-1">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold">Amount (USD)</Label>
-                <Input
-                  type="number"
-                  placeholder={`Max $${loanLimit?.limitUsd?.toFixed(2) ?? "—"}`}
-                  value={loanAmount}
-                  onChange={e => setLoanAmount(e.target.value)}
-                  min="1" max={loanLimit?.limitUsd}
-                  data-testid="input-loan-amount"
-                />
-                {loanAmount && loanLimit && parseFloat(loanAmount) > 0 && loanTerm && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Monthly payment: <span className="font-bold text-foreground">${((parseFloat(loanAmount) * (1 + (loanLimit.interestRate ?? 10) / 100)) / loanTerm).toFixed(2)}</span> × {loanTerm} months
-                  </p>
-                )}
+
+            {/* Step indicators */}
+            <div className="flex gap-2 mb-1">
+              {[1, 2].map(s => (
+                <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${s <= loanStep ? "bg-amber-500" : "bg-muted"}`} />
+              ))}
+            </div>
+
+            {loanStep === 1 && (
+              <div className="space-y-4 py-1">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">BVN <span className="text-red-500">*</span></Label>
+                  <Input
+                    placeholder="11-digit Bank Verification Number"
+                    value={loanBvn}
+                    onChange={e => setLoanBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    inputMode="numeric"
+                    maxLength={11}
+                    data-testid="input-loan-bvn"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Your BVN is used solely for identity verification and is kept secure.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">NIN <span className="text-red-500">*</span></Label>
+                  <Input
+                    placeholder="11-digit National Identification Number"
+                    value={loanNin}
+                    onChange={e => setLoanNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    inputMode="numeric"
+                    maxLength={11}
+                    data-testid="input-loan-nin"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">Full Address / Location <span className="text-red-500">*</span></Label>
+                  <textarea
+                    className="w-full min-h-[72px] rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                    placeholder="House number, street, city, state, country"
+                    value={loanAddress}
+                    onChange={e => setLoanAddress(e.target.value)}
+                    data-testid="input-loan-address"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">Reason for Loan <span className="text-red-500">*</span></Label>
+                  <textarea
+                    className="w-full min-h-[72px] rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                    placeholder="e.g. School fees, business equipment, medical emergency…"
+                    value={loanPurpose}
+                    onChange={e => setLoanPurpose(e.target.value)}
+                    data-testid="input-loan-purpose"
+                  />
+                </div>
+                <Button
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold"
+                  onClick={() => {
+                    if (loanBvn.length !== 11) { toast({ title: "BVN must be 11 digits", variant: "destructive" }); return; }
+                    if (loanNin.length !== 11) { toast({ title: "NIN must be 11 digits", variant: "destructive" }); return; }
+                    if (!loanAddress.trim()) { toast({ title: "Full address is required", variant: "destructive" }); return; }
+                    if (!loanPurpose.trim()) { toast({ title: "Reason for loan is required", variant: "destructive" }); return; }
+                    setLoanStep(2);
+                  }}
+                  data-testid="btn-loan-next"
+                >
+                  Continue to Offer →
+                </Button>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold">Repayment Term</Label>
-                <div className="flex gap-2 flex-wrap">
-                  {(loanLimit?.terms ?? [6, 12]).map(t => (
-                    <button key={t} onClick={() => setLoanTerm(t)}
-                      className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${loanTerm === t ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground"}`}
-                      data-testid={`btn-term-${t}`}
-                    >{t} months</button>
-                  ))}
+            )}
+
+            {loanStep === 2 && (
+              <div className="space-y-4 py-1">
+                {/* Personalised offer banner */}
+                <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100/60 dark:from-amber-900/20 dark:to-amber-800/10 border border-amber-200/60 dark:border-amber-700/30 p-4">
+                  <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-1">Your Personalised Offer</p>
+                  <p className="font-black text-2xl text-amber-700 dark:text-amber-300">${loanLimit?.limitUsd?.toFixed(2) ?? "—"}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">30% of your total TSIA transaction volume · {loanLimit?.interestRate ?? 10}% p.a. interest</p>
+                </div>
+
+                {/* Amount (pre-filled, editable) */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">Loan Amount (USD) <span className="text-red-500">*</span></Label>
+                  <Input
+                    type="number"
+                    value={loanAmount}
+                    onChange={e => setLoanAmount(e.target.value)}
+                    min="1"
+                    max={loanLimit?.limitUsd}
+                    data-testid="input-loan-amount"
+                  />
+                  {loanLimit && parseFloat(loanAmount) > loanLimit.limitUsd && (
+                    <p className="text-[11px] text-red-500 font-semibold">Exceeds your offer of ${loanLimit.limitUsd.toFixed(2)}</p>
+                  )}
+                </div>
+
+                {/* Term picker */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">Repayment Term</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {(loanLimit?.terms ?? [6, 12]).map(t => (
+                      <button key={t} onClick={() => setLoanTerm(t)}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${loanTerm === t ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground"}`}
+                        data-testid={`btn-term-${t}`}
+                      >{t} months</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Repayment schedule preview */}
+                {loanAmount && loanTerm && parseFloat(loanAmount) > 0 && loanLimit && (
+                  (() => {
+                    const principal = parseFloat(loanAmount);
+                    const rate = loanLimit.interestRate ?? 10;
+                    const totalInterest = principal * (rate / 100) * (loanTerm / 12);
+                    const totalPayable = principal + totalInterest;
+                    const monthly = totalPayable / loanTerm;
+                    return (
+                      <div className="rounded-xl border border-border overflow-hidden">
+                        <div className="bg-muted/50 px-3 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">Repayment Schedule</div>
+                        <div className="divide-y divide-border max-h-40 overflow-y-auto">
+                          {Array.from({ length: loanTerm }, (_, i) => (
+                            <div key={i} className="flex justify-between items-center px-3 py-1.5 text-xs">
+                              <span className="text-muted-foreground">Month {i + 1}</span>
+                              <span className="font-bold text-foreground">${monthly.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="bg-amber-50 dark:bg-amber-900/20 px-3 py-2 flex justify-between items-center text-xs border-t border-amber-200/50 dark:border-amber-700/30">
+                          <span className="font-bold text-amber-700 dark:text-amber-400">Total Payable</span>
+                          <span className="font-black text-amber-700 dark:text-amber-400">${totalPayable.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                )}
+
+                {/* Agreement checkbox */}
+                <label className="flex items-start gap-3 cursor-pointer" data-testid="label-loan-agree">
+                  <input
+                    type="checkbox"
+                    checked={loanAgreed}
+                    onChange={e => setLoanAgreed(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-amber-500 shrink-0"
+                    data-testid="checkbox-loan-agree"
+                  />
+                  <span className="text-xs text-muted-foreground leading-relaxed">
+                    I confirm all information provided is accurate. I agree to the repayment schedule above and authorise TSIA to send my loan offer and schedule to my registered email address.
+                  </span>
+                </label>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setLoanStep(1)} data-testid="btn-loan-back">← Back</Button>
+                  <Button
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold"
+                    onClick={() => {
+                      if (!loanAmount || !loanTerm) { toast({ title: "Select amount and term", variant: "destructive" }); return; }
+                      if (loanLimit && parseFloat(loanAmount) > loanLimit.limitUsd) { toast({ title: `Max offer is $${loanLimit.limitUsd.toFixed(2)}`, variant: "destructive" }); return; }
+                      if (!loanAgreed) { toast({ title: "Please agree to the terms", variant: "destructive" }); return; }
+                      applyLoanMutation.mutate({ amountUsd: loanAmount, termMonths: loanTerm, purpose: loanPurpose, bvn: loanBvn, nin: loanNin, fullAddress: loanAddress });
+                    }}
+                    disabled={applyLoanMutation.isPending || !loanAgreed}
+                    data-testid="btn-submit-loan"
+                  >
+                    {applyLoanMutation.isPending ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Submitting…</> : "Submit Application"}
+                  </Button>
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold">Purpose (optional)</Label>
-                <Input placeholder="e.g. School fees, business supplies…" value={loanPurpose} onChange={e => setLoanPurpose(e.target.value)} data-testid="input-loan-purpose" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setLoanDialogOpen(false)}>Cancel</Button>
-              <Button
-                onClick={() => {
-                  if (!loanAmount || !loanTerm) { toast({ title: "Fill in all required fields", variant: "destructive" }); return; }
-                  if (loanLimit && parseFloat(loanAmount) > loanLimit.limitUsd) { toast({ title: `Max is $${loanLimit.limitUsd.toFixed(2)}`, variant: "destructive" }); return; }
-                  applyLoanMutation.mutate({ amountUsd: loanAmount, termMonths: loanTerm, purpose: loanPurpose });
-                }}
-                disabled={applyLoanMutation.isPending}
-                className="bg-amber-500 hover:bg-amber-600 text-white"
-                data-testid="btn-submit-loan"
-              >
-                {applyLoanMutation.isPending ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Submitting…</> : "Submit Application"}
-              </Button>
-            </DialogFooter>
+            )}
           </DialogContent>
         </Dialog>
 

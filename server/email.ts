@@ -514,6 +514,80 @@ export async function sendOrderUpdateEmail(to: string, firstName: string, orderS
 
 // ─── Loan Update ──────────────────────────────────────────────────────────────
 
+export async function sendLoanOfferEmail(data: {
+  to: string;
+  firstName: string;
+  amountUsd: string;
+  termMonths: number;
+  monthlyPayment: string;
+  totalPayable: string;
+  interestRate: string;
+  purpose: string;
+}): Promise<void> {
+  const subject = `Your TSIA Loan Offer — $${data.amountUsd} Ready for Review`;
+  const rows = Array.from({ length: data.termMonths }, (_, i) => `
+    <tr style="background:${i % 2 === 0 ? "#f8fdf9" : "#ffffff"};">
+      <td style="padding:8px 12px;font-size:13px;color:#2d3748;border-bottom:1px solid #e2e8f0;">Month ${i + 1}</td>
+      <td style="padding:8px 12px;font-size:13px;color:#1a6b3c;font-weight:700;text-align:right;border-bottom:1px solid #e2e8f0;">$${data.monthlyPayment}</td>
+    </tr>`).join("");
+  const html = baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">💰 Your Loan Offer is Confirmed</h2>
+    <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;line-height:1.6;">Hi <strong>${data.firstName}</strong>, your TSIA loan application has been received. Below is a summary of your offer and your full repayment schedule.</p>
+
+    <div style="background:#f0f8f4;border:1px solid #c3e0ce;border-radius:16px;padding:24px;margin:0 0 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="padding:6px 0;color:#6b7c71;font-size:13px;">Loan Amount</td>
+          <td style="padding:6px 0;color:#1a6b3c;font-size:18px;font-weight:900;text-align:right;">$${data.amountUsd}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#6b7c71;font-size:13px;">Interest Rate</td>
+          <td style="padding:6px 0;color:#2d3748;font-size:13px;font-weight:700;text-align:right;">${data.interestRate}% p.a.</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#6b7c71;font-size:13px;">Repayment Term</td>
+          <td style="padding:6px 0;color:#2d3748;font-size:13px;font-weight:700;text-align:right;">${data.termMonths} months</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#6b7c71;font-size:13px;">Monthly Payment</td>
+          <td style="padding:6px 0;color:#2d3748;font-size:13px;font-weight:700;text-align:right;">$${data.monthlyPayment}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#6b7c71;font-size:13px;">Total Payable</td>
+          <td style="padding:6px 0;color:#c0392b;font-size:13px;font-weight:700;text-align:right;">$${data.totalPayable}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#6b7c71;font-size:13px;">Purpose</td>
+          <td style="padding:6px 0;color:#2d3748;font-size:13px;text-align:right;">${data.purpose}</td>
+        </tr>
+      </table>
+    </div>
+
+    <h3 style="color:#2d3748;font-size:15px;margin:0 0 10px;">📅 Repayment Schedule</h3>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;margin:0 0 24px;">
+      <thead>
+        <tr style="background:#1a6b3c;">
+          <th style="padding:10px 12px;font-size:12px;color:#fff;text-align:left;font-weight:700;">Payment</th>
+          <th style="padding:10px 12px;font-size:12px;color:#fff;text-align:right;font-weight:700;">Amount Due</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr style="background:#f0f8f4;">
+          <td style="padding:10px 12px;font-size:13px;font-weight:900;color:#1a6b3c;">Total</td>
+          <td style="padding:10px 12px;font-size:13px;font-weight:900;color:#c0392b;text-align:right;">$${data.totalPayable}</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div style="background:#fffbf0;border:1px solid #f0d070;border-radius:12px;padding:16px;margin:0 0 24px;">
+      <p style="color:#7a6000;font-size:13px;margin:0;line-height:1.6;">⚠️ Your application is now under review by our team. You will receive another email once it is approved and funds are disbursed to your TSIA wallet. Timely repayment builds your credit history on the platform.</p>
+    </div>
+    ${btn("https://tsiforafrica.com/dashboard", "View Loan Status")}
+  `);
+  await sendEmail(data.to, subject, html);
+}
+
 export async function sendLoanUpdateEmail(to: string, firstName: string, status: string, amount: string): Promise<void> {
   const approved = status === "approved";
   const subject = approved ? `Loan Approved – $${amount} disbursed` : `Loan Application Update`;
@@ -1269,6 +1343,7 @@ export async function sendAdminPortalFeeEmail(data: {
 
 export async function sendAdminLoanEmail(data: {
   name: string; email: string; amount: string; purpose: string; termMonths: number; role: string; userId: number;
+  bvn?: string; nin?: string; fullAddress?: string;
 }): Promise<void> {
   const subject = `💰 ACTION REQUIRED: Loan Application $${data.amount} — ${data.name}`;
   const html = adminActionTemplate(
@@ -1281,6 +1356,9 @@ export async function sendAdminLoanEmail(data: {
       ["Amount", `$${data.amount} USD`],
       ["Term", `${data.termMonths} months`],
       ["Purpose", data.purpose || "—"],
+      ["BVN", data.bvn || "—"],
+      ["NIN", data.nin || "—"],
+      ["Full Address", data.fullAddress || "—"],
     ],
     "Review and approve or reject this loan from the Admin Dashboard → Loans section.",
   );

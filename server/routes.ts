@@ -11,7 +11,7 @@ import {
 import {
   sendEmail, ADMIN_EMAIL,
   sendOtpEmail, sendWelcomeEmail, sendWalletCreditEmail, sendWalletReceivedEmail, sendWalletSentEmail,
-  sendOrderUpdateEmail, sendLoanUpdateEmail, sendVerificationUpdateEmail,
+  sendOrderUpdateEmail, sendLoanUpdateEmail, sendLoanOfferEmail, sendVerificationUpdateEmail,
   sendReferralCommissionEmail, sendPriceDropEmail,
   sendNewSaleEmail, sendBotEarningsEmail, sendCoAffiliateEnrollmentEmail,
   sendTourBookingEmail, sendQceActivationEmail, sendQceWithdrawalEmail,
@@ -5770,34 +5770,22 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
-      const activeLoan = await storage.getActiveLoanByUser(userId);
-      if (user.role === "student") {
-        const qce = await storage.getOrCreateQceSavings(userId);
-        const qceBalance = parseFloat(qce.balance || "0");
-        if (qceBalance <= 0) {
-          return res.json({ eligible: false, reason: "Make your first QCE SwiftVault deposit to instantly unlock student loan eligibility.", limitUsd: 0 });
-        }
-        const verification = await storage.getVerificationByUser(userId);
-        const tier = verification?.verificationStatus === "verified" ? (verification.tier || "none") : "none";
-        const tierLimit = calculateStudentLoanLimit(tier);
-        const limitUsd = tierLimit > 0 ? tierLimit : 50;
-        res.json({ eligible: true, limitUsd, tier: tier === "none" ? "starter" : tier, activeLoan: activeLoan || null, interestRate: 10, terms: [6, 12, 18] });
-      } else if (user.role === "affiliate") {
-        const referrals = await storage.getReferralsByCode(user.affiliateCode || "");
-        const tradeWallet = await storage.getOrCreateTradeWallet(userId);
-        const coAffiliate = await storage.getCoAffiliateByUser(userId);
-        const tradeBalance = parseFloat(tradeWallet.balance || "0");
-        const refCount = referrals.length;
-        const coAmount = coAffiliate ? parseFloat(coAffiliate.investedAmount) : 0;
-        const hasEarnings = refCount > 0 || tradeBalance > 0;
-        if (!hasEarnings) {
-          return res.json({ eligible: false, reason: "You need at least 1 verified referral or a trade wallet balance to qualify for a business loan.", limitUsd: 0 });
-        }
-        const limitUsd = calculateAffiliateLoanLimit(refCount, tradeBalance, coAmount);
-        res.json({ eligible: true, limitUsd: Math.round(limitUsd), referralCount: refCount, tradeBalance, coAffiliateAmount: coAmount, activeLoan: activeLoan || null, interestRate: 30, terms: [6, 12, 24] });
-      } else {
-        res.json({ eligible: false, reason: "Loans are available for students and affiliates only.", limitUsd: 0 });
+      if (user.role !== "student" && user.role !== "affiliate") {
+        return res.json({ eligible: false, reason: "Loans are available for students and affiliates only.", limitUsd: 0 });
       }
+      const activeLoan = await storage.getActiveLoanByUser(userId);
+      // Calculate 30% of total transaction volume for this user
+      const txResult = await db.execute(
+        sql`SELECT COALESCE(SUM(ABS(CAST(amount AS numeric))), 0) AS total_volume FROM transactions WHERE user_id = ${userId}`
+      );
+      const totalVolume = parseFloat((txResult.rows[0] as any)?.total_volume ?? "0");
+      const offerUsd = parseFloat((totalVolume * 0.30).toFixed(2));
+      if (offerUsd < 1) {
+        return res.json({ eligible: false, reason: "Complete more transactions on TSIA to unlock your personalised loan offer (loan offer = 30% of your total transaction volume).", limitUsd: 0, totalVolume: totalVolume.toFixed(2) });
+      }
+      const interestRate = user.role === "student" ? 10 : 15;
+      const terms = user.role === "student" ? [6, 12, 18] : [6, 12, 24];
+      res.json({ eligible: true, limitUsd: offerUsd, totalVolume: totalVolume.toFixed(2), activeLoan: activeLoan || null, interestRate, terms });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -5805,32 +5793,26 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     try {
-      const { amountUsd, termMonths, purpose } = req.body;
+      const { amountUsd, termMonths, purpose, bvn, nin, fullAddress } = req.body;
       if (!amountUsd || !termMonths) return res.status(400).json({ message: "Amount and term are required" });
+      if (!bvn?.trim()) return res.status(400).json({ message: "BVN is required" });
+      if (!nin?.trim()) return res.status(400).json({ message: "NIN is required" });
+      if (!fullAddress?.trim()) return res.status(400).json({ message: "Full address/location is required" });
+      if (!purpose?.trim()) return res.status(400).json({ message: "Reason for loan is required" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.role !== "student" && user.role !== "affiliate") return res.status(400).json({ message: "Loans are available for students and affiliates only." });
       const activeLoan = await storage.getActiveLoanByUser(userId);
       if (activeLoan) return res.status(400).json({ message: "You already have an active loan. Please repay it before applying for another." });
-      let interestRate = 10;
-      let maxLimit = 0;
-      if (user.role === "student") {
-        const qce = await storage.getOrCreateQceSavings(userId);
-        if (parseFloat(qce.balance || "0") <= 0) return res.status(400).json({ message: "Make your first QCE SwiftVault deposit to unlock student loan eligibility." });
-        const verification = await storage.getVerificationByUser(userId);
-        const tier = verification?.verificationStatus === "verified" ? (verification.tier || "none") : "none";
-        const tierLimit = calculateStudentLoanLimit(tier);
-        maxLimit = tierLimit > 0 ? tierLimit : 50;
-        interestRate = 10;
-      } else if (user.role === "affiliate") {
-        const referrals = await storage.getReferralsByCode(user.affiliateCode || "");
-        const tradeWallet = await storage.getOrCreateTradeWallet(userId);
-        const coAffiliate = await storage.getCoAffiliateByUser(userId);
-        const tradeBalance = parseFloat(tradeWallet.balance || "0");
-        if (referrals.length === 0 && tradeBalance === 0) return res.status(400).json({ message: "You need earnings to qualify for a business loan." });
-        maxLimit = calculateAffiliateLoanLimit(referrals.length, tradeBalance, coAffiliate ? parseFloat(coAffiliate.investedAmount) : 0);
-        interestRate = 30;
-      }
-      if (parseFloat(amountUsd) > maxLimit) return res.status(400).json({ message: `Loan amount exceeds your limit of $${Math.round(maxLimit).toFixed(2)}` });
+      // Compute offer: 30% of total transaction volume
+      const txResult = await db.execute(
+        sql`SELECT COALESCE(SUM(ABS(CAST(amount AS numeric))), 0) AS total_volume FROM transactions WHERE user_id = ${userId}`
+      );
+      const totalVolume = parseFloat((txResult.rows[0] as any)?.total_volume ?? "0");
+      const maxLimit = parseFloat((totalVolume * 0.30).toFixed(2));
+      if (maxLimit < 1) return res.status(400).json({ message: "You do not have enough transaction history to qualify for a loan yet." });
+      if (parseFloat(amountUsd) > maxLimit) return res.status(400).json({ message: `Loan amount exceeds your offer of $${maxLimit.toFixed(2)}` });
+      const interestRate = user.role === "student" ? 10 : 15;
       const { totalPayable, monthly } = calculateLoanMonthly(parseFloat(amountUsd), interestRate, parseInt(termMonths));
       const loan = await storage.createLoan({
         userId, userRole: user.role as "student" | "affiliate",
@@ -5840,18 +5822,35 @@ export async function registerRoutes(
         monthlyPaymentUsd: monthly.toFixed(2),
         totalPayableUsd: totalPayable.toFixed(2),
         totalPaidUsd: "0",
-        purpose: purpose || null,
+        purpose: purpose.trim(),
+        bvn: bvn.trim(),
+        nin: nin.trim(),
+        fullAddress: fullAddress.trim(),
         status: "pending",
       });
-      // Notify admin — new loan application needs approval
+      // Send offer + repayment schedule to the applicant
+      sendLoanOfferEmail({
+        to: user.email,
+        firstName: user.firstName,
+        amountUsd: parseFloat(amountUsd).toFixed(2),
+        termMonths: parseInt(termMonths),
+        monthlyPayment: monthly.toFixed(2),
+        totalPayable: totalPayable.toFixed(2),
+        interestRate: interestRate.toString(),
+        purpose: purpose.trim(),
+      }).catch(() => {});
+      // Notify admin
       sendAdminLoanEmail({
         name: `${user.firstName} ${user.lastName}`,
         email: user.email,
         amount: parseFloat(amountUsd).toFixed(2),
-        purpose: purpose || "Not specified",
+        purpose: purpose.trim(),
         termMonths: parseInt(termMonths),
         role: user.role,
         userId,
+        bvn: bvn.trim(),
+        nin: nin.trim(),
+        fullAddress: fullAddress.trim(),
       }).catch(() => {});
       res.json(loan);
     } catch (e: any) { res.status(500).json({ message: e.message }); }

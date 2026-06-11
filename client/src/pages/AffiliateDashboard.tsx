@@ -56,13 +56,14 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "trade" | "exchange_market" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "forum" | "qce" | "emergency_response" | "movies" | "auto_care";
+type Section = "overview" | "trade" | "mmmf" | "exchange_market" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "forum" | "qce" | "emergency_response" | "movies" | "auto_care";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",        label: "Overview",               icon: LayoutDashboard },
   { id: "fintech",         label: "Swift Hub",              icon: CreditCard },
   { id: "qce",             label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
   { id: "trade",           label: "Trade Market",           icon: Globe },
+  { id: "mmmf",            label: "Money Market Mutual Funds (MMMF)", icon: () => <span className="text-xl leading-none">💠</span>, badge: "Soon" },
   { id: "exchange_market", label: "Exchange Market",          icon: BarChart3 },
   { id: "trust_fund",   label: "Affiliate Trust Fund",   icon: Crown },
   { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
@@ -1184,20 +1185,23 @@ export default function AffiliateDashboard() {
                     <motion.button
                       key={item.id}
                       initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
-                      onClick={() => { navigate(item.id); setMenuOpen(false); }}
+                      onClick={() => { if (item.badge === "Soon") return; navigate(item.id); setMenuOpen(false); }}
                       data-testid={`nav-${item.id}`}
+                      disabled={item.badge === "Soon"}
                       className={`relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border transition-all ${
-                        isActive
+                        item.badge === "Soon"
+                          ? "bg-white/4 border-white/8 text-white/35 cursor-not-allowed"
+                          : isActive
                           ? "bg-tsia-gold border-tsia-gold/60 text-slate-900"
                           : "bg-white/8 border-white/10 text-white hover:bg-white/15 hover:border-white/25"
                       }`}
                     >
                       <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${isActive ? "bg-slate-900/20" : "bg-white/10"}`}>
-                        <item.icon className={`w-5 h-5 ${isActive ? "text-slate-900" : "text-white"}`} />
+                        <item.icon className={`w-5 h-5 ${isActive ? "text-slate-900" : item.badge === "Soon" ? "text-white/35" : "text-white"}`} />
                       </div>
-                      <span className={`text-[11px] font-semibold leading-tight text-center ${isActive ? "text-slate-900" : "text-white/80"}`}>{item.label}</span>
+                      <span className={`text-[11px] font-semibold leading-tight text-center ${isActive ? "text-slate-900" : item.badge === "Soon" ? "text-white/35" : "text-white/80"}`}>{item.label}</span>
                       {item.badge && (
-                        <span className="absolute top-2 right-2 text-[9px] font-bold bg-tsia-gold text-slate-900 px-1.5 py-0.5 rounded-full leading-none">{item.badge}</span>
+                        <span className={`absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none ${item.badge === "Soon" ? "bg-white/20 text-white/60" : "bg-tsia-gold text-slate-900"}`}>{item.badge}</span>
                       )}
                     </motion.button>
                   );
@@ -2020,6 +2024,54 @@ export default function AffiliateDashboard() {
                 )}
 
 
+              </>
+            )}
+
+            {/* ── MONEY MARKET MUTUAL FUNDS ── */}
+            {activeSection === "mmmf" && (
+              <>
+                <motion.div variants={itemVariants} className="relative overflow-hidden rounded-3xl mb-6">
+                  <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900" />
+                  <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 70% 50%, #818cf8 0%, transparent 60%), radial-gradient(circle at 20% 80%, #06b6d4 0%, transparent 50%)" }} />
+                  <div className="relative z-10 px-6 py-10 sm:px-10 sm:py-14 flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                    <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center shrink-0 text-4xl">
+                      💠
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className="bg-indigo-400/20 text-indigo-300 border-indigo-400/30 text-xs font-bold px-3 py-1">Coming Soon</Badge>
+                      </div>
+                      <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Money Market Mutual Funds (MMMF) 💠</h2>
+                      <p className="text-indigo-200 text-sm sm:text-base max-w-xl leading-relaxed">
+                        Earn stable, low-risk returns by pooling your funds into short-term, high-quality instruments — Treasury bills, commercial paper, and more. Capital preservation with daily liquidity.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+                <motion.div variants={itemVariants}>
+                  <Card className="border-0 shadow-sm bg-indigo-50 dark:bg-indigo-950/30">
+                    <CardContent className="pt-6 pb-6 text-center space-y-4">
+                      <div className="text-5xl mb-2">💠</div>
+                      <h3 className="text-lg font-bold text-foreground">We're building something special</h3>
+                      <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+                        TSIA's Money Market Mutual Funds service is in active development. You'll be able to invest in diversified short-term portfolios and grow your wealth with institutional-grade returns — right from your TSIA wallet.
+                      </p>
+                      <div className="grid sm:grid-cols-3 gap-4 mt-6 text-left">
+                        {[
+                          { icon: "📈", title: "Competitive Yields", desc: "Above-market returns on short-term instruments, updated daily." },
+                          { icon: "🛡️", title: "Capital Safety", desc: "Low-risk portfolio — Treasury bills, T-bonds, and commercial paper." },
+                          { icon: "💧", title: "Daily Liquidity", desc: "Withdraw your funds any business day — no lock-in periods." },
+                        ].map(f => (
+                          <div key={f.title} className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-indigo-100 dark:border-indigo-800/40">
+                            <span className="text-2xl mb-2 block">{f.icon}</span>
+                            <p className="font-semibold text-sm mb-1">{f.title}</p>
+                            <p className="text-xs text-muted-foreground">{f.desc}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
               </>
             )}
 

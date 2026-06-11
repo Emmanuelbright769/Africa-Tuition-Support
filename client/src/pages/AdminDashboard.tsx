@@ -340,7 +340,9 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/loans-all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
       setLoanDialog({ open: false, loan: null, action: "" });
-      toast({ title: status === "active" ? "Loan Disbursed ✓" : status === "rejected" ? "Loan Rejected" : "Loan Updated", description: status === "active" ? "Loan amount credited to user wallet." : "Loan status updated and user notified." });
+      const titles: Record<string, string> = { active: "Loan Disbursed ✓", rejected: "Loan Rejected", repaid: "Loan Marked Repaid ✅" };
+      const descs: Record<string, string>  = { active: "Loan credited to wallet. Wallet lien placed.", rejected: "Loan rejected and user notified.", repaid: "Wallet lien lifted. User wallet restored." };
+      toast({ title: titles[status] ?? "Loan Updated", description: descs[status] ?? "Status updated." });
     },
   });
 
@@ -1607,7 +1609,12 @@ export default function AdminDashboard() {
                                   </Button>
                                 </div>
                               )}
-                              {l.status !== "pending" && <span className="text-xs text-slate-400 italic">—</span>}
+                              {l.status === "active" && (
+                                <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setLoanDialog({ open: true, loan: l, action: "repaid" })}>
+                                  Mark Repaid
+                                </Button>
+                              )}
+                              {l.status !== "pending" && l.status !== "active" && <span className="text-xs text-slate-400 italic">—</span>}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -5113,9 +5120,15 @@ export default function AdminDashboard() {
       <Dialog open={loanDialog.open} onOpenChange={open => !open && setLoanDialog({ open: false, loan: null, action: "" })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{loanDialog.action === "active" ? "Approve & Disburse Loan" : "Reject Loan Application"}</DialogTitle>
+            <DialogTitle>
+              {loanDialog.action === "active" ? "Approve & Disburse Loan" : loanDialog.action === "repaid" ? "Mark Loan as Repaid" : "Reject Loan Application"}
+            </DialogTitle>
             <DialogDescription>
-              {loanDialog.action === "active" ? "Funds will be credited to the user's wallet immediately." : "The applicant will be notified of this decision."}
+              {loanDialog.action === "active"
+                ? "Funds will be credited to the user's wallet immediately. A lien will be placed on the wallet until the loan is repaid."
+                : loanDialog.action === "repaid"
+                ? "This will lift the wallet lien and restore full wallet access for the user."
+                : "The applicant will be notified of this decision."}
             </DialogDescription>
           </DialogHeader>
           {loanDialog.loan && (
@@ -5130,13 +5143,16 @@ export default function AdminDashboard() {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setLoanDialog({ open: false, loan: null, action: "" })}>Cancel</Button>
             <Button
-              className={loanDialog.action === "active" ? "bg-tsia-green hover:bg-tsia-green/90" : ""}
+              className={loanDialog.action === "active" ? "bg-tsia-green hover:bg-tsia-green/90" : loanDialog.action === "repaid" ? "bg-emerald-600 hover:bg-emerald-700" : ""}
               variant={loanDialog.action === "rejected" ? "destructive" : "default"}
               disabled={loanStatusMutation.isPending}
               onClick={() => loanStatusMutation.mutate({ id: loanDialog.loan?.id, status: loanDialog.action })}
               data-testid={`button-loan-${loanDialog.action}`}
             >
-              {loanStatusMutation.isPending ? "Processing..." : loanDialog.action === "active" ? "Approve & Credit Wallet" : "Reject Application"}
+              {loanStatusMutation.isPending ? "Processing..."
+                : loanDialog.action === "active"  ? "Approve & Credit Wallet"
+                : loanDialog.action === "repaid"  ? "Confirm — Mark Repaid"
+                : "Reject Application"}
             </Button>
           </DialogFooter>
         </DialogContent>

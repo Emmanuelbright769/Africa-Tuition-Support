@@ -170,7 +170,7 @@ const TSIA_WALLETS = {
   bep20: "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977",
 };
 type ReceiptData = { txRef: string; txDate: string; amount: string; senderName: string; recipientName: string; walletLabel: string; note: string | null; newBalance: string };
-type WalletData = { id: number; userId: number; balance: string };
+type WalletData = { id: number; userId: number; balance: string; lienAmount?: string; lienReason?: string | null };
 type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
 type Bank = { code: string; name: string; gateway?: "squad" | "korapay" };
@@ -877,7 +877,9 @@ export default function FinancialHub() {
     onError: (e: any) => toast({ title: "Submission failed", description: e.message, variant: "destructive" }),
   });
 
-  const balance  = parseFloat(wallet?.balance ?? "0");
+  const balance      = parseFloat(wallet?.balance ?? "0");
+  const isLoanLien   = (wallet?.lienReason ?? "").startsWith("loan_active:");
+  const lienAmountUsd = parseFloat(wallet?.lienAmount ?? "0");
   const totalIn  = (txHistory as any[]).filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
   const totalOut = Math.abs((txHistory as any[]).filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + parseFloat(t.amount), 0));
 
@@ -2495,6 +2497,21 @@ export default function FinancialHub() {
           </div>
         </div>
       </div>
+
+      {/* ── LOAN LIEN BANNER ── */}
+      {isLoanLien && (
+        <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300/60 dark:border-amber-700/50 px-4 py-3.5 flex gap-3 items-start">
+          <span className="text-xl shrink-0 mt-0.5">🔒</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-amber-800 dark:text-amber-300 text-sm leading-snug">Wallet Frozen — Active Loan</p>
+            <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5 leading-snug">
+              Your wallet has an active loan of <strong>${lienAmountUsd.toFixed(2)}</strong> (total repayable).
+              All transactions are blocked. You may only withdraw the loan to your bank account.
+              Your wallet will be fully restored once the loan is repaid.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── PAYMENT / SWIFT HUB SERVICES ── */}
       <div>

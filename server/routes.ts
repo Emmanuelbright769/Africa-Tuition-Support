@@ -4922,7 +4922,7 @@ export async function registerRoutes(
 
       const { status } = req.body;
       const loanId = parseInt(req.params.id);
-      if (!["approved", "active", "rejected"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+      if (!["approved", "active", "rejected", "repaid"].includes(status)) return res.status(400).json({ message: "Invalid status" });
 
       const loan = await storage.updateLoan(loanId, {
         status,
@@ -4939,10 +4939,20 @@ export async function registerRoutes(
           paymentMethod: "wallet",
           description: `Loan disbursed: $${loan.amountUsd} (${loan.userRole} loan)`,
         });
-        const loanApprNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Disbursed", message: `Your $${loan.amountUsd} loan has been approved and credited to your wallet.`, data: { loanId: loan.id }, isRead: false });
+        // ── Place wallet lien equal to total repayable amount ──────────────────
+        await storage.setWalletLien(loan.userId, loan.totalPayableUsd, `loan_active:${loanId}`);
+        const loanApprNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Disbursed 💰", message: `Your $${loan.amountUsd} loan has been credited to your wallet. Your wallet is now frozen — you may only withdraw the loan to your bank account. All other transactions are blocked until the loan is repaid.`, data: { loanId: loan.id }, isRead: false });
         pushToUser(loan.userId, "notification", loanApprNotif);
         storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "approved", loan.amountUsd).catch((err: any) => console.error("[EMAIL] Loan email failed:", err?.message ?? err)); });
+      } else if (status === "repaid") {
+        // ── Lift lien on repayment ─────────────────────────────────────────────
+        await storage.releaseWalletLien(loan.userId).catch(() => {});
+        const repaidNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Repaid ✅", message: `Your loan of $${loan.amountUsd} has been marked as fully repaid. Your wallet is now restored — all transactions are available again.`, data: { loanId: loan.id }, isRead: false });
+        pushToUser(loan.userId, "notification", repaidNotif);
+        storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "repaid", loan.amountUsd).catch((err: any) => console.error("[EMAIL] Loan email failed:", err?.message ?? err)); });
       } else if (status === "rejected") {
+        // ── Also lift any lien in case it was previously set ──────────────────
+        await storage.releaseWalletLien(loan.userId).catch(() => {});
         const loanRejNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Application Update", message: "Your loan application was not approved at this time. Please contact support for more information.", data: { loanId: loan.id }, isRead: false });
         pushToUser(loan.userId, "notification", loanRejNotif);
         storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "rejected", loan.amountUsd).catch((err: any) => console.error("[EMAIL] Loan email failed:", err?.message ?? err)); });
@@ -6789,6 +6799,7 @@ export async function registerRoutes(
       const senderLien      = parseFloat(senderWallet.lienAmount ?? "0");
       const senderAvailable = Math.max(0, senderBalance - senderLien);
       const WALLET_MIN_BALANCE = 2;
+      if ((senderWallet.lienReason ?? "").startsWith("loan_active:")) return res.status(403).json({ message: "Your wallet is frozen due to an active loan. Transfers to other members are blocked until the loan is repaid. You may only withdraw the loan to your bank account.", code: "LOAN_LIEN" });
       if (senderLien > 0 && senderAvailable < amount) return res.status(400).json({ message: `Your wallet has an active lien of $${senderLien.toFixed(2)}. Available balance: $${senderAvailable.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (senderBalance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${senderBalance.toFixed(2)}` });
       if (senderBalance - amount < WALLET_MIN_BALANCE) return res.status(400).json({ message: `A minimum of $${WALLET_MIN_BALANCE}.00 must remain in your wallet at all times. You can send up to $${Math.max(0, senderAvailable - WALLET_MIN_BALANCE).toFixed(2)}.` });
@@ -6915,6 +6926,7 @@ export async function registerRoutes(
     const balance = parseFloat(wallet.balance);
     const lienAmt = parseFloat(wallet.lienAmount ?? "0");
     const availableForBill = Math.max(0, balance - lienAmt);
+    if ((wallet.lienReason ?? "").startsWith("loan_active:")) throw Object.assign(new Error("Your wallet is frozen due to an active loan. All wallet transactions are blocked until the loan is repaid. You may only withdraw the loan to your bank account."), { status: 403, code: "LOAN_LIEN" });
     if (lienAmt > 0 && availableForBill < amountUsd) throw Object.assign(new Error(`Your wallet has an active lien of $${lienAmt.toFixed(2)}. Available balance: $${availableForBill.toFixed(2)}.`), { status: 400, code: "LIEN_BLOCKED" });
     if (balance < amountUsd) throw Object.assign(new Error(`Insufficient balance. You have $${balance.toFixed(2)}`), { status: 400 });
     await storage.updateWalletBalance(userId, (balance - amountUsd).toFixed(2));
@@ -7096,10 +7108,13 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
       const lien    = parseFloat(wallet.lienAmount ?? "0");
-      const availBal = Math.max(0, balance - lien);
-      if (lien > 0 && availBal < transferAmount) return res.status(400).json({ message: `Your wallet has an active lien of $${lien.toFixed(2)}. Available balance: $${availBal.toFixed(2)}.`, code: "LIEN_BLOCKED" });
+      // Loan-liened wallets: bank withdrawal IS the intended use — allow it, skip lien restriction
+      const isLoanLienActive = (wallet.lienReason ?? "").startsWith("loan_active:");
+      const effectiveLien = isLoanLienActive ? 0 : lien;
+      const availBal = Math.max(0, balance - effectiveLien);
+      if (!isLoanLienActive && lien > 0 && availBal < transferAmount) return res.status(400).json({ message: `Your wallet has an active lien of $${lien.toFixed(2)}. Available balance: $${availBal.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (balance < transferAmount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (balance - transferAmount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can transfer up to $${Math.max(0, availBal - 2).toFixed(2)}.` });
+      if (!isLoanLienActive && balance - transferAmount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can transfer up to $${Math.max(0, availBal - 2).toFixed(2)}.` });
 
       const vatAmount   = parseFloat((transferAmount * 0.075).toFixed(2));
       const netAmountUsd = parseFloat((transferAmount - vatAmount).toFixed(2));
@@ -7526,6 +7541,7 @@ export async function registerRoutes(
       const balance = parseFloat(wallet.balance);
       const lienW   = parseFloat(wallet.lienAmount ?? "0");
       const availW  = Math.max(0, balance - lienW);
+      if ((wallet.lienReason ?? "").startsWith("loan_active:")) return res.status(403).json({ message: "Your wallet is frozen due to an active loan. Bill payments are blocked until the loan is repaid. You may only withdraw the loan to your bank account.", code: "LOAN_LIEN" });
       if (lienW > 0 && availW < amount) return res.status(400).json({ message: `Your wallet has an active lien of $${lienW.toFixed(2)}. Available balance: $${availW.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (balance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
       if (balance - amount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, availW - 2).toFixed(2)}.` });
@@ -9352,6 +9368,8 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const amount = parseFloat(req.body.amount);
       if (!amount || amount <= 0) return res.status(400).json({ message: "Amount must be greater than 0" });
+      const cbWallet = await storage.getOrCreateWallet(userId);
+      if ((cbWallet.lienReason ?? "").startsWith("loan_active:")) return res.status(403).json({ message: "Your wallet is frozen due to an active loan. Cashback withdrawal is blocked until the loan is repaid.", code: "LOAN_LIEN" });
       const result = await storage.withdrawCashbackToWallet(userId, amount);
       invalidateCacheKey(`wallet:${userId}`);
       invalidateCacheKey(`transactions:${userId}`);

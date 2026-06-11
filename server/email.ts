@@ -590,17 +590,22 @@ export async function sendLoanOfferEmail(data: {
 
 export async function sendLoanUpdateEmail(to: string, firstName: string, status: string, amount: string): Promise<void> {
   const approved = status === "approved";
-  const subject = approved ? `Loan Approved – $${amount} disbursed` : `Loan Application Update`;
+  const repaid   = status === "repaid";
+  const subject  = approved ? `Loan Approved – $${amount} disbursed`
+                 : repaid   ? `Loan Repaid ✅ – Wallet Restored`
+                 :            `Loan Application Update`;
+  const headerColor = approved ? "#1a6b3c" : repaid ? "#1a6b3c" : "#c0392b";
+  const headerText  = approved ? "✅ Loan Approved!" : repaid ? "✅ Loan Repaid" : "📋 Loan Update";
+  const bodyText = approved
+    ? `Your loan of <strong>$${amount}</strong> has been approved and credited to your TSIA wallet. Your wallet is now <strong>frozen</strong> — you may only withdraw the loan amount to your bank account. All other wallet transactions are blocked until the loan is fully repaid. Repay on time to build your credit history.`
+    : repaid
+    ? `Your loan of <strong>$${amount}</strong> has been marked as fully repaid. Your TSIA wallet is now <strong>fully restored</strong> — all transactions are available again. Thank you for repaying on time!`
+    : `Your loan application for <strong>$${amount}</strong> is currently <strong>${status}</strong>. You will receive another update when there is a change.`;
   const html = baseTemplate(`
-    <h2 style="color:${approved ? "#1a6b3c" : "#c0392b"};margin:0 0 8px;font-size:22px;">
-      ${approved ? "✅ Loan Approved!" : "📋 Loan Update"}
-    </h2>
+    <h2 style="color:${headerColor};margin:0 0 8px;font-size:22px;">${headerText}</h2>
     <p style="color:#4a5e50;font-size:15px;margin:0 0 24px;">Hi ${firstName},</p>
     <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
-      ${approved
-        ? `<p style="color:#4a5e50;font-size:14px;margin:0;">Your loan of <strong>$${amount}</strong> has been approved and will be disbursed to your TSIA wallet shortly. Repay on time to build your credit history.</p>`
-        : `<p style="color:#4a5e50;font-size:14px;margin:0;">Your loan application for <strong>$${amount}</strong> is currently <strong>${status}</strong>. You will receive another update when there is a change.</p>`
-      }
+      <p style="color:#4a5e50;font-size:14px;margin:0;">${bodyText}</p>
     </div>
     ${btn("https://tsiforafrica.com/dashboard", "View Loan Details")}
   `);

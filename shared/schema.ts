@@ -481,6 +481,7 @@ export const loans = pgTable("loans", {
   bvn: text("bvn"),
   nin: text("nin"),
   fullAddress: text("full_address"),
+  termDays: integer("term_days"),
   status: text("status", { enum: ["pending", "approved", "active", "repaid", "rejected"] }).notNull().default("pending"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   disbursedAt: timestamp("disbursed_at"),
@@ -505,6 +506,32 @@ export function calculateAffiliateLoanLimit(referralCount: number, tradeBalance:
   if (coAffiliateAmount >= 500) multiplier = 2;
   else if (coAffiliateAmount >= 300) multiplier = 1.5;
   return Math.min((base + fromReferrals + fromTrade) * multiplier, 5000);
+}
+
+// Day-based loan term options with flat interest rates
+export const LOAN_TERM_OPTIONS = [
+  { days: 7,   label: "7 days",   flatRate: 3,  installments: 1  },  // 3% flat  (~156% APR)
+  { days: 14,  label: "14 days",  flatRate: 5,  installments: 1  },  // 5% flat  (~130% APR)
+  { days: 30,  label: "30 days",  flatRate: 10, installments: 1  },  // 10% flat (~122% APR)
+  { days: 90,  label: "90 days",  flatRate: 15, installments: 3  },  // 15% flat (~61%  APR) — 3 monthly
+  { days: 365, label: "365 days", flatRate: 25, installments: 12 },  // 25% flat (25%   APR) — 12 monthly
+] as const;
+
+export function calculateLoanByDays(principalUsd: number, termDays: number) {
+  const opt = LOAN_TERM_OPTIONS.find(t => t.days === termDays);
+  if (!opt) throw new Error(`Invalid term: ${termDays} days`);
+  const totalInterest = principalUsd * (opt.flatRate / 100);
+  const totalPayable  = principalUsd + totalInterest;
+  const installmentAmount = totalPayable / opt.installments;
+  return {
+    flatRate: opt.flatRate,
+    totalInterest,
+    totalPayable,
+    installments: opt.installments,
+    installmentAmount,
+    termMonths: opt.installments,     // stored as number-of-installments
+    label: opt.label,
+  };
 }
 
 export function calculateLoanMonthly(principalUsd: number, annualRatePercent: number, termMonths: number) {

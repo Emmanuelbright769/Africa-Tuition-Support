@@ -33,7 +33,7 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -5783,9 +5783,7 @@ export async function registerRoutes(
       if (offerUsd < 1) {
         return res.json({ eligible: false, reason: "Complete more transactions on TSIA to unlock your personalised loan offer (loan offer = 30% of your total transaction volume).", limitUsd: 0, totalVolume: totalVolume.toFixed(2) });
       }
-      const interestRate = user.role === "student" ? 10 : 15;
-      const terms = user.role === "student" ? [6, 12, 18] : [6, 12, 24];
-      res.json({ eligible: true, limitUsd: offerUsd, totalVolume: totalVolume.toFixed(2), activeLoan: activeLoan || null, interestRate, terms });
+      res.json({ eligible: true, limitUsd: offerUsd, totalVolume: totalVolume.toFixed(2), activeLoan: activeLoan || null, terms: [7, 14, 30, 90, 365] });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -5793,12 +5791,14 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     try {
-      const { amountUsd, termMonths, purpose, bvn, nin, fullAddress } = req.body;
-      if (!amountUsd || !termMonths) return res.status(400).json({ message: "Amount and term are required" });
+      const { amountUsd, termDays, purpose, bvn, nin, fullAddress } = req.body;
+      if (!amountUsd || !termDays) return res.status(400).json({ message: "Amount and repayment term are required" });
       if (!bvn?.trim()) return res.status(400).json({ message: "BVN is required" });
       if (!nin?.trim()) return res.status(400).json({ message: "NIN is required" });
       if (!fullAddress?.trim()) return res.status(400).json({ message: "Full address/location is required" });
       if (!purpose?.trim()) return res.status(400).json({ message: "Reason for loan is required" });
+      const validTermDays = [7, 14, 30, 90, 365];
+      if (!validTermDays.includes(parseInt(termDays))) return res.status(400).json({ message: "Invalid repayment term. Choose 7, 14, 30, 90, or 365 days." });
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.role !== "student" && user.role !== "affiliate") return res.status(400).json({ message: "Loans are available for students and affiliates only." });
@@ -5812,14 +5812,14 @@ export async function registerRoutes(
       const maxLimit = parseFloat((totalVolume * 0.30).toFixed(2));
       if (maxLimit < 1) return res.status(400).json({ message: "You do not have enough transaction history to qualify for a loan yet." });
       if (parseFloat(amountUsd) > maxLimit) return res.status(400).json({ message: `Loan amount exceeds your offer of $${maxLimit.toFixed(2)}` });
-      const interestRate = user.role === "student" ? 10 : 15;
-      const { totalPayable, monthly } = calculateLoanMonthly(parseFloat(amountUsd), interestRate, parseInt(termMonths));
+      const { flatRate, totalPayable, installmentAmount, termMonths } = calculateLoanByDays(parseFloat(amountUsd), parseInt(termDays));
       const loan = await storage.createLoan({
         userId, userRole: user.role as "student" | "affiliate",
         amountUsd: parseFloat(amountUsd).toFixed(2),
-        interestRate: interestRate.toFixed(2),
-        termMonths: parseInt(termMonths),
-        monthlyPaymentUsd: monthly.toFixed(2),
+        interestRate: flatRate.toFixed(2),
+        termMonths,
+        termDays: parseInt(termDays),
+        monthlyPaymentUsd: installmentAmount.toFixed(2),
         totalPayableUsd: totalPayable.toFixed(2),
         totalPaidUsd: "0",
         purpose: purpose.trim(),
@@ -5833,10 +5833,10 @@ export async function registerRoutes(
         to: user.email,
         firstName: user.firstName,
         amountUsd: parseFloat(amountUsd).toFixed(2),
-        termMonths: parseInt(termMonths),
-        monthlyPayment: monthly.toFixed(2),
+        termMonths,
+        monthlyPayment: installmentAmount.toFixed(2),
         totalPayable: totalPayable.toFixed(2),
-        interestRate: interestRate.toString(),
+        interestRate: flatRate.toString(),
         purpose: purpose.trim(),
       }).catch(() => {});
       // Notify admin
@@ -5845,7 +5845,7 @@ export async function registerRoutes(
         email: user.email,
         amount: parseFloat(amountUsd).toFixed(2),
         purpose: purpose.trim(),
-        termMonths: parseInt(termMonths),
+        termMonths: parseInt(termDays),
         role: user.role,
         userId,
         bvn: bvn.trim(),

@@ -662,8 +662,17 @@ export default function FinancialHub() {
     onError: (e: any) => toast({ title: "Cannot Delete", description: e.message, variant: "destructive" }),
   });
 
+  // Loan term options (days) with flat interest rates — mirrors shared/schema LOAN_TERM_OPTIONS
+  const LOAN_TERM_OPTIONS = [
+    { days: 7,   label: "7 days",   flatRate: 3,  installments: 1  },
+    { days: 14,  label: "14 days",  flatRate: 5,  installments: 1  },
+    { days: 30,  label: "30 days",  flatRate: 10, installments: 1  },
+    { days: 90,  label: "90 days",  flatRate: 15, installments: 3  },
+    { days: 365, label: "365 days", flatRate: 25, installments: 12 },
+  ] as const;
+
   const applyLoanMutation = useMutation({
-    mutationFn: async (data: { amountUsd: string; termMonths: number; purpose: string; bvn: string; nin: string; fullAddress: string }) => {
+    mutationFn: async (data: { amountUsd: string; termDays: number; purpose: string; bvn: string; nin: string; fullAddress: string }) => {
       const res = await apiRequest("POST", "/api/loans/apply", data);
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
@@ -1791,10 +1800,10 @@ export default function FinancialHub() {
                 <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100/60 dark:from-amber-900/20 dark:to-amber-800/10 border border-amber-200/60 dark:border-amber-700/30 p-4">
                   <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-1">Your Personalised Offer</p>
                   <p className="font-black text-2xl text-amber-700 dark:text-amber-300">${loanLimit?.limitUsd?.toFixed(2) ?? "—"}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">30% of your total TSIA transaction volume · {loanLimit?.interestRate ?? 10}% p.a. interest</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">30% of your total TSIA transaction volume</p>
                 </div>
 
-                {/* Amount (pre-filled, editable) */}
+                {/* Amount (pre-filled, editable up to offer) */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold">Loan Amount (USD) <span className="text-red-500">*</span></Label>
                   <Input
@@ -1810,46 +1819,64 @@ export default function FinancialHub() {
                   )}
                 </div>
 
-                {/* Term picker */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold">Repayment Term</Label>
-                  <div className="flex gap-2 flex-wrap">
-                    {(loanLimit?.terms ?? [6, 12]).map(t => (
-                      <button key={t} onClick={() => setLoanTerm(t)}
-                        className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${loanTerm === t ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground"}`}
-                        data-testid={`btn-term-${t}`}
-                      >{t} months</button>
+                {/* Day-based term picker with flat rates */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold">Repayment Duration <span className="text-red-500">*</span></Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {LOAN_TERM_OPTIONS.map(opt => (
+                      <button
+                        key={opt.days}
+                        onClick={() => setLoanTerm(opt.days)}
+                        className={`flex flex-col items-center py-2.5 px-2 rounded-xl text-center border transition-all ${loanTerm === opt.days ? "bg-amber-500 text-white border-amber-500 shadow-sm" : "border-border text-muted-foreground hover:border-amber-400/60"}`}
+                        data-testid={`btn-term-${opt.days}`}
+                      >
+                        <span className="font-black text-sm">{opt.label}</span>
+                        <span className={`text-[10px] font-semibold mt-0.5 ${loanTerm === opt.days ? "text-amber-100" : "text-amber-600 dark:text-amber-400"}`}>{opt.flatRate}% fee</span>
+                      </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Repayment schedule preview */}
-                {loanAmount && loanTerm && parseFloat(loanAmount) > 0 && loanLimit && (
-                  (() => {
-                    const principal = parseFloat(loanAmount);
-                    const rate = loanLimit.interestRate ?? 10;
-                    const totalInterest = principal * (rate / 100) * (loanTerm / 12);
-                    const totalPayable = principal + totalInterest;
-                    const monthly = totalPayable / loanTerm;
-                    return (
-                      <div className="rounded-xl border border-border overflow-hidden">
-                        <div className="bg-muted/50 px-3 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">Repayment Schedule</div>
-                        <div className="divide-y divide-border max-h-40 overflow-y-auto">
-                          {Array.from({ length: loanTerm }, (_, i) => (
-                            <div key={i} className="flex justify-between items-center px-3 py-1.5 text-xs">
-                              <span className="text-muted-foreground">Month {i + 1}</span>
-                              <span className="font-bold text-foreground">${monthly.toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="bg-amber-50 dark:bg-amber-900/20 px-3 py-2 flex justify-between items-center text-xs border-t border-amber-200/50 dark:border-amber-700/30">
-                          <span className="font-bold text-amber-700 dark:text-amber-400">Total Payable</span>
-                          <span className="font-black text-amber-700 dark:text-amber-400">${totalPayable.toFixed(2)}</span>
-                        </div>
+                {/* Live repayment schedule */}
+                {loanAmount && loanTerm && parseFloat(loanAmount) > 0 && (() => {
+                  const opt = LOAN_TERM_OPTIONS.find(t => t.days === loanTerm);
+                  if (!opt) return null;
+                  const principal = parseFloat(loanAmount);
+                  const totalInterest = principal * (opt.flatRate / 100);
+                  const totalPayable = principal + totalInterest;
+                  const installment = totalPayable / opt.installments;
+                  const isBullet = opt.installments === 1;
+                  return (
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <div className="bg-muted/50 px-3 py-2 flex items-center justify-between">
+                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Repayment Schedule</span>
+                        <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">{opt.flatRate}% flat fee</span>
                       </div>
-                    );
-                  })()
-                )}
+                      <div className="divide-y divide-border">
+                        {isBullet ? (
+                          <div className="flex justify-between items-center px-3 py-2.5 text-xs">
+                            <span className="text-muted-foreground">Due on Day {opt.days}</span>
+                            <span className="font-black text-foreground">${installment.toFixed(2)}</span>
+                          </div>
+                        ) : (
+                          Array.from({ length: opt.installments }, (_, i) => (
+                            <div key={i} className="flex justify-between items-center px-3 py-2 text-xs">
+                              <span className="text-muted-foreground">
+                                {opt.days === 90 ? `Month ${i + 1}` : `Month ${i + 1}`}
+                              </span>
+                              <span className="font-bold text-foreground">${installment.toFixed(2)}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="bg-amber-50 dark:bg-amber-900/20 px-3 py-2 grid grid-cols-3 text-[11px] border-t border-amber-200/50 dark:border-amber-700/30">
+                        <div><span className="text-muted-foreground block">Principal</span><span className="font-bold">${principal.toFixed(2)}</span></div>
+                        <div className="text-center"><span className="text-muted-foreground block">Interest</span><span className="font-bold text-amber-600">${totalInterest.toFixed(2)}</span></div>
+                        <div className="text-right"><span className="text-muted-foreground block">Total Due</span><span className="font-black text-amber-700 dark:text-amber-400">${totalPayable.toFixed(2)}</span></div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Agreement checkbox */}
                 <label className="flex items-start gap-3 cursor-pointer" data-testid="label-loan-agree">
@@ -1861,7 +1888,7 @@ export default function FinancialHub() {
                     data-testid="checkbox-loan-agree"
                   />
                   <span className="text-xs text-muted-foreground leading-relaxed">
-                    I confirm all information provided is accurate. I agree to the repayment schedule above and authorise TSIA to send my loan offer and schedule to my registered email address.
+                    I confirm that all information provided is accurate. I agree to the repayment schedule above and authorise TSIA to send my loan offer and schedule to my registered email address.
                   </span>
                 </label>
 
@@ -1870,10 +1897,10 @@ export default function FinancialHub() {
                   <Button
                     className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold"
                     onClick={() => {
-                      if (!loanAmount || !loanTerm) { toast({ title: "Select amount and term", variant: "destructive" }); return; }
+                      if (!loanAmount || !loanTerm) { toast({ title: "Select amount and repayment term", variant: "destructive" }); return; }
                       if (loanLimit && parseFloat(loanAmount) > loanLimit.limitUsd) { toast({ title: `Max offer is $${loanLimit.limitUsd.toFixed(2)}`, variant: "destructive" }); return; }
-                      if (!loanAgreed) { toast({ title: "Please agree to the terms", variant: "destructive" }); return; }
-                      applyLoanMutation.mutate({ amountUsd: loanAmount, termMonths: loanTerm, purpose: loanPurpose, bvn: loanBvn, nin: loanNin, fullAddress: loanAddress });
+                      if (!loanAgreed) { toast({ title: "Please agree to the terms to continue", variant: "destructive" }); return; }
+                      applyLoanMutation.mutate({ amountUsd: loanAmount, termDays: loanTerm, purpose: loanPurpose, bvn: loanBvn, nin: loanNin, fullAddress: loanAddress });
                     }}
                     disabled={applyLoanMutation.isPending || !loanAgreed}
                     data-testid="btn-submit-loan"

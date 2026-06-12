@@ -933,8 +933,9 @@ export default function AffiliateDashboard() {
   const fundTradeMutation = useMutation({
     mutationFn: async () => {
       const amt = parseFloat(fundTradeAmt);
-      if (!amt || amt < 10) throw new Error("Minimum is $10");
-      const res = await apiRequest("POST", "/api/trade/fund-from-wallet", { amountUsd: amt });
+      const minAmt = selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT;
+      if (!amt || amt < minAmt) throw new Error(`Minimum for ${selectedBroker?.name ?? "this exchange"} is $${minAmt}`);
+      const res = await apiRequest("POST", "/api/trade/fund-from-wallet", { amountUsd: amt, brokerId: selectedBrokerId });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
       return d;
@@ -950,7 +951,7 @@ export default function AffiliateDashboard() {
 
   const depositMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/trade/deposit", { amountUsd: parseFloat(depositAmt), walletType: depositWallet, txHash: depositTxHash });
+      const res = await apiRequest("POST", "/api/trade/deposit", { amountUsd: parseFloat(depositAmt), walletType: depositWallet, txHash: depositTxHash, brokerId: selectedBrokerId });
       return res.json();
     },
     onSuccess: (data) => {
@@ -1544,7 +1545,7 @@ export default function AffiliateDashboard() {
                                 <p className="text-xs text-muted-foreground">Select a broker above before activating the Itera Trading BOT.</p>
                               </div>
                             </div>
-                          ) : tradeBalance < TRADE_MARKET.MIN_DEPOSIT ? (
+                          ) : tradeBalance < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) ? (
                             // No investment plan — block the bot entirely
                             <div className="flex-1 flex items-center gap-3">
                               <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
@@ -1552,7 +1553,7 @@ export default function AffiliateDashboard() {
                               </div>
                               <div>
                                 <p className="text-xs font-semibold text-orange-600 dark:text-orange-400">Investment plan required</p>
-                                <p className="text-xs text-muted-foreground">Deposit at least <strong className="text-foreground">${TRADE_MARKET.MIN_DEPOSIT}</strong> into your Trade Wallet to activate the bot. Go to <strong>Deposit</strong> below.</p>
+                                <p className="text-xs text-muted-foreground">Deposit at least <strong className="text-foreground">${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}</strong> into your Trade Wallet to activate the bot. Go to <strong>Deposit</strong> below.</p>
                               </div>
                             </div>
                           ) : (
@@ -3113,7 +3114,7 @@ export default function AffiliateDashboard() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><ArrowDownLeft className="w-5 h-5 text-blue-600" /> Fund Trade Wallet</DialogTitle>
                 <DialogDescription>
-                  Funding via <strong>{selectedBroker?.name ?? "exchange"}</strong> — min. deposit ${selectedBroker?.minDeposit ?? 10}
+                  Funding via <strong>{selectedBroker?.name ?? "exchange"}</strong> — min. deposit ${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
@@ -3123,11 +3124,11 @@ export default function AffiliateDashboard() {
                 </div>
                 <div>
                   <Label htmlFor="fund-trade-amt">Amount (USD)</Label>
-                  <Input id="fund-trade-amt" type="number" min={selectedBroker?.minDeposit ?? 10} step={0.01}
-                    placeholder={`Min $${selectedBroker?.minDeposit ?? 10}.00`}
+                  <Input id="fund-trade-amt" type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} step={0.01}
+                    placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}.00`}
                     value={fundTradeAmt} onChange={e => setFundTradeAmt(e.target.value)}
                     className="mt-1 text-lg font-bold" data-testid="input-fund-trade-amt" />
-                  {parseFloat(fundTradeAmt) >= (selectedBroker?.minDeposit ?? 10) && (
+                  {parseFloat(fundTradeAmt) >= (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) && (
                     <div className="mt-2 text-xs space-y-1 text-muted-foreground border border-border rounded-xl p-3 bg-muted/30">
                       <p className="font-semibold text-foreground mb-1">Breakdown</p>
                       <div className="flex justify-between"><span>You transfer</span><span className="font-semibold text-foreground">${parseFloat(fundTradeAmt).toFixed(2)}</span></div>
@@ -3145,7 +3146,7 @@ export default function AffiliateDashboard() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => setFundTradeBrokerStep("broker")}>← Back</Button>
                 <Button onClick={() => fundTradeMutation.mutate()}
-                  disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < (selectedBroker?.minDeposit ?? 10) || parseFloat(fundTradeAmt) > personalBalance - 2}
+                  disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(fundTradeAmt) > personalBalance - 2}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold" data-testid="btn-confirm-fund-trade">
                   {fundTradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />}
                   Transfer ${parseFloat(fundTradeAmt || "0").toFixed(2)}
@@ -3177,14 +3178,14 @@ export default function AffiliateDashboard() {
             </div>
             <div className="space-y-2">
               <Label>Amount (USD)</Label>
-              <Input type="number" min={TRADE_MARKET.MIN_DEPOSIT} placeholder={`Min $${TRADE_MARKET.MIN_DEPOSIT}`} value={depositAmt} onChange={e => setDepositAmt(e.target.value)} data-testid="input-deposit-amount" />
+              <Input type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}`} value={depositAmt} onChange={e => setDepositAmt(e.target.value)} data-testid="input-deposit-amount" />
               {parseFloat(depositAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(depositAmt))} {rateLabel()}</p>}
             </div>
             <div className="space-y-2">
               <Label>Transaction Hash (optional)</Label>
               <Input placeholder="0x..." value={depositTxHash} onChange={e => setDepositTxHash(e.target.value)} data-testid="input-deposit-txhash" />
             </div>
-            {depositAmt && parseFloat(depositAmt) >= TRADE_MARKET.MIN_DEPOSIT && (
+            {depositAmt && parseFloat(depositAmt) >= (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) && (
               <div className="border border-border rounded-xl px-3 py-2 bg-muted/30 text-xs space-y-0.5" data-testid="trade-deposit-fee-breakdown">
                 <p className="font-semibold text-foreground mb-1">Allocation Preview</p>
                 <div className="flex justify-between text-muted-foreground"><span>Affiliate pool (5%)</span><span className="text-red-500">-${(parseFloat(depositAmt) * 0.05).toFixed(2)}</span></div>
@@ -3194,7 +3195,7 @@ export default function AffiliateDashboard() {
           </div>
           <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setDepositOpen(false)}>Cancel</Button>
-            <Button onClick={() => depositMutation.mutate()} disabled={depositMutation.isPending || !depositAmt || parseFloat(depositAmt) < TRADE_MARKET.MIN_DEPOSIT} className="bg-green-600 hover:bg-green-700 text-white" data-testid="button-confirm-deposit">
+            <Button onClick={() => depositMutation.mutate()} disabled={depositMutation.isPending || !depositAmt || parseFloat(depositAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT)} className="bg-green-600 hover:bg-green-700 text-white" data-testid="button-confirm-deposit">
               {depositMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />} Confirm Deposit
             </Button>
           </DialogFooter>

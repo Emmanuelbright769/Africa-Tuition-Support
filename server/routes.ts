@@ -33,7 +33,7 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -2580,10 +2580,12 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { amountUsd, walletType, txHash } = req.body;
+      const { amountUsd, walletType, txHash, brokerId: depositBrokerId } = req.body;
       const amount = parseFloat(amountUsd);
-      if (isNaN(amount) || amount < TRADE_MARKET.MIN_DEPOSIT) {
-        return res.status(400).json({ message: `Minimum deposit is $${TRADE_MARKET.MIN_DEPOSIT}.` });
+      const depositBroker = TRADE_BROKERS.find(b => b.id === depositBrokerId);
+      const minDepositAmt = depositBroker ? depositBroker.minDeposit : TRADE_MARKET.MIN_DEPOSIT;
+      if (isNaN(amount) || amount < minDepositAmt) {
+        return res.status(400).json({ message: `Minimum deposit for ${depositBroker ? depositBroker.name : "this exchange"} is $${minDepositAmt}.` });
       }
       if (!["trc20", "bep20"].includes(walletType)) {
         return res.status(400).json({ message: "walletType must be trc20 or bep20." });
@@ -2655,10 +2657,12 @@ export async function registerRoutes(
       if (await isTradeSessionActive(userId)) {
         return res.status(403).json({ message: "Top-ups are disabled during an active trade session. Please wait until the current session ends before funding your trade wallet." });
       }
-      const { amountUsd } = req.body;
+      const { amountUsd, brokerId } = req.body;
       const amount = parseFloat(amountUsd);
-      if (isNaN(amount) || amount < TRADE_MARKET.MIN_DEPOSIT) {
-        return res.status(400).json({ message: `Minimum funding amount is $${TRADE_MARKET.MIN_DEPOSIT}.` });
+      const broker = TRADE_BROKERS.find(b => b.id === brokerId);
+      const minDeposit = broker ? broker.minDeposit : TRADE_MARKET.MIN_DEPOSIT;
+      if (isNaN(amount) || amount < minDeposit) {
+        return res.status(400).json({ message: `Minimum funding amount for ${broker ? broker.name : "this exchange"} is $${minDeposit}.` });
       }
       // Check personal wallet balance
       const personalWallet = await storage.getOrCreateWallet(userId);

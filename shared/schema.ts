@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, boolean, timestamp, pgEnum, jsonb, serial, numeric, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, boolean, timestamp, date, pgEnum, jsonb, serial, numeric, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -483,6 +483,8 @@ export const loans = pgTable("loans", {
   fullAddress: text("full_address"),
   termDays: integer("term_days"),
   status: text("status", { enum: ["pending", "approved", "active", "repaid", "rejected"] }).notNull().default("pending"),
+  repaymentDueDate: date("repayment_due_date"),
+  adminNote: text("admin_note"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   disbursedAt: timestamp("disbursed_at"),
 });

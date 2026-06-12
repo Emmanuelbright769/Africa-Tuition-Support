@@ -4924,14 +4924,37 @@ export async function registerRoutes(
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
 
-      const { status } = req.body;
+      const { status, offerAmountUsd, repaymentDueDate, adminNote } = req.body;
       const loanId = parseInt(req.params.id);
       if (!["approved", "active", "rejected", "repaid"].includes(status)) return res.status(400).json({ message: "Invalid status" });
 
-      const loan = await storage.updateLoan(loanId, {
+      // Build update payload — when approving, apply any admin edits first
+      const updatePayload: any = {
         status,
         ...(status === "active" ? { disbursedAt: new Date() } : {}),
-      });
+        ...(adminNote !== undefined ? { adminNote } : {}),
+        ...(repaymentDueDate ? { repaymentDueDate } : {}),
+      };
+
+      // If admin overrides the offer amount, recalculate totals
+      if (status === "active" && offerAmountUsd) {
+        const offer = parseFloat(offerAmountUsd);
+        if (!isNaN(offer) && offer > 0) {
+          const preLoan = await storage.getLoan(loanId);
+          const originalAmount = parseFloat((preLoan as any)?.amountUsd ?? offer);
+          if (Math.abs(offer - originalAmount) > 0.001) {
+            // Scale totals proportionally to the new principal
+            const ratio = offer / originalAmount;
+            const newTotal   = parseFloat((parseFloat((preLoan as any).totalPayableUsd) * ratio).toFixed(2));
+            const newMonthly = parseFloat((parseFloat((preLoan as any).monthlyPaymentUsd) * ratio).toFixed(2));
+            updatePayload.amountUsd        = offer.toFixed(2);
+            updatePayload.totalPayableUsd  = newTotal.toFixed(2);
+            updatePayload.monthlyPaymentUsd = newMonthly.toFixed(2);
+          }
+        }
+      }
+
+      const loan = await storage.updateLoan(loanId, updatePayload);
 
       if (status === "active") {
         const loanWallet = await storage.getOrCreateWallet(loan.userId);

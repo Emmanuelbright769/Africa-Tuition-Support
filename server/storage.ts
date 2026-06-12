@@ -148,6 +148,7 @@ export interface IStorage {
 
   // Loans
   createLoan(data: InsertLoan): Promise<Loan>;
+  getLoan(id: number): Promise<Loan | undefined>;
   getLoansByUser(userId: number): Promise<Loan[]>;
   getActiveLoanByUser(userId: number): Promise<Loan | undefined>;
   updateLoan(id: number, data: Partial<Loan>): Promise<Loan>;
@@ -1003,6 +1004,11 @@ export class DatabaseStorage implements IStorage {
 
   async createLoan(data: InsertLoan): Promise<Loan> {
     const [loan] = await db.insert(loans).values(data).returning();
+    return loan;
+  }
+
+  async getLoan(id: number): Promise<Loan | undefined> {
+    const [loan] = await db.select().from(loans).where(eq(loans.id, id));
     return loan;
   }
 

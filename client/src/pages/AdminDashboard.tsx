@@ -133,6 +133,9 @@ export default function AdminDashboard() {
   const [rejectReason, setRejectReason] = useState("");
   const [reviewDialog, setReviewDialog] = useState<any>(null);
   const [loanDialog, setLoanDialog] = useState<{ open: boolean; loan: any; action: string }>({ open: false, loan: null, action: "" });
+  const [loanOfferAmt, setLoanOfferAmt] = useState("");
+  const [loanRepaymentDate, setLoanRepaymentDate] = useState("");
+  const [loanAdminNote, setLoanAdminNote] = useState("");
   const [disburseDialog, setDisburseDialog] = useState<any>(null);
   const [editDisburseDialog, setEditDisburseDialog] = useState<any>(null);
   const [editDisburseAmount, setEditDisburseAmount] = useState("");
@@ -333,13 +336,20 @@ export default function AdminDashboard() {
 
   const loanStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      const res = await apiRequest("POST", `/api/admin/loans/${id}/status`, { status });
+      const body: any = { status };
+      if (status === "active") {
+        if (loanOfferAmt)       body.offerAmountUsd  = parseFloat(loanOfferAmt);
+        if (loanRepaymentDate)  body.repaymentDueDate = loanRepaymentDate;
+        if (loanAdminNote)      body.adminNote        = loanAdminNote;
+      }
+      const res = await apiRequest("POST", `/api/admin/loans/${id}/status`, body);
       return res.json();
     },
     onSuccess: (_, { status }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/loans-all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
       setLoanDialog({ open: false, loan: null, action: "" });
+      setLoanOfferAmt(""); setLoanRepaymentDate(""); setLoanAdminNote("");
       const titles: Record<string, string> = { active: "Loan Disbursed ✓", rejected: "Loan Rejected", repaid: "Loan Marked Repaid ✅" };
       const descs: Record<string, string>  = { active: "Loan credited to wallet. Wallet lien placed.", rejected: "Loan rejected and user notified.", repaid: "Wallet lien lifted. User wallet restored." };
       toast({ title: titles[status] ?? "Loan Updated", description: descs[status] ?? "Status updated." });
@@ -1601,7 +1611,7 @@ export default function AdminDashboard() {
                             <TableCell className="text-right px-6">
                               {l.status === "pending" && (
                                 <div className="flex justify-end gap-1.5">
-                                  <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" onClick={() => setLoanDialog({ open: true, loan: l, action: "active" })}>
+                                  <Button size="sm" className="h-7 text-xs bg-tsia-green hover:bg-tsia-green/90" onClick={() => { setLoanDialog({ open: true, loan: l, action: "active" }); setLoanOfferAmt(l.amountUsd ?? ""); setLoanRepaymentDate(""); setLoanAdminNote(""); }}>
                                     Approve
                                   </Button>
                                   <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => setLoanDialog({ open: true, loan: l, action: "rejected" })}>
@@ -5117,35 +5127,101 @@ export default function AdminDashboard() {
       </Dialog>
 
       {/* Loan action dialog */}
-      <Dialog open={loanDialog.open} onOpenChange={open => !open && setLoanDialog({ open: false, loan: null, action: "" })}>
-        <DialogContent>
+      <Dialog open={loanDialog.open} onOpenChange={open => { if (!open) { setLoanDialog({ open: false, loan: null, action: "" }); setLoanOfferAmt(""); setLoanRepaymentDate(""); setLoanAdminNote(""); } }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
               {loanDialog.action === "active" ? "Approve & Disburse Loan" : loanDialog.action === "repaid" ? "Mark Loan as Repaid" : "Reject Loan Application"}
             </DialogTitle>
             <DialogDescription>
               {loanDialog.action === "active"
-                ? "Funds will be credited to the user's wallet immediately. A lien will be placed on the wallet until the loan is repaid."
+                ? "Review and adjust the loan terms before disbursing. Funds will be credited to the user's wallet immediately."
                 : loanDialog.action === "repaid"
                 ? "This will lift the wallet lien and restore full wallet access for the user."
                 : "The applicant will be notified of this decision."}
             </DialogDescription>
           </DialogHeader>
           {loanDialog.loan && (
-            <div className="bg-slate-50 border rounded-2xl p-5 my-2 space-y-3">
-              <div className="flex justify-between"><span className="text-sm text-slate-500">Applicant</span><span className="font-semibold text-sm">{loanDialog.loan.user?.firstName} {loanDialog.loan.user?.lastName}</span></div>
-              <div className="flex justify-between"><span className="text-sm text-slate-500">Role</span><Badge variant="outline" className="text-xs capitalize">{loanDialog.loan.userRole}</Badge></div>
-              <div className="flex justify-between border-t pt-3"><span className="text-sm text-slate-500">Loan Amount</span><span className="text-2xl font-bold">{fmtUSD(loanDialog.loan.amountUsd)}</span></div>
-              <div className="flex justify-between"><span className="text-sm text-slate-500">Term / Rate</span><span className="text-sm">{loanDialog.loan.termMonths} months at {loanDialog.loan.interestRate}%</span></div>
-              <div className="flex justify-between"><span className="text-sm text-slate-500">Total Repayable</span><span className="font-semibold text-sm">{fmtUSD(loanDialog.loan.totalPayableUsd)}</span></div>
+            <div className="space-y-4 py-1">
+              {/* Applicant summary */}
+              <div className="bg-slate-50 dark:bg-slate-800/50 border rounded-xl px-4 py-3 space-y-2">
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Applicant</span><span className="font-semibold">{loanDialog.loan.user?.firstName} {loanDialog.loan.user?.lastName}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Role</span><Badge variant="outline" className="text-xs capitalize">{loanDialog.loan.userRole}</Badge></div>
+                <div className="flex justify-between text-sm border-t pt-2"><span className="text-slate-500">Requested</span><span className="font-bold">{fmtUSD(loanDialog.loan.amountUsd)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Term / Rate</span><span>{loanDialog.loan.termMonths} months · {loanDialog.loan.interestRate}%</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Total Repayable</span><span className="font-semibold">{fmtUSD(loanDialog.loan.totalPayableUsd)}</span></div>
+                {loanDialog.loan.purpose && <div className="flex justify-between text-sm"><span className="text-slate-500">Purpose</span><span className="text-right max-w-[55%] text-xs">{loanDialog.loan.purpose}</span></div>}
+              </div>
+
+              {/* Editable fields — only shown when approving */}
+              {loanDialog.action === "active" && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-tsia-green uppercase tracking-wide">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Loan Offer Terms
+                  </div>
+
+                  {/* Offer amount */}
+                  <div className="space-y-1">
+                    <Label htmlFor="loan-offer-amt" className="text-sm font-medium">
+                      Offer Amount (USD) <span className="text-slate-400 font-normal text-xs">— overrides requested amount</span>
+                    </Label>
+                    <Input
+                      id="loan-offer-amt"
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={loanOfferAmt}
+                      onChange={e => setLoanOfferAmt(e.target.value)}
+                      className="h-10 text-base font-bold"
+                      data-testid="input-loan-offer-amt"
+                    />
+                    {loanOfferAmt && parseFloat(loanOfferAmt) !== parseFloat(loanDialog.loan.amountUsd) && (
+                      <p className="text-xs text-amber-600 flex items-center gap-1">
+                        <span>⚠</span> Differs from requested {fmtUSD(loanDialog.loan.amountUsd)} — totals will be scaled proportionally.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Repayment due date */}
+                  <div className="space-y-1">
+                    <Label htmlFor="loan-repayment-date" className="text-sm font-medium">
+                      Scheduled Repayment Date <span className="text-slate-400 font-normal text-xs">(optional)</span>
+                    </Label>
+                    <Input
+                      id="loan-repayment-date"
+                      type="date"
+                      value={loanRepaymentDate}
+                      onChange={e => setLoanRepaymentDate(e.target.value)}
+                      className="h-10"
+                      data-testid="input-loan-repayment-date"
+                    />
+                  </div>
+
+                  {/* Admin note */}
+                  <div className="space-y-1">
+                    <Label htmlFor="loan-admin-note" className="text-sm font-medium">
+                      Admin Note <span className="text-slate-400 font-normal text-xs">(optional — internal only)</span>
+                    </Label>
+                    <textarea
+                      id="loan-admin-note"
+                      rows={2}
+                      value={loanAdminNote}
+                      onChange={e => setLoanAdminNote(e.target.value)}
+                      placeholder="e.g. Reduced amount due to credit score, repayment by Q3..."
+                      className="w-full text-sm rounded-lg border border-input bg-background px-3 py-2 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                      data-testid="input-loan-admin-note"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setLoanDialog({ open: false, loan: null, action: "" })}>Cancel</Button>
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={() => { setLoanDialog({ open: false, loan: null, action: "" }); setLoanOfferAmt(""); setLoanRepaymentDate(""); setLoanAdminNote(""); }}>Cancel</Button>
             <Button
               className={loanDialog.action === "active" ? "bg-tsia-green hover:bg-tsia-green/90" : loanDialog.action === "repaid" ? "bg-emerald-600 hover:bg-emerald-700" : ""}
               variant={loanDialog.action === "rejected" ? "destructive" : "default"}
-              disabled={loanStatusMutation.isPending}
+              disabled={loanStatusMutation.isPending || (loanDialog.action === "active" && (!loanOfferAmt || parseFloat(loanOfferAmt) <= 0))}
               onClick={() => loanStatusMutation.mutate({ id: loanDialog.loan?.id, status: loanDialog.action })}
               data-testid={`button-loan-${loanDialog.action}`}
             >

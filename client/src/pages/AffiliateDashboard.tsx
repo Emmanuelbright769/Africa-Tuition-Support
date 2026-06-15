@@ -634,7 +634,7 @@ function SponsorshipCohortSection() {
               <p>✔ Track your cohort usage directly from your affiliate dashboard</p>
             </div>
             <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white" data-testid="button-goto-sponsorship">
-              <a href="/sponsor" target="_blank" rel="noopener noreferrer">
+              <a href="/leadership" target="_blank" rel="noopener noreferrer">
                 <HeartHandshake className="w-4 h-4 mr-2" /> Open Sponsorship Form
               </a>
             </Button>

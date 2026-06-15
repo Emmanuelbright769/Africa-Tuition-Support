@@ -631,7 +631,7 @@ function SponsorshipCohortSection() {
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs text-blue-800 dark:text-blue-200 space-y-1">
               <p>✔ Minimum <strong>30 students</strong> per cohort</p>
               <p>✔ One reusable master code shared with all sponsored students</p>
-              <p>✔ Track your cohort usage in the admin dashboard</p>
+              <p>✔ Track your cohort usage directly from your affiliate dashboard</p>
             </div>
             <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white" data-testid="button-goto-sponsorship">
               <a href="/sponsor" target="_blank" rel="noopener noreferrer">

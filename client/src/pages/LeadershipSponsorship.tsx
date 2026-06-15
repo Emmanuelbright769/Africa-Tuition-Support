@@ -29,7 +29,7 @@ interface FormData {
   numStudents: string;
 }
 
-const emptyForm: FormData = { firstName: "", lastName: "", orgName: "", email: "", phone: "", numStudents: "100" };
+const emptyForm: FormData = { firstName: "", lastName: "", orgName: "", email: "", phone: "", numStudents: "30" };
 
 export default function LeadershipSponsorship() {
   const { toast } = useToast();
@@ -39,7 +39,7 @@ export default function LeadershipSponsorship() {
   const [masterCode, setMasterCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const slots = Math.max(100, parseInt(form.numStudents, 10) || 100);
+  const slots = Math.max(30, parseInt(form.numStudents, 10) || 30);
   const totalUsd = (slots * PRICE_PER_STUDENT).toFixed(2);
   const totalNgn = (slots * PRICE_PER_STUDENT * 1480).toLocaleString("en-NG");
 
@@ -48,7 +48,7 @@ export default function LeadershipSponsorship() {
 
   const formValid =
     form.firstName.trim() && form.lastName.trim() && form.email.trim() &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email) && slots >= 100;
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email) && slots >= 30;
 
   const loadSquadScript = useCallback((): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -148,10 +148,10 @@ export default function LeadershipSponsorship() {
                 Sponsor a Cohort.<br />Shape the Future.
               </h1>
               <p className="text-lg text-slate-400 max-w-lg">
-                Organizations and individuals can sponsor cohorts of 100+ students for just <strong className="text-white">$3.30 per student</strong>. Make measurable, scalable impact on African education today.
+                Organizations and individuals can sponsor cohorts of 30+ students for just <strong className="text-white">$3.30 per student</strong>. Make measurable, scalable impact on African education today.
               </p>
               <div className="grid grid-cols-3 gap-4 pt-2">
-                {[["$3.30", "per student"], ["100+", "min. students"], ["Instant", "code delivery"]].map(([v, l]) => (
+                {[["$3.30", "per student"], ["30+", "min. students"], ["Instant", "code delivery"]].map(([v, l]) => (
                   <div key={l} className="text-center p-3 rounded-xl bg-slate-800/60 border border-slate-700">
                     <p className="text-xl font-bold text-tsia-gold">{v}</p>
                     <p className="text-xs text-slate-400 mt-0.5">{l}</p>
@@ -165,7 +165,7 @@ export default function LeadershipSponsorship() {
                   {Array.from({ length: 25 }).map((_, i) => <div key={i} className="w-12 h-12 rounded bg-tsia-green" />)}
                 </div>
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 to-transparent" />
-                <h3 className="absolute bottom-8 left-8 text-2xl font-bold">100+ Students<br /><span className="text-tsia-green">Per Cohort</span></h3>
+                <h3 className="absolute bottom-8 left-8 text-2xl font-bold">30+ Students<br /><span className="text-tsia-green">Per Cohort</span></h3>
               </div>
             </motion.div>
           </div>
@@ -176,7 +176,7 @@ export default function LeadershipSponsorship() {
           <div className="container mx-auto px-4">
             <div className="grid md:grid-cols-3 gap-6">
               {[
-                { icon: Users, title: "Scale Your Impact", desc: "Sponsor a minimum of 100 students for a dedicated 3-year term — all with one payment." },
+                { icon: Users, title: "Scale Your Impact", desc: "Sponsor a minimum of 30 students for a dedicated 3-year term — all with one payment." },
                 { icon: Briefcase, title: "One Reusable Code", desc: "Receive a single master sponsor code by email. Share it with all your sponsored students to activate their accounts." },
                 { icon: Building2, title: "Detailed Reporting", desc: "Track fund utilization and student progress via the admin dashboard." }
               ].map((item, i) => (
@@ -230,12 +230,12 @@ export default function LeadershipSponsorship() {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="numStudents">Number of Students <span className="text-red-500">*</span></Label>
-                      <Input id="numStudents" type="number" min={100} value={form.numStudents}
+                      <Input id="numStudents" type="number" min={30} value={form.numStudents}
                         onChange={set("numStudents")}
-                        placeholder="100" data-testid="input-sponsor-students"
+                        placeholder="30" data-testid="input-sponsor-students"
                       />
-                      {parseInt(form.numStudents, 10) < 100 && form.numStudents !== "" && (
-                        <p className="text-xs text-red-500">Minimum is 100 students.</p>
+                      {parseInt(form.numStudents, 10) < 30 && form.numStudents !== "" && (
+                        <p className="text-xs text-red-500">Minimum is 30 students.</p>
                       )}
                     </div>
 

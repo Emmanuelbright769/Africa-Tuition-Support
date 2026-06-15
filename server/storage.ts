@@ -18,6 +18,7 @@ import {
   movieSubscriptions, type MovieSubscription,
   savingsGoals, savingsTransactions,
   scholarships, type Scholarship, type InsertScholarship,
+  researchGrants, type ResearchGrant, type InsertResearchGrant,
   platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
   type User, type InsertUser,
   type Verification, type InsertVerification,
@@ -302,6 +303,12 @@ export interface IStorage {
   getCashbackBalance(userId: number): Promise<string>;
   addCashback(userId: number, amountUsd: number): Promise<void>;
   withdrawCashbackToWallet(userId: number, amountUsd: number): Promise<{ cashbackBalance: string; walletBalance: string }>;
+
+  // Research Grants
+  createResearchGrant(data: InsertResearchGrant): Promise<ResearchGrant>;
+  getResearchGrantsByUser(userId: number): Promise<ResearchGrant[]>;
+  getAllResearchGrants(): Promise<(ResearchGrant & { user: Pick<User, "firstName"|"lastName"|"email"> })[]>;
+  updateResearchGrant(id: number, data: Partial<ResearchGrant>): Promise<ResearchGrant>;
 
   // Platform settings
   getPlatformSetting(key: string): Promise<string | null>;
@@ -2361,6 +2368,30 @@ export class DatabaseStorage implements IStorage {
       if (user) result.push({ ...row, user });
     }
     return result;
+  }
+
+  async createResearchGrant(data: InsertResearchGrant): Promise<ResearchGrant> {
+    const [row] = await db.insert(researchGrants).values(data as any).returning();
+    return row;
+  }
+
+  async getResearchGrantsByUser(userId: number): Promise<ResearchGrant[]> {
+    return db.select().from(researchGrants).where(eq(researchGrants.userId, userId)).orderBy(desc(researchGrants.createdAt));
+  }
+
+  async getAllResearchGrants(): Promise<(ResearchGrant & { user: Pick<User,"firstName"|"lastName"|"email"> })[]> {
+    const rows = await db.select().from(researchGrants).orderBy(desc(researchGrants.createdAt));
+    const result: (ResearchGrant & { user: Pick<User,"firstName"|"lastName"|"email"> })[] = [];
+    for (const row of rows) {
+      const u = await this.getUser(row.userId);
+      if (u) result.push({ ...row, user: { firstName: u.firstName, lastName: u.lastName, email: u.email } });
+    }
+    return result;
+  }
+
+  async updateResearchGrant(id: number, data: Partial<ResearchGrant>): Promise<ResearchGrant> {
+    const [row] = await db.update(researchGrants).set(data as any).where(eq(researchGrants.id, id)).returning();
+    return row;
   }
 
   async addCashback(userId: number, amountUsd: number): Promise<void> {

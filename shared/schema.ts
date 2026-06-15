@@ -1229,3 +1229,21 @@ export const scholarships = pgTable("scholarships", {
 export const insertScholarshipSchema = createInsertSchema(scholarships).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertScholarship = z.infer<typeof insertScholarshipSchema>;
 export type Scholarship = typeof scholarships.$inferSelect;
+
+// ─── RESEARCH GRANTS ─────────────────────────────────────────────────────────
+export const researchGrants = pgTable("research_grants", {
+  id:                 serial("id").primaryKey(),
+  userId:             integer("user_id").notNull().references(() => users.id),
+  title:              text("title").notNull(),
+  fieldOfResearch:    text("field_of_research").notNull(),
+  description:        text("description").notNull(),
+  proposal:           text("proposal").notNull(),
+  requestedAmountUsd: numeric("requested_amount_usd", { precision: 12, scale: 2 }).notNull(),
+  grantedAmountUsd:   numeric("granted_amount_usd", { precision: 12, scale: 2 }),
+  status:             text("status", { enum: ["pending", "under_review", "approved", "rejected"] }).notNull().default("pending"),
+  adminNote:          text("admin_note"),
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
+});
+export const insertResearchGrantSchema = createInsertSchema(researchGrants).omit({ id: true, createdAt: true, grantedAmountUsd: true, status: true, adminNote: true });
+export type InsertResearchGrant = z.infer<typeof insertResearchGrantSchema>;
+export type ResearchGrant = typeof researchGrants.$inferSelect;

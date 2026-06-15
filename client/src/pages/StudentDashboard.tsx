@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import FinancialHub from "./FinancialHub";
 import MoviesSection from "@/components/MoviesSection";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
@@ -34,7 +34,7 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 
 
-type Section = "overview" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies" | "msc_plans" | "scholarship";
+type Section = "overview" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies" | "msc_plans" | "scholarship" | "research_grant";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
@@ -46,6 +46,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "plans",        label: "Swift-Pay Plans",        icon: Star },
   { id: "scholarship",  label: "Scholarship Portal",     icon: Trophy, badge: "New" },
   { id: "msc_plans",    label: "Swift Pay MSc plans",    icon: GraduationCap },
+  { id: "research_grant", label: "Research Grant",       icon: BookOpen, badge: "New" },
   { id: "loan",               label: "Student loan",      icon: Banknote },
   { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
   { id: "forum",              label: "Community Forum",   icon: MessageSquareText },
@@ -53,6 +54,158 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
 const itemVariants       = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
+
+// ── RESEARCH GRANT SECTION ────────────────────────────────────────────────────
+function ResearchGrantSection() {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ title: "", fieldOfResearch: "", description: "", proposal: "", requestedAmountUsd: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [grants, setGrants] = useState<any[]>([]);
+  const [loadingGrants, setLoadingGrants] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const loadGrants = async () => {
+    setLoadingGrants(true);
+    try {
+      const res = await fetch("/api/research-grant/my");
+      if (res.ok) setGrants(await res.json());
+    } finally { setLoadingGrants(false); }
+  };
+
+  React.useEffect(() => { loadGrants(); }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/research-grant/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, requestedAmountUsd: parseFloat(form.requestedAmountUsd) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Submission failed");
+      toast({ title: "Application Submitted", description: "Your research grant application is under review." });
+      setForm({ title: "", fieldOfResearch: "", description: "", proposal: "", requestedAmountUsd: "" });
+      setShowForm(false);
+      loadGrants();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally { setSubmitting(false); }
+  };
+
+  const statusBadge: Record<string, string> = {
+    pending: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+    under_review: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+    approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+    rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  };
+
+  const formValid = form.title.trim() && form.fieldOfResearch.trim() && form.description.trim() && form.proposal.trim() && parseFloat(form.requestedAmountUsd) > 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="mb-5">
+        <h2 className="text-2xl font-bold flex items-center gap-2 mb-1">
+          <BookOpen className="w-6 h-6 text-tsia-green" /> Research Grant
+        </h2>
+        <p className="text-muted-foreground text-sm">Apply for a TSIA research grant to fund your postgraduate research project.</p>
+      </div>
+
+      <div className="rounded-2xl border bg-gradient-to-br from-tsia-green/5 to-blue-500/5 p-5 space-y-2">
+        <h3 className="font-semibold flex items-center gap-2"><GraduationCap className="w-4 h-4 text-tsia-green" /> Eligibility</h3>
+        <ul className="text-sm text-muted-foreground space-y-1.5 list-none">
+          {["Must hold a Master's degree or currently enrolled in an MSc/MA programme", "Research must be in an African development-focused field", "One active application per user at a time", "Grant amount subject to review by the TSIA research committee"].map((item, i) => (
+            <li key={i} className="flex items-start gap-2"><span className="text-tsia-green mt-0.5">✔</span>{item}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold text-base">My Applications</h3>
+        <Button size="sm" onClick={() => setShowForm(v => !v)} data-testid="button-toggle-grant-form" className="bg-tsia-green hover:bg-tsia-green/90 text-white">
+          {showForm ? "Cancel" : <><Send className="w-3.5 h-3.5 mr-1.5" /> New Application</>}
+        </Button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={submit} className="rounded-2xl border bg-card p-5 space-y-4" data-testid="form-research-grant">
+          <h4 className="font-semibold">New Grant Application</h4>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Research Title <span className="text-red-500">*</span></label>
+            <input value={form.title} onChange={set("title")} placeholder="e.g. AI-powered crop yield prediction in Sub-Saharan Africa"
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
+              data-testid="input-grant-title" required />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Field of Research <span className="text-red-500">*</span></label>
+            <input value={form.fieldOfResearch} onChange={set("fieldOfResearch")} placeholder="e.g. Agricultural Technology, Public Health, Education"
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
+              data-testid="input-grant-field" required />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Brief Description <span className="text-red-500">*</span></label>
+            <textarea value={form.description} onChange={set("description")} rows={3} placeholder="Summarise your research in 2–4 sentences…"
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40 resize-none"
+              data-testid="input-grant-description" required />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Research Proposal <span className="text-red-500">*</span></label>
+            <textarea value={form.proposal} onChange={set("proposal")} rows={5} placeholder="Provide your full proposal — objectives, methodology, expected outcomes, timeline…"
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40 resize-none"
+              data-testid="input-grant-proposal" required />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Requested Amount (USD) <span className="text-red-500">*</span></label>
+            <input type="number" min="1" step="0.01" value={form.requestedAmountUsd} onChange={set("requestedAmountUsd")} placeholder="e.g. 5000"
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
+              data-testid="input-grant-amount" required />
+          </div>
+          <Button type="submit" disabled={submitting || !formValid} className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-submit-grant">
+            {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Submitting…</> : "Submit Application"}
+          </Button>
+        </form>
+      )}
+
+      {loadingGrants ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-tsia-green" /></div>
+      ) : grants.length === 0 ? (
+        <div className="rounded-2xl border bg-card p-8 text-center text-muted-foreground text-sm">
+          <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-30" />
+          No applications yet. Click <strong>New Application</strong> to get started.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {grants.map((g: any) => (
+            <div key={g.id} className="rounded-xl border bg-card p-4" data-testid={`card-grant-${g.id}`}>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{g.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{g.fieldOfResearch}</p>
+                </div>
+                <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0 ${statusBadge[g.status] ?? statusBadge.pending}`}>
+                  {g.status.replace("_", " ")}
+                </span>
+              </div>
+              <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+                <span>Requested: <strong className="text-foreground">${parseFloat(g.requestedAmountUsd).toLocaleString()}</strong></span>
+                {g.grantedAmountUsd && <span>Granted: <strong className="text-tsia-green">${parseFloat(g.grantedAmountUsd).toLocaleString()}</strong></span>}
+                <span>{new Date(g.createdAt).toLocaleDateString()}</span>
+              </div>
+              {g.adminNote && (
+                <div className="mt-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  <strong>Admin note:</strong> {g.adminNote}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function StudentDashboard() {
   const { formatAmount, rateLabel } = useLocalCurrency();
@@ -1079,6 +1232,13 @@ export default function StudentDashboard() {
             {activeSection === "movies" && (
               <motion.div variants={itemVariants}>
                 <MoviesSection />
+              </motion.div>
+            )}
+
+            {/* ── RESEARCH GRANT ── */}
+            {activeSection === "research_grant" && (
+              <motion.div variants={itemVariants}>
+                <ResearchGrantSection />
               </motion.div>
             )}
 

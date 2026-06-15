@@ -3492,6 +3492,119 @@ export async function registerRoutes(
     res.json(all);
   });
 
+  // ── RESEARCH GRANT ROUTES ────────────────────────────────────────────────
+  app.post("/api/research-grant/apply", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { title, fieldOfResearch, description, proposal, requestedAmountUsd } = req.body;
+      if (!title || !fieldOfResearch || !description || !proposal || !requestedAmountUsd)
+        return res.status(400).json({ message: "All fields are required." });
+      const amount = parseFloat(String(requestedAmountUsd));
+      if (isNaN(amount) || amount <= 0)
+        return res.status(400).json({ message: "Invalid requested amount." });
+      const grant = await storage.createResearchGrant({
+        userId,
+        title: String(title).trim(),
+        fieldOfResearch: String(fieldOfResearch).trim(),
+        description: String(description).trim(),
+        proposal: String(proposal).trim(),
+        requestedAmountUsd: amount.toFixed(2),
+      });
+      res.json(grant);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/research-grant/my", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const grants = await storage.getResearchGrantsByUser(userId);
+      res.json(grants);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/admin/research-grants", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const grants = await storage.getAllResearchGrants();
+      res.json(grants);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/admin/research-grant/:id/decision", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const id = parseInt(req.params.id);
+      const { decision, grantedAmountUsd, adminNote } = req.body;
+      if (!["approved", "rejected", "under_review"].includes(decision))
+        return res.status(400).json({ message: "Invalid decision." });
+      const updated = await storage.updateResearchGrant(id, {
+        status: decision,
+        adminNote: adminNote ? String(adminNote).trim() : null,
+        ...(decision === "approved" && grantedAmountUsd
+          ? { grantedAmountUsd: parseFloat(String(grantedAmountUsd)).toFixed(2) }
+          : {}),
+      });
+      if (decision === "approved" && grantedAmountUsd) {
+        const amt = parseFloat(String(grantedAmountUsd));
+        if (amt > 0) {
+          const wallet = await storage.getOrCreateWallet(updated.userId);
+          const newBal = (parseFloat(wallet.balance) + amt).toFixed(2);
+          await storage.updateWalletBalance(updated.userId, newBal);
+          await storage.createTransaction({
+            userId: updated.userId,
+            type: "credit",
+            amount: amt.toFixed(2),
+            fee: "0.00",
+            paymentMethod: "grant",
+            description: `Research Grant approved — $${amt.toFixed(2)} credited to your wallet`,
+          });
+        }
+      }
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── AFFILIATE SCHOLARSHIP CODE PURCHASE ─────────────────────────────────
+  app.post("/api/affiliate/scholarship-sponsor-code", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "affiliate") return res.status(403).json({ message: "Only affiliates can purchase scholarship codes." });
+      const PRICE = 5.50;
+      const MIN_REMAINING = 2.00;
+      const wallet = await storage.getOrCreateWallet(userId);
+      const balance = parseFloat(wallet.balance);
+      if (balance < PRICE + MIN_REMAINING)
+        return res.status(400).json({ message: `Insufficient balance. You need at least $${(PRICE + MIN_REMAINING).toFixed(2)} (cost $${PRICE.toFixed(2)} + $${MIN_REMAINING.toFixed(2)} min. reserve).` });
+      const newBal = (balance - PRICE).toFixed(2);
+      await storage.updateWalletBalance(userId, newBal);
+      await storage.createTransaction({
+        userId,
+        type: "debit",
+        amount: PRICE.toFixed(2),
+        fee: "0.00",
+        paymentMethod: "wallet",
+        description: "Scholarship sponsor code purchase — $5.50 deducted",
+      });
+      const { cohort, masterCode } = await storage.createPublicSponsorCohort({
+        sponsorName: `${user.firstName} ${user.lastName}`,
+        sponsorEmail: user.email,
+        totalSlots: 1,
+        orgName: "Affiliate Scholarship",
+      });
+      res.json({ code: masterCode, cohortId: cohort.id, walletBalance: newBal });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/admin/all-scholarships", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

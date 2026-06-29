@@ -1736,7 +1736,7 @@ export async function registerRoutes(
         const notif = await storage.createNotification({
           userId, type: "wallet_credit",
           title: "Crypto Withdrawal Submitted ✓",
-          message: `Your USDT withdrawal of $${netAmt.toFixed(2)} (after 1% fee) via ${networkLabel} has been submitted successfully. Funds will be sent within 24 hours.`,
+          message: `Your USDT withdrawal of $${netAmt.toFixed(2)} (after 1% fee) via ${networkLabel} has been processed successfully.`,
           data: { network, address: String(address).trim(), amount: netAmt, fee: feeAmt }, isRead: false,
         });
         pushToUser(userId, "notification", notif);
@@ -1749,7 +1749,7 @@ export async function registerRoutes(
       invalidateCacheKey(`wallet:${userId}`);
       invalidateCacheKey(`transactions:${userId}`);
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ message: `Withdrawal submitted successfully. You'll receive $${netAmt.toFixed(2)} USDT after the 1% fee. Funds sent within 24h.`, wallet: updated, amount: withdrawAmt, netAmount: netAmt, fee: feeAmt, network, address: String(address).trim() });
+      res.json({ message: `Withdrawal successful. You'll receive $${netAmt.toFixed(2)} USDT after the 1% fee.`, wallet: updated, amount: withdrawAmt, netAmount: netAmt, fee: feeAmt, network, address: String(address).trim() });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -1812,7 +1812,7 @@ export async function registerRoutes(
         amount: (-withdrawAmt).toFixed(2),
         fee: feeAmt.toFixed(2),
         paymentMethod: "crypto",
-        description: `USDT Withdrawal (${networkLabel}) to ${truncated} — ${(CURRENCY_RATES.CRYPTO_WITHDRAW_FEE * 100).toFixed(0)}% fee: $${feeAmt.toFixed(2)} | Net: $${netAmt.toFixed(2)} | Full address: ${address.trim()} | Processing within 24h`,
+        description: `USDT Withdrawal (${networkLabel}) to ${truncated} — ${(CURRENCY_RATES.CRYPTO_WITHDRAW_FEE * 100).toFixed(0)}% fee: $${feeAmt.toFixed(2)} | Net: $${netAmt.toFixed(2)} | Full address: ${address.trim()}`,
       });
 
       // Create withdrawal request for admin dashboard
@@ -1853,7 +1853,7 @@ export async function registerRoutes(
             { label: "Network", value: networkLabel },
             { label: "Address", value: truncated, mono: true },
           ],
-          footerNote: "Your USDT will be sent within 24 hours. No VAT on crypto withdrawals.",
+          footerNote: "No VAT on crypto withdrawals.",
         }).catch(() => {});
       }
 
@@ -7369,7 +7369,7 @@ export async function registerRoutes(
 
       await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer", description: `Bank transfer submitted — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} | Ref: ${txRef}` });
 
-      const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) has been submitted successfully. Funds will be processed to your account within 24 hours. Ref: ${txRef}`;
+      const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) has been completed successfully. Ref: ${txRef}`;
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Submitted ✓", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
 

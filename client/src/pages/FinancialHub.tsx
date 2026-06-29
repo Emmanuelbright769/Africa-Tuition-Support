@@ -995,10 +995,10 @@ export default function FinancialHub() {
           { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                red: true },
           { label: "Beneficiary Receives", value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
           { label: "Narration",      value: note || "None" },
-          { label: "Status",         value: "Pending — Admin will process within 24 hrs", bold: true },
+          { label: "Status",         value: "Successful ✓", bold: true, green: true },
         ] as ReceiptRow[],
         referenceRow: data.reference,
-        footerNote: `Your wallet has been debited. Admin will manually process this transfer and approve it within 24 hours. You will receive a notification once it is sent.`,
+        footerNote: `Your wallet has been debited and the transfer has been processed successfully. You will receive a notification once funds arrive.`,
         onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
         newTxLabel: "New Transfer",
       });
@@ -5097,8 +5097,8 @@ export default function FinancialHub() {
                   </div>
                 </div>
                 <div>
-                  <p className="text-xl font-black">Withdrawal Received!</p>
-                  <p className="text-sm text-muted-foreground mt-1">Your USDT will be sent to your wallet within 24 hours.</p>
+                  <p className="text-xl font-black">Withdrawal Successful!</p>
+                  <p className="text-sm text-muted-foreground mt-1">Your USDT withdrawal has been processed successfully.</p>
                 </div>
               </div>
               <div className="rounded-3xl border bg-card p-5 space-y-3">
@@ -5113,10 +5113,6 @@ export default function FinancialHub() {
                     <span className={`font-bold ${label === "You Receive" ? "text-tsia-green" : ""}`}>{val}</span>
                   </div>
                 ))}
-              </div>
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl px-4 py-3 flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300">
-                <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                Processing within 24 hours. You'll receive a notification once the transfer is confirmed.
               </div>
               <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
                 onClick={() => { resetCryptoWd(); setView("home"); }} data-testid="btn-cwd-done">
@@ -5158,7 +5154,7 @@ export default function FinancialHub() {
 
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
-                <span>Min: <strong>$5</strong> · 1% handling fee deducted · Processed within 24 hours · $2 ledger reserve remains in wallet.</span>
+                <span>Min: <strong>$5</strong> · 1% handling fee deducted · $2 ledger reserve remains in wallet.</span>
               </div>
 
               <div>

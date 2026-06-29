@@ -151,7 +151,7 @@ function LocalEquiv({ usd, country }: { usd: number; country?: string }) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
-type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "bill-otp" | "receipt" | "history" | "rates" | "crypto-withdraw";
+type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "bill-otp" | "receipt" | "history" | "rates" | "crypto-withdraw" | "tx-done";
 
 const RATE_CURRENCIES_META = [
   { code: "usd", label: "US Dollar",           symbol: "$",   flag: "🇺🇸", defaultBuy: 1600, defaultSell: 1550 },
@@ -423,6 +423,26 @@ export default function FinancialHub() {
   const showReceipt = (props: Omit<ComponentProps<typeof TransactionReceipt>, "open" | "onClose">) => {
     setTxReceiptProps(props);
     setTxReceiptOpen(true);
+  };
+
+  // ── Universal tx success / failure screen ─────────────────────────────────
+  type TxDoneData = {
+    isSuccess: boolean;
+    title: string;
+    amount: string;
+    amountLabel?: string;
+    subtitle?: string;
+    errorMessage?: string;
+    receiptProps?: Omit<ComponentProps<typeof TransactionReceipt>, "open" | "onClose">;
+    onNewTx?: () => void;
+    newTxLabel?: string;
+    onDone?: () => void;
+  };
+  const [txDoneData, setTxDoneData] = useState<TxDoneData | null>(null);
+
+  const showTxDone = (data: TxDoneData) => {
+    setTxDoneData(data);
+    setView("tx-done");
   };
 
   // ── Fund Account state ────────────────────────────────────────────────────
@@ -873,13 +893,51 @@ export default function FinancialHub() {
       if (!res.ok) throw new Error(d.message);
       return d;
     },
-    onSuccess: () => {
-      toast({ title: "Wallet Funded ✓", description: "Your deposit has been credited to your wallet instantly. No admin approval needed.", className: "border-tsia-green" });
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/deposits"] });
+      const amt = parseFloat(cryptoAmount);
+      const userCredit = parseFloat((amt * 0.95).toFixed(2));
+      const affiliateCut = parseFloat((amt * 0.05).toFixed(2));
+      const savedHash = cryptoTxHash.trim();
+      const savedNetwork = cryptoNetwork;
       setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20");
-      setView("home");
+      showTxDone({
+        isSuccess: true,
+        title: "Crypto Deposit",
+        amount: `$${userCredit.toFixed(2)}`,
+        amountLabel: "Credited to wallet (95%)",
+        receiptProps: {
+          title: "Crypto Deposit",
+          status: "success",
+          amount: `$${userCredit.toFixed(2)}`,
+          amountLabel: "USD credited",
+          rows: [
+            { label: "TX Hash",         value: savedHash, mono: true },
+            { label: "Network",         value: savedNetwork === "trc20" ? "TRC20 / TRON" : "BEP20 / BSC" },
+            { label: "Deposited",       value: `$${amt.toFixed(2)}` },
+            { label: "Affiliate Pool (5%)", value: `-$${affiliateCut.toFixed(2)}`, red: true },
+            { label: "You Received (95%)",  value: `$${userCredit.toFixed(2)}`,   green: true, bold: true },
+            { label: "Status",          value: "Credited Instantly ✓", green: true, bold: true },
+          ] as ReceiptRow[],
+          referenceRow: savedHash,
+          footerNote: "Crypto deposits are auto-credited. Keep this receipt for your records.",
+          onNewTx: () => { setTxReceiptOpen(false); setView("fund"); setFundStep("amount"); },
+          newTxLabel: "New Deposit",
+        },
+        onDone: () => { setView("home"); },
+        onNewTx: () => { setView("fund"); setFundStep("amount"); },
+        newTxLabel: "New Deposit",
+      });
     },
-    onError: (e: any) => toast({ title: "Submission failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => showTxDone({
+      isSuccess: false,
+      title: "Crypto Deposit",
+      amount: `$${cryptoAmount}`,
+      errorMessage: e.message,
+      onDone: () => setView("fund"),
+      onNewTx: () => setView("fund"),
+      newTxLabel: "Try Again",
+    }),
   });
 
   const balance        = parseFloat(wallet?.balance ?? "0");
@@ -980,30 +1038,51 @@ export default function FinancialHub() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       const amt = parseFloat(amount);
       const vat = parseFloat(data.vatAmount ?? "0");
-      setView("home"); resetSend();
-      showReceipt({
+      const savedName = resolvedName || acctNumber;
+      const savedAcct = acctNumber;
+      const savedBank = selectedBank?.name || "—";
+      const savedNote = note;
+      resetSend();
+      showTxDone({
+        isSuccess: true,
         title: "Bank Transfer",
-        status: "pending",
         amount: `$${amt.toFixed(2)}`,
-        rows: [
-          { label: "Reference",      value: data.reference,                     mono: true },
-          { label: "Sender",         value: `${user?.firstName} ${user?.lastName} (You)` },
-          { label: "Beneficiary",    value: resolvedName || acctNumber },
-          { label: "Account No",     value: acctNumber },
-          { label: "Bank",           value: selectedBank?.name || "—" },
-          { label: "Amount",         value: `$${amt.toFixed(2)}` },
-          { label: "VAT (7.5%)",     value: `-$${vat.toFixed(2)}`,                red: true },
-          { label: "Beneficiary Receives", value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
-          { label: "Narration",      value: note || "None" },
-          { label: "Status",         value: "Successful ✓", bold: true, green: true },
-        ] as ReceiptRow[],
-        referenceRow: data.reference,
-        footerNote: `Your wallet has been debited and the transfer has been processed successfully. You will receive a notification once funds arrive.`,
-        onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
+        amountLabel: "USD debited from wallet",
+        receiptProps: {
+          title: "Bank Transfer",
+          status: "success",
+          amount: `$${amt.toFixed(2)}`,
+          rows: [
+            { label: "Reference",            value: data.reference,                                    mono: true },
+            { label: "Sender",               value: `${user?.firstName} ${user?.lastName} (You)` },
+            { label: "Beneficiary",          value: savedName },
+            { label: "Account No",           value: savedAcct },
+            { label: "Bank",                 value: savedBank },
+            { label: "Amount",               value: `$${amt.toFixed(2)}` },
+            { label: "VAT (7.5%)",           value: `-$${vat.toFixed(2)}`, red: true },
+            { label: "Beneficiary Receives", value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
+            { label: "Narration",            value: savedNote || "None" },
+            { label: "Status",               value: "Successful ✓", bold: true, green: true },
+          ] as ReceiptRow[],
+          referenceRow: data.reference,
+          footerNote: "Your wallet has been debited and the transfer has been processed successfully.",
+          onNewTx: () => { setTxReceiptOpen(false); setView("send"); },
+          newTxLabel: "New Transfer",
+        },
+        onDone: () => setView("home"),
+        onNewTx: () => setView("send"),
         newTxLabel: "New Transfer",
       });
     },
-    onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => showTxDone({
+      isSuccess: false,
+      title: "Bank Transfer",
+      amount: `$${parseFloat(amount).toFixed(2)}`,
+      errorMessage: e.message,
+      onDone: () => setView("send"),
+      onNewTx: () => setView("send"),
+      newTxLabel: "Try Again",
+    }),
   });
 
   const requestTransferOtpMutation = useMutation({
@@ -1042,30 +1121,45 @@ export default function FinancialHub() {
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
-      setView("home"); resetSend();
       const r = data.receipt;
-      if (r) {
-        showReceipt({
+      resetSend();
+      showTxDone({
+        isSuccess: true,
+        title: "TSIA Transfer",
+        amount: r ? `-$${r.amount}` : `-$${amount}`,
+        amountLabel: "Sent from your wallet",
+        receiptProps: r ? {
           title: "TSIA Transfer",
           status: "success",
           amount: `-$${r.amount}`,
           rows: [
-            { label: "Reference",   value: r.txRef,                                    mono: true },
-            { label: "Date & Time", value: r.txDate },
-            { label: "Sender",           value: `${r.senderName} (You)` },
-            { label: "Recipient",        value: `${r.recipientName} — ${r.walletLabel}` },
-            { label: "Amount Sent",      value: `-$${r.amount}`,                            red: true },
-            { label: "Platform Fee (8%)", value: `-$${r.fee ?? (parseFloat(r.amount) * 0.08).toFixed(2)}`,  red: true },
-            { label: "Recipient Received", value: `$${r.recipientCredit ?? (parseFloat(r.amount) * 0.92).toFixed(2)}`, green: true },
+            { label: "Reference",          value: r.txRef,                                                               mono: true },
+            { label: "Date & Time",        value: r.txDate },
+            { label: "Sender",             value: `${r.senderName} (You)` },
+            { label: "Recipient",          value: `${r.recipientName} — ${r.walletLabel}` },
+            { label: "Amount Sent",        value: `-$${r.amount}`,                                                       red: true },
+            { label: "Platform Fee (8%)",  value: `-$${r.fee ?? (parseFloat(r.amount) * 0.08).toFixed(2)}`,              red: true },
+            { label: "Recipient Received", value: `$${r.recipientCredit ?? (parseFloat(r.amount) * 0.92).toFixed(2)}`,   green: true },
             ...(r.note ? [{ label: "Narration", value: `"${r.note}"` }] : []),
           ] as ReceiptRow[],
           referenceRow: r.txRef,
-          onNewTx: () => { setTxReceiptOpen(false); setView("send"); resetSend(); },
+          onNewTx: () => { setTxReceiptOpen(false); setView("send"); },
           newTxLabel: "New Transfer",
-        });
-      }
+        } : undefined,
+        onDone: () => setView("home"),
+        onNewTx: () => setView("send"),
+        newTxLabel: "New Transfer",
+      });
     },
-    onError: (e: any) => toast({ title: "Transfer failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => showTxDone({
+      isSuccess: false,
+      title: "TSIA Transfer",
+      amount: `-$${amount}`,
+      errorMessage: e.message,
+      onDone: () => setView("tsia-otp"),
+      onNewTx: () => setView("send"),
+      newTxLabel: "Try Again",
+    }),
   });
 
   const requestMutation = useMutation({
@@ -5024,6 +5118,79 @@ export default function FinancialHub() {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // UNIVERSAL TRANSACTION SUCCESS / FAILURE SCREEN
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (view === "tx-done" && txDoneData) {
+    const d = txDoneData;
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div key="tx-done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+          <div className="flex flex-col items-center text-center space-y-5 pt-2 pb-2">
+
+            {/* Concentric rings icon */}
+            <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
+              <div className={`absolute inset-0 rounded-full ${d.isSuccess ? "bg-tsia-green/10" : "bg-red-500/10"}`} />
+              <div className={`absolute inset-[14px] rounded-full ${d.isSuccess ? "bg-tsia-green/20" : "bg-red-500/20"}`} />
+              <div className={`absolute inset-[28px] rounded-full ${d.isSuccess ? "bg-tsia-green/30" : "bg-red-500/30"}`} />
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg ${d.isSuccess ? "bg-tsia-green" : "bg-red-500"}`}>
+                {d.isSuccess
+                  ? <Check className="w-8 h-8 text-white" strokeWidth={3} />
+                  : <X className="w-8 h-8 text-white" strokeWidth={3} />}
+              </div>
+            </div>
+
+            {/* Title + amount */}
+            <div className="space-y-1.5">
+              <p className={`text-3xl font-black ${d.isSuccess ? "" : "text-red-500"}`}>{d.amount}</p>
+              {d.amountLabel && <p className="text-sm text-muted-foreground">{d.amountLabel}</p>}
+              <p className="text-lg font-semibold text-foreground">
+                {d.isSuccess ? `${d.title} successful.` : `${d.title} failed.`}
+              </p>
+              {d.subtitle && <p className="text-sm text-muted-foreground">{d.subtitle}</p>}
+              {!d.isSuccess && d.errorMessage && (
+                <div className="mt-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl px-4 py-3">
+                  <p className="text-sm text-red-600 dark:text-red-400">{d.errorMessage}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="w-full space-y-3 pt-1">
+              {d.isSuccess && d.receiptProps && (
+                <Button
+                  variant="outline"
+                  className="w-full h-12 font-semibold rounded-2xl border-2"
+                  onClick={() => showReceipt(d.receiptProps!)}
+                  data-testid="btn-view-receipt"
+                >
+                  <Receipt className="w-4 h-4 mr-2" /> View Receipt
+                </Button>
+              )}
+              {d.onNewTx && (
+                <Button
+                  variant="outline"
+                  className="w-full h-12 font-semibold rounded-2xl border-2"
+                  onClick={() => { setTxDoneData(null); d.onNewTx?.(); }}
+                  data-testid="btn-tx-new"
+                >
+                  {d.newTxLabel ?? "New Transaction"}
+                </Button>
+              )}
+              <Button
+                className="w-full h-14 bg-tsia-green text-white font-bold text-base rounded-2xl shadow"
+                onClick={() => { setTxDoneData(null); d.onDone ? d.onDone() : setView("home"); }}
+                data-testid="btn-tx-done"
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // CRYPTO WITHDRAWAL
   // ═══════════════════════════════════════════════════════════════════════════
   if (view === "crypto-withdraw") {
@@ -5057,11 +5224,48 @@ export default function FinancialHub() {
         const d = await res.json();
         if (!res.ok) throw new Error(d.message);
         setCryptoWdResult(d);
-        setCryptoWdStep("done");
         queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
         queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+        const savedNet = cryptoWdNetwork;
+        const savedAddr = cryptoWdAddress.trim();
+        const savedNetAmt = parseFloat((d.netAmount ?? netAmt).toFixed(2));
+        const savedFee = parseFloat((d.fee ?? feeAmt).toFixed(2));
+        const savedReqAmt = parseFloat((d.amount ?? wdAmt).toFixed(2));
+        showTxDone({
+          isSuccess: true,
+          title: "Crypto Withdrawal",
+          amount: `$${savedNetAmt.toFixed(2)} USDT`,
+          amountLabel: savedNet === "trc20" ? "TRC20 / TRON Network" : "BEP20 / BSC Network",
+          receiptProps: {
+            title: "Crypto Withdrawal",
+            status: "success",
+            amount: `$${savedNetAmt.toFixed(2)} USDT`,
+            rows: [
+              { label: "Wallet Address",   value: savedAddr,                                                      mono: true },
+              { label: "Network",          value: savedNet === "trc20" ? "TRC20 / TRON" : "BEP20 / BSC" },
+              { label: "Amount Requested", value: `$${savedReqAmt.toFixed(2)}` },
+              { label: "Handling Fee (1%)", value: `-$${savedFee.toFixed(2)}`,                                    red: true },
+              { label: "You Receive",      value: `$${savedNetAmt.toFixed(2)} USDT`,                              green: true, bold: true },
+              { label: "Status",           value: "Processed Successfully ✓",                                     green: true, bold: true },
+            ] as ReceiptRow[],
+            footerNote: "Your USDT withdrawal has been processed. The funds will arrive at your wallet address shortly.",
+            onNewTx: () => { setTxReceiptOpen(false); resetCryptoWd(); setView("crypto-withdraw"); },
+            newTxLabel: "New Withdrawal",
+          },
+          onDone: () => { resetCryptoWd(); setView("home"); },
+          onNewTx: () => { resetCryptoWd(); setView("crypto-withdraw"); },
+          newTxLabel: "New Withdrawal",
+        });
       } catch (e: any) {
-        toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" });
+        showTxDone({
+          isSuccess: false,
+          title: "Crypto Withdrawal",
+          amount: `$${wdAmt.toFixed(2)}`,
+          errorMessage: e.message,
+          onDone: () => { setCryptoWdStep("otp"); },
+          onNewTx: () => { resetCryptoWd(); setView("crypto-withdraw"); },
+          newTxLabel: "Try Again",
+        });
       } finally { setCryptoWdSubmitting(false); }
     };
 
@@ -5078,7 +5282,7 @@ export default function FinancialHub() {
               <ArrowLeft className="w-4 h-4" />
             </button>
             <h2 className="font-black text-base">
-              {cryptoWdStep === "done" ? "Withdrawal Submitted" : cryptoWdStep === "otp" ? "Confirm OTP" : "Withdraw via Crypto"}
+              {cryptoWdStep === "otp" ? "Confirm OTP" : "Withdraw via Crypto"}
             </h2>
             <button onClick={() => { resetCryptoWd(); setView("home"); }}
               className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
@@ -5086,40 +5290,7 @@ export default function FinancialHub() {
             </button>
           </div>
 
-          {cryptoWdStep === "done" ? (
-            <div className="space-y-5">
-              <div className="flex flex-col items-center text-center space-y-4 pt-2">
-                <div className="relative w-24 h-24 flex items-center justify-center">
-                  <div className="absolute inset-0 rounded-full bg-tsia-green/10" />
-                  <div className="absolute inset-[8px] rounded-full bg-tsia-green/20" />
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-tsia-green to-tsia-gold flex items-center justify-center shadow-lg">
-                    <Check className="w-7 h-7 text-white" strokeWidth={3} />
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xl font-black">Withdrawal Successful!</p>
-                  <p className="text-sm text-muted-foreground mt-1">Your USDT withdrawal has been processed successfully.</p>
-                </div>
-              </div>
-              <div className="rounded-3xl border bg-card p-5 space-y-3">
-                {([
-                  ["Amount Requested", `$${(cryptoWdResult?.amount ?? wdAmt).toFixed(2)}`],
-                  ["Handling Fee (1%)", `-$${(cryptoWdResult?.fee ?? feeAmt).toFixed(2)}`],
-                  ["You Receive", `$${(cryptoWdResult?.netAmount ?? netAmt).toFixed(2)} USDT`],
-                  ["Network", cryptoWdNetwork === "trc20" ? "TRC20 / TRON" : "BEP20 / BSC"],
-                ] as [string, string][]).map(([label, val]) => (
-                  <div key={label} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className={`font-bold ${label === "You Receive" ? "text-tsia-green" : ""}`}>{val}</span>
-                  </div>
-                ))}
-              </div>
-              <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
-                onClick={() => { resetCryptoWd(); setView("home"); }} data-testid="btn-cwd-done">
-                Done
-              </Button>
-            </div>
-          ) : cryptoWdStep === "otp" ? (
+          {cryptoWdStep === "otp" ? (
             <div className="space-y-5">
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 text-sm text-blue-700 dark:text-blue-300">
                 A 6-digit OTP has been sent to your registered email. Enter it below to confirm your withdrawal.

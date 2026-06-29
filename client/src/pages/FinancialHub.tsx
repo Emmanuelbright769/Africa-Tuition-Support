@@ -151,7 +151,7 @@ function LocalEquiv({ usd, country }: { usd: number; country?: string }) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
-type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "bill-otp" | "receipt" | "history" | "rates";
+type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "bill-otp" | "receipt" | "history" | "rates" | "crypto-withdraw";
 
 const RATE_CURRENCIES_META = [
   { code: "usd", label: "US Dollar",           symbol: "$",   flag: "🇺🇸", defaultBuy: 1600, defaultSell: 1550 },
@@ -196,17 +196,10 @@ const SERVICES = [
   { id: "airtime-to-cash", label: "Sell Airtime", icon: Banknote,  color: "from-orange-400 to-amber-500",  bg: "bg-orange-50 dark:bg-orange-900/20" },
 ];
 
-// ─── Airtime-to-Cash rates & config ─────────────────────────────────────────
-const A2C_RATES: Record<string, number> = { mtn: 0.80, airtel: 0.80, glo: 0.80, "9mobile": 0.80 };
+// ─── Airtime-to-Cash config ───────────────────────────────────────────────────
 const A2C_TSIA_NUMBERS: Record<string, string> = {
-  mtn: "09060000001", airtel: "09010000001", glo: "09050000001", "9mobile": "09090000001",
+  mtn: "08032573277", glo: "08055315628", "9mobile": "08091388232",
 };
-const A2C_USSD = (network: string, tsiaPhone: string, amount: number): string => ({
-  mtn:     `*600*${tsiaPhone}*${amount}#`,
-  airtel:  `*432*${tsiaPhone}*${amount}*0000#`,
-  glo:     `*131*1*${tsiaPhone}*${amount}*0000#`,
-  "9mobile": `*223*${amount}*${tsiaPhone}#`,
-} as Record<string, string>)[network] ?? "";
 const NGN_RATE = 1600;
 
 // ─── Nigerian Networks ────────────────────────────────────────────────────────
@@ -522,14 +515,26 @@ export default function FinancialHub() {
   // Betting
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   // Airtime to Cash
-  const [a2cNetwork, setA2cNetwork]   = useState<string | null>(null);
-  const [a2cPhone, setA2cPhone]       = useState("");
-  const [a2cAmount, setA2cAmount]     = useState("");
+  const [a2cNetwork, setA2cNetwork]       = useState<string | null>(null);
+  const [a2cAmount, setA2cAmount]         = useState("");
   const [a2cSubmitting, setA2cSubmitting] = useState(false);
-  const [a2cResult, setA2cResult]     = useState<{
+  const [a2cPayoutMethod, setA2cPayoutMethod] = useState<"wallet" | "bank">("wallet");
+  const [a2cBankName, setA2cBankName]         = useState("");
+  const [a2cAccountNumber, setA2cAccountNumber] = useState("");
+  const [a2cAccountName, setA2cAccountName]   = useState("");
+  const [a2cResult, setA2cResult]       = useState<{
     reference: string; cashUsd: number; cashNgn: number;
-    ussdCode: string; tsiaPhone: string; network: string; amountNgn: number;
+    tsiaPhone: string; network: string; amountNgn: number; payoutMethod: string;
+    bankName?: string; accountNumber?: string;
   } | null>(null);
+  // ── Crypto Withdrawal state ───────────────────────────────────────────────
+  const [cryptoWdAmount, setCryptoWdAmount]       = useState("");
+  const [cryptoWdNetwork, setCryptoWdNetwork]     = useState<"trc20" | "bep20">("trc20");
+  const [cryptoWdAddress, setCryptoWdAddress]     = useState("");
+  const [cryptoWdOtp, setCryptoWdOtp]             = useState("");
+  const [cryptoWdStep, setCryptoWdStep]           = useState<"form" | "otp" | "done">("form");
+  const [cryptoWdSubmitting, setCryptoWdSubmitting] = useState(false);
+  const [cryptoWdResult, setCryptoWdResult]       = useState<any>(null);
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: wallet }         = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
@@ -1199,7 +1204,8 @@ export default function FinancialHub() {
     setSelectedDisco(null); setMeterType(null); setElecPhone(""); setElecCustomerName("");
     setSelectedTvProvider(null); setTvPackages([]); setSelectedTvPackage(null); setTvCustomerName("");
     setSelectedPlatform(null);
-    setA2cNetwork(null); setA2cPhone(""); setA2cAmount(""); setA2cResult(null); setA2cSubmitting(false);
+    setA2cNetwork(null); setA2cAmount(""); setA2cResult(null); setA2cSubmitting(false);
+    setA2cPayoutMethod("wallet"); setA2cBankName(""); setA2cAccountNumber(""); setA2cAccountName("");
     setTxResult(null);
     setBillOtpCode(""); setBillOtpMaskedEmail(""); setBillOtpResendCooldown(0);
   };
@@ -2582,6 +2588,21 @@ export default function FinancialHub() {
               return <>🇺🇸 $1 = ₦{usdBuy.toLocaleString()} &nbsp;·&nbsp; 🇬🇧 £1 = ${gbpUsd}</>;
             })()}
           </p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+      </button>
+
+      {/* ── CRYPTO WITHDRAWAL CARD ── */}
+      <button
+        onClick={() => { setCryptoWdStep("form"); setCryptoWdAmount(""); setCryptoWdAddress(""); setCryptoWdOtp(""); setCryptoWdResult(null); setView("crypto-withdraw"); }}
+        className="w-full rounded-2xl border border-border bg-card p-4 flex items-center gap-3 hover:bg-muted/40 active:scale-[0.99] transition-all text-left"
+        data-testid="btn-crypto-withdraw">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 flex items-center justify-center shrink-0">
+          <Coins className="w-5 h-5 text-tsia-green" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-black text-sm">Withdraw via Crypto (USDT)</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Send funds to any USDT wallet · TRC20 or BEP20 · 1% fee</p>
         </div>
         <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
       </button>
@@ -4743,20 +4764,24 @@ export default function FinancialHub() {
   // AIRTIME TO CASH
   // ═══════════════════════════════════════════════════════════════════════════
   if (view === "service" && selectedService?.id === "airtime-to-cash") {
-    const net = NETWORKS.find(n => n.id === a2cNetwork);
+    const A2C_SUPPORTED = NETWORKS.filter(n => ["mtn", "glo", "9mobile"].includes(n.id));
+    const net = A2C_SUPPORTED.find(n => n.id === a2cNetwork);
     const ngn = parseFloat(a2cAmount) || 0;
-    const rate = a2cNetwork ? (A2C_RATES[a2cNetwork] ?? 0.70) : 0;
-    const cashNgn = Math.floor(ngn * rate);
+    const cashNgn = Math.floor(ngn * 0.80);
     const cashUsd = cashNgn > 0 ? (cashNgn / NGN_RATE).toFixed(2) : "0.00";
-    const tsiaPhone = a2cNetwork ? A2C_TSIA_NUMBERS[a2cNetwork] : "";
-    const ussdPreview = a2cNetwork && ngn >= 500 ? A2C_USSD(a2cNetwork, tsiaPhone, Math.floor(ngn)) : "";
-    const canSubmit = !!a2cNetwork && a2cPhone.length === 11 && ngn >= 500 && ngn <= 50000 && !a2cSubmitting;
+    const tsiaPhone = a2cNetwork ? (A2C_TSIA_NUMBERS[a2cNetwork] ?? "") : "";
+    const canSubmit = !!a2cNetwork && ngn >= 500 && ngn <= 50000 && !a2cSubmitting &&
+      (a2cPayoutMethod === "wallet" || (!!a2cBankName.trim() && !!a2cAccountNumber.trim() && !!a2cAccountName.trim()));
 
     const handleSubmit = async () => {
       setA2cSubmitting(true);
       try {
         const res = await apiRequest("POST", "/api/fintech/airtime-to-cash", {
-          network: a2cNetwork, senderPhone: a2cPhone, amountNgn: Math.floor(ngn),
+          network: a2cNetwork, amountNgn: Math.floor(ngn),
+          payoutMethod: a2cPayoutMethod,
+          bankName: a2cPayoutMethod === "bank" ? a2cBankName.trim() : undefined,
+          accountNumber: a2cPayoutMethod === "bank" ? a2cAccountNumber.trim() : undefined,
+          accountName: a2cPayoutMethod === "bank" ? a2cAccountName.trim() : undefined,
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.message);
@@ -4770,52 +4795,49 @@ export default function FinancialHub() {
       return (
         <AnimatePresence mode="wait">
           <motion.div key="a2c-success" initial={{ opacity:0, scale:0.95 }} animate={{ opacity:1, scale:1 }} className="space-y-5">
-            {/* Success header */}
             <div className="flex flex-col items-center text-center space-y-4 pt-2">
-              <div className="relative w-28 h-28 flex items-center justify-center shrink-0">
+              <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
                 <div className="absolute inset-0 rounded-full bg-orange-400/10" />
-                <div className="absolute inset-[10px] rounded-full bg-orange-400/20" />
-                <div className="absolute inset-[20px] rounded-full bg-orange-400/30" />
+                <div className="absolute inset-[8px] rounded-full bg-orange-400/20" />
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center shadow-lg">
                   <Check className="w-7 h-7 text-white" strokeWidth={3} />
                 </div>
               </div>
               <div>
                 <p className="text-xl font-black">Request Submitted!</p>
-                <p className="text-sm text-muted-foreground mt-1">Transfer the airtime using the code below, then wait for your wallet to be credited.</p>
+                <p className="text-sm text-muted-foreground mt-1">Now send the airtime to complete the transaction.</p>
               </div>
             </div>
 
-            {/* USSD instruction card */}
             <div className="bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border-2 border-orange-200 dark:border-orange-800 rounded-3xl p-5 space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
                   <img src={NETWORKS.find(n => n.id === a2cResult.network)?.logo} alt={a2cResult.network} className="w-full h-full object-cover" />
                 </div>
                 <div>
-                  <p className="font-black text-base">{a2cResult.network.toUpperCase()} → Wallet</p>
-                  <p className="text-xs text-muted-foreground">Airtime transfer to TSIA</p>
+                  <p className="font-black text-base">{a2cResult.network.toUpperCase()} Airtime Sale</p>
+                  <p className="text-xs text-muted-foreground">Send to TSIA number below</p>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Dial This Code on Your Phone</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Send Airtime To This Number</p>
                 <div className="flex items-center gap-2 bg-background border-2 border-orange-300 dark:border-orange-700 rounded-2xl px-4 py-3">
-                  <span className="flex-1 text-lg font-black font-mono tracking-wider text-orange-700 dark:text-orange-400">{a2cResult.ussdCode}</span>
-                  <button onClick={() => { navigator.clipboard.writeText(a2cResult.ussdCode).catch(() => {}); toast({ title: "Copied!" }); }}
-                    className="p-1.5 rounded-lg bg-orange-100 dark:bg-orange-900/30 hover:bg-orange-200 transition-colors" data-testid="btn-copy-ussd">
+                  <span className="flex-1 text-2xl font-black font-mono tracking-widest text-orange-700 dark:text-orange-400">{a2cResult.tsiaPhone}</span>
+                  <button onClick={() => { navigator.clipboard.writeText(a2cResult.tsiaPhone).catch(() => {}); toast({ title: "Number copied!" }); }}
+                    className="p-1.5 rounded-lg bg-orange-100 dark:bg-orange-900/30 hover:bg-orange-200 transition-colors" data-testid="btn-copy-tsia-phone">
                     <Copy className="w-4 h-4 text-orange-600" />
                   </button>
                 </div>
                 <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                   <AlertCircle className="w-3 h-3 shrink-0" />
-                  Dial from the phone number you entered: {a2cResult.amountNgn > 0 ? a2cPhone : "—"}
+                  Transfer from your {a2cResult.network.toUpperCase()} line to this number using your phone's contacts or dialer.
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-center">
                 <div className="bg-white/60 dark:bg-white/10 rounded-2xl p-3">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Airtime Sent</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Airtime to Send</p>
                   <p className="font-black text-base">₦{a2cResult.amountNgn.toLocaleString()}</p>
                 </div>
                 <div className="bg-white/60 dark:bg-white/10 rounded-2xl p-3">
@@ -4824,10 +4846,17 @@ export default function FinancialHub() {
                 </div>
               </div>
 
+              <div className="bg-white/60 dark:bg-white/10 rounded-xl px-4 py-3 text-xs space-y-1">
+                <p className="font-bold">Payout: <span className="font-normal">{a2cResult.payoutMethod === "bank" ? "Bank Account" : "TSIA Wallet"}</span></p>
+                {a2cResult.payoutMethod === "bank" && a2cResult.accountNumber && (
+                  <p className="text-muted-foreground">Acct: {a2cResult.accountNumber} · {a2cResult.bankName}</p>
+                )}
+              </div>
+
               <div className="bg-amber-100 dark:bg-amber-900/30 rounded-2xl px-4 py-3 flex items-start gap-2">
                 <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700 dark:text-amber-400">
-                  <span className="font-bold">Processing time:</span> 5–30 minutes after airtime is received. Your wallet will be credited automatically and you'll get a notification.
+                  <span className="font-bold">Processing time:</span> Once we confirm your airtime, we'll credit your {a2cResult.payoutMethod === "bank" ? "bank account" : "wallet"} within 30 minutes.
                 </p>
               </div>
             </div>
@@ -4854,7 +4883,6 @@ export default function FinancialHub() {
     return (
       <AnimatePresence mode="wait">
         <motion.div key="a2c-form" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
-          {/* Header */}
           <div className="flex items-center justify-between">
             <button onClick={() => { resetBill(); setView("pay-bill"); }}
               className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
@@ -4867,22 +4895,20 @@ export default function FinancialHub() {
             </button>
           </div>
 
-          {/* Info banner */}
           <div className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border border-orange-200 dark:border-orange-800 rounded-2xl px-4 py-3 flex items-start gap-3">
             <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center shrink-0 mt-0.5">
               <Banknote className="w-4 h-4 text-orange-600" />
             </div>
             <div>
               <p className="text-xs font-bold text-orange-800 dark:text-orange-300">How it works</p>
-              <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-0.5">Select your network, enter your phone number and the airtime amount you want to sell. We'll give you a USSD code to transfer the airtime to us — and credit your wallet within 30 minutes.</p>
+              <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-0.5">Select your network to see the TSIA number to send airtime to. Enter the amount, choose how to receive your cash, then submit. We credit <strong>80% of face value</strong> (20% fee) after confirming the airtime.</p>
             </div>
           </div>
 
-          {/* Network selector */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3 block">Your Network</label>
-            <div className="grid grid-cols-4 gap-3">
-              {NETWORKS.map(n => (
+            <div className="grid grid-cols-3 gap-3">
+              {A2C_SUPPORTED.map(n => (
                 <button key={n.id} onClick={() => setA2cNetwork(n.id)}
                   className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${a2cNetwork === n.id ? "border-tsia-green bg-tsia-green/5" : "border-border bg-card hover:border-tsia-green/40"}`}
                   data-testid={`btn-a2c-${n.id}`}>
@@ -4890,51 +4916,39 @@ export default function FinancialHub() {
                     <img src={n.logo} alt={n.label} className="w-full h-full object-cover" />
                   </div>
                   <span className="text-[10px] font-bold">{n.label}</span>
-                  {a2cNetwork === n.id && (
-                    <span className="text-[9px] text-tsia-green font-bold">{((A2C_RATES[n.id] ?? 0.7) * 100).toFixed(0)}% rate</span>
-                  )}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Phone number */}
-          <div>
-            <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Your Phone Number</label>
-            <div className="flex items-center gap-3 bg-muted/30 border-2 border-border focus-within:border-tsia-green rounded-2xl px-4 py-3 transition-colors">
-              {a2cNetwork && net ? (
-                <div className="w-7 h-7 rounded-full overflow-hidden shrink-0">
-                  <img src={net.logo} alt={net.label} className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
-              )}
-              <input type="tel" placeholder="e.g. 08012345678"
-                value={a2cPhone}
-                onChange={e => setA2cPhone(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                className="flex-1 bg-transparent text-base font-mono tracking-wider focus:outline-none placeholder:text-muted-foreground/60"
-                data-testid="input-a2c-phone" />
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1.5 ml-1">Use the phone number that will send the airtime transfer</p>
-          </div>
+          {a2cNetwork && tsiaPhone && (
+            <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
+              className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border-2 border-orange-300 dark:border-orange-700 rounded-2xl p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-orange-700 dark:text-orange-400 mb-2">Send Airtime To This Number</p>
+              <div className="flex items-center gap-3">
+                <span className="flex-1 text-2xl font-black font-mono tracking-widest text-orange-800 dark:text-orange-300">{tsiaPhone}</span>
+                <button onClick={() => { navigator.clipboard.writeText(tsiaPhone).catch(() => {}); toast({ title: "Number copied!" }); }}
+                  className="p-2 rounded-xl bg-orange-100 dark:bg-orange-900/40 hover:bg-orange-200 transition-colors">
+                  <Copy className="w-4 h-4 text-orange-600" />
+                </button>
+              </div>
+              <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-1.5">Transfer from your {net?.label} line to this number</p>
+            </motion.div>
+          )}
 
-          {/* Airtime amount */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Airtime Amount (₦)</label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-xl text-muted-foreground">₦</span>
               <input type="number" placeholder="500 – 50,000"
-                value={a2cAmount}
-                min={500} max={50000}
+                value={a2cAmount} min={500} max={50000}
                 onChange={e => setA2cAmount(e.target.value)}
                 className="w-full pl-10 pr-4 py-3.5 text-2xl font-black border-2 border-border focus:border-tsia-green rounded-2xl bg-background focus:outline-none transition-colors"
                 data-testid="input-a2c-amount" />
             </div>
             <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground mx-1">
-              <span>Min: ₦500</span>
-              <span>Max: ₦50,000</span>
+              <span>Min: ₦500</span><span>Max: ₦50,000</span>
             </div>
-            {/* Quick amounts */}
             <div className="flex gap-2 mt-2 flex-wrap">
               {[500, 1000, 2000, 5000, 10000].map(amt => (
                 <button key={amt} onClick={() => setA2cAmount(String(amt))}
@@ -4946,56 +4960,62 @@ export default function FinancialHub() {
             </div>
           </div>
 
-          {/* Conversion preview */}
           {a2cNetwork && ngn >= 500 && (
             <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
-              className="bg-gradient-to-r from-tsia-green/8 to-tsia-gold/8 border border-tsia-green/20 rounded-3xl p-5 space-y-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">You will receive</p>
+              className="bg-gradient-to-r from-tsia-green/8 to-tsia-gold/8 border border-tsia-green/20 rounded-3xl p-4 space-y-1">
               <div className="flex items-end justify-between">
                 <div>
+                  <p className="text-xs text-muted-foreground">You'll receive</p>
                   <p className="text-3xl font-black text-tsia-green">${cashUsd}</p>
                   <p className="text-sm text-muted-foreground">≈ ₦{cashNgn.toLocaleString()} NGN</p>
                 </div>
                 <div className="text-right text-xs text-muted-foreground space-y-0.5">
                   <p>Airtime: <span className="font-bold text-foreground">₦{ngn.toLocaleString()}</span></p>
-                  <p>Rate: <span className="font-bold text-tsia-green">{(rate * 100).toFixed(0)}%</span></p>
-                  <p>Fee: <span className="font-bold text-foreground">{((1 - rate) * 100).toFixed(0)}%</span></p>
+                  <p>Rate: <span className="font-bold text-tsia-green">80%</span></p>
+                  <p>Fee: <span className="font-bold text-foreground">20%</span></p>
                 </div>
               </div>
-
-              {ussdPreview && (
-                <div className="border-t border-tsia-green/20 pt-3">
-                  <p className="text-[10px] text-muted-foreground mb-1 uppercase tracking-wide">USSD Code Preview</p>
-                  <div className="flex items-center gap-2 bg-background/60 rounded-xl px-3 py-2 font-mono text-sm font-bold text-tsia-green">
-                    <span className="flex-1">{ussdPreview}</span>
-                    <button onClick={() => { navigator.clipboard.writeText(ussdPreview).catch(() => {}); toast({ title: "Copied!" }); }}
-                      className="p-1 rounded hover:bg-muted transition-colors">
-                      <Copy className="w-3.5 h-3.5 text-muted-foreground" />
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Transfer to TSIA number: <span className="font-mono font-bold">{tsiaPhone}</span></p>
-                </div>
-              )}
             </motion.div>
           )}
 
-          {/* Rates table */}
-          <div className="bg-muted/30 rounded-2xl p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">Conversion Rates</p>
-            <div className="grid grid-cols-2 gap-2">
-              {NETWORKS.map(n => (
-                <div key={n.id} className={`flex items-center gap-2 p-2 rounded-xl transition-colors ${a2cNetwork === n.id ? "bg-tsia-green/10" : ""}`}>
-                  <div className="w-6 h-6 rounded-full overflow-hidden shrink-0">
-                    <img src={n.logo} alt={n.label} className="w-full h-full object-cover" />
-                  </div>
-                  <span className="text-xs font-semibold">{n.label}</span>
-                  <span className="ml-auto text-xs font-black text-tsia-green">{((A2C_RATES[n.id] ?? 0.7) * 100).toFixed(0)}%</span>
-                </div>
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3 block">Receive Payment To</label>
+            <div className="grid grid-cols-2 gap-3">
+              {([["wallet", "💳 TSIA Wallet", "Instant wallet credit"] as const, ["bank", "🏦 Bank Account", "Direct bank credit"] as const]).map(([val, label, sub]) => (
+                <button key={val} onClick={() => setA2cPayoutMethod(val)}
+                  className={`flex flex-col items-start gap-1 p-3.5 rounded-2xl border-2 transition-all text-left ${a2cPayoutMethod === val ? "border-tsia-green bg-tsia-green/5" : "border-border hover:border-tsia-green/40"}`}
+                  data-testid={`btn-a2c-payout-${val}`}>
+                  <span className="font-bold text-sm">{label}</span>
+                  <span className="text-[10px] text-muted-foreground">{sub}</span>
+                </button>
               ))}
             </div>
           </div>
 
-          {/* Submit */}
+          {a2cPayoutMethod === "bank" && (
+            <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} className="space-y-3">
+              <input value={a2cBankName} onChange={e => setA2cBankName(e.target.value)}
+                placeholder="Bank name (e.g. Access Bank)"
+                className="w-full border-2 border-border focus:border-tsia-green rounded-2xl px-4 py-3 text-sm bg-background focus:outline-none transition-colors"
+                data-testid="input-a2c-bank-name" />
+              <input value={a2cAccountNumber} onChange={e => setA2cAccountNumber(e.target.value.replace(/\D/g,"").slice(0,10))}
+                placeholder="Account number (10 digits)" maxLength={10}
+                className="w-full border-2 border-border focus:border-tsia-green rounded-2xl px-4 py-3 text-sm font-mono bg-background focus:outline-none transition-colors"
+                data-testid="input-a2c-account-number" />
+              <input value={a2cAccountName} onChange={e => setA2cAccountName(e.target.value)}
+                placeholder="Account name"
+                className="w-full border-2 border-border focus:border-tsia-green rounded-2xl px-4 py-3 text-sm bg-background focus:outline-none transition-colors"
+                data-testid="input-a2c-account-name" />
+            </motion.div>
+          )}
+
+          {a2cPayoutMethod === "wallet" && (
+            <div className="bg-muted/30 rounded-xl px-4 py-3 text-xs text-muted-foreground flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-tsia-green shrink-0" />
+              Payment will be credited to your TSIA wallet after airtime is confirmed.
+            </div>
+          )}
+
           <Button
             className="w-full h-14 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-base rounded-2xl shadow-lg disabled:opacity-50"
             disabled={!canSubmit}
@@ -5004,13 +5024,212 @@ export default function FinancialHub() {
             {a2cSubmitting ? (
               <><Loader2 className="w-5 h-5 animate-spin mr-2" />Processing…</>
             ) : (
-              <><Banknote className="w-5 h-5 mr-2" />Sell ₦{ngn >= 500 ? ngn.toLocaleString() : "—"} Airtime for ${cashUsd}</>
+              <><Banknote className="w-5 h-5 mr-2" />Submit — Sell ₦{ngn >= 500 ? ngn.toLocaleString() : "—"} Airtime</>
             )}
           </Button>
 
-          {!a2cNetwork && <p className="text-xs text-center text-muted-foreground">Select your network to see the conversion rate</p>}
+          {!a2cNetwork && <p className="text-xs text-center text-muted-foreground">Select your network to continue</p>}
           {a2cNetwork && ngn > 0 && ngn < 500 && <p className="text-xs text-center text-red-500">Minimum is ₦500</p>}
           {ngn > 50000 && <p className="text-xs text-center text-red-500">Maximum is ₦50,000 per transaction</p>}
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRYPTO WITHDRAWAL
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (view === "crypto-withdraw") {
+    const CRYPTO_FEE = 0.01;
+    const wdAmt = parseFloat(cryptoWdAmount) || 0;
+    const feeAmt = parseFloat((wdAmt * CRYPTO_FEE).toFixed(2));
+    const netAmt = parseFloat((wdAmt - feeAmt).toFixed(2));
+    const MIN_RESERVE = 2;
+    const maxWithdraw = Math.max(0, balance - MIN_RESERVE);
+    const canRequest = wdAmt >= 5 && cryptoWdAddress.trim().length >= 10 && wdAmt <= maxWithdraw && !cryptoWdSubmitting;
+
+    const requestOtp = async () => {
+      setCryptoWdSubmitting(true);
+      try {
+        const res = await apiRequest("POST", "/api/fintech/crypto-withdraw/request-otp", { amount: wdAmt });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.message);
+        toast({ title: "OTP sent", description: d.message });
+        setCryptoWdStep("otp");
+      } catch (e: any) {
+        toast({ title: "Error", description: e.message, variant: "destructive" });
+      } finally { setCryptoWdSubmitting(false); }
+    };
+
+    const confirmWithdrawal = async () => {
+      setCryptoWdSubmitting(true);
+      try {
+        const res = await apiRequest("POST", "/api/fintech/crypto-withdraw", {
+          amount: wdAmt, network: cryptoWdNetwork, address: cryptoWdAddress.trim(), otpCode: cryptoWdOtp.trim(),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.message);
+        setCryptoWdResult(d);
+        setCryptoWdStep("done");
+        queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      } catch (e: any) {
+        toast({ title: "Withdrawal failed", description: e.message, variant: "destructive" });
+      } finally { setCryptoWdSubmitting(false); }
+    };
+
+    const resetCryptoWd = () => {
+      setCryptoWdStep("form"); setCryptoWdAmount(""); setCryptoWdAddress(""); setCryptoWdOtp(""); setCryptoWdResult(null);
+    };
+
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div key={`cwd-${cryptoWdStep}`} initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+          <div className="flex items-center justify-between">
+            <button onClick={() => cryptoWdStep === "otp" ? setCryptoWdStep("form") : setView("home")}
+              className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="font-black text-base">
+              {cryptoWdStep === "done" ? "Withdrawal Submitted" : cryptoWdStep === "otp" ? "Confirm OTP" : "Withdraw via Crypto"}
+            </h2>
+            <button onClick={() => { resetCryptoWd(); setView("home"); }}
+              className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {cryptoWdStep === "done" ? (
+            <div className="space-y-5">
+              <div className="flex flex-col items-center text-center space-y-4 pt-2">
+                <div className="relative w-24 h-24 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full bg-tsia-green/10" />
+                  <div className="absolute inset-[8px] rounded-full bg-tsia-green/20" />
+                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-tsia-green to-tsia-gold flex items-center justify-center shadow-lg">
+                    <Check className="w-7 h-7 text-white" strokeWidth={3} />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xl font-black">Withdrawal Received!</p>
+                  <p className="text-sm text-muted-foreground mt-1">Your USDT will be sent to your wallet within 24 hours.</p>
+                </div>
+              </div>
+              <div className="rounded-3xl border bg-card p-5 space-y-3">
+                {([
+                  ["Amount Requested", `$${(cryptoWdResult?.amount ?? wdAmt).toFixed(2)}`],
+                  ["Handling Fee (1%)", `-$${(cryptoWdResult?.fee ?? feeAmt).toFixed(2)}`],
+                  ["You Receive", `$${(cryptoWdResult?.netAmount ?? netAmt).toFixed(2)} USDT`],
+                  ["Network", cryptoWdNetwork === "trc20" ? "TRC20 / TRON" : "BEP20 / BSC"],
+                ] as [string, string][]).map(([label, val]) => (
+                  <div key={label} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className={`font-bold ${label === "You Receive" ? "text-tsia-green" : ""}`}>{val}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl px-4 py-3 flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300">
+                <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                Processing within 24 hours. You'll receive a notification once the transfer is confirmed.
+              </div>
+              <Button className="w-full h-12 bg-tsia-green text-white font-bold rounded-2xl"
+                onClick={() => { resetCryptoWd(); setView("home"); }} data-testid="btn-cwd-done">
+                Done
+              </Button>
+            </div>
+          ) : cryptoWdStep === "otp" ? (
+            <div className="space-y-5">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 text-sm text-blue-700 dark:text-blue-300">
+                A 6-digit OTP has been sent to your registered email. Enter it below to confirm your withdrawal.
+              </div>
+              <div className="rounded-2xl border bg-card p-4 space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold">${wdAmt.toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Fee (1%)</span><span className="font-bold text-red-500">-${feeAmt.toFixed(2)}</span></div>
+                <div className="flex justify-between border-t pt-2"><span className="text-muted-foreground">You receive</span><span className="font-black text-tsia-green">${netAmt.toFixed(2)} USDT</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Network</span><span className="font-bold">{cryptoWdNetwork.toUpperCase()}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Address</span><span className="font-mono text-xs font-bold">{cryptoWdAddress.slice(0,8)}…{cryptoWdAddress.slice(-6)}</span></div>
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">OTP Code</label>
+                <input type="text" maxLength={6} value={cryptoWdOtp}
+                  onChange={e => setCryptoWdOtp(e.target.value.replace(/\D/g,"").slice(0,6))}
+                  placeholder="000000"
+                  className="w-full border-2 border-border focus:border-tsia-green rounded-2xl px-4 py-4 text-center text-3xl font-black font-mono tracking-[0.5em] bg-background focus:outline-none transition-colors"
+                  data-testid="input-cwd-otp" />
+              </div>
+              <Button className="w-full h-14 bg-tsia-green text-white font-black text-base rounded-2xl shadow-lg"
+                disabled={cryptoWdOtp.length !== 6 || cryptoWdSubmitting}
+                onClick={confirmWithdrawal} data-testid="btn-cwd-confirm">
+                {cryptoWdSubmitting ? <><Loader2 className="w-5 h-5 animate-spin mr-2" />Processing…</> : <><Coins className="w-5 h-5 mr-2" />Confirm Withdrawal</>}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="flex items-center justify-between bg-gradient-to-r from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 rounded-2xl px-4 py-3">
+                <span className="text-sm text-muted-foreground font-medium">Available Balance</span>
+                <span className="text-lg font-black text-tsia-green">${maxWithdraw.toFixed(2)}</span>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                <span>Min: <strong>$5</strong> · 1% handling fee deducted · Processed within 24 hours · $2 ledger reserve remains in wallet.</span>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Network</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["trc20", "bep20"] as const).map(n => (
+                    <button key={n} onClick={() => setCryptoWdNetwork(n)}
+                      className={`py-3 rounded-2xl font-bold text-sm border-2 transition-all ${cryptoWdNetwork === n ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border hover:border-tsia-green/40"}`}
+                      data-testid={`btn-cwd-network-${n}`}>
+                      {n === "trc20" ? "TRC20 / TRON" : "BEP20 / BSC"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Amount (USD)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-xl text-muted-foreground">$</span>
+                  <input type="number" min={5} step={0.01}
+                    value={cryptoWdAmount}
+                    onChange={e => setCryptoWdAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-10 pr-4 py-3.5 text-2xl font-black border-2 border-border focus:border-tsia-green rounded-2xl bg-background focus:outline-none transition-colors"
+                    data-testid="input-cwd-amount" />
+                </div>
+                {wdAmt > 0 && (
+                  <div className="flex justify-between mt-1.5 text-xs mx-1">
+                    <span className="text-muted-foreground">Fee: <span className="font-bold text-red-500">-${feeAmt.toFixed(2)}</span></span>
+                    <span className="text-muted-foreground">You receive: <span className="font-bold text-tsia-green">${netAmt.toFixed(2)} USDT</span></span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">
+                  Your USDT Address ({cryptoWdNetwork.toUpperCase()})
+                </label>
+                <textarea value={cryptoWdAddress}
+                  onChange={e => setCryptoWdAddress(e.target.value.trim())}
+                  placeholder={cryptoWdNetwork === "trc20" ? "T..." : "0x..."}
+                  rows={2}
+                  className="w-full border-2 border-border focus:border-tsia-green rounded-2xl px-4 py-3 text-sm font-mono bg-background focus:outline-none transition-colors resize-none"
+                  data-testid="input-cwd-address" />
+              </div>
+
+              <Button
+                className="w-full h-14 bg-tsia-green text-white font-black text-base rounded-2xl shadow-lg disabled:opacity-50"
+                disabled={!canRequest}
+                onClick={requestOtp}
+                data-testid="btn-cwd-request-otp">
+                {cryptoWdSubmitting ? <><Loader2 className="w-5 h-5 animate-spin mr-2" />Sending OTP…</> : <><Coins className="w-5 h-5 mr-2" />Request OTP to Withdraw</>}
+              </Button>
+
+              {wdAmt > 0 && wdAmt < 5 && <p className="text-xs text-center text-red-500">Minimum withdrawal is $5</p>}
+              {wdAmt > 0 && wdAmt > maxWithdraw && <p className="text-xs text-center text-red-500">Max you can withdraw: ${maxWithdraw.toFixed(2)}</p>}
+            </div>
+          )}
         </motion.div>
       </AnimatePresence>
     );

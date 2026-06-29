@@ -1673,9 +1673,88 @@ export async function registerRoutes(
     res.json(txns);
   });
 
-  // ── USDT Crypto Withdrawal — disabled (wallet is deposit-only; use Fintech Hub) ──
+  // ── CRYPTO WITHDRAWAL OTP REQUEST ──────────────────────────────────────────
+  app.post("/api/fintech/crypto-withdraw/request-otp", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const { amount } = req.body;
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) < 5)
+        return res.status(400).json({ message: "Minimum withdrawal is $5" });
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      await storage.createWithdrawalOtp(userId, code, "crypto_withdrawal");
+      await sendWithdrawalOtpEmail(user.email, user.firstName, code, parseFloat(amount).toFixed(2));
+      const masked = user.email.replace(/(.{2}).+(@.+)/, "$1***$2");
+      res.json({ success: true, message: `OTP sent to ${masked}. Check your email.` });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── CRYPTO WITHDRAWAL EXECUTE ───────────────────────────────────────────────
+  app.post("/api/fintech/crypto-withdraw", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { amount, network, address, otpCode } = req.body;
+      if (!otpCode || String(otpCode).trim().length !== 6)
+        return res.status(400).json({ message: "A valid 6-digit OTP is required" });
+      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "crypto_withdrawal");
+      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Request a new code." });
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) < 5)
+        return res.status(400).json({ message: "Minimum withdrawal is $5" });
+      if (!network || !["bep20", "trc20"].includes(network))
+        return res.status(400).json({ message: "Invalid network. Choose TRC20 or BEP20." });
+      if (!address || String(address).trim().length < 10)
+        return res.status(400).json({ message: "A valid USDT wallet address is required" });
+      const wallet = await storage.getOrCreateWallet(userId);
+      const withdrawAmt = parseFloat(amount);
+      const currentBalance = parseFloat(wallet.balance);
+      const MIN_BALANCE = 2;
+      if (withdrawAmt > currentBalance) return res.status(400).json({ message: "Insufficient balance" });
+      if (currentBalance - withdrawAmt < MIN_BALANCE)
+        return res.status(400).json({ message: `A minimum of $${MIN_BALANCE} must remain in your wallet` });
+      const feeAmt = parseFloat((withdrawAmt * CURRENCY_RATES.CRYPTO_WITHDRAW_FEE).toFixed(2));
+      const netAmt = parseFloat((withdrawAmt - feeAmt).toFixed(2));
+      const newBalance = (currentBalance - withdrawAmt).toFixed(2);
+      await storage.updateWalletBalance(userId, newBalance);
+      const networkLabel = network === "bep20" ? "BEP20/BSC" : "TRC20/TRON";
+      const truncated = `${String(address).trim().slice(0, 8)}…${String(address).trim().slice(-6)}`;
+      await storage.createTransaction({
+        userId, type: "crypto_withdrawal",
+        amount: (-withdrawAmt).toFixed(2), fee: feeAmt.toFixed(2),
+        paymentMethod: "crypto",
+        description: `USDT Withdrawal (${networkLabel}) to ${truncated} — 1% fee: $${feeAmt.toFixed(2)} | Net: $${netAmt.toFixed(2)} | Full address: ${String(address).trim()} | Processing within 24h`,
+      });
+      await storage.createWithdrawalRequest({
+        userId, type: "crypto",
+        amount: withdrawAmt.toFixed(2), fee: feeAmt.toFixed(2), netAmount: netAmt.toFixed(2),
+        network: networkLabel, address: String(address).trim(),
+      });
+      const cwUser = await storage.getUser(userId);
+      if (cwUser) {
+        const notif = await storage.createNotification({
+          userId, type: "wallet_credit",
+          title: "Crypto Withdrawal Received ✓",
+          message: `USDT withdrawal of $${netAmt.toFixed(2)} (after 1% fee) via ${networkLabel} received — processing within 24h.`,
+          data: { network, address: String(address).trim(), amount: netAmt, fee: feeAmt }, isRead: false,
+        });
+        pushToUser(userId, "notification", notif);
+        sendAdminWithdrawalEmail({
+          name: `${cwUser.firstName} ${cwUser.lastName}`, email: cwUser.email,
+          amount: withdrawAmt.toFixed(2), method: "crypto", network: networkLabel,
+          address: String(address).trim(), userId,
+        }).catch(() => {});
+      }
+      invalidateCacheKey(`wallet:${userId}`);
+      invalidateCacheKey(`transactions:${userId}`);
+      const updated = await storage.getOrCreateWallet(userId);
+      res.json({ message: `Withdrawal received. You'll receive $${netAmt.toFixed(2)} USDT after the 1% fee. Processing within 24h.`, wallet: updated, amount: withdrawAmt, netAmount: netAmt, fee: feeAmt, network, address: String(address).trim() });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/wallet/withdraw-crypto", (_req, res) => {
-    res.status(410).json({ message: "Wallet withdrawals are no longer supported. Use Fintech Hub for all money-out flows." });
+    res.status(410).json({ message: "Use /api/fintech/crypto-withdraw instead." });
   });
 
   app.post("/api/wallet/withdraw-crypto__disabled", async (req, res) => {
@@ -7113,15 +7192,11 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { network, senderPhone, amountNgn } = req.body;
+      const { network, amountNgn, payoutMethod: payoutMethodRaw, bankName: bankNameRaw, accountNumber: accountNumberRaw, accountName: accountNameRaw } = req.body;
 
-      const validNetworks = ["mtn", "airtel", "glo", "9mobile"];
+      const validNetworks = ["mtn", "glo", "9mobile"];
       if (!network || !validNetworks.includes(network)) {
-        return res.status(400).json({ message: "Select a valid network (MTN, Airtel, Glo, or 9mobile)." });
-      }
-      const phone = String(senderPhone ?? "").replace(/\s/g, "");
-      if (!/^0[789]\d{9}$/.test(phone)) {
-        return res.status(400).json({ message: "Enter a valid 11-digit Nigerian phone number (e.g. 08012345678)." });
+        return res.status(400).json({ message: "Select a valid network (MTN, Glo, or 9mobile)." });
       }
       const ngn = Math.floor(parseFloat(amountNgn));
       if (!ngn || ngn < 500) {
@@ -7131,35 +7206,33 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Maximum airtime amount per transaction is ₦50,000." });
       }
 
-      // Conversion rates per network (% of face value paid out)
-      const rates: Record<string, number> = { mtn: 0.80, airtel: 0.80, glo: 0.80, "9mobile": 0.80 };
-      const rate = rates[network];
-      const cashNgn = Math.floor(ngn * rate);
+      // 80% payout (20% fee)
+      const cashNgn = Math.floor(ngn * 0.80);
       const cashUsd = parseFloat((cashNgn / 1600).toFixed(2));
 
-      // TSIA's dedicated receiving numbers per network
+      // TSIA receiving numbers per network
       const tsiaNumbers: Record<string, string> = {
-        mtn: "09060000001", airtel: "09010000001", glo: "09050000001", "9mobile": "09090000001",
+        mtn: "08032573277", glo: "08055315628", "9mobile": "08091388232",
       };
       const tsiaPhone = tsiaNumbers[network];
 
-      // USSD transfer codes
-      const ussdCodes: Record<string, string> = {
-        mtn:     `*600*${tsiaPhone}*${ngn}#`,
-        airtel:  `*432*${tsiaPhone}*${ngn}*0000#`,
-        glo:     `*131*1*${tsiaPhone}*${ngn}*0000#`,
-        "9mobile": `*223*${ngn}*${tsiaPhone}#`,
-      };
-      const ussdCode = ussdCodes[network];
+      const payoutMethod = String(payoutMethodRaw ?? "wallet") === "bank" ? "bank" : "wallet";
+      const bankName     = payoutMethod === "bank" ? String(bankNameRaw ?? "").trim() : "";
+      const accountNumber = payoutMethod === "bank" ? String(accountNumberRaw ?? "").trim() : "";
+      const accountName  = payoutMethod === "bank" ? String(accountNameRaw ?? "").trim() : "";
+
+      if (payoutMethod === "bank" && (!bankName || !accountNumber || !accountName)) {
+        return res.status(400).json({ message: "Bank name, account number, and account name are required for bank payout." });
+      }
 
       const reference = `TSIA-A2C-${network.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
 
-      // Record as a pending bill payment — admin reviews & credits wallet
+      // Record as a pending bill payment — admin reviews & credits wallet/bank
       await storage.createBillPayment({
         userId,
         service: "airtime_cash",
         amount: cashUsd,
-        reference: `${reference} | From: ${phone} | ₦${ngn} | Rate: ${(rate * 100).toFixed(0)}%`,
+        reference: `${reference} | ₦${ngn} ${network.toUpperCase()} → ${payoutMethod === "bank" ? `${bankName} ${accountNumber} (${accountName})` : "wallet"} | $${cashUsd}`,
         status: "pending",
       });
 
@@ -7169,8 +7242,8 @@ export async function registerRoutes(
           userId,
           type: "system",
           title: "Airtime Sale Request Received ✓",
-          message: `We received your request to sell ₦${ngn.toLocaleString()} ${network.toUpperCase()} airtime. Dial ${ussdCode} to transfer the airtime to ${tsiaPhone}. Your wallet credit is pending admin approval.`,
-          data: { network, amountNgn: ngn, cashUsd, reference },
+          message: `We received your request to sell ₦${ngn.toLocaleString()} ${network.toUpperCase()} airtime. Please send the airtime to ${tsiaPhone}. We'll credit $${cashUsd} to your ${payoutMethod === "bank" ? `bank account (${accountNumber})` : "wallet"} after confirmation.`,
+          data: { network, amountNgn: ngn, cashUsd, reference, payoutMethod },
           isRead: false,
         });
         pushToUser(userId, "notification", notif);
@@ -7183,7 +7256,7 @@ export async function registerRoutes(
           sendAdminKycEmail({
             name: `${u.firstName} ${u.lastName}`,
             email: u.email,
-            kycType: `Airtime-to-Cash: ${network.toUpperCase()} ₦${ngn.toLocaleString()} from ${phone} → $${cashUsd} | Ref: ${reference}`,
+            kycType: `Airtime-to-Cash: ${network.toUpperCase()} ₦${ngn.toLocaleString()} → $${cashUsd} | Payout: ${payoutMethod === "bank" ? `${bankName} ${accountNumber} (${accountName})` : "wallet"} | Ref: ${reference}`,
             userId,
           }).catch(() => {});
         }
@@ -7196,9 +7269,11 @@ export async function registerRoutes(
         amountNgn: ngn,
         cashNgn,
         cashUsd,
-        ussdCode,
         tsiaPhone,
-        rate,
+        payoutMethod,
+        bankName: payoutMethod === "bank" ? bankName : undefined,
+        accountNumber: payoutMethod === "bank" ? accountNumber : undefined,
+        accountName: payoutMethod === "bank" ? accountName : undefined,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });

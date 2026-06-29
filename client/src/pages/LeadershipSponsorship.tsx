@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Building2, Users, Briefcase, ChevronRight, CheckCircle2,
-  ArrowLeft, CreditCard, Mail, Loader2, Copy, PartyPopper,
+  ArrowLeft, CreditCard, Mail, Loader2, Copy, PartyPopper, Lock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -38,6 +39,9 @@ export default function LeadershipSponsorship() {
   const [paying, setPaying] = useState(false);
   const [masterCode, setMasterCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const { data: sponsorStatus } = useQuery<{ locked: boolean }>({ queryKey: ["/api/platform/sponsorship-status"] });
+  const isLocked = sponsorStatus?.locked === true;
 
   const slots = Math.max(30, parseInt(form.numStudents, 10) || 30);
   const totalUsd = (slots * PRICE_PER_STUDENT).toFixed(2);
@@ -195,9 +199,21 @@ export default function LeadershipSponsorship() {
         {/* Main Form / Payment / Success */}
         <section className="py-20 bg-background">
           <div className="container mx-auto px-4 max-w-2xl">
+            {/* ── LOCKED BANNER ── */}
+            {isLocked && (
+              <motion.div key="locked" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-16">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-100 mb-6">
+                  <Lock className="w-10 h-10 text-red-500" />
+                </div>
+                <h2 className="text-2xl font-bold mb-3">Sponsorship Temporarily Closed</h2>
+                <p className="text-muted-foreground max-w-md mx-auto">
+                  New leadership sponsorship enrolment is currently paused. Please check back soon or contact us for more information.
+                </p>
+              </motion.div>
+            )}
             <AnimatePresence mode="wait">
               {/* ── STEP 1: FORM ── */}
-              {step === "form" && (
+              {!isLocked && step === "form" && (
                 <motion.div key="form" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -24 }} transition={{ duration: 0.35 }}>
                   <div className="text-center mb-10">
                     <h2 className="text-3xl font-bold mb-2">Sponsor Students Today</h2>
@@ -269,7 +285,7 @@ export default function LeadershipSponsorship() {
               )}
 
               {/* ── STEP 2: PAY ── */}
-              {step === "pay" && (
+              {!isLocked && step === "pay" && (
                 <motion.div key="pay" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -24 }} transition={{ duration: 0.35 }}>
                   <div className="text-center mb-10">
                     <h2 className="text-3xl font-bold mb-2">Confirm & Pay</h2>
@@ -312,7 +328,7 @@ export default function LeadershipSponsorship() {
               )}
 
               {/* ── STEP 3: SUCCESS ── */}
-              {step === "success" && (
+              {!isLocked && step === "success" && (
                 <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }}>
                   <div className="bg-card border rounded-3xl shadow-xl overflow-hidden text-center">
                     <div className="bg-tsia-green p-10 text-white">

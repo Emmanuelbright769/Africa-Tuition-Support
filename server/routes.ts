@@ -1735,8 +1735,8 @@ export async function registerRoutes(
       if (cwUser) {
         const notif = await storage.createNotification({
           userId, type: "wallet_credit",
-          title: "Crypto Withdrawal Received ✓",
-          message: `USDT withdrawal of $${netAmt.toFixed(2)} (after 1% fee) via ${networkLabel} received — processing within 24h.`,
+          title: "Crypto Withdrawal Submitted ✓",
+          message: `Your USDT withdrawal of $${netAmt.toFixed(2)} (after 1% fee) via ${networkLabel} has been submitted successfully. Funds will be sent within 24 hours.`,
           data: { network, address: String(address).trim(), amount: netAmt, fee: feeAmt }, isRead: false,
         });
         pushToUser(userId, "notification", notif);
@@ -1749,7 +1749,7 @@ export async function registerRoutes(
       invalidateCacheKey(`wallet:${userId}`);
       invalidateCacheKey(`transactions:${userId}`);
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ message: `Withdrawal received. You'll receive $${netAmt.toFixed(2)} USDT after the 1% fee. Processing within 24h.`, wallet: updated, amount: withdrawAmt, netAmount: netAmt, fee: feeAmt, network, address: String(address).trim() });
+      res.json({ message: `Withdrawal submitted successfully. You'll receive $${netAmt.toFixed(2)} USDT after the 1% fee. Funds sent within 24h.`, wallet: updated, amount: withdrawAmt, netAmount: netAmt, fee: feeAmt, network, address: String(address).trim() });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -4206,6 +4206,16 @@ export async function registerRoutes(
     }
   });
 
+  // ── Public: sponsorship lock status (no auth required) ───────────────────
+  app.get("/api/platform/sponsorship-status", async (_req, res) => {
+    try {
+      const locked = (await storage.getPlatformSetting("sponsorship_locked")) === "true";
+      res.json({ locked });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ── Admin: get all platform settings ─────────────────────────────────────
   // ── Public: exchange rates (no auth required) ─────────────────────────────
   app.get("/api/exchange-rates", async (_req, res) => {
@@ -4381,6 +4391,7 @@ export async function registerRoutes(
         botFullRate:           parseFloat(map["trade_bot_full_rate"]            ?? "0.02"),
         bankTransfersEnabled:  (map["bank_transfers_enabled"] ?? "true") !== "false",
         bankTransfersWeekendOverrideUntil: map["bank_transfers_weekend_override"] ? parseInt(map["bank_transfers_weekend_override"], 10) : 0,
+        sponsorshipLocked: (map["sponsorship_locked"] ?? "false") === "true",
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4392,9 +4403,12 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
-      const { feeExchangeWithdraw, feeBankWithdraw, reserveRate, affiliateShareRate, minDeposit, minWithdraw, coAffiliatePoolRate, botFullRate, bankTransfersEnabled, bankTransfersWeekendOverride } = req.body;
+      const { feeExchangeWithdraw, feeBankWithdraw, reserveRate, affiliateShareRate, minDeposit, minWithdraw, coAffiliatePoolRate, botFullRate, bankTransfersEnabled, bankTransfersWeekendOverride, sponsorshipLocked } = req.body;
       if (bankTransfersEnabled !== undefined) {
         await storage.setPlatformSetting("bank_transfers_enabled", bankTransfersEnabled === false || bankTransfersEnabled === "false" ? "false" : "true");
+      }
+      if (sponsorshipLocked !== undefined) {
+        await storage.setPlatformSetting("sponsorship_locked", sponsorshipLocked === true || sponsorshipLocked === "true" ? "true" : "false");
       }
       if (bankTransfersWeekendOverride !== undefined) {
         if (bankTransfersWeekendOverride === false || bankTransfersWeekendOverride === "false" || bankTransfersWeekendOverride === 0) {
@@ -6703,6 +6717,12 @@ export async function registerRoutes(
     if (!amount || amount < ECOMMERCE.MIN_DEPOSIT) return res.status(400).json({ message: `Minimum deposit is above $${ECOMMERCE.MIN_DEPOSIT}` });
     if (!txHash || txHash.trim().length < 10) return res.status(400).json({ message: "Valid transaction hash is required" });
     try {
+      // ── IDEMPOTENCY: reject if this txHash was already credited ───────────
+      const existingDeposits = await storage.getWalletDepositsByUser(userId);
+      const alreadyProcessed = existingDeposits.find((d: any) => d.txHash === txHash.trim());
+      if (alreadyProcessed) {
+        return res.status(400).json({ message: "This transaction hash has already been submitted and credited to your wallet. Each transaction can only be used once." });
+      }
       // ── AUTO-APPROVE: instantly credit the user's wallet, no admin queue ──
       const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "confirmed" });
 
@@ -7347,10 +7367,10 @@ export async function registerRoutes(
       const transferDetails = JSON.stringify({ bankCode, bankName, accountNumber, accountName, narration, netAmountNgn, vatAmount, txRef });
       const bill = await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: transferDetails, status: "pending" });
 
-      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer_pending", description: `Bank transfer pending — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} | Ref: ${txRef}` });
+      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer", description: `Bank transfer submitted — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} | Ref: ${txRef}` });
 
-      const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) is pending. Admin will process it within 24 hours. Ref: ${txRef}`;
-      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Pending ⏳", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
+      const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) has been submitted successfully. Funds will be processed to your account within 24 hours. Ref: ${txRef}`;
+      const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Submitted ✓", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
       pushToUser(userId, "notification", notif);
 
       // ── After loan withdrawal: upgrade lien so bank transfers are also blocked ──

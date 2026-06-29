@@ -427,7 +427,7 @@ export default function FinancialHub() {
 
   // ── Fund Account state ────────────────────────────────────────────────────
   type FundMethod = "squad" | "korapay" | "crypto";
-  const [fundMethod, setFundMethod]     = useState<FundMethod>("squad");
+  const [fundMethod, setFundMethod]     = useState<FundMethod>("korapay");
   const [fundStep, setFundStep]         = useState<"method" | "amount">("method");
   const [fundAmount, setFundAmount]     = useState("");
   const [squadLoading, setSquadLoading] = useState(false);

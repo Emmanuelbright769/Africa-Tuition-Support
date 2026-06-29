@@ -188,6 +188,8 @@ export default function AdminDashboard() {
   const [bankWeekendOverrideUntil, setBankWeekendOverrideUntil] = useState<number>(0);
   const [bankWeekendSaving, setBankWeekendSaving] = useState<boolean>(false);
   const [bankToggleSaving, setBankToggleSaving] = useState(false);
+  const [sponsorshipLocked, setSponsorshipLocked] = useState<boolean>(false);
+  const [sponsorLockSaving, setSponsorLockSaving] = useState(false);
   const [tradeSaved, setTradeSaved] = useState(false);
   const [tosEmailState, setTosEmailState] = useState<"idle" | "sending" | "done">("idle");
   const [tosEmailResult, setTosEmailResult] = useState("");
@@ -253,7 +255,7 @@ export default function AdminDashboard() {
   const { data: allWithdrawals = [], refetch: refetchWithdrawals } = useQuery<any[]>({ queryKey: ["/api/admin/withdrawals"], refetchInterval: 600_000 });
   const { data: platformSettingsData, refetch: refetchPlatformSettings } = useQuery<{ prices: { plan1yr: number; plan2yr: number; plan3yr: number; serviceChargeRate: number }; tiers: { silver: { min: number; max: number }; gold: { min: number; max: number }; platinum: { min: number; max: number } }; exchangeRates: { buying: number; selling: number; currencies?: Record<string, { buying: number; selling: number }> } }>({ queryKey: ["/api/admin/platform-settings"], enabled: activeTab === "settings" });
   const { data: waecScaleData, refetch: refetchWaecScale } = useQuery<{ scale: Record<string, number> }>({ queryKey: ["/api/admin/waec-grade-scale"], enabled: activeTab === "settings" });
-  const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number; bankTransfersEnabled: boolean; bankTransfersWeekendOverrideUntil: number }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" || activeTab === "bank_transfers" });
+  const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number; bankTransfersEnabled: boolean; bankTransfersWeekendOverrideUntil: number; sponsorshipLocked: boolean }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" || activeTab === "bank_transfers" });
   const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
   const { data: allScholarships = [], refetch: refetchScholarships } = useQuery<any[]>({ queryKey: ["/api/admin/all-scholarships"], enabled: activeTab === "scholarships" });
 
@@ -956,6 +958,9 @@ export default function AdminDashboard() {
     }
     if (tradeSettingsData && typeof tradeSettingsData.bankTransfersWeekendOverrideUntil === "number") {
       setBankWeekendOverrideUntil(tradeSettingsData.bankTransfersWeekendOverrideUntil);
+    }
+    if (tradeSettingsData && typeof tradeSettingsData.sponsorshipLocked === "boolean") {
+      setSponsorshipLocked(tradeSettingsData.sponsorshipLocked);
     }
   }, [tradeSettingsData]);
 
@@ -4615,6 +4620,63 @@ export default function AdminDashboard() {
                       <p className="text-[11px] text-muted-foreground bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
                         <strong>Note:</strong> Airtime, data, and bill payments stay live regardless of this toggle. This only blocks the Korapay bank disburse flow.
                       </p>
+                    </CardContent>
+                  </Card>
+
+                  {/* ── Sponsorship Lock ────────────────────────────────── */}
+                  <Card className={`border-0 shadow-sm border-l-4 ${sponsorshipLocked ? "border-l-red-500" : "border-l-emerald-500"}`}>
+                    <CardHeader className="border-b pb-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${sponsorshipLocked ? "bg-red-50" : "bg-emerald-50"}`}>
+                          {sponsorshipLocked ? <Lock className="w-5 h-5 text-red-600" /> : <LockOpen className="w-5 h-5 text-emerald-600" />}
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">Sponsorship Enrolment</CardTitle>
+                          <CardDescription>Lock or unlock the leadership sponsorship sign-up for new sponsors.</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-4">
+                      <div className={`flex items-center justify-between p-4 rounded-xl border-2 ${sponsorshipLocked ? "bg-red-50/50 border-red-200" : "bg-emerald-50/50 border-emerald-200"}`}>
+                        <div className="space-y-1">
+                          <p className="font-semibold text-sm flex items-center gap-2">
+                            {sponsorshipLocked
+                              ? <><Lock className="w-5 h-5 text-red-600" /> Sponsorship is <span className="text-red-700">LOCKED</span></>
+                              : <><LockOpen className="w-5 h-5 text-emerald-600" /> Sponsorship is <span className="text-emerald-700">OPEN</span></>}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {sponsorshipLocked
+                              ? "New sponsors cannot complete sign-up. The leadership page shows a padlock. Existing sponsors are unaffected."
+                              : "New sponsors can sign up and make payments via the Leadership Sponsorship page."}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={sponsorshipLocked ? "default" : "destructive"}
+                          className={`font-semibold shrink-0 ${sponsorshipLocked ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
+                          disabled={sponsorLockSaving}
+                          data-testid="button-toggle-sponsorship-lock"
+                          onClick={async () => {
+                            const next = !sponsorshipLocked;
+                            setSponsorLockSaving(true);
+                            try {
+                              const res = await apiRequest("PUT", "/api/admin/trade-settings", { sponsorshipLocked: next });
+                              if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+                              setSponsorshipLocked(next);
+                              refetchTradeSettings();
+                              toast({ title: next ? "Sponsorship Locked ✓" : "Sponsorship Unlocked ✓", description: next ? "New sponsors cannot sign up." : "Sponsorship enrolment is now open." });
+                            } catch (e: any) {
+                              toast({ title: "Toggle failed", description: e.message, variant: "destructive" });
+                            } finally {
+                              setSponsorLockSaving(false);
+                            }
+                          }}
+                        >
+                          {sponsorLockSaving
+                            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Saving…</>
+                            : (sponsorshipLocked ? <><LockOpen className="w-4 h-4 mr-1.5" />Unlock Sponsorship</> : <><Lock className="w-4 h-4 mr-1.5" />Lock Sponsorship</>)}
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
 

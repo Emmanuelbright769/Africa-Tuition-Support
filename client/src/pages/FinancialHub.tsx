@@ -2490,11 +2490,12 @@ export default function FinancialHub() {
           </div>
 
           {/* ── Action buttons strip inside card ── */}
-          <div className="grid grid-cols-3 divide-x divide-white/10 border-t border-white/10">
+          <div className="grid grid-cols-4 divide-x divide-white/10 border-t border-white/10">
             {[
-              { icon: ArrowDownLeft, label: "Add Money", action: () => { setFundStep("method"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); } },
-              { icon: Send,          label: "Transfer",  action: () => { resetSend(); setView("send"); } },
-              { icon: Bell,          label: "Request",   action: () => setView("request") },
+              { icon: ArrowDownLeft, label: "Add Money",   action: () => { setFundStep("method"); setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("fund"); } },
+              { icon: Send,          label: "Transfer",    action: () => { resetSend(); setView("send"); } },
+              { icon: Bell,          label: "Request",     action: () => setView("request") },
+              { icon: Coins,         label: "Crypto Out",  action: () => { setCryptoWdStep("form"); setCryptoWdAmount(""); setCryptoWdAddress(""); setCryptoWdOtp(""); setCryptoWdResult(null); setView("crypto-withdraw"); } },
             ].map(({ icon: Icon, label, action }) => (
               <button key={label} onClick={action}
                 className="flex flex-col items-center gap-1.5 py-4 hover:bg-white/10 active:bg-white/20 transition-colors"
@@ -2592,20 +2593,6 @@ export default function FinancialHub() {
         <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
       </button>
 
-      {/* ── CRYPTO WITHDRAWAL CARD ── */}
-      <button
-        onClick={() => { setCryptoWdStep("form"); setCryptoWdAmount(""); setCryptoWdAddress(""); setCryptoWdOtp(""); setCryptoWdResult(null); setView("crypto-withdraw"); }}
-        className="w-full rounded-2xl border border-border bg-card p-4 flex items-center gap-3 hover:bg-muted/40 active:scale-[0.99] transition-all text-left"
-        data-testid="btn-crypto-withdraw">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-tsia-green/10 to-tsia-gold/10 border border-tsia-green/20 flex items-center justify-center shrink-0">
-          <Coins className="w-5 h-5 text-tsia-green" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-black text-sm">Withdraw via Crypto (USDT)</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Send funds to any USDT wallet · TRC20 or BEP20 · 1% fee</p>
-        </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-      </button>
 
       {/* Virtual Card — hidden until live */}
       {false && <div>

@@ -4425,18 +4425,23 @@ export async function registerRoutes(
           await storage.setPlatformSetting("bank_transfers_weekend_override", (expiry.getTime() - WAT).toString());
         }
       }
-      const updates = [
-        { key: "trade_fee_exchange_withdraw",  val: parseFloat(feeExchangeWithdraw),  min: 0,    max: 0.5,   label: "Exchange withdraw fee" },
-        { key: "trade_fee_bank_withdraw",      val: parseFloat(feeBankWithdraw),      min: 0,    max: 0.5,   label: "Bank withdraw fee" },
-        { key: "trade_reserve_rate",           val: parseFloat(reserveRate),          min: 0,    max: 0.5,   label: "Reserve fund rate" },
-        { key: "trade_affiliate_share_rate",   val: parseFloat(affiliateShareRate),   min: 0,    max: 0.5,   label: "Affiliate share rate" },
-        { key: "trade_min_deposit",            val: parseFloat(minDeposit),           min: 1,    max: 10000, label: "Min trade deposit" },
-        { key: "trade_min_withdraw",           val: parseFloat(minWithdraw),          min: 1,    max: 10000, label: "Min trade withdraw" },
-        { key: "trade_bot_full_rate",          val: parseFloat(botFullRate),          min: 0.001, max: 0.20, label: "Daily bot return rate" },
-      ];
-      for (const u of updates) {
-        if (isNaN(u.val) || u.val < u.min || u.val > u.max) return res.status(400).json({ message: `Invalid value for ${u.label}` });
-        await storage.setPlatformSetting(u.key, u.val.toString());
+      // Only validate & save rate/fee fields when they are actually provided in the payload
+      if (feeExchangeWithdraw !== undefined || feeBankWithdraw !== undefined ||
+          reserveRate !== undefined || affiliateShareRate !== undefined ||
+          minDeposit !== undefined || minWithdraw !== undefined || botFullRate !== undefined) {
+        const updates = [
+          { key: "trade_fee_exchange_withdraw",  val: parseFloat(feeExchangeWithdraw),  min: 0,    max: 0.5,   label: "Exchange withdraw fee" },
+          { key: "trade_fee_bank_withdraw",      val: parseFloat(feeBankWithdraw),      min: 0,    max: 0.5,   label: "Bank withdraw fee" },
+          { key: "trade_reserve_rate",           val: parseFloat(reserveRate),          min: 0,    max: 0.5,   label: "Reserve fund rate" },
+          { key: "trade_affiliate_share_rate",   val: parseFloat(affiliateShareRate),   min: 0,    max: 0.5,   label: "Affiliate share rate" },
+          { key: "trade_min_deposit",            val: parseFloat(minDeposit),           min: 1,    max: 10000, label: "Min trade deposit" },
+          { key: "trade_min_withdraw",           val: parseFloat(minWithdraw),          min: 1,    max: 10000, label: "Min trade withdraw" },
+          { key: "trade_bot_full_rate",          val: parseFloat(botFullRate),          min: 0.001, max: 0.20, label: "Daily bot return rate" },
+        ];
+        for (const u of updates) {
+          if (isNaN(u.val) || u.val < u.min || u.val > u.max) return res.status(400).json({ message: `Invalid value for ${u.label}` });
+          await storage.setPlatformSetting(u.key, u.val.toString());
+        }
       }
       if (coAffiliatePoolRate !== undefined && coAffiliatePoolRate !== null && coAffiliatePoolRate !== "") {
         const r = parseFloat(coAffiliatePoolRate);

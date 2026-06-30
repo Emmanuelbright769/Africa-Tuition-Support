@@ -3398,7 +3398,7 @@ export default function AffiliateDashboard() {
             <DialogDescription>
               Balance: <strong>${tradeBalance.toFixed(2)}</strong>
               {!roiComplete && lockedPrincipal > 0 && (
-                <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· Available: <strong>${withdrawableAmt.toFixed(2)}</strong> (capital locked for the {planDaysFromWallet}-day cycle)</span>
+                <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· Available: <strong>${withdrawableAmt.toFixed(2)}</strong> — only earnings above capital. Your invested capital is non-refundable.</span>
               )}
             </DialogDescription>
           </DialogHeader>

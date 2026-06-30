@@ -2839,7 +2839,7 @@ export async function registerRoutes(
       const twWithdrawable = Math.max(0, twBalance - twLocked);
       if (amount > twWithdrawable) {
         if (twLocked > 0 && !tradeWallet.roiComplete) {
-          return res.status(400).json({ message: `Only trade earnings ($${twWithdrawable.toFixed(2)}) can be transferred before 100% ROI is achieved. Your invested principal ($${twLocked.toFixed(2)}) is locked until the bot completes your full return.` });
+          return res.status(400).json({ message: `Your invested capital ($${twLocked.toFixed(2)}) is non-refundable — it remains with the platform for the duration of the cycle. Only your accumulated trade earnings ($${twWithdrawable.toFixed(2)}) are transferable.` });
         }
         return res.status(400).json({ message: `Insufficient trade balance. Available: $${twWithdrawable.toFixed(2)}` });
       }
@@ -2898,7 +2898,7 @@ export async function registerRoutes(
       const wdWithdrawable = Math.max(0, currentBalance - wdLocked);
       if (amount > wdWithdrawable) {
         if (wdLocked > 0 && !wallet.roiComplete) {
-          return res.status(400).json({ message: `Only trade earnings ($${wdWithdrawable.toFixed(2)}) can be withdrawn before 100% ROI is achieved. Your invested principal ($${wdLocked.toFixed(2)}) is locked until the bot completes your full return.` });
+          return res.status(400).json({ message: `Your invested capital ($${wdLocked.toFixed(2)}) is non-refundable — it remains with the platform for the duration of the cycle. Only your accumulated trade earnings ($${wdWithdrawable.toFixed(2)}) are withdrawable.` });
         }
         return res.status(400).json({ message: `Insufficient balance. Available: $${wdWithdrawable.toFixed(2)}` });
       }

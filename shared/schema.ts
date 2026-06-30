@@ -145,6 +145,7 @@ export const tradeWallets = pgTable("trade_wallets", {
   botLocked: boolean("bot_locked").notNull().default(false),
   tradingDayNumber: integer("trading_day_number").notNull().default(0),
   lossDayNumbers: integer("loss_day_numbers").array().notNull().default(sql`ARRAY[]::integer[]`),
+  tradingPlanDays: integer("trading_plan_days").notNull().default(120),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -333,10 +334,19 @@ export const TRADE_MARKET = {
   RESERVE_FUND_RATE: 0.20,
   AFFILIATE_SHARE_RATE: 0.05,
   MIN_DEPOSIT: 10,
+  MAX_DEPOSIT: 1200,
   MIN_WITHDRAW: 5,
   TSIA_RECEIVING_TRC20: "TGwtyWAmBkcQiuD4CFavKr8ySTJ8zFt9Mj",
   TSIA_RECEIVING_BEP20: "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977",
 } as const;
+
+export const TRADING_PLANS = [
+  { days: 60,  dailyRate: 0.04, label: "60-Day Sprint",   rateLabel: "4% daily", lossMin: 0.010, lossMax: 0.040, description: "Higher daily returns, higher volatility" },
+  { days: 90,  dailyRate: 0.03, label: "90-Day Standard", rateLabel: "3% daily", lossMin: 0.008, lossMax: 0.030, description: "Balanced returns with moderate risk" },
+  { days: 120, dailyRate: 0.02, label: "120-Day Classic", rateLabel: "2% daily", lossMin: 0.005, lossMax: 0.020, description: "Lower daily returns, lower risk (recommended)" },
+] as const;
+
+export type TradingPlanDays = 60 | 90 | 120;
 
 /**
  * Dynamic co-affiliate transactional pool rate, tiered by total enrolled count.

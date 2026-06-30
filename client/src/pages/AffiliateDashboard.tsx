@@ -35,7 +35,7 @@ import { Logo } from "@/components/ui/Logo";
 import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
-import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
+import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADING_PLANS, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend,
@@ -710,8 +710,16 @@ export default function AffiliateDashboard() {
     });
   };
 
-  // Fund trade dialog broker-selection step ("broker" = picker, "amount" = enter amount)
-  const [fundTradeBrokerStep, setFundTradeBrokerStep] = useState<"broker" | "amount">("broker");
+  // Fund trade dialog step: "broker" → "plan" → "amount"
+  const [fundTradeBrokerStep, setFundTradeBrokerStep] = useState<"broker" | "plan" | "amount">("broker");
+
+  // Trading plan selection (persisted)
+  const [selectedTradingPlan, setSelectedTradingPlan] = useState<60 | 90 | 120>(() => {
+    try {
+      const v = parseInt(localStorage.getItem("tsia_trading_plan") ?? "");
+      return ([60, 90, 120] as const).includes(v as any) ? (v as 60 | 90 | 120) : 120;
+    } catch { return 120; }
+  });
 
   // Bot deactivating loading state
   const [botDeactivating, setBotDeactivating] = useState(false);
@@ -1057,7 +1065,7 @@ export default function AffiliateDashboard() {
       const amt = parseFloat(fundTradeAmt);
       const minAmt = selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT;
       if (!amt || amt < minAmt) throw new Error(`Minimum for ${selectedBroker?.name ?? "this exchange"} is $${minAmt}`);
-      const res = await apiRequest("POST", "/api/trade/fund-from-wallet", { amountUsd: amt, brokerId: selectedBrokerId });
+      const res = await apiRequest("POST", "/api/trade/fund-from-wallet", { amountUsd: amt, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
       return d;
@@ -1073,7 +1081,7 @@ export default function AffiliateDashboard() {
 
   const depositMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/trade/deposit", { amountUsd: parseFloat(depositAmt), walletType: depositWallet, txHash: depositTxHash, brokerId: selectedBrokerId });
+      const res = await apiRequest("POST", "/api/trade/deposit", { amountUsd: parseFloat(depositAmt), walletType: depositWallet, txHash: depositTxHash, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
       return res.json();
     },
     onSuccess: (data) => {
@@ -1199,7 +1207,12 @@ export default function AffiliateDashboard() {
   const totalBotEarned   = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
   const roiComplete      = !!(tradeWallet?.roiComplete);
   const tradingDayNumber = (tradeWallet as any)?.tradingDayNumber ?? 0;
-  const cycleProgress    = Math.min(100, (tradingDayNumber / 120) * 100);
+  const planDaysFromWallet: 60 | 90 | 120 = (() => {
+    const v = (tradeWallet as any)?.tradingPlanDays;
+    return ([60, 90, 120] as const).includes(v) ? v : 120;
+  })();
+  const activePlanConfig = TRADING_PLANS.find(p => p.days === planDaysFromWallet) ?? TRADING_PLANS[2];
+  const cycleProgress    = Math.min(100, (tradingDayNumber / planDaysFromWallet) * 100);
   const lockedPrincipal  = roiComplete ? 0 : parseFloat(tradeWallet?.lockedPrincipal ?? "0");
   const withdrawableAmt  = Math.max(0, tradeBalance - lockedPrincipal);
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
@@ -1574,7 +1587,7 @@ export default function AffiliateDashboard() {
                               <Timer className="w-5 h-5 text-green-200 shrink-0" />
                               <div>
                                 <p className="text-sm font-semibold">Bot is running — auto-off in {botHoursLeft}h {botMinsLeft}m</p>
-                                <p className="text-xs text-green-200 mt-0.5">Executing 2% daily trades using arithmetic algorithm strategy</p>
+                                <p className="text-xs text-green-200 mt-0.5">Executing {(activePlanConfig.dailyRate * 100).toFixed(0)}% daily trades using arithmetic algorithm strategy ({activePlanConfig.label})</p>
                               </div>
                             </div>
                           ) : isWeekendClosed ? (
@@ -1623,14 +1636,14 @@ export default function AffiliateDashboard() {
                         {/* Action footer */}
                         <div className="bg-card p-4 flex items-center gap-3">
                           {roiComplete ? (
-                            // Cycle complete — 120 days done
+                            // Cycle complete
                             <div className="flex-1 flex items-center gap-3">
                               <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
                                 <span className="text-lg">🎉</span>
                               </div>
                               <div>
-                                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">120-Day Cycle Complete</p>
-                                <p className="text-xs text-muted-foreground">Your 120-day trading cycle has ended. All funds are now available. Top up to start a new cycle.</p>
+                                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{planDaysFromWallet}-Day Cycle Complete</p>
+                                <p className="text-xs text-muted-foreground">Your {planDaysFromWallet}-day trading cycle has ended. Earnings credited to SwiftWallet. Top up to start a new cycle.</p>
                               </div>
                             </div>
                           ) : botActive ? (
@@ -1758,7 +1771,7 @@ export default function AffiliateDashboard() {
                       {roiComplete && (
                         <div className="bg-emerald-100 dark:bg-emerald-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">120-day cycle complete — full balance available to withdraw</p>
+                          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{planDaysFromWallet}-day cycle complete — earnings credited to SwiftWallet. Top up to start a new cycle.</p>
                         </div>
                       )}
                     </div>
@@ -1796,13 +1809,13 @@ export default function AffiliateDashboard() {
                         ) : null}
                       </div>
                     </div>
-                    {/* 120-Day Cycle Progress bar */}
+                    {/* Trading Cycle Progress bar */}
                     {totalInvested > 0 && (
                       <div className="px-4 py-3 border-t border-emerald-100 dark:border-emerald-800 bg-white dark:bg-card">
                         <div className="flex items-center justify-between mb-1.5">
                           <p className="text-xs text-muted-foreground font-medium">Trading Cycle Progress</p>
                           <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            {roiComplete ? "Day 120 / 120 — Complete" : `Day ${tradingDayNumber} / 120`}
+                            {roiComplete ? `Day ${planDaysFromWallet} / ${planDaysFromWallet} — Complete` : `Day ${tradingDayNumber} / ${planDaysFromWallet}`}
                           </p>
                         </div>
                         <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
@@ -1813,8 +1826,8 @@ export default function AffiliateDashboard() {
                         </div>
                         <p className="text-[10px] text-muted-foreground mt-1">
                           {roiComplete
-                            ? "Cycle complete. Top up to start a new 120-day cycle."
-                            : `${120 - tradingDayNumber} trading session${120 - tradingDayNumber !== 1 ? "s" : ""} remaining in this cycle.`}
+                            ? `Cycle complete. Earnings sent to SwiftWallet. Top up to start a new ${planDaysFromWallet}-day cycle.`
+                            : `${planDaysFromWallet - tradingDayNumber} trading session${planDaysFromWallet - tradingDayNumber !== 1 ? "s" : ""} remaining in this cycle (${activePlanConfig.rateLabel}).`}
                         </p>
                       </div>
                     )}
@@ -3206,7 +3219,45 @@ export default function AffiliateDashboard() {
       {/* Fund Trade Wallet from SwiftWallet */}
       <Dialog open={fundTradeOpen} onOpenChange={o => { setFundTradeOpen(o); if (!o) { setFundTradeAmt(""); setFundTradeBrokerStep("broker"); } }}>
         <DialogContent className="max-w-sm">
-          {fundTradeBrokerStep === "broker" ? (
+          {fundTradeBrokerStep === "plan" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-600" /> Choose Trading Plan</DialogTitle>
+                <DialogDescription>Select your cycle length — shorter plans yield more daily profit but carry higher market volatility.</DialogDescription>
+              </DialogHeader>
+              <div className="py-2 space-y-2">
+                {TRADING_PLANS.map(plan => (
+                  <button
+                    key={plan.days}
+                    type="button"
+                    data-testid={`button-plan-${plan.days}`}
+                    onClick={() => {
+                      setSelectedTradingPlan(plan.days as 60 | 90 | 120);
+                      try { localStorage.setItem("tsia_trading_plan", String(plan.days)); } catch {}
+                      setFundTradeBrokerStep("amount");
+                    }}
+                    className={`w-full text-left flex items-center justify-between gap-3 rounded-xl border-2 transition-all duration-150 px-4 py-3.5 group ${selectedTradingPlan === plan.days ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-border hover:border-emerald-400 bg-card hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10"}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="font-bold text-sm">{plan.label}</p>
+                        {plan.days === 120 && <span className="text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">Recommended</span>}
+                        {selectedTradingPlan === plan.days && <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">Selected</span>}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{plan.description}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{plan.rateLabel}</span>
+                      <span className="text-[10px] text-muted-foreground">up to {(plan.lossMax * 100).toFixed(0)}% max loss/day</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setFundTradeBrokerStep("broker")}>← Back</Button>
+              </DialogFooter>
+            </>
+          ) : fundTradeBrokerStep === "broker" ? (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><Globe className="w-5 h-5 text-blue-600" /> Choose Your Exchange</DialogTitle>
@@ -3218,7 +3269,7 @@ export default function AffiliateDashboard() {
                     key={broker.id}
                     type="button"
                     data-testid={`button-fund-broker-${broker.id}`}
-                    onClick={() => { handleBrokerChange(broker.id); setFundTradeBrokerStep("amount"); setFundTradeAmt(""); }}
+                    onClick={() => { handleBrokerChange(broker.id); setFundTradeBrokerStep("plan"); setFundTradeAmt(""); }}
                     className="w-full text-left flex items-center justify-between gap-3 rounded-xl border-2 border-border hover:border-blue-500 bg-card hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-150 px-4 py-3 group"
                   >
                     <div className="flex-1 min-w-0">
@@ -3243,7 +3294,7 @@ export default function AffiliateDashboard() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><ArrowDownLeft className="w-5 h-5 text-blue-600" /> Fund Trade Wallet</DialogTitle>
                 <DialogDescription>
-                  Funding via <strong>{selectedBroker?.name ?? "exchange"}</strong> — min. deposit ${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}
+                  <strong>{selectedBroker?.name ?? "Exchange"}</strong> · <strong>{TRADING_PLANS.find(p => p.days === selectedTradingPlan)?.label ?? "120-Day Classic"}</strong> ({TRADING_PLANS.find(p => p.days === selectedTradingPlan)?.rateLabel ?? "2% daily"})
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
@@ -3253,11 +3304,11 @@ export default function AffiliateDashboard() {
                 </div>
                 <div>
                   <Label htmlFor="fund-trade-amt">Amount (USD)</Label>
-                  <Input id="fund-trade-amt" type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} step={0.01}
-                    placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}.00`}
+                  <Input id="fund-trade-amt" type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} max={TRADE_MARKET.MAX_DEPOSIT} step={0.01}
+                    placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} · Max $${TRADE_MARKET.MAX_DEPOSIT}`}
                     value={fundTradeAmt} onChange={e => setFundTradeAmt(e.target.value)}
                     className="mt-1 text-lg font-bold" data-testid="input-fund-trade-amt" />
-                  {parseFloat(fundTradeAmt) >= (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) && (
+                  {parseFloat(fundTradeAmt) >= (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) && parseFloat(fundTradeAmt) <= TRADE_MARKET.MAX_DEPOSIT && (
                     <div className="mt-2 text-xs space-y-1 text-muted-foreground border border-border rounded-xl p-3 bg-muted/30">
                       <p className="font-semibold text-foreground mb-1">Breakdown</p>
                       <div className="flex justify-between"><span>You transfer</span><span className="font-semibold text-foreground">${parseFloat(fundTradeAmt).toFixed(2)}</span></div>
@@ -3265,7 +3316,12 @@ export default function AffiliateDashboard() {
                       <div className="flex justify-between font-bold text-green-600 border-t border-border pt-1 mt-1"><span>Trade wallet receives (95%)</span><span>${(parseFloat(fundTradeAmt) * 0.95).toFixed(2)}</span></div>
                     </div>
                   )}
-                  {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) > personalBalance - 2 && (
+                  {parseFloat(fundTradeAmt) > TRADE_MARKET.MAX_DEPOSIT && (
+                    <p className="mt-2 text-xs text-red-500 font-semibold flex items-center gap-1">
+                      <span>⚠</span> Maximum deposit per top-up is ${TRADE_MARKET.MAX_DEPOSIT.toLocaleString()}.
+                    </p>
+                  )}
+                  {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) <= TRADE_MARKET.MAX_DEPOSIT && parseFloat(fundTradeAmt) > personalBalance - 2 && (
                     <p className="mt-2 text-xs text-red-500 font-semibold flex items-center gap-1">
                       <span>⚠</span> Insufficient balance — you need at least ${(parseFloat(fundTradeAmt) + 2).toFixed(2)} (keeping $2.00 minimum in SwiftWallet)
                     </p>
@@ -3273,9 +3329,9 @@ export default function AffiliateDashboard() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setFundTradeBrokerStep("broker")}>← Back</Button>
+                <Button variant="outline" onClick={() => setFundTradeBrokerStep("plan")}>← Back</Button>
                 <Button onClick={() => fundTradeMutation.mutate()}
-                  disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(fundTradeAmt) > personalBalance - 2}
+                  disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(fundTradeAmt) > TRADE_MARKET.MAX_DEPOSIT || parseFloat(fundTradeAmt) > personalBalance - 2}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold" data-testid="btn-confirm-fund-trade">
                   {fundTradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />}
                   Transfer ${parseFloat(fundTradeAmt || "0").toFixed(2)}
@@ -3342,7 +3398,7 @@ export default function AffiliateDashboard() {
             <DialogDescription>
               Balance: <strong>${tradeBalance.toFixed(2)}</strong>
               {!roiComplete && lockedPrincipal > 0 && (
-                <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· Available: <strong>${withdrawableAmt.toFixed(2)}</strong> (capital locked for the 120-day cycle)</span>
+                <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· Available: <strong>${withdrawableAmt.toFixed(2)}</strong> (capital locked for the {planDaysFromWallet}-day cycle)</span>
               )}
             </DialogDescription>
           </DialogHeader>
@@ -3527,7 +3583,7 @@ export default function AffiliateDashboard() {
                 iconBg: "bg-purple-100 dark:bg-purple-900/40",
                 iconColor: "text-purple-600",
                 title: "Activate the Trading BOT Daily at 1PM",
-                body: "The AI Trading BOT must be manually activated every working day at 1:00 PM for it to execute trades that day. The bot runs for up to 12 hours — the longer it trades, the more it earns (up to 2% per session). Your 120-day cycle tracks your total trading days.",
+                body: "The AI Trading BOT must be manually activated every working day at 1:00 PM for it to execute trades that day. The bot runs for up to 12 hours — the longer it trades, the more it earns. Daily profit rate varies by plan: 4% (60-day), 3% (90-day), or 2% (120-day). Your cycle tracks your total trading days.",
               },
             ];
             const s = steps[walkthroughStep];

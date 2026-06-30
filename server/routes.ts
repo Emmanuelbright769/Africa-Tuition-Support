@@ -2659,12 +2659,16 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { amountUsd, walletType, txHash, brokerId: depositBrokerId } = req.body;
+      const { amountUsd, walletType, txHash, brokerId: depositBrokerId, tradingPlanDays: rawPlanDays } = req.body;
       const amount = parseFloat(amountUsd);
       const depositBroker = TRADE_BROKERS.find(b => b.id === depositBrokerId);
       const minDepositAmt = depositBroker ? depositBroker.minDeposit : TRADE_MARKET.MIN_DEPOSIT;
+      const tradingPlanDays: number = [60, 90, 120].includes(Number(rawPlanDays)) ? Number(rawPlanDays) : 120;
       if (isNaN(amount) || amount < minDepositAmt) {
         return res.status(400).json({ message: `Minimum deposit for ${depositBroker ? depositBroker.name : "this exchange"} is $${minDepositAmt}.` });
+      }
+      if (amount > TRADE_MARKET.MAX_DEPOSIT) {
+        return res.status(400).json({ message: `Maximum deposit is $${TRADE_MARKET.MAX_DEPOSIT}. Please split into smaller deposits.` });
       }
       if (!["trc20", "bep20"].includes(walletType)) {
         return res.status(400).json({ message: "walletType must be trc20 or bep20." });
@@ -2694,17 +2698,18 @@ export async function registerRoutes(
       // Cycle management on top-up
       const postDepositWallet = await storage.getOrCreateTradeWallet(userId);
       if (postDepositWallet.roiComplete) {
-        // Completed cycle — full reset for a fresh 120-day cycle
+        // Completed cycle — full reset for a fresh cycle
         await storage.resetRoiForNewCycle(userId);
-        await storage.assignLossDays(userId, generateLossDays());
+        await storage.assignLossDays(userId, generateLossDays(tradingPlanDays));
       } else if ((postDepositWallet.lossDayNumbers?.length ?? 0) === 0) {
-        // First deposit ever — assign the 120-day loss schedule
-        await storage.assignLossDays(userId, generateLossDays());
+        // First deposit ever — assign the loss schedule for the chosen plan
+        await storage.assignLossDays(userId, generateLossDays(tradingPlanDays));
       } else if ((postDepositWallet.tradingDayNumber ?? 0) > 0) {
-        // Mid-cycle top-up: credit back the already-traded days so the new top-up
-        // starts a fresh 120-day window from today (balances are untouched)
-        await storage.resetTradingDayForTopUp(userId, generateLossDays());
+        // Mid-cycle top-up: reset day counter so the new deposit starts a fresh cycle
+        await storage.resetTradingDayForTopUp(userId, generateLossDays(tradingPlanDays));
       }
+      // Store chosen trading plan
+      await storage.setTradingPlanDays(userId, tradingPlanDays);
       // Track locked principal (net amount in trade balance from this deposit — capital is locked)
       await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
 
@@ -2736,12 +2741,16 @@ export async function registerRoutes(
       if (await isTradeSessionActive(userId)) {
         return res.status(403).json({ message: "Top-ups are disabled during an active trade session. Please wait until the current session ends before funding your trade wallet." });
       }
-      const { amountUsd, brokerId } = req.body;
+      const { amountUsd, brokerId, tradingPlanDays: rawFwPlanDays } = req.body;
       const amount = parseFloat(amountUsd);
       const broker = TRADE_BROKERS.find(b => b.id === brokerId);
       const minDeposit = broker ? broker.minDeposit : TRADE_MARKET.MIN_DEPOSIT;
+      const fwTradingPlanDays: number = [60, 90, 120].includes(Number(rawFwPlanDays)) ? Number(rawFwPlanDays) : 120;
       if (isNaN(amount) || amount < minDeposit) {
         return res.status(400).json({ message: `Minimum funding amount for ${broker ? broker.name : "this exchange"} is $${minDeposit}.` });
+      }
+      if (amount > TRADE_MARKET.MAX_DEPOSIT) {
+        return res.status(400).json({ message: `Maximum deposit is $${TRADE_MARKET.MAX_DEPOSIT}.` });
       }
       // Check personal wallet balance
       const personalWallet = await storage.getOrCreateWallet(userId);
@@ -2776,17 +2785,18 @@ export async function registerRoutes(
       // Cycle management on top-up
       const fwPostWallet = await storage.getOrCreateTradeWallet(userId);
       if (fwPostWallet.roiComplete) {
-        // Completed cycle — full reset for a fresh 120-day cycle
+        // Completed cycle — full reset for a fresh cycle
         await storage.resetRoiForNewCycle(userId);
-        await storage.assignLossDays(userId, generateLossDays());
+        await storage.assignLossDays(userId, generateLossDays(fwTradingPlanDays));
       } else if ((fwPostWallet.lossDayNumbers?.length ?? 0) === 0) {
-        // First top-up — assign the 120-day loss schedule
-        await storage.assignLossDays(userId, generateLossDays());
+        // First top-up — assign loss schedule for chosen plan
+        await storage.assignLossDays(userId, generateLossDays(fwTradingPlanDays));
       } else if ((fwPostWallet.tradingDayNumber ?? 0) > 0) {
-        // Mid-cycle top-up: credit back the already-traded days so the new top-up
-        // starts a fresh 120-day window from today (balances are untouched)
-        await storage.resetTradingDayForTopUp(userId, generateLossDays());
+        // Mid-cycle top-up: reset day counter so the new deposit starts a fresh cycle
+        await storage.resetTradingDayForTopUp(userId, generateLossDays(fwTradingPlanDays));
       }
+      // Store chosen trading plan
+      await storage.setTradingPlanDays(userId, fwTradingPlanDays);
       // Track locked principal (net amount in trade balance — capital is locked)
       await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
       // Route 5% affiliate cut to co-affiliate pool (no reserve fund on wallet top-ups)
@@ -2956,14 +2966,19 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ── 120-day cycle helpers ────────────────────────────────────────────────────
-  const TRADE_CYCLE_DAYS = 120;
-  const TRADE_WEEK_DAYS  = 5;   // Mon–Fri trading days per week
-  const TRADE_WEEKS      = TRADE_CYCLE_DAYS / TRADE_WEEK_DAYS; // 24 weeks
-  const LOSS_DAYS_PER_WEEK = 2; // exactly 2 loss days every week
+  // ── Trading cycle helpers ────────────────────────────────────────────────────
+  const TRADE_WEEK_DAYS    = 5;  // Mon–Fri trading days per week
+  const LOSS_DAYS_PER_WEEK = 2;  // exactly 2 loss days every week
+
+  // Per-plan profit/loss configuration
+  const TRADING_PLAN_CONFIGS: Record<number, { dailyRate: number; lossMin: number; lossMax: number }> = {
+    60:  { dailyRate: 0.04, lossMin: 0.010, lossMax: 0.040 },
+    90:  { dailyRate: 0.03, lossMin: 0.008, lossMax: 0.030 },
+    120: { dailyRate: 0.02, lossMin: 0.005, lossMax: 0.020 },
+  };
 
   /**
-   * Generate the loss-day schedule for a new 120-day cycle.
+   * Generate the loss-day schedule for a trading cycle of the given length.
    * Each trading week (5 consecutive cycle days) gets exactly 2 random loss days
    * and 3 profit days — guaranteeing the 2-loss / 3-profit weekly pattern.
    */
@@ -3023,9 +3038,10 @@ export async function registerRoutes(
     } catch { return false; }
   }
 
-  function generateLossDays(): number[] {
+  function generateLossDays(planDays: number = 120): number[] {
+    const numWeeks = Math.floor(planDays / TRADE_WEEK_DAYS);
     const lossDays: number[] = [];
-    for (let week = 0; week < TRADE_WEEKS; week++) {
+    for (let week = 0; week < numWeeks; week++) {
       // Days in this week (1-indexed cycle days): e.g. week 0 → [1,2,3,4,5]
       const weekStart = week * TRADE_WEEK_DAYS + 1;
       const weekDays  = Array.from({ length: TRADE_WEEK_DAYS }, (_, i) => weekStart + i);
@@ -3039,10 +3055,11 @@ export async function registerRoutes(
     return lossDays.sort((a, b) => a - b);
   }
 
-  /** Loss rate for a given day: deterministic 0.5%–2.0% based on day number */
-  function getLossRateForCycleDay(dayNumber: number): number {
+  /** Loss rate for a given day: deterministic, scaled to the plan's loss range */
+  function getLossRateForCycleDay(dayNumber: number, planDays: number = 120): number {
     const seed = (dayNumber * 37 + 17) % 100;
-    return 0.005 + (seed / 100) * 0.015; // 0.5% → 2.0%
+    const { lossMin, lossMax } = TRADING_PLAN_CONFIGS[planDays] ?? TRADING_PLAN_CONFIGS[120];
+    return lossMin + (seed / 100) * (lossMax - lossMin);
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -3061,8 +3078,9 @@ export async function registerRoutes(
       if (isBeforeOpen) return res.status(400).json({ message: "The activation window opens at 1:00 PM GMT (Mon–Fri)." });
       const wallet = await storage.getOrCreateTradeWallet(userId);
       if (wallet.botLocked) return res.status(403).json({ message: "Your bot access has been suspended by the platform. Please contact support to restore access." });
-      if (wallet.roiComplete) return res.status(400).json({ message: "Trading cycle complete. Your 120-day trading cycle has ended. Make a new top-up to start a fresh cycle." });
-      if ((wallet.tradingDayNumber ?? 0) >= TRADE_CYCLE_DAYS) return res.status(400).json({ message: "Trading cycle complete. Your 120-day trading cycle has ended. Make a new top-up to start a fresh cycle." });
+      const activatePlanDays = wallet.tradingPlanDays && [60, 90, 120].includes(wallet.tradingPlanDays) ? wallet.tradingPlanDays : 120;
+      if (wallet.roiComplete) return res.status(400).json({ message: `Trading cycle complete. Your ${activatePlanDays}-day trading cycle has ended. Make a new top-up to start a fresh cycle.` });
+      if ((wallet.tradingDayNumber ?? 0) >= activatePlanDays) return res.status(400).json({ message: `Trading cycle complete. Your ${activatePlanDays}-day trading cycle has ended. Make a new top-up to start a fresh cycle.` });
       if (parseFloat(wallet.tradeBalance) <= 0) return res.status(400).json({ message: "No trade balance." });
       const now = new Date();
       const updated = await storage.setBotActivatedAt(userId, now);
@@ -3090,15 +3108,21 @@ export async function registerRoutes(
       const balance = parseFloat(wallet.tradeBalance);
       if (balance <= 0) return res.status(400).json({ message: "No balance to earn from." });
 
+      // ── Resolve trading plan for this user ───────────────────────────
+      const planDays: number = wallet.tradingPlanDays && [60, 90, 120].includes(wallet.tradingPlanDays) ? wallet.tradingPlanDays : 120;
+      const planConfig = TRADING_PLAN_CONFIGS[planDays] ?? TRADING_PLAN_CONFIGS[120];
+
       // ── Determine current cycle day (1-indexed: next day after the N completed so far) ──
       const currentCycleDay = (wallet.tradingDayNumber ?? 0) + 1;
       const userLossDays: number[] = Array.isArray(wallet.lossDayNumbers) ? wallet.lossDayNumbers : [];
       const isLossDay = userLossDays.includes(currentCycleDay);
 
       // ── Compute session duration (proportional to hours the bot was active) ──
-      const BOT_MAX_MS    = 12 * 3600 * 1000;
+      const BOT_MAX_MS = 12 * 3600 * 1000;
+      // Use plan-specific daily rate; admin setting can still override the base 120-day rate only
       const _botRateSetting = await storage.getPlatformSetting("trade_bot_full_rate");
-      const BOT_FULL_RATE = _botRateSetting ? parseFloat(_botRateSetting) : 0.02; // configurable max daily return
+      const defaultRate = planConfig.dailyRate;
+      const BOT_FULL_RATE = planDays === 120 && _botRateSetting ? parseFloat(_botRateSetting) : defaultRate;
       let elapsedMs = BOT_MAX_MS;
       if (activatedAt && Number.isFinite(activatedAt)) {
         elapsedMs = Math.min(Date.now() - activatedAt, BOT_MAX_MS);
@@ -3108,14 +3132,14 @@ export async function registerRoutes(
       const elapsedHours = (elapsedMs / 3600000).toFixed(1);
 
       if (isLossDay) {
-        // ── LOSS DAY: proportional loss (fraction of 0.5%–2.0%) ─────────
-        const lossRate   = getLossRateForCycleDay(currentCycleDay) * fraction;
+        // ── LOSS DAY: proportional loss scaled to the plan's loss range ──
+        const lossRate   = getLossRateForCycleDay(currentCycleDay, planDays) * fraction;
         const lossAmount = parseFloat((balance * lossRate).toFixed(6));
         const ratePercent = (lossRate * 100).toFixed(4);
 
         if (lossAmount <= 0) {
           await storage.incrementTradingDay(userId);
-          return res.json({ earning: "0", elapsedHours, ratePercent: "0", newBalance: wallet.tradeBalance, totalBotEarnings: wallet.totalBotEarnings, isLossDay: true, cycleDay: currentCycleDay, cycleDays: TRADE_CYCLE_DAYS });
+          return res.json({ earning: "0", elapsedHours, ratePercent: "0", newBalance: wallet.tradeBalance, totalBotEarnings: wallet.totalBotEarnings, isLossDay: true, cycleDay: currentCycleDay, cycleDays: planDays });
         }
 
         await storage.createTradeTransaction({
@@ -3129,24 +3153,33 @@ export async function registerRoutes(
           netAmount: (-lossAmount).toFixed(6),
           txHash: null,
           status: "completed",
-          note: `Bot session day ${currentCycleDay}/120 (loss): ${elapsedHours}h → -${ratePercent}% on $${balance.toFixed(2)}`,
+          note: `Bot session day ${currentCycleDay}/${planDays} (loss): ${elapsedHours}h → -${ratePercent}% on $${balance.toFixed(2)}`,
         });
         let updatedWallet = await storage.applyBotLoss(userId, lossAmount.toFixed(6));
         updatedWallet = await storage.incrementTradingDay(userId);
 
-        // ── Check 120-day cycle completion ─────────────────────────────
+        // ── Check plan-length cycle completion ──────────────────────────
         let cycleJustComplete = false;
-        if ((updatedWallet.tradingDayNumber ?? 0) >= TRADE_CYCLE_DAYS) {
+        if ((updatedWallet.tradingDayNumber ?? 0) >= planDays) {
           cycleJustComplete = true;
+          // Credit remaining net earnings (profit above locked capital) to Swift wallet before zeroing
+          const preCompleteBalance = parseFloat(updatedWallet.tradeBalance);
+          const preCompleteLocked  = parseFloat(updatedWallet.lockedPrincipal ?? "0");
+          const cycleEarnings = Math.max(0, preCompleteBalance - preCompleteLocked);
+          if (cycleEarnings > 0) {
+            const swWallet = await storage.getOrCreateWallet(userId);
+            await storage.updateWalletBalance(userId, (parseFloat(swWallet.balance) + cycleEarnings).toFixed(2));
+            await storage.createTransaction({ userId, type: "admin_credit", amount: cycleEarnings.toFixed(2), fee: "0.00", paymentMethod: "system", description: `${planDays}-day trade cycle payout — earnings credited to SwiftWallet` });
+          }
           await storage.markRoiComplete(userId);
-          await storage.createNotification({ userId, type: "trade", title: "120-Day Trading Cycle Complete", message: `Your 120-day trading cycle has ended. Your capital and all earnings are now fully available. Top up to start a fresh cycle.`, data: {}, isRead: false });
+          await storage.createNotification({ userId, type: "trade", title: `${planDays}-Day Trading Cycle Complete`, message: `Your ${planDays}-day trading cycle has ended. ${cycleEarnings > 0 ? `$${cycleEarnings.toFixed(2)} in earnings have been credited to your SwiftWallet.` : "Top up to start a fresh cycle."}`, data: {}, isRead: false });
         }
 
         await storage.createNotification({
           userId,
           type: "trade",
           title: "Bot Session — Market Loss",
-          message: `Day ${currentCycleDay}/120: Your Itera Trading BOT (${elapsedHours}h) posted a market loss of $${lossAmount.toFixed(4)} (-${ratePercent}%).`,
+          message: `Day ${currentCycleDay}/${planDays}: Your Itera Trading BOT (${elapsedHours}h) posted a market loss of $${lossAmount.toFixed(4)} (-${ratePercent}%).`,
           data: { loss: lossAmount, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance, cycleDay: currentCycleDay },
           isRead: false,
         });
@@ -3160,7 +3193,7 @@ export async function registerRoutes(
           totalBotEarnings: finalLossWallet.totalBotEarnings,
           isLossDay: true,
           cycleDay: currentCycleDay,
-          cycleDays: TRADE_CYCLE_DAYS,
+          cycleDays: planDays,
           cycleComplete: cycleJustComplete || finalLossWallet.roiComplete,
         });
       }
@@ -3189,7 +3222,7 @@ export async function registerRoutes(
         netAmount: earning.toFixed(6),
         txHash: null,
         status: "completed",
-        note: `Bot session day ${currentCycleDay}/120: ${elapsedHours}h → ${ratePercent}% on $${balance.toFixed(2)}${hasBotReferrer ? ` | 5% referral: $${botAffiliateCommission.toFixed(4)}` : ""}`,
+        note: `Bot session day ${currentCycleDay}/${planDays}: ${elapsedHours}h → ${ratePercent}% on $${balance.toFixed(2)}${hasBotReferrer ? ` | 5% referral: $${botAffiliateCommission.toFixed(4)}` : ""}`,
       });
       let updatedWallet = await storage.creditBotEarnings(userId, earning.toFixed(6));
       updatedWallet = await storage.incrementTradingDay(userId);
@@ -3199,17 +3232,26 @@ export async function registerRoutes(
         await creditReferrerCommission(userId, grossEarning, "bot earnings").catch(() => {});
       }
 
-      // ── 120-day cycle completion check ────────────────────────────────
+      // ── Cycle completion check (plan-length aware) ─────────────────────
       let cycleJustComplete = false;
-      if (!updatedWallet.roiComplete && (updatedWallet.tradingDayNumber ?? 0) >= TRADE_CYCLE_DAYS) {
+      if (!updatedWallet.roiComplete && (updatedWallet.tradingDayNumber ?? 0) >= planDays) {
         cycleJustComplete = true;
+        // Credit remaining withdrawable earnings to Swift wallet before zeroing trade balance
+        const preCompleteBalance = parseFloat(updatedWallet.tradeBalance);
+        const preCompleteLocked  = parseFloat(updatedWallet.lockedPrincipal ?? "0");
+        const cycleEarnings = Math.max(0, preCompleteBalance - preCompleteLocked);
+        if (cycleEarnings > 0) {
+          const swWallet = await storage.getOrCreateWallet(userId);
+          await storage.updateWalletBalance(userId, (parseFloat(swWallet.balance) + cycleEarnings).toFixed(2));
+          await storage.createTransaction({ userId, type: "admin_credit", amount: cycleEarnings.toFixed(2), fee: "0.00", paymentMethod: "system", description: `${planDays}-day trade cycle payout — earnings credited to SwiftWallet` });
+        }
         await storage.markRoiComplete(userId);
         await storage.createNotification({
           userId,
           type: "trade",
-          title: "🎉 120-Day Trading Cycle Complete!",
-          message: `Congratulations! Your 120-day trading cycle is complete. Your capital and all earnings are now fully available. Top up to start a fresh cycle.`,
-          data: { tradingDayNumber: updatedWallet.tradingDayNumber },
+          title: `🎉 ${planDays}-Day Trading Cycle Complete!`,
+          message: `Congratulations! Your ${planDays}-day trading cycle is complete.${cycleEarnings > 0 ? ` $${cycleEarnings.toFixed(2)} in earnings have been credited to your SwiftWallet.` : ""} Top up to start a fresh cycle.`,
+          data: { tradingDayNumber: updatedWallet.tradingDayNumber, cycleEarnings },
           isRead: false,
         });
       }
@@ -3218,7 +3260,7 @@ export async function registerRoutes(
         userId,
         type: "trade",
         title: "Bot Session Complete — Earnings Credited",
-        message: `Day ${currentCycleDay}/120: Your bot (${elapsedHours}h) earned $${earning.toFixed(4)} (${ratePercent}%${hasBotReferrer ? ", 5% referral deducted" : ""}).`,
+        message: `Day ${currentCycleDay}/${planDays}: Your bot (${elapsedHours}h) earned $${earning.toFixed(4)} (${ratePercent}%${hasBotReferrer ? ", 5% referral deducted" : ""}).`,
         data: { earning, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance, cycleDay: currentCycleDay },
         isRead: false,
       });
@@ -3236,7 +3278,7 @@ export async function registerRoutes(
         roiComplete: finalWallet.roiComplete,
         isLossDay: false,
         cycleDay: currentCycleDay,
-        cycleDays: TRADE_CYCLE_DAYS,
+        cycleDays: planDays,
         cycleComplete: cycleJustComplete || finalWallet.roiComplete,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

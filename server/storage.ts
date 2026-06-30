@@ -128,6 +128,7 @@ export interface IStorage {
   updateTradeBalance(userId: number, delta: string): Promise<TradeWallet>;
   addToTotalInvested(userId: number, amount: string): Promise<TradeWallet>;
   markRoiComplete(userId: number): Promise<TradeWallet>;
+  setTradingPlanDays(userId: number, planDays: number): Promise<TradeWallet>;
   resetRoiForNewCycle(userId: number): Promise<void>;
   resetTradingDayForTopUp(userId: number, newLossDays: number[]): Promise<void>;
   addToLockedPrincipal(userId: number, amount: string): Promise<TradeWallet>;
@@ -862,7 +863,15 @@ export class DatabaseStorage implements IStorage {
 
   async markRoiComplete(userId: number): Promise<TradeWallet> {
     const [updated] = await db.update(tradeWallets)
-      .set({ roiComplete: true, lockedPrincipal: "0.000000", botActivatedAt: null, updatedAt: new Date() })
+      .set({ roiComplete: true, tradeBalance: "0.000000", lockedPrincipal: "0.000000", botActivatedAt: null, updatedAt: new Date() })
+      .where(eq(tradeWallets.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async setTradingPlanDays(userId: number, planDays: number): Promise<TradeWallet> {
+    const [updated] = await db.update(tradeWallets)
+      .set({ tradingPlanDays: planDays, updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId))
       .returning();
     return updated;

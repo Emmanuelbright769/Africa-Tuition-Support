@@ -1751,21 +1751,39 @@ export default function AffiliateDashboard() {
                         )}
                       </div>
                       {!roiComplete && lockedPrincipal > 0 && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                            <div>
-                              <p className="text-[10px] text-muted-foreground">Locked Principal</p>
-                              <p className="text-xs font-bold text-amber-600 dark:text-amber-400">{tradeBalanceHidden ? "••••" : `$${lockedPrincipal.toFixed(2)}`}</p>
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                              <div>
+                                <p className="text-[10px] text-muted-foreground">Locked Principal</p>
+                                <p className="text-xs font-bold text-amber-600 dark:text-amber-400">{tradeBalanceHidden ? "••••" : `$${lockedPrincipal.toFixed(2)}`}</p>
+                              </div>
+                            </div>
+                            <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                              <div>
+                                <p className="text-[10px] text-muted-foreground">Available to Withdraw</p>
+                                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{tradeBalanceHidden ? "••••" : `$${withdrawableAmt.toFixed(2)}`}</p>
+                              </div>
                             </div>
                           </div>
-                          <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                            <div>
-                              <p className="text-[10px] text-muted-foreground">Available to Withdraw</p>
-                              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{tradeBalanceHidden ? "••••" : `$${withdrawableAmt.toFixed(2)}`}</p>
+                          {/* Return progress toward 100% target */}
+                          {lockedPrincipal > 0 && (
+                            <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-[10px] text-muted-foreground font-medium">Return Progress</p>
+                                <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                                  {tradeBalanceHidden ? "••••" : `${Math.min(100, (totalBotEarned / lockedPrincipal) * 100).toFixed(1)}% of 100% target`}
+                                </p>
+                              </div>
+                              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                                  style={{ width: `${Math.min(100, (totalBotEarned / lockedPrincipal) * 100)}%` }} />
+                              </div>
+                              <p className="text-[9px] text-muted-foreground mt-0.5">{activePlanConfig.label} · {activePlanConfig.rateLabel} — target: ${tradeBalanceHidden ? "••••" : lockedPrincipal.toFixed(2)} in earnings</p>
                             </div>
-                          </div>
+                          )}
                         </div>
                       )}
                       {roiComplete && (
@@ -1790,7 +1808,7 @@ export default function AffiliateDashboard() {
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1.5">
-                        <p className="text-xs text-muted-foreground">+2% / session</p>
+                        <p className="text-xs text-muted-foreground">+{(activePlanConfig.dailyRate * 100).toFixed(0)}% / session</p>
                         <Button
                           size="sm"
                           variant="outline"
@@ -3223,8 +3241,17 @@ export default function AffiliateDashboard() {
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-600" /> Choose Trading Plan</DialogTitle>
-                <DialogDescription>Select your cycle length — shorter plans yield more daily profit but carry higher market volatility.</DialogDescription>
+                <DialogDescription>Select your cycle length — shorter plans yield more daily profit but carry higher market volatility. Earnings cap at 100% of your deposited capital.</DialogDescription>
               </DialogHeader>
+              {totalInvested > 0 && !roiComplete && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 flex items-start gap-2 text-xs">
+                  <span className="text-amber-500 mt-0.5 shrink-0">ℹ</span>
+                  <div>
+                    <p className="font-semibold text-amber-700 dark:text-amber-400">You have an active {planDaysFromWallet}-day cycle</p>
+                    <p className="text-amber-600 dark:text-amber-300 mt-0.5">Choosing a new plan will start a fresh cycle from Day 1 with your new deposit. Your existing earnings stay in your wallet.</p>
+                  </div>
+                </div>
+              )}
               <div className="py-2 space-y-2">
                 {TRADING_PLANS.map(plan => (
                   <button
@@ -3239,10 +3266,13 @@ export default function AffiliateDashboard() {
                     className={`w-full text-left flex items-center justify-between gap-3 rounded-xl border-2 transition-all duration-150 px-4 py-3.5 group ${selectedTradingPlan === plan.days ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-border hover:border-emerald-400 bg-card hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10"}`}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                         <p className="font-bold text-sm">{plan.label}</p>
                         {plan.days === 120 && <span className="text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">Recommended</span>}
                         {selectedTradingPlan === plan.days && <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">Selected</span>}
+                        {totalInvested > 0 && !roiComplete && planDaysFromWallet === plan.days && (
+                          <span className="text-[10px] font-bold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded-full">Active</span>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground">{plan.description}</p>
                     </div>

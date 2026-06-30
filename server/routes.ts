@@ -3158,9 +3158,12 @@ export async function registerRoutes(
         let updatedWallet = await storage.applyBotLoss(userId, lossAmount.toFixed(6));
         updatedWallet = await storage.incrementTradingDay(userId);
 
-        // ── Check plan-length cycle completion ──────────────────────────
+        // ── Check plan-length or 100%-return cycle completion ───────────
+        const lossLockedCapital  = parseFloat(wallet.lockedPrincipal ?? "0");
+        const lossEarningsNow    = parseFloat(updatedWallet.totalBotEarnings ?? "0");
+        const lossHitTarget      = lossLockedCapital > 0 && lossEarningsNow >= lossLockedCapital;
         let cycleJustComplete = false;
-        if ((updatedWallet.tradingDayNumber ?? 0) >= planDays) {
+        if ((updatedWallet.tradingDayNumber ?? 0) >= planDays || lossHitTarget) {
           cycleJustComplete = true;
           // Credit remaining net earnings (profit above locked capital) to Swift wallet before zeroing
           const preCompleteBalance = parseFloat(updatedWallet.tradeBalance);
@@ -3198,7 +3201,7 @@ export async function registerRoutes(
         });
       }
 
-      // ── PROFIT DAY: proportional earnings (fraction of up to 2%) ─────
+      // ── PROFIT DAY: proportional earnings (fraction of plan daily rate) ─
       const rate    = BOT_FULL_RATE * fraction;
       const grossEarning = parseFloat((balance * rate).toFixed(6));
       const ratePercent = (rate * 100).toFixed(4);
@@ -3209,7 +3212,14 @@ export async function registerRoutes(
       const botAffiliateCommission = parseFloat((grossEarning * TRADE_MARKET.AFFILIATE_SHARE_RATE).toFixed(6));
       const botUser = await storage.getUser(userId);
       const hasBotReferrer = !!(botUser?.referredBy);
-      const earning = hasBotReferrer ? parseFloat((grossEarning - botAffiliateCommission).toFixed(6)) : grossEarning;
+      let earning = hasBotReferrer ? parseFloat((grossEarning - botAffiliateCommission).toFixed(6)) : grossEarning;
+
+      // ── 100% return cap: earnings cannot exceed locked capital (net) ───
+      const lockedCapital   = parseFloat(wallet.lockedPrincipal ?? "0");
+      const priorEarnings   = parseFloat(wallet.totalBotEarnings ?? "0");
+      const remainingToTarget = Math.max(0, lockedCapital - priorEarnings);
+      const cappedByTarget  = lockedCapital > 0 && earning > remainingToTarget;
+      if (cappedByTarget) earning = parseFloat(remainingToTarget.toFixed(6));
 
       await storage.createTradeTransaction({
         userId,
@@ -3222,7 +3232,7 @@ export async function registerRoutes(
         netAmount: earning.toFixed(6),
         txHash: null,
         status: "completed",
-        note: `Bot session day ${currentCycleDay}/${planDays}: ${elapsedHours}h → ${ratePercent}% on $${balance.toFixed(2)}${hasBotReferrer ? ` | 5% referral: $${botAffiliateCommission.toFixed(4)}` : ""}`,
+        note: `Bot session day ${currentCycleDay}/${planDays}: ${elapsedHours}h → ${ratePercent}% on $${balance.toFixed(2)}${cappedByTarget ? " [100% cap]" : ""}${hasBotReferrer ? ` | 5% referral: $${botAffiliateCommission.toFixed(4)}` : ""}`,
       });
       let updatedWallet = await storage.creditBotEarnings(userId, earning.toFixed(6));
       updatedWallet = await storage.incrementTradingDay(userId);
@@ -3232,26 +3242,29 @@ export async function registerRoutes(
         await creditReferrerCommission(userId, grossEarning, "bot earnings").catch(() => {});
       }
 
-      // ── Cycle completion check (plan-length aware) ─────────────────────
+      // ── Cycle completion check: days elapsed OR 100% profit target hit ─
+      const totalEarningsNow = parseFloat(updatedWallet.totalBotEarnings ?? "0");
+      const hitReturnTarget  = lockedCapital > 0 && totalEarningsNow >= lockedCapital;
       let cycleJustComplete = false;
-      if (!updatedWallet.roiComplete && (updatedWallet.tradingDayNumber ?? 0) >= planDays) {
+      if (!updatedWallet.roiComplete && ((updatedWallet.tradingDayNumber ?? 0) >= planDays || hitReturnTarget)) {
         cycleJustComplete = true;
-        // Credit remaining withdrawable earnings to Swift wallet before zeroing trade balance
         const preCompleteBalance = parseFloat(updatedWallet.tradeBalance);
         const preCompleteLocked  = parseFloat(updatedWallet.lockedPrincipal ?? "0");
         const cycleEarnings = Math.max(0, preCompleteBalance - preCompleteLocked);
         if (cycleEarnings > 0) {
           const swWallet = await storage.getOrCreateWallet(userId);
           await storage.updateWalletBalance(userId, (parseFloat(swWallet.balance) + cycleEarnings).toFixed(2));
-          await storage.createTransaction({ userId, type: "admin_credit", amount: cycleEarnings.toFixed(2), fee: "0.00", paymentMethod: "system", description: `${planDays}-day trade cycle payout — earnings credited to SwiftWallet` });
+          await storage.createTransaction({ userId, type: "admin_credit", amount: cycleEarnings.toFixed(2), fee: "0.00", paymentMethod: "system", description: `${planDays}-day trade cycle payout${hitReturnTarget ? " (100% return reached)" : ""} — earnings credited to SwiftWallet` });
         }
         await storage.markRoiComplete(userId);
         await storage.createNotification({
           userId,
           type: "trade",
-          title: `🎉 ${planDays}-Day Trading Cycle Complete!`,
-          message: `Congratulations! Your ${planDays}-day trading cycle is complete.${cycleEarnings > 0 ? ` $${cycleEarnings.toFixed(2)} in earnings have been credited to your SwiftWallet.` : ""} Top up to start a fresh cycle.`,
-          data: { tradingDayNumber: updatedWallet.tradingDayNumber, cycleEarnings },
+          title: hitReturnTarget ? "🎉 100% Return Achieved — Cycle Complete!" : `🎉 ${planDays}-Day Trading Cycle Complete!`,
+          message: hitReturnTarget
+            ? `You've hit your 100% profit target! $${cycleEarnings.toFixed(2)} in earnings have been credited to your SwiftWallet. Top up to start a fresh cycle.`
+            : `Congratulations! Your ${planDays}-day trading cycle is complete.${cycleEarnings > 0 ? ` $${cycleEarnings.toFixed(2)} in earnings have been credited to your SwiftWallet.` : ""} Top up to start a fresh cycle.`,
+          data: { tradingDayNumber: updatedWallet.tradingDayNumber, cycleEarnings, hitReturnTarget },
           isRead: false,
         });
       }
@@ -3260,8 +3273,8 @@ export async function registerRoutes(
         userId,
         type: "trade",
         title: "Bot Session Complete — Earnings Credited",
-        message: `Day ${currentCycleDay}/${planDays}: Your bot (${elapsedHours}h) earned $${earning.toFixed(4)} (${ratePercent}%${hasBotReferrer ? ", 5% referral deducted" : ""}).`,
-        data: { earning, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance, cycleDay: currentCycleDay },
+        message: `Day ${currentCycleDay}/${planDays}: Your bot (${elapsedHours}h) earned $${earning.toFixed(4)} (${ratePercent}%${cappedByTarget ? " — 100% cap reached" : ""}${hasBotReferrer ? ", 5% referral deducted" : ""}).`,
+        data: { earning, elapsedHours, ratePercent, newBalance: updatedWallet.tradeBalance, cycleDay: currentCycleDay, cappedByTarget },
         isRead: false,
       });
       storage.getUser(userId).then(u => {

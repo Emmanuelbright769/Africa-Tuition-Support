@@ -4,10 +4,11 @@ import {
   TrendingUp, TrendingDown, Search, Bell, Star, StarOff,
   ArrowLeft, X, Plus, Minus, Home, BarChart3, Briefcase,
   List, ChevronRight, RefreshCw, CheckCircle2, AlertCircle, Loader2,
+  Wallet, DollarSign, Clock,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line,
-  XAxis, YAxis, Tooltip as RTooltip, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip as RTooltip,
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ interface Stock {
   price: number; priceNative: number; change: number; changePercent: number;
   open: number; high: number; low: number;
   volume: string; marketCap: string; description: string;
-  color: string; currency: string; lastUpdated: number;
+  color: string; logoUrl: string; currency: string; lastUpdated: number;
 }
 interface Holding {
   id: number; ticker: string; shares: string; avgCostUsd: string;
@@ -32,9 +33,14 @@ interface TradeOrder {
   createdAt: string;
 }
 interface HistPoint { t: string; v: number; }
+interface Notification { id: number; type: string; title: string; message: string; isRead: boolean; createdAt: string; }
 type Tab = "home" | "market" | "portfolio" | "watchlist" | "orders";
 type TimeRange = "1D" | "1W" | "1M" | "3M" | "1Y";
 type Category = "all" | "african" | "us" | "global";
+
+// ─── Trade limits ──────────────────────────────────────────────────────────────
+const MIN_TRADE = 10;
+const MAX_TRADE = 1200;
 
 // ─── Pseudo-sparkline for list views ──────────────────────────────────────────
 function miniSpark(price: number, pct: number, n = 12): HistPoint[] {
@@ -72,7 +78,33 @@ function nativePrice(stock: Stock) {
   return `${sym}${fmt(stock.priceNative)}`;
 }
 
-// ─── Shared sub-components ─────────────────────────────────────────────────────
+// ─── Stock Logo / Avatar ───────────────────────────────────────────────────────
+function StockLogo({ stock, size = 40 }: { stock: Stock; size?: number }) {
+  const [imgErr, setImgErr] = useState(false);
+  const initials = stock.ticker.slice(0, 2);
+
+  if (!imgErr && stock.logoUrl) {
+    return (
+      <div style={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", background: "#1f2937", flexShrink: 0 }}>
+        <img
+          src={stock.logoUrl}
+          alt={stock.ticker}
+          onError={() => setImgErr(true)}
+          style={{ width: "100%", height: "100%", objectFit: "contain", padding: 4 }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", background: stock.color, flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      color: "#fff", fontSize: size * 0.28, fontWeight: 900 }}>
+      {initials}
+    </div>
+  );
+}
+
 function MiniSparkline({ data, up }: { data: HistPoint[]; up: boolean }) {
   return (
     <ResponsiveContainer width={64} height={30}>
@@ -82,20 +114,224 @@ function MiniSparkline({ data, up }: { data: HistPoint[]; up: boolean }) {
     </ResponsiveContainer>
   );
 }
-function Avatar({ stock }: { stock: Stock }) {
-  return (
-    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[11px] font-black shrink-0"
-      style={{ background: stock.color }}>
-      {stock.ticker.slice(0, 2)}
-    </div>
-  );
-}
+
 function PctBadge({ v }: { v: number }) {
   return (
     <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-lg whitespace-nowrap"
       style={{ color: pctColor(v), background: pctBg(v) }}>
       {v >= 0 ? "+" : ""}{v.toFixed(2)}%
     </span>
+  );
+}
+
+// ─── Fund Exchange Modal ───────────────────────────────────────────────────────
+function FundModal({ swiftBalance, onClose, onSuccess }: {
+  swiftBalance: number; onClose: () => void; onSuccess: (newCash: number, newSwift: number) => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [errMsg, setErrMsg] = useState("");
+
+  const parsed = parseFloat(amount) || 0;
+  const valid = parsed >= MIN_TRADE && parsed <= MAX_TRADE && parsed <= swiftBalance;
+
+  async function submit() {
+    if (!valid || state === "loading") return;
+    setState("loading");
+    setErrMsg("");
+    try {
+      const res = await fetch("/api/exchange/fund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: parsed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Funding failed");
+      setState("done");
+      setTimeout(() => {
+        onSuccess(data.exchangeBalance, data.swiftBalance);
+        onClose();
+      }, 1500);
+    } catch (e: any) {
+      setErrMsg(e.message ?? "Funding failed");
+      setState("error");
+    }
+  }
+
+  const presets = [10, 50, 100, 500].filter(p => p <= swiftBalance);
+
+  return (
+    <motion.div className="absolute inset-0 z-50 flex items-end"
+      style={{ background: "rgba(0,0,0,0.8)" }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <motion.div className="w-full rounded-t-3xl px-5 pt-5 pb-10"
+        style={{ background: "#111827" }}
+        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 26, stiffness: 260 }}>
+
+        {state === "done" ? (
+          <div className="flex flex-col items-center py-10 gap-3">
+            <CheckCircle2 className="w-16 h-16 text-green-400" />
+            <p className="text-white font-bold text-xl">Exchange Account Funded!</p>
+            <p className="text-gray-400 text-sm">${fmt(parsed)} added to your exchange cash.</p>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(34,197,94,0.15)" }}>
+                  <Wallet className="w-5 h-5 text-green-400" />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-base">Fund Exchange Account</p>
+                  <p className="text-gray-500 text-xs">Transfer from Swift wallet</p>
+                </div>
+              </div>
+              <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
+
+            <div className="rounded-2xl p-3 mb-4 flex justify-between" style={{ background: "#1f2937" }}>
+              <div>
+                <p className="text-gray-500 text-[10px]">Swift Wallet</p>
+                <p className="text-white font-bold text-sm">${fmt(swiftBalance)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-500 text-[10px]">Limits</p>
+                <p className="text-gray-400 text-xs font-semibold">${MIN_TRADE} – ${MAX_TRADE.toLocaleString()}</p>
+              </div>
+            </div>
+
+            {presets.length > 0 && (
+              <div className="flex gap-2 mb-4 flex-wrap">
+                {presets.map(p => (
+                  <button key={p} onClick={() => setAmount(String(p))}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
+                    style={{
+                      background: parseFloat(amount) === p ? "var(--color-tsia-green)" : "transparent",
+                      borderColor: parseFloat(amount) === p ? "var(--color-tsia-green)" : "#374151",
+                      color: parseFloat(amount) === p ? "#fff" : "#9ca3af",
+                    }}>
+                    ${p}
+                  </button>
+                ))}
+                <button onClick={() => setAmount(Math.min(swiftBalance, MAX_TRADE).toFixed(2))}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
+                  style={{ borderColor: "#374151", color: "#9ca3af" }}>
+                  Max
+                </button>
+              </div>
+            )}
+
+            <div className="mb-5">
+              <label className="text-xs text-gray-400 mb-2 block">Amount (USD)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                <Input
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  type="number" step="1" min="10" max="1200"
+                  placeholder="10.00"
+                  className="pl-7 text-white border-gray-700 text-sm"
+                  style={{ background: "#1f2937" }}
+                  data-testid="input-fund-amount"
+                />
+              </div>
+              {parsed > 0 && parsed < MIN_TRADE && <p className="text-red-400 text-xs mt-1">Minimum is ${MIN_TRADE}</p>}
+              {parsed > MAX_TRADE && <p className="text-red-400 text-xs mt-1">Maximum is ${MAX_TRADE.toLocaleString()}</p>}
+              {parsed > swiftBalance && parsed <= MAX_TRADE && <p className="text-red-400 text-xs mt-1">Exceeds Swift wallet balance</p>}
+            </div>
+
+            {state === "error" && (
+              <div className="flex items-center gap-2 mb-3 text-red-400 text-xs">
+                <AlertCircle className="w-4 h-4" /> {errMsg}
+              </div>
+            )}
+
+            <button onClick={submit} disabled={!valid || state === "loading"}
+              className="w-full py-3.5 rounded-2xl font-bold text-white text-sm transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
+              style={{ background: "var(--color-tsia-green)" }}
+              data-testid="btn-fund-confirm">
+              {state === "loading" && <Loader2 className="w-4 h-4 animate-spin" />}
+              Fund Exchange Account
+            </button>
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Notifications Panel ───────────────────────────────────────────────────────
+function NotificationsPanel({ onClose }: { onClose: () => void }) {
+  const [notifs, setNotifs] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/notifications")
+      .then(r => r.ok ? r.json() : [])
+      .then((all: Notification[]) => {
+        const exchange = all.filter(n =>
+          n.type === "trade" ||
+          (n.type === "wallet_credit" && n.title?.toLowerCase().includes("exchange"))
+        );
+        setNotifs(exchange.slice(0, 20));
+        setLoading(false);
+
+        const unreadIds = exchange.filter(n => !n.isRead).map(n => n.id);
+        if (unreadIds.length) {
+          fetch("/api/notifications/read-all", { method: "PATCH" }).catch(() => {});
+        }
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  return (
+    <motion.div className="absolute inset-0 z-50 flex flex-col" style={{ background: "#0a0f1a" }}
+      initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+      transition={{ type: "spring", damping: 26, stiffness: 260 }}>
+      <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: "#1a2236" }}>
+        <button onClick={onClose}
+          className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#111827" }}>
+          <ArrowLeft className="w-4 h-4 text-white" />
+        </button>
+        <p className="text-white font-bold">Exchange Notifications</p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 text-gray-600 animate-spin" />
+          </div>
+        ) : notifs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+            <Bell className="w-12 h-12 text-gray-700" />
+            <p className="text-gray-500 font-semibold">No notifications yet</p>
+            <p className="text-gray-700 text-sm">Trade activity and funding updates will appear here.</p>
+          </div>
+        ) : (
+          notifs.map(n => (
+            <div key={n.id} className="flex gap-3 p-3 rounded-2xl border"
+              style={{ background: n.isRead ? "#0d1117" : "#111827", borderColor: n.isRead ? "#1a2236" : "#1f4c35" }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: n.type === "trade" ? "rgba(34,197,94,0.12)" : "rgba(59,130,246,0.12)" }}>
+                {n.type === "trade"
+                  ? <TrendingUp className="w-4 h-4 text-green-400" />
+                  : <DollarSign className="w-4 h-4 text-blue-400" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-xs font-bold">{n.title}</p>
+                <p className="text-gray-400 text-xs mt-0.5 leading-relaxed">{n.message}</p>
+                <p className="text-gray-700 text-[10px] mt-1 flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  {new Date(n.createdAt).toLocaleDateString("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </motion.div>
   );
 }
 
@@ -115,10 +351,14 @@ function TradeModal({ stock, type, cash, onClose, onConfirm }: {
   const subtotal  = shares * execPrice;
   const fee       = +(subtotal * 0.001).toFixed(2);
   const grand     = type === "buy" ? subtotal + fee : subtotal - fee;
-  const canAfford = type === "buy" ? grand <= cash : true;
+
+  const belowMin = type === "buy" && subtotal < MIN_TRADE;
+  const aboveMax = type === "buy" && subtotal > MAX_TRADE;
+  const cantAfford = type === "buy" && grand > cash;
+  const canSubmit = !belowMin && !aboveMax && !cantAfford;
 
   async function submit() {
-    if (!canAfford || state === "loading") return;
+    if (!canSubmit || state === "loading") return;
     setState("loading");
     setErrMsg("");
     try {
@@ -128,6 +368,11 @@ function TradeModal({ stock, type, cash, onClose, onConfirm }: {
       setErrMsg(e.message ?? "Order failed");
       setState("error");
     }
+  }
+
+  function changeShares(delta: number) {
+    const next = Math.max(1, shares + delta);
+    setShares(next);
   }
 
   return (
@@ -150,7 +395,7 @@ function TradeModal({ stock, type, cash, onClose, onConfirm }: {
         ) : <>
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
-              <Avatar stock={stock} />
+              <StockLogo stock={stock} size={40} />
               <div>
                 <p className="text-white font-bold">{stock.ticker}</p>
                 <p className="text-gray-400 text-xs">{stock.name}</p>
@@ -196,12 +441,12 @@ function TradeModal({ stock, type, cash, onClose, onConfirm }: {
           <div className="mb-5">
             <label className="text-xs text-gray-400 mb-2 block">Number of Shares</label>
             <div className="flex items-center justify-center gap-6">
-              <button onClick={() => setShares(Math.max(1, shares - 1))}
+              <button onClick={() => changeShares(-1)}
                 className="w-9 h-9 rounded-full border border-gray-600 flex items-center justify-center text-white hover:border-tsia-green transition-colors">
                 <Minus className="w-3.5 h-3.5" />
               </button>
               <span className="text-white font-black text-2xl w-12 text-center">{shares}</span>
-              <button onClick={() => setShares(shares + 1)}
+              <button onClick={() => changeShares(1)}
                 className="w-9 h-9 rounded-full border border-gray-600 flex items-center justify-center text-white hover:border-tsia-green transition-colors">
                 <Plus className="w-3.5 h-3.5" />
               </button>
@@ -223,11 +468,27 @@ function TradeModal({ stock, type, cash, onClose, onConfirm }: {
               <span className="text-xs text-gray-400">Available Cash</span>
               <span className="text-xs font-bold text-green-400">${fmt(cash)}</span>
             </div>
+            {type === "buy" && (
+              <div className="border-t border-gray-700 pt-2 flex justify-between">
+                <span className="text-xs text-gray-400">Order Limits</span>
+                <span className="text-xs text-gray-500">${MIN_TRADE} – ${MAX_TRADE.toLocaleString()}</span>
+              </div>
+            )}
           </div>
 
-          {!canAfford && (
+          {belowMin && (
+            <div className="flex items-center gap-2 mb-3 text-amber-400 text-xs">
+              <AlertCircle className="w-4 h-4" /> Minimum order is ${MIN_TRADE}. Add more shares.
+            </div>
+          )}
+          {aboveMax && (
+            <div className="flex items-center gap-2 mb-3 text-amber-400 text-xs">
+              <AlertCircle className="w-4 h-4" /> Maximum order is ${MAX_TRADE.toLocaleString()}. Reduce shares.
+            </div>
+          )}
+          {cantAfford && !belowMin && !aboveMax && (
             <div className="flex items-center gap-2 mb-3 text-red-400 text-xs">
-              <AlertCircle className="w-4 h-4" /> Insufficient trade wallet balance.
+              <AlertCircle className="w-4 h-4" /> Insufficient exchange balance.
             </div>
           )}
           {state === "error" && (
@@ -236,7 +497,7 @@ function TradeModal({ stock, type, cash, onClose, onConfirm }: {
             </div>
           )}
 
-          <button onClick={submit} disabled={!canAfford || state === "loading"}
+          <button onClick={submit} disabled={!canSubmit || state === "loading"}
             className="w-full py-3.5 rounded-2xl font-bold text-white text-sm transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
             style={{ background: type === "buy" ? upColor : downColor }}
             data-testid="btn-confirm-trade">
@@ -307,18 +568,21 @@ function StockDetail({ stock, inWatchlist, cash, holding, onBack, onToggleWatch,
         </button>
       </div>
 
-      <div className="px-5 pb-4">
-        <p className="text-gray-400 text-sm mb-1">{stock.name}</p>
-        <div className="flex items-end gap-3">
-          <span className="text-white text-3xl font-black">${fmt(stock.price)}</span>
-          <PctBadge v={stock.changePercent} />
+      <div className="px-5 pb-4 flex gap-4 items-start">
+        <StockLogo stock={stock} size={52} />
+        <div className="flex-1">
+          <p className="text-gray-400 text-sm mb-0.5">{stock.name}</p>
+          <div className="flex items-end gap-3">
+            <span className="text-white text-3xl font-black">${fmt(stock.price)}</span>
+            <PctBadge v={stock.changePercent} />
+          </div>
+          {nativePrice(stock) && (
+            <p className="text-gray-500 text-xs mt-0.5">{nativePrice(stock)} native</p>
+          )}
+          <p className="text-sm mt-1 font-semibold" style={{ color: pctColor(stock.changePercent) }}>
+            {stock.change >= 0 ? "+" : ""}${fmt(Math.abs(stock.change))} today
+          </p>
         </div>
-        {nativePrice(stock) && (
-          <p className="text-gray-500 text-xs mt-0.5">{nativePrice(stock)} native</p>
-        )}
-        <p className="text-sm mt-1 font-semibold" style={{ color: pctColor(stock.changePercent) }}>
-          {stock.change >= 0 ? "+" : ""}${fmt(Math.abs(stock.change))} today
-        </p>
       </div>
 
       {holding && (
@@ -414,9 +678,10 @@ function StockDetail({ stock, inWatchlist, cash, holding, onBack, onToggleWatch,
 }
 
 // ─── Home tab ──────────────────────────────────────────────────────────────────
-function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, onGoMarket }: {
+function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, onGoMarket, onFund }: {
   holdings: Holding[]; orders: TradeOrder[]; stocks: Stock[]; cash: number;
   watchlistSet: Set<string>; onSelectStock: (s: Stock) => void; onGoMarket: () => void;
+  onFund: () => void;
 }) {
   const stockMap = useMemo(() => new Map(stocks.map(s => [s.ticker, s])), [stocks]);
   const totalHoldings = holdings.reduce((sum, h) => sum + h.value, 0);
@@ -458,6 +723,14 @@ function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, 
             <p className="text-white text-sm font-bold">${fmt(cash)}</p>
           </div>
         </div>
+        {cash === 0 && (
+          <button onClick={onFund}
+            className="mt-3 relative w-full py-2 rounded-xl text-xs font-bold text-white transition-opacity hover:opacity-90"
+            style={{ background: "rgba(34,197,94,0.35)", border: "1px solid rgba(34,197,94,0.4)" }}
+            data-testid="btn-fund-home">
+            + Fund Exchange Account
+          </button>
+        )}
       </div>
 
       {/* Top movers */}
@@ -472,17 +745,17 @@ function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, 
           <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
             {topMovers.map(s => (
               <button key={s.ticker} onClick={() => onSelectStock(s)}
-                className="flex flex-col p-3 rounded-2xl shrink-0 w-32 border text-left transition-all hover:border-tsia-green/30"
+                className="flex flex-col p-3 rounded-2xl shrink-0 w-36 border text-left transition-all hover:border-tsia-green/30"
                 style={{ background: "#111827", borderColor: "#1f2937" }}
                 data-testid={`card-mover-${s.ticker}`}>
                 <div className="flex items-center justify-between mb-2">
-                  <Avatar stock={s} />
+                  <StockLogo stock={s} size={32} />
                   <PctBadge v={s.changePercent} />
                 </div>
                 <p className="text-white text-xs font-black">{s.ticker}</p>
-                <p className="text-gray-500 text-[10px] mb-1.5 truncate">{s.name}</p>
+                <p className="text-gray-500 text-[10px] truncate mb-1">{s.name}</p>
                 <MiniSparkline data={miniSpark(s.price, s.changePercent)} up={s.changePercent >= 0} />
-                <p className="text-white text-sm font-bold mt-1">${fmt(s.price)}</p>
+                <p className="text-white text-xs font-bold mt-1">${fmt(s.price)}</p>
               </button>
             ))}
           </div>
@@ -492,21 +765,21 @@ function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, 
       {/* Watchlist preview */}
       {watchedStocks.length > 0 && (
         <div>
-          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">Your Watchlist</p>
+          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">Watchlist</p>
           <div className="space-y-2">
             {watchedStocks.map(s => (
               <button key={s.ticker} onClick={() => onSelectStock(s)}
-                className="w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all hover:border-tsia-green/30"
+                className="w-full flex items-center gap-3 p-3 rounded-2xl border text-left"
                 style={{ background: "#111827", borderColor: "#1f2937" }}
-                data-testid={`row-watchlist-${s.ticker}`}>
-                <Avatar stock={s} />
+                data-testid={`row-watch-home-${s.ticker}`}>
+                <StockLogo stock={s} size={36} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-bold">{s.ticker}</p>
-                  <p className="text-gray-500 text-xs truncate">{s.name}</p>
+                  <p className="text-white text-xs font-black">{s.ticker}</p>
+                  <p className="text-gray-500 text-[10px] truncate">{s.name}</p>
                 </div>
                 <MiniSparkline data={miniSpark(s.price, s.changePercent)} up={s.changePercent >= 0} />
-                <div className="text-right ml-1 shrink-0">
-                  <p className="text-white text-sm font-bold">${fmt(s.price)}</p>
+                <div className="text-right ml-2">
+                  <p className="text-white text-xs font-bold">${fmt(s.price)}</p>
                   <PctBadge v={s.changePercent} />
                 </div>
               </button>
@@ -515,50 +788,12 @@ function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, 
         </div>
       )}
 
-      {/* Recent activity */}
-      {orders.length > 0 && (
-        <div>
-          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">Recent Activity</p>
-          <div className="space-y-2">
-            {orders.slice(0, 3).map(o => {
-              const s = stockMap.get(o.ticker);
-              return (
-                <div key={o.id} className="flex items-center gap-3 p-3 rounded-2xl border"
-                  style={{ background: "#111827", borderColor: "#1f2937" }}>
-                  {s ? <Avatar stock={s} /> : (
-                    <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-white text-[11px] font-black shrink-0">
-                      {o.ticker.slice(0,2)}
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <p className="text-white text-sm font-bold">{o.ticker}</p>
-                    <p className="text-gray-500 text-xs">
-                      {new Date(o.createdAt).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${o.type==="buy" ? "text-green-400 bg-green-400/10" : "text-red-400 bg-red-400/10"}`}>
-                      {o.type==="buy" ? "+" : "-"}{fmtShares(o.shares)} shares
-                    </span>
-                    <p className="text-white text-xs mt-0.5">${fmt(parseFloat(o.totalUsd))}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {orders.length === 0 && holdings.length === 0 && (
-        <div className="flex flex-col items-center py-10 gap-3 text-center">
-          <BarChart3 className="w-12 h-12 text-gray-700" />
-          <p className="text-gray-400 font-semibold">No activity yet</p>
-          <p className="text-gray-600 text-sm">Browse the market and make your first trade.</p>
-          <button onClick={onGoMarket}
-            className="mt-2 px-5 py-2.5 rounded-2xl text-sm font-bold text-white"
-            style={{ background: "var(--color-tsia-green)" }}>
-            Browse Market
-          </button>
+      {/* Activity */}
+      {orders.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-700">
+          <BarChart3 className="w-10 h-10" />
+          <p className="text-sm font-semibold">No activity yet</p>
+          {cash > 0 && <p className="text-xs">Browse the market and place your first trade.</p>}
         </div>
       )}
     </div>
@@ -569,84 +804,80 @@ function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, 
 function MarketTab({ stocks, loading, onSelectStock }: {
   stocks: Stock[]; loading: boolean; onSelectStock: (s: Stock) => void;
 }) {
-  const [search, setSearch] = useState("");
-  const [cat, setCat] = useState<Category>("all");
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<Category>("all");
 
-  const CATS: { id: Category; label: string }[] = [
-    { id: "all",     label: "All"        },
-    { id: "african", label: "🌍 African"  },
-    { id: "us",      label: "🇺🇸 US"      },
-    { id: "global",  label: "🌐 Global"   },
+  const filtered = useMemo(() => {
+    let list = stocks;
+    if (category !== "all") list = list.filter(s => s.region === category);
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      list = list.filter(s => s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
+    }
+    return list;
+  }, [stocks, category, query]);
+
+  const cats: { id: Category; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "us", label: "US" },
+    { id: "global", label: "Global" },
+    { id: "african", label: "African" },
   ];
-
-  const filtered = useMemo(() => stocks.filter(s => {
-    const q = search.toLowerCase();
-    return (s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)) &&
-           (cat === "all" || s.region === cat);
-  }), [search, cat, stocks]);
-
-  if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-tsia-green animate-spin" />
-          <p className="text-gray-400 text-sm">Loading live prices…</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="px-4 pt-3 pb-2 space-y-2" style={{ background: "#0a0f1a" }}>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-          <Input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search stocks…" data-testid="input-stock-search"
-            className="pl-9 text-sm text-white border-0"
-            style={{ background: "#111827" }} />
+          <input value={query} onChange={e => setQuery(e.target.value)}
+            placeholder="Search stocks…"
+            className="w-full pl-9 pr-4 py-2.5 rounded-2xl text-sm text-white placeholder-gray-600 outline-none"
+            style={{ background: "#111827" }}
+            data-testid="input-market-search" />
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {CATS.map(c => (
-            <button key={c.id} onClick={() => setCat(c.id)}
-              className="shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all"
-              style={{ background: cat===c.id ? "var(--color-tsia-green)" : "#111827", color: cat===c.id ? "#fff" : "#6b7280" }}
-              data-testid={`filter-${c.id}`}>
+          {cats.map(c => (
+            <button key={c.id} onClick={() => setCategory(c.id)}
+              className="px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all"
+              style={{ background: category===c.id ? "var(--color-tsia-green)" : "#111827", color: category===c.id ? "#fff" : "#6b7280" }}
+              data-testid={`cat-${c.id}`}>
               {c.label}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="flex items-center px-5 py-1.5">
-        <span className="flex-1 text-[10px] text-gray-600 uppercase tracking-wider font-bold">Stock</span>
-        <span className="w-16 text-center text-[10px] text-gray-600 uppercase tracking-wider font-bold">Chart</span>
-        <span className="w-24 text-right text-[10px] text-gray-600 uppercase tracking-wider font-bold">Price</span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1.5">
-        {filtered.map(s => (
-          <button key={s.ticker} onClick={() => onSelectStock(s)}
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl border text-left transition-all hover:border-tsia-green/30"
-            style={{ background: "#111827", borderColor: "#1f2937" }}
-            data-testid={`row-stock-${s.ticker}`}>
-            <Avatar stock={s} />
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-black">{s.ticker}</p>
-              <p className="text-gray-500 text-xs truncate">{s.name}</p>
-              <span className="text-[10px] text-gray-600">{s.exchange}</span>
-            </div>
-            <MiniSparkline data={miniSpark(s.price, s.changePercent)} up={s.changePercent >= 0} />
-            <div className="text-right shrink-0 ml-1">
-              <p className="text-white text-sm font-bold">${fmt(s.price)}</p>
-              <PctBadge v={s.changePercent} />
-            </div>
-          </button>
-        ))}
-        {!loading && filtered.length === 0 && (
-          <div className="flex flex-col items-center py-12 gap-2 text-gray-600">
-            <Search className="w-8 h-8" />
-            <p className="text-sm">No stocks found</p>
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 text-gray-600 animate-spin" />
+          </div>
+        ) : (
+          <div className="space-y-2 pt-2">
+            {filtered.map(s => (
+              <button key={s.ticker} onClick={() => onSelectStock(s)}
+                className="w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all hover:border-tsia-green/30"
+                style={{ background: "#111827", borderColor: "#1f2937" }}
+                data-testid={`row-stock-${s.ticker}`}>
+                <StockLogo stock={s} size={40} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-black">{s.ticker}</p>
+                  <p className="text-gray-500 text-xs truncate">{s.name}</p>
+                  <p className="text-gray-700 text-[10px]">{s.exchange} · {s.sector}</p>
+                </div>
+                <MiniSparkline data={miniSpark(s.price, s.changePercent)} up={s.changePercent >= 0} />
+                <div className="text-right ml-2 shrink-0">
+                  <p className="text-white text-sm font-bold">${fmt(s.price)}</p>
+                  <PctBadge v={s.changePercent} />
+                </div>
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <div className="flex flex-col items-center py-16 gap-2 text-gray-600">
+                <Search className="w-8 h-8" />
+                <p className="text-sm">No stocks match "{query}"</p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -655,108 +886,77 @@ function MarketTab({ stocks, loading, onSelectStock }: {
 }
 
 // ─── Portfolio tab ─────────────────────────────────────────────────────────────
-function PortfolioTab({ holdings, stocks, cash, onSelectStock }: {
-  holdings: Holding[]; stocks: Stock[]; cash: number; onSelectStock: (s: Stock) => void;
+function PortfolioTab({ holdings, stocks, cash, onSelectStock, onFund }: {
+  holdings: Holding[]; stocks: Stock[]; cash: number;
+  onSelectStock: (s: Stock) => void; onFund: () => void;
 }) {
   const stockMap = useMemo(() => new Map(stocks.map(s => [s.ticker, s])), [stocks]);
-
-  const totalValue  = holdings.reduce((a, b) => a + b.value, 0);
-  const totalCost   = holdings.reduce((a, b) => a + b.cost, 0);
-  const totalPnl    = totalValue - totalCost;
-  const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-
-  const pieData = holdings.map((h, i) => ({
-    name: h.ticker, value: h.value, color: PIE_COLORS[i % PIE_COLORS.length],
-  }));
+  const totalHoldings = holdings.reduce((sum, h) => sum + h.value, 0);
+  const totalPnl = holdings.reduce((sum, h) => sum + h.pnl, 0);
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6 space-y-5">
-      <div className="rounded-3xl p-5 relative overflow-hidden"
-        style={{ background: "linear-gradient(135deg, hsl(142 60% 14%) 0%, hsl(142 52% 24%) 100%)" }}>
-        <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(circle at 80% 20%, rgba(255,255,255,0.07) 0%, transparent 60%)" }} />
-        <p className="text-green-300/80 text-xs mb-0.5 relative">Portfolio Value</p>
-        <p className="text-white text-3xl font-black relative">${fmt(totalValue + cash)}</p>
-        <div className="flex items-center gap-1.5 mt-1 relative">
-          {totalPnl >= 0 ? <TrendingUp className="w-3.5 h-3.5 text-green-300" /> : <TrendingDown className="w-3.5 h-3.5 text-red-300" />}
-          <span className={`text-xs font-semibold ${totalPnl >= 0 ? "text-green-300" : "text-red-300"}`}>
-            {totalPnl >= 0 ? "+" : ""}${fmt(Math.abs(totalPnl))} ({totalPnlPct.toFixed(2)}%) all time
-          </span>
-        </div>
-        <div className="flex justify-between mt-3 pt-3 border-t border-white/10 relative">
-          <div><p className="text-green-300/70 text-[10px]">Invested</p><p className="text-white font-bold">${fmt(totalValue)}</p></div>
-          <div className="text-center"><p className="text-green-300/70 text-[10px]">Cash</p><p className="text-white font-bold">${fmt(cash)}</p></div>
-          <div className="text-right"><p className="text-green-300/70 text-[10px]">P&amp;L</p>
-            <p className={`font-bold ${totalPnl >= 0 ? "text-green-300" : "text-red-300"}`}>
-              {totalPnl >= 0 ? "+" : ""}${fmt(Math.abs(totalPnl))}
+    <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6 space-y-4">
+      {/* Summary card */}
+      <div className="rounded-2xl p-4 space-y-3" style={{ background: "#111827" }}>
+        <div className="flex justify-between">
+          <div>
+            <p className="text-gray-500 text-[10px]">Invested</p>
+            <p className="text-white text-xl font-black">${fmt(totalHoldings)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-gray-500 text-[10px]">Unrealised P&L</p>
+            <p className={`text-xl font-black ${totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+              {totalPnl >= 0 ? "+" : ""}${fmt(totalPnl)}
             </p>
           </div>
         </div>
+        <div className="border-t border-gray-800 pt-3 flex justify-between items-center">
+          <div>
+            <p className="text-gray-500 text-[10px]">Cash Balance</p>
+            <p className="text-white text-base font-bold">${fmt(cash)}</p>
+          </div>
+          <button onClick={onFund}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-white"
+            style={{ background: "var(--color-tsia-green)" }}
+            data-testid="btn-fund-portfolio">
+            + Fund Account
+          </button>
+        </div>
       </div>
 
-      {holdings.length > 0 && (
-        <div className="rounded-2xl p-4" style={{ background: "#111827" }}>
-          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-3">Allocation</p>
-          <div className="flex items-center gap-4">
-            <div className="w-24 h-24 shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={26} outerRadius={42} paddingAngle={3} dataKey="value">
-                    {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex-1 space-y-1.5">
-              {pieData.map(d => (
-                <div key={d.name} className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
-                  <span className="text-gray-300 text-xs flex-1">{d.name}</span>
-                  <span className="text-white text-xs font-bold">{totalValue > 0 ? ((d.value / totalValue) * 100).toFixed(0) : 0}%</span>
+      {holdings.length === 0 ? (
+        <div className="flex flex-col items-center py-12 gap-2 text-gray-600">
+          <Briefcase className="w-8 h-8" />
+          <p className="text-sm">No holdings yet</p>
+          <p className="text-xs text-center">Buy stocks from the Market tab to build your portfolio.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {holdings.map(h => {
+            const s = stockMap.get(h.ticker);
+            return (
+              <button key={h.ticker} onClick={() => s && onSelectStock(s)}
+                className="w-full flex items-center gap-3 p-3 rounded-2xl border text-left"
+                style={{ background: "#111827", borderColor: "#1f2937" }}
+                data-testid={`row-holding-${h.ticker}`}>
+                {s ? <StockLogo stock={s} size={40} /> : (
+                  <div className="w-10 h-10 rounded-full bg-gray-700 shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-black">{h.ticker}</p>
+                  <p className="text-gray-500 text-xs">{fmtShares(h.shares)} shares @ ${fmt(parseFloat(h.avgCostUsd))}</p>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="text-right shrink-0">
+                  <p className="text-white text-sm font-bold">${fmt(h.value)}</p>
+                  <span className="text-xs font-bold" style={{ color: pctColor(h.pnlPct) }}>
+                    {h.pnl >= 0 ? "+" : ""}${fmt(Math.abs(h.pnl))} ({h.pnlPct.toFixed(2)}%)
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
-
-      <div>
-        <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">Holdings</p>
-        {holdings.length === 0 ? (
-          <div className="flex flex-col items-center py-10 gap-2 text-gray-600">
-            <Briefcase className="w-10 h-10" />
-            <p className="text-sm">No holdings yet — buy some stocks!</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {holdings.map(h => {
-              const stock = stockMap.get(h.ticker);
-              return (
-                <button key={h.ticker}
-                  onClick={() => stock && onSelectStock(stock)}
-                  className="w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all hover:border-tsia-green/30"
-                  style={{ background: "#111827", borderColor: "#1f2937" }}
-                  data-testid={`row-holding-${h.ticker}`}>
-                  {stock ? <Avatar stock={stock} /> : (
-                    <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-white text-[11px] font-black shrink-0">
-                      {h.ticker.slice(0,2)}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-black">{h.ticker}</p>
-                    <p className="text-gray-500 text-xs">{fmtShares(h.shares)} shares · avg ${fmt(parseFloat(h.avgCostUsd))}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-white text-sm font-bold">${fmt(h.value)}</p>
-                    <span className="text-xs font-semibold" style={{ color: pctColor(h.pnlPct) }}>
-                      {h.pnl >= 0 ? "+" : ""}${fmt(Math.abs(h.pnl))} ({h.pnlPct.toFixed(2)}%)
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -784,7 +984,7 @@ function WatchlistTab({ watchlistSet, stocks, onSelectStock, onRemove, onTrade }
               <button onClick={() => onSelectStock(s)}
                 className="w-full flex items-center gap-3 p-3 text-left"
                 data-testid={`row-watch-${s.ticker}`}>
-                <Avatar stock={s} />
+                <StockLogo stock={s} size={40} />
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm font-black">{s.ticker}</p>
                   <p className="text-gray-500 text-xs truncate">{s.name}</p>
@@ -884,17 +1084,20 @@ function OrdersTab({ orders, stocks }: { orders: TradeOrder[]; stocks: Stock[] }
 // ─── Main ──────────────────────────────────────────────────────────────────────
 interface ExchangeMarketProps { walletBalance?: number; onBack?: () => void; }
 
-export default function ExchangeMarket({ onBack }: ExchangeMarketProps) {
+export default function ExchangeMarket({ walletBalance = 0, onBack }: ExchangeMarketProps) {
   const [tab, setTab]               = useState<Tab>("home");
   const [selected, setSelected]     = useState<Stock | null>(null);
   const [tradeModal, setTradeModal]  = useState<{ stock: Stock; type: "buy"|"sell" } | null>(null);
+  const [showFundModal, setShowFundModal] = useState(false);
+  const [showNotifs, setShowNotifs]  = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  // Real data state
   const [stocks, setStocks]         = useState<Stock[]>([]);
   const [holdings, setHoldings]     = useState<Holding[]>([]);
   const [orders, setOrders]         = useState<TradeOrder[]>([]);
   const [watchlist, setWatchlist]   = useState(new Set<string>());
   const [cash, setCash]             = useState(0);
+  const [swiftBalance, setSwiftBalance] = useState(walletBalance);
   const [loadingStocks, setLoadingStocks] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const refreshInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -941,17 +1144,39 @@ export default function ExchangeMarket({ onBack }: ExchangeMarketProps) {
     } catch {}
   }
 
-  useEffect(() => {
-    // Initial load — all in parallel
-    Promise.all([loadQuotes(), loadPortfolio(), loadOrders(), loadWatchlist()]);
+  async function loadUnreadCount() {
+    try {
+      const res = await fetch("/api/notifications");
+      if (res.ok) {
+        const all: Notification[] = await res.json();
+        const count = all.filter(n =>
+          !n.isRead && (
+            n.type === "trade" ||
+            (n.type === "wallet_credit" && n.title?.toLowerCase().includes("exchange"))
+          )
+        ).length;
+        setUnreadCount(count);
+      }
+    } catch {}
+  }
 
-    // Refresh prices every 60 seconds
+  async function loadSwiftBalance() {
+    try {
+      const res = await fetch("/api/wallet/balances");
+      if (res.ok) {
+        const data = await res.json();
+        setSwiftBalance(parseFloat(data.confirmedBalance ?? data.bookBalance ?? "0") || 0);
+      }
+    } catch {}
+  }
+
+  useEffect(() => {
+    Promise.all([loadQuotes(), loadPortfolio(), loadOrders(), loadWatchlist(), loadUnreadCount(), loadSwiftBalance()]);
     refreshInterval.current = setInterval(() => loadQuotes(), 60_000);
     return () => { if (refreshInterval.current) clearInterval(refreshInterval.current); };
   }, []);
 
   const toggleWatch = useCallback(async (ticker: string) => {
-    // Optimistic update
     setWatchlist(prev => {
       const n = new Set(prev);
       n.has(ticker) ? n.delete(ticker) : n.add(ticker);
@@ -964,7 +1189,6 @@ export default function ExchangeMarket({ onBack }: ExchangeMarketProps) {
         body: JSON.stringify({ ticker }),
       });
     } catch {
-      // Revert optimistic update on failure
       setWatchlist(prev => {
         const n = new Set(prev);
         n.has(ticker) ? n.delete(ticker) : n.add(ticker);
@@ -986,8 +1210,7 @@ export default function ExchangeMarket({ onBack }: ExchangeMarketProps) {
     }
     const result = await res.json();
     setCash(result.newBalance);
-    // Refresh portfolio and orders after trade
-    await Promise.all([loadPortfolio(), loadOrders()]);
+    await Promise.all([loadPortfolio(), loadOrders(), loadUnreadCount()]);
   }, [tradeModal]);
 
   const stockMap = useMemo(() => new Map(stocks.map(s => [s.ticker, s])), [stocks]);
@@ -1030,9 +1253,20 @@ export default function ExchangeMarket({ onBack }: ExchangeMarketProps) {
             <p className="text-[10px]" style={{ color: "#4b5563" }}>Cash</p>
             <p className="text-white text-xs font-black">${fmt(cash)}</p>
           </div>
-          <button className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#111827" }}
+          <button onClick={() => setShowFundModal(true)}
+            className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#111827" }}
+            data-testid="btn-fund-topbar" title="Fund exchange account">
+            <Wallet className="w-4 h-4 text-green-400" />
+          </button>
+          <button onClick={() => { setShowNotifs(true); setUnreadCount(0); }}
+            className="w-8 h-8 rounded-full flex items-center justify-center relative" style={{ background: "#111827" }}
             data-testid="btn-notifications">
-            <Bell className="w-4 h-4" style={{ color: "#4b5563" }} />
+            <Bell className="w-4 h-4" style={{ color: unreadCount > 0 ? "#22c55e" : "#4b5563" }} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-green-500 text-white text-[9px] font-black flex items-center justify-center">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => loadQuotes(true)}
@@ -1047,13 +1281,15 @@ export default function ExchangeMarket({ onBack }: ExchangeMarketProps) {
       <div className="flex-1 flex flex-col overflow-hidden relative">
         {tab === "home" && (
           <HomeTab holdings={holdings} orders={orders} stocks={stocks} cash={cash}
-            watchlistSet={watchlist} onSelectStock={s => setSelected(s)} onGoMarket={() => setTab("market")} />
+            watchlistSet={watchlist} onSelectStock={s => setSelected(s)}
+            onGoMarket={() => setTab("market")} onFund={() => setShowFundModal(true)} />
         )}
         {tab === "market" && (
           <MarketTab stocks={stocks} loading={loadingStocks} onSelectStock={s => setSelected(s)} />
         )}
         {tab === "portfolio" && (
-          <PortfolioTab holdings={holdings} stocks={stocks} cash={cash} onSelectStock={s => setSelected(s)} />
+          <PortfolioTab holdings={holdings} stocks={stocks} cash={cash}
+            onSelectStock={s => setSelected(s)} onFund={() => setShowFundModal(true)} />
         )}
         {tab === "watchlist" && (
           <WatchlistTab watchlistSet={watchlist} stocks={stocks}
@@ -1072,6 +1308,13 @@ export default function ExchangeMarket({ onBack }: ExchangeMarketProps) {
               onBack={() => setSelected(null)}
               onToggleWatch={() => toggleWatch(selected.ticker)}
               onTrade={type => setTradeModal({ stock: currentStockLive, type })} />
+          )}
+        </AnimatePresence>
+
+        {/* Notifications panel */}
+        <AnimatePresence>
+          {showNotifs && (
+            <NotificationsPanel key="notifs" onClose={() => setShowNotifs(false)} />
           )}
         </AnimatePresence>
       </div>
@@ -1119,6 +1362,19 @@ export default function ExchangeMarket({ onBack }: ExchangeMarketProps) {
           })}
         </div>
       </div>
+
+      {/* Fund modal */}
+      <AnimatePresence>
+        {showFundModal && (
+          <FundModal key="fund"
+            swiftBalance={swiftBalance}
+            onClose={() => setShowFundModal(false)}
+            onSuccess={(newCash, newSwift) => {
+              setCash(newCash);
+              setSwiftBalance(newSwift);
+            }} />
+        )}
+      </AnimatePresence>
 
       {/* Trade modal */}
       <AnimatePresence>

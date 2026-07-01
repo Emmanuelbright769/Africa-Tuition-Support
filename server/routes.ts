@@ -10426,7 +10426,40 @@ export async function registerRoutes(
         return { ...h, price, value, cost, pnl, pnlPct };
       }).filter(h => parseFloat(h.shares) > 0);
 
-      res.json({ holdings: enriched, cash: parseFloat(wallet.tradeBalance) });
+      res.json({ holdings: enriched, cash: parseFloat(wallet.exchangeBalance ?? "0") });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Fund exchange account from Swift wallet ──────────────────────────────────
+  app.post("/api/exchange/fund", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { amount: amountRaw } = req.body;
+      const amount = parseFloat(amountRaw);
+      if (isNaN(amount) || amount <= 0) return res.status(400).json({ message: "Invalid amount." });
+      if (amount < 10) return res.status(400).json({ message: "Minimum funding amount is $10." });
+      if (amount > 1200) return res.status(400).json({ message: "Maximum funding amount is $1,200." });
+
+      const wallet = await storage.getOrCreateWallet(userId);
+      const swiftBalance = parseFloat(wallet.balance);
+      if (swiftBalance < amount) return res.status(400).json({ message: `Insufficient Swift wallet balance. You have $${swiftBalance.toFixed(2)}.` });
+
+      // Deduct from Swift wallet
+      await storage.updateWalletBalance(userId, (swiftBalance - amount).toFixed(2));
+      // Credit exchange balance
+      const updated = await storage.updateExchangeBalance(userId, amount);
+
+      // Notification
+      await storage.createNotification({
+        userId, type: "wallet_credit",
+        title: "Exchange Account Funded ✓",
+        message: `$${amount.toFixed(2)} transferred from your Swift wallet to your Exchange account.`,
+        data: { amount }, isRead: false,
+      });
+
+      res.json({ success: true, exchangeBalance: parseFloat(updated.exchangeBalance ?? "0"), swiftBalance: swiftBalance - amount });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -10450,11 +10483,17 @@ export async function registerRoutes(
       const feeUsd   = +(subtotal * 0.001).toFixed(6);
       const totalUsd = type === "buy" ? +(subtotal + feeUsd).toFixed(6) : +(subtotal - feeUsd).toFixed(6);
 
+      // Enforce trade limits ($10 min / $1,200 max per order)
+      if (type === "buy") {
+        if (subtotal < 10) return res.status(400).json({ message: "Minimum trade amount is $10." });
+        if (subtotal > 1200) return res.status(400).json({ message: "Maximum trade amount is $1,200 per order." });
+      }
+
       const wallet = await storage.getOrCreateTradeWallet(userId);
-      const balance = parseFloat(wallet.tradeBalance);
+      const balance = parseFloat(wallet.exchangeBalance ?? "0");
 
       if (type === "buy") {
-        if (balance < totalUsd) return res.status(400).json({ message: "Insufficient trade wallet balance." });
+        if (balance < totalUsd) return res.status(400).json({ message: "Insufficient exchange balance. Please fund your exchange account." });
       }
 
       let newShares = shares;
@@ -10512,16 +10551,24 @@ export async function registerRoutes(
           feeUsd: feeUsd.toFixed(6),
         });
 
-        // Update trade wallet balance
+        // Update exchange balance (NOT trade_balance)
         const delta = type === "buy" ? -totalUsd : +totalUsd;
         const newBalance = Math.max(0, balance + delta);
         await tx.update(tradeWallets)
-          .set({ tradeBalance: newBalance.toFixed(6), updatedAt: new Date() })
+          .set({ exchangeBalance: newBalance.toFixed(6), updatedAt: new Date() })
           .where(eq(tradeWallets.userId, userId));
       });
 
+      // Send notification for order fill
+      await storage.createNotification({
+        userId, type: "trade",
+        title: `Order Filled — ${type === "buy" ? "Bought" : "Sold"} ${ticker}`,
+        message: `${shares} share${shares !== 1 ? "s" : ""} of ${quote.name} ${type === "buy" ? "purchased" : "sold"} at $${priceUsd.toFixed(2)}. Total: $${totalUsd.toFixed(2)}.`,
+        data: { ticker, shares, priceUsd, totalUsd, type }, isRead: false,
+      });
+
       const updatedWallet = await storage.getOrCreateTradeWallet(userId);
-      res.json({ success: true, newBalance: parseFloat(updatedWallet.tradeBalance), ticker, shares, priceUsd, totalUsd, feeUsd, type });
+      res.json({ success: true, newBalance: parseFloat(updatedWallet.exchangeBalance ?? "0"), ticker, shares, priceUsd, totalUsd, feeUsd, type });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

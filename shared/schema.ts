@@ -136,6 +136,7 @@ export const tradeWallets = pgTable("trade_wallets", {
   trc20Address: text("trc20_address"),
   bep20Address: text("bep20_address"),
   tradeBalance: decimal("trade_balance", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  exchangeBalance: decimal("exchange_balance", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   totalBotEarnings: decimal("total_bot_earnings", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   totalInvested: decimal("total_invested", { precision: 16, scale: 6 }).notNull().default("0.000000"),
   roiComplete: boolean("roi_complete").notNull().default(false),

@@ -39,6 +39,12 @@ const ROLE_META = {
   },
 };
 
+/** Returns the post-login URL for affiliates, honouring any pending subdomain section. */
+function affiliateDashboardUrl(): string {
+  const section = sessionStorage.getItem("tsia_subdomain_section");
+  return section ? `/affiliate-dashboard?section=${section}` : "/affiliate-dashboard";
+}
+
 export default function Login() {
   const [, setLocation] = useLocation();
   const search = useSearch();
@@ -92,7 +98,7 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await loginWithPassword(email.trim(), password, loginRole);
-      if (user.role === "affiliate") setLocation("/affiliate-dashboard");
+      if (user.role === "affiliate") setLocation(affiliateDashboardUrl());
       else setLocation("/dashboard");
     } catch (err: any) {
       toast({ title: "Login Failed", description: parseApiError(err), variant: "destructive" });
@@ -144,7 +150,7 @@ export default function Login() {
     try {
       const user = await verifyOtp(email.trim(), code, loginRole || undefined);
       if (user.role === "admin") setLocation("/admin");
-      else if (user.role === "affiliate") setLocation("/affiliate-dashboard");
+      else if (user.role === "affiliate") setLocation(affiliateDashboardUrl());
       else setLocation("/dashboard");
     } catch (err: any) {
       toast({ title: "Invalid Code", description: parseApiError(err), variant: "destructive" });

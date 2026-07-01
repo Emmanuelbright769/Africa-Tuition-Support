@@ -1,5 +1,5 @@
 import { Switch, Route, useLocation } from "wouter";
-import { Component, ReactNode } from "react";
+import { Component, ReactNode, useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -94,6 +94,47 @@ function Router() {
   );
 }
 
+// ── Subdomain routing ─────────────────────────────────────────────────────────
+// Maps known subdomain prefixes to the corresponding AffiliateDashboard section.
+// Add entries here to support additional subdomains in the future.
+const SUBDOMAIN_SECTIONS: Record<string, string> = {
+  shop:       "ecommerce",
+  ecommerce:  "ecommerce",
+  store:      "ecommerce",
+  tsmart:     "ecommerce",
+  trade:      "trade",
+  trading:    "trade",
+  market:     "trade",
+};
+
+const SESSION_KEY = "tsia_subdomain_section";
+
+function detectSubdomainSection(): string | null {
+  const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+  const sub = hostname.split(".")[0].toLowerCase();
+  return SUBDOMAIN_SECTIONS[sub] ?? null;
+}
+
+function SubdomainRedirect() {
+  useEffect(() => {
+    const section = detectSubdomainSection();
+    if (!section) return;
+
+    // Persist so Login.tsx can restore it after a login redirect.
+    sessionStorage.setItem(SESSION_KEY, section);
+
+    const path = window.location.pathname;
+    const hasSection = window.location.search.includes("section=");
+
+    // Redirect at root or at the dashboard landing (no section yet).
+    if (path === "/" || path === "" || (path === "/affiliate-dashboard" && !hasSection)) {
+      window.location.replace(`/affiliate-dashboard?section=${section}`);
+    }
+  }, []);
+
+  return null;
+}
+
 function ConditionalAiAssistant() {
   const [location] = useLocation();
   if (location === "/promo") return null;
@@ -108,6 +149,7 @@ function App() {
           <LocalCurrencyProvider>
             <AuthProvider>
               <TooltipProvider>
+                <SubdomainRedirect />
                 <Toaster />
                 <Router />
                 <ConditionalAiAssistant />

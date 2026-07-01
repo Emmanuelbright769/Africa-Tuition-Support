@@ -1,1 +1,1 @@
-- [Exchange rate system](exchange-rate-system.md) — multi-currency rates stored as `{code}_ngn_buying_rate`/`_selling_rate` in platform_settings; `getAllRates()` helper + 5-min cache; separate `PUT /api/admin/exchange-rates` endpoint.
+- [yahoo-finance2 v3 setup](yahoo-finance2-v3.md) — must use `new YahooFinance()` not default import; JSE prices in ZAc (÷100 for ZAR).

@@ -33,7 +33,8 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist } from "@shared/schema";
+import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -10381,6 +10382,191 @@ export async function registerRoutes(
         res.json({ verbalScore, quantScore, totalScore, waecScore: waecPct, testScore: testPct, aggregateScore: aggregatePct, passed, prizeAmount: passed ? prizeAmount : 0 });
       } catch (e: any) { res.status(500).json({ message: e.message }); }
     });
+
+  // ── EXCHANGE MARKET ROUTES ────────────────────────────────────────────────────
+
+  app.get("/api/exchange/quotes", async (_req, res) => {
+    try {
+      const quotes = await getAllQuotes();
+      res.json(quotes);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/exchange/history/:ticker", async (req, res) => {
+    try {
+      const { ticker } = req.params;
+      const range = (req.query.range as string) || "1M";
+      const data = await getHistory(ticker, range as any);
+      res.json(data);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/exchange/portfolio", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const [holdings, wallet, quotes] = await Promise.all([
+        db.select().from(exchangeHoldings).where(eq(exchangeHoldings.userId, userId)),
+        storage.getOrCreateTradeWallet(userId),
+        getAllQuotes(),
+      ]);
+
+      const quoteMap = new Map(quotes.map(q => [q.ticker, q]));
+
+      const enriched = holdings.map(h => {
+        const q = quoteMap.get(h.ticker);
+        const shares = parseFloat(h.shares);
+        const avgCost = parseFloat(h.avgCostUsd);
+        const price = q?.price ?? 0;
+        const value = price * shares;
+        const cost  = avgCost * shares;
+        const pnl   = value - cost;
+        const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
+        return { ...h, price, value, cost, pnl, pnlPct };
+      }).filter(h => parseFloat(h.shares) > 0);
+
+      res.json({ holdings: enriched, cash: parseFloat(wallet.tradeBalance) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/exchange/order", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { ticker, shares: sharesRaw, type } = req.body;
+      if (!ticker || !sharesRaw || !type) return res.status(400).json({ message: "ticker, shares and type are required." });
+      if (!["buy","sell"].includes(type)) return res.status(400).json({ message: "type must be buy or sell." });
+
+      const shares = parseFloat(sharesRaw);
+      if (isNaN(shares) || shares <= 0) return res.status(400).json({ message: "shares must be a positive number." });
+
+      const quote = await getQuote(ticker);
+      if (!quote || quote.price <= 0) return res.status(400).json({ message: "Unable to fetch current price for this stock." });
+
+      const priceUsd = quote.price;
+      const subtotal = shares * priceUsd;
+      const feeUsd   = +(subtotal * 0.001).toFixed(6);
+      const totalUsd = type === "buy" ? +(subtotal + feeUsd).toFixed(6) : +(subtotal - feeUsd).toFixed(6);
+
+      const wallet = await storage.getOrCreateTradeWallet(userId);
+      const balance = parseFloat(wallet.tradeBalance);
+
+      if (type === "buy") {
+        if (balance < totalUsd) return res.status(400).json({ message: "Insufficient trade wallet balance." });
+      }
+
+      let newShares = shares;
+      let newAvgCost = priceUsd;
+
+      if (type === "sell") {
+        const existing = await db.select().from(exchangeHoldings)
+          .where(and(eq(exchangeHoldings.userId, userId), eq(exchangeHoldings.ticker, ticker)));
+        if (!existing.length || parseFloat(existing[0].shares) < shares) {
+          return res.status(400).json({ message: `Insufficient shares. You hold ${existing[0]?.shares ?? 0} ${ticker}.` });
+        }
+        newShares = parseFloat(existing[0].shares) - shares;
+      }
+
+      await db.transaction(async tx => {
+        // Upsert holding
+        const existing = await tx.select().from(exchangeHoldings)
+          .where(and(eq(exchangeHoldings.userId, userId), eq(exchangeHoldings.ticker, ticker)));
+
+        if (type === "buy") {
+          if (existing.length) {
+            const prevShares = parseFloat(existing[0].shares);
+            const prevAvg    = parseFloat(existing[0].avgCostUsd);
+            const combinedShares = prevShares + shares;
+            newAvgCost = (prevAvg * prevShares + priceUsd * shares) / combinedShares;
+            newShares  = combinedShares;
+            await tx.update(exchangeHoldings)
+              .set({ shares: newShares.toFixed(8), avgCostUsd: newAvgCost.toFixed(6), updatedAt: new Date() })
+              .where(and(eq(exchangeHoldings.userId, userId), eq(exchangeHoldings.ticker, ticker)));
+          } else {
+            await tx.insert(exchangeHoldings).values({
+              userId, ticker, shares: shares.toFixed(8), avgCostUsd: priceUsd.toFixed(6),
+            });
+          }
+        } else {
+          const prevAvg = existing.length ? parseFloat(existing[0].avgCostUsd) : priceUsd;
+          newAvgCost = prevAvg;
+          if (newShares <= 0.000001) {
+            await tx.delete(exchangeHoldings)
+              .where(and(eq(exchangeHoldings.userId, userId), eq(exchangeHoldings.ticker, ticker)));
+            newShares = 0;
+          } else {
+            await tx.update(exchangeHoldings)
+              .set({ shares: newShares.toFixed(8), updatedAt: new Date() })
+              .where(and(eq(exchangeHoldings.userId, userId), eq(exchangeHoldings.ticker, ticker)));
+          }
+        }
+
+        // Record order
+        await tx.insert(exchangeOrders).values({
+          userId, ticker, stockName: quote.name, type,
+          shares: shares.toFixed(8),
+          priceUsd: priceUsd.toFixed(6),
+          totalUsd: totalUsd.toFixed(6),
+          feeUsd: feeUsd.toFixed(6),
+        });
+
+        // Update trade wallet balance
+        const delta = type === "buy" ? -totalUsd : +totalUsd;
+        const newBalance = Math.max(0, balance + delta);
+        await tx.update(tradeWallets)
+          .set({ tradeBalance: newBalance.toFixed(6), updatedAt: new Date() })
+          .where(eq(tradeWallets.userId, userId));
+      });
+
+      const updatedWallet = await storage.getOrCreateTradeWallet(userId);
+      res.json({ success: true, newBalance: parseFloat(updatedWallet.tradeBalance), ticker, shares, priceUsd, totalUsd, feeUsd, type });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/exchange/orders", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const userOrders = await db.select().from(exchangeOrders)
+        .where(eq(exchangeOrders.userId, userId))
+        .orderBy(desc(exchangeOrders.createdAt));
+      res.json(userOrders);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/exchange/watchlist", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const items = await db.select().from(exchangeWatchlist)
+        .where(eq(exchangeWatchlist.userId, userId))
+        .orderBy(exchangeWatchlist.createdAt);
+      res.json(items.map(i => i.ticker));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/exchange/watchlist/toggle", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { ticker } = req.body;
+      if (!ticker) return res.status(400).json({ message: "ticker is required." });
+
+      const existing = await db.select().from(exchangeWatchlist)
+        .where(and(eq(exchangeWatchlist.userId, userId), eq(exchangeWatchlist.ticker, ticker)));
+
+      if (existing.length) {
+        await db.delete(exchangeWatchlist)
+          .where(and(eq(exchangeWatchlist.userId, userId), eq(exchangeWatchlist.ticker, ticker)));
+        res.json({ inWatchlist: false });
+      } else {
+        await db.insert(exchangeWatchlist).values({ userId, ticker });
+        res.json({ inWatchlist: true });
+      }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
 
   function msUntilNextMondayAt8WAT() {
     // WAT = UTC+1

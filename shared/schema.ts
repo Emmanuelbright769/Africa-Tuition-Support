@@ -1257,3 +1257,47 @@ export const researchGrants = pgTable("research_grants", {
 export const insertResearchGrantSchema = createInsertSchema(researchGrants).omit({ id: true, createdAt: true, grantedAmountUsd: true, status: true, adminNote: true });
 export type InsertResearchGrant = z.infer<typeof insertResearchGrantSchema>;
 export type ResearchGrant = typeof researchGrants.$inferSelect;
+
+// ─── EXCHANGE MARKET ──────────────────────────────────────────────────────────
+export const exchangeOrderTypeEnum = pgEnum("exchange_order_type", ["buy", "sell"]);
+
+export const exchangeHoldings = pgTable("exchange_holdings", {
+  id:         integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:     integer("user_id").notNull().references(() => users.id),
+  ticker:     text("ticker").notNull(),
+  shares:     decimal("shares",       { precision: 18, scale: 8 }).notNull().default("0"),
+  avgCostUsd: decimal("avg_cost_usd", { precision: 16, scale: 6 }).notNull(),
+  updatedAt:  timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({ uq: uniqueIndex("exch_holding_user_ticker").on(t.userId, t.ticker) }));
+
+export const exchangeOrders = pgTable("exchange_orders", {
+  id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:    integer("user_id").notNull().references(() => users.id),
+  ticker:    text("ticker").notNull(),
+  stockName: text("stock_name").notNull(),
+  type:      exchangeOrderTypeEnum("type").notNull(),
+  shares:    decimal("shares",    { precision: 18, scale: 8 }).notNull(),
+  priceUsd:  decimal("price_usd", { precision: 16, scale: 6 }).notNull(),
+  totalUsd:  decimal("total_usd", { precision: 16, scale: 6 }).notNull(),
+  feeUsd:    decimal("fee_usd",   { precision: 16, scale: 6 }).notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const exchangeWatchlist = pgTable("exchange_watchlist", {
+  id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId:    integer("user_id").notNull().references(() => users.id),
+  ticker:    text("ticker").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({ uq: uniqueIndex("exch_watchlist_user_ticker").on(t.userId, t.ticker) }));
+
+export const insertExchangeHoldingSchema = createInsertSchema(exchangeHoldings).omit({ id: true, updatedAt: true });
+export type InsertExchangeHolding = z.infer<typeof insertExchangeHoldingSchema>;
+export type ExchangeHolding = typeof exchangeHoldings.$inferSelect;
+
+export const insertExchangeOrderSchema = createInsertSchema(exchangeOrders).omit({ id: true, createdAt: true });
+export type InsertExchangeOrder = z.infer<typeof insertExchangeOrderSchema>;
+export type ExchangeOrder = typeof exchangeOrders.$inferSelect;
+
+export const insertExchangeWatchlistSchema = createInsertSchema(exchangeWatchlist).omit({ id: true, createdAt: true });
+export type InsertExchangeWatchlist = z.infer<typeof insertExchangeWatchlistSchema>;
+export type ExchangeWatchlistItem = typeof exchangeWatchlist.$inferSelect;

@@ -4623,8 +4623,8 @@ export async function registerRoutes(
         // Record correction transaction for audit trail
         await storage.createTransaction({
           userId: tw.userId,
-          type: "admin_debit" as any,
-          amount: (currentSwBal - parseFloat(newSwBal)).toFixed(2),
+          type: "admin_adjustment",
+          amount: (-(currentSwBal - parseFloat(newSwBal))).toFixed(2),
           fee: "0.00",
           paymentMethod: "system",
           description: `Admin correction: reversed premature trade cycle payout (day ${dayNumber}/${planDays}) — trade wallet restored`,

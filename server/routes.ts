@@ -6677,23 +6677,41 @@ export async function registerRoutes(
           // ── Normal path: deposit record found ──────────────────────────────
           if (dep.status !== "completed") {
             const gross = parseFloat(dep.amount_usd);
-            console.log(`[KORAPAY WEBHOOK] Crediting user ${dep.user_id} $${gross} for ref ${ref}`);
-            await creditWalletWithSplit(dep.user_id, gross, "korapay", ref, { id: dep.id, amountUsd: dep.amount_usd, status: dep.status });
+            if (dep.wallet_type === "exchange_korapay" || ref.startsWith("TSIA-EXKORA-")) {
+              // Exchange market funding — credit exchange balance directly
+              console.log(`[KORAPAY WEBHOOK] Exchange funding: crediting user ${dep.user_id} $${gross} to exchangeBalance for ref ${ref}`);
+              await storage.updateExchangeBalance(dep.user_id, gross);
+              const { Pool: _P } = await import("pg");
+              const _pool = new _P({ connectionString: process.env.DATABASE_URL });
+              await _pool.query("UPDATE wallet_deposits SET status='completed' WHERE tx_hash=$1", [ref]);
+              await _pool.end();
+              await storage.createNotification({
+                userId: dep.user_id, type: "wallet_credit",
+                title: "Exchange Account Funded ✓",
+                message: `$${gross.toFixed(2)} added to your Exchange account via card/bank payment.`,
+                data: { amount: gross, reference: ref }, isRead: false,
+              });
+            } else {
+              console.log(`[KORAPAY WEBHOOK] Crediting user ${dep.user_id} $${gross} for ref ${ref}`);
+              await creditWalletWithSplit(dep.user_id, gross, "korapay", ref, { id: dep.id, amountUsd: dep.amount_usd, status: dep.status });
+            }
           } else {
             console.log(`[KORAPAY WEBHOOK] Ref ${ref} already completed — skipping`);
           }
         } else {
           // ── Fallback: no deposit record — extract userId from metadata or reference ──
-          // Reference format: TSIA-KORA-{userId}-{timestamp}
+          // Reference format: TSIA-KORA-{userId}-{timestamp} or TSIA-EXKORA-{userId}-{timestamp}
           const metaUserId = data.metadata?.userId;
           const metaAmountUsd = data.metadata?.amountUsd;
+          const metaFundType = data.metadata?.fundType;
           let fallbackUserId: number | null = null;
           if (metaUserId && !isNaN(parseInt(metaUserId))) {
             fallbackUserId = parseInt(metaUserId);
-          } else if (ref.startsWith("TSIA-KORA-")) {
-            const parts = ref.split("-"); // ["TSIA","KORA","{userId}","{ts}"]
-            if (parts.length >= 3 && !isNaN(parseInt(parts[2]))) {
-              fallbackUserId = parseInt(parts[2]);
+          } else if (ref.startsWith("TSIA-KORA-") || ref.startsWith("TSIA-EXKORA-")) {
+            const parts = ref.split("-"); // ["TSIA","KORA"|"EXKORA","{userId}","{ts}"]
+            const uidIdx = ref.startsWith("TSIA-EXKORA-") ? 2 : 2;
+            if (parts.length >= 3 && !isNaN(parseInt(parts[uidIdx]))) {
+              fallbackUserId = parseInt(parts[uidIdx]);
             }
           }
           if (fallbackUserId) {
@@ -6703,9 +6721,26 @@ export async function registerRoutes(
             const grossFromKora = data.amount ? parseFloat((data.amount / _koraRates.buying).toFixed(2)) : 0;
             const gross = metaAmountUsd ? parseFloat(metaAmountUsd) : grossFromKora;
             if (gross > 0) {
-              console.log(`[KORAPAY WEBHOOK] No deposit record found for ref ${ref} — crediting user ${fallbackUserId} $${gross} via fallback`);
-              const newDep = await storage.createWalletDeposit({ userId: fallbackUserId, amountUsd: gross.toFixed(2), txHash: ref, walletType: "korapay", status: "pending" });
-              await creditWalletWithSplit(fallbackUserId, gross, "korapay", ref, { id: newDep.id, amountUsd: gross.toFixed(2), status: "pending" });
+              const isExchange = metaFundType === "exchange" || ref.startsWith("TSIA-EXKORA-");
+              if (isExchange) {
+                console.log(`[KORAPAY WEBHOOK] Exchange fallback: crediting user ${fallbackUserId} $${gross} to exchangeBalance for ref ${ref}`);
+                await storage.createWalletDeposit({ userId: fallbackUserId, amountUsd: gross.toFixed(2), txHash: ref, walletType: "exchange_korapay", status: "pending" });
+                await storage.updateExchangeBalance(fallbackUserId, gross);
+                const { Pool: _P2 } = await import("pg");
+                const _pool2 = new _P2({ connectionString: process.env.DATABASE_URL });
+                await _pool2.query("UPDATE wallet_deposits SET status='completed' WHERE tx_hash=$1", [ref]);
+                await _pool2.end();
+                await storage.createNotification({
+                  userId: fallbackUserId, type: "wallet_credit",
+                  title: "Exchange Account Funded ✓",
+                  message: `$${gross.toFixed(2)} added to your Exchange account via card/bank payment.`,
+                  data: { amount: gross, reference: ref }, isRead: false,
+                });
+              } else {
+                console.log(`[KORAPAY WEBHOOK] No deposit record found for ref ${ref} — crediting user ${fallbackUserId} $${gross} via fallback`);
+                const newDep = await storage.createWalletDeposit({ userId: fallbackUserId, amountUsd: gross.toFixed(2), txHash: ref, walletType: "korapay", status: "pending" });
+                await creditWalletWithSplit(fallbackUserId, gross, "korapay", ref, { id: newDep.id, amountUsd: gross.toFixed(2), status: "pending" });
+              }
             } else {
               console.warn(`[KORAPAY WEBHOOK] Ref ${ref} — could not determine amount, skipping`);
             }
@@ -10427,6 +10462,79 @@ export async function registerRoutes(
       }).filter(h => parseFloat(h.shares) > 0);
 
       res.json({ holdings: enriched, cash: parseFloat(wallet.exchangeBalance ?? "0") });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Fund exchange account via Korapay (direct card/bank payment) ────────────
+  app.post("/api/exchange/korapay/initiate", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { amountUsd } = req.body;
+      const amount = parseFloat(amountUsd);
+      if (!amount || amount < 10) return res.status(400).json({ message: "Minimum funding amount is $10." });
+      const secretKey = process.env.KORAPAY_SECRET_KEY;
+      if (!secretKey) return res.status(500).json({ message: "Payment gateway not configured. Contact support." });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const rates = await getUsdNgnRates();
+      const amountNgn = Math.round(amount * rates.buying);
+      const reference = `TSIA-EXKORA-${userId}-${Date.now()}`;
+      const notifUrl = `${req.protocol}://${req.get("host")}/api/webhook/korapay`;
+      const redirectUrl = `${req.protocol}://${req.get("host")}/affiliate-dashboard`;
+      const koraRes = await fetch(`${KORA_BASE}/charges/initialize`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: amountNgn,
+          currency: "NGN",
+          reference,
+          notification_url: notifUrl,
+          redirect_url: redirectUrl,
+          customer: { name: `${user.firstName} ${user.lastName}`, email: user.email },
+          channels: ["card", "bank_transfer", "pay_with_bank"],
+          metadata: { userId, amountUsd: amount.toFixed(2), platform: "TSIA", fundType: "exchange" },
+        }),
+        signal: AbortSignal.timeout(12000),
+      });
+      const koraData = await koraRes.json() as any;
+      if (!koraData.status) return res.status(502).json({ message: koraData.message ?? "Could not initiate payment" });
+      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "exchange_korapay", status: "pending" });
+      res.json({ checkoutUrl: koraData.data.checkout_url, reference, amountNgn });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Verify exchange Korapay payment (called by user after returning from checkout) ─
+  app.post("/api/exchange/korapay/verify", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { reference } = req.body;
+      if (!reference) return res.status(400).json({ message: "reference is required" });
+      const secretKey = process.env.KORAPAY_SECRET_KEY;
+      if (!secretKey) return res.status(500).json({ message: "Payment gateway not configured" });
+      const deposits = await storage.getWalletDepositsByUser(userId);
+      const existing = deposits.find((d: any) => d.txHash === reference && d.walletType === "exchange_korapay");
+      if (!existing) return res.status(404).json({ message: "Payment record not found" });
+      if (existing.status === "completed") return res.json({ message: "Already credited", exchangeBalance: null });
+      const verRes = await fetch(`${KORA_BASE}/charges/${encodeURIComponent(reference)}`, {
+        headers: { "Authorization": `Bearer ${secretKey}` },
+        signal: AbortSignal.timeout(12000),
+      });
+      const verData = await verRes.json() as any;
+      if (!verData.status || verData.data?.status !== "success") {
+        return res.status(400).json({ message: "Payment not confirmed yet. Please wait a moment and try again." });
+      }
+      const gross = parseFloat(existing.amountUsd ?? "0");
+      const updated = await storage.updateExchangeBalance(userId, gross);
+      await storage.updateWalletDeposit(existing.id, { status: "completed" });
+      await storage.createNotification({
+        userId, type: "wallet_credit",
+        title: "Exchange Account Funded ✓",
+        message: `$${gross.toFixed(2)} successfully added to your Exchange account via card/bank payment.`,
+        data: { amount: gross, reference }, isRead: false,
+      });
+      res.json({ success: true, exchangeBalance: parseFloat(updated.exchangeBalance ?? "0") });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

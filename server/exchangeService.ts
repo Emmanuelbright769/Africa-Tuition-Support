@@ -204,7 +204,7 @@ function fmtMcap(mc: number | undefined, currency: string, fx: FxRates): string 
 // ─── Quote cache ──────────────────────────────────────────────────────────────
 interface CachedQuote { data: StockQuote; fetchedAt: number; }
 const quoteCache = new Map<string, CachedQuote>();
-const QUOTE_TTL = 60_000;
+const QUOTE_TTL = 30_000;
 
 export async function getAllQuotes(): Promise<StockQuote[]> {
   const now = Date.now();

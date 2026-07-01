@@ -125,44 +125,71 @@ function PctBadge({ v }: { v: number }) {
 }
 
 // ─── Fund Exchange Modal ───────────────────────────────────────────────────────
-function FundModal({ swiftBalance, onClose, onSuccess }: {
-  swiftBalance: number; onClose: () => void; onSuccess: (newCash: number, newSwift: number) => void;
+type FundState = "idle" | "initiating" | "checkout" | "verifying" | "done" | "error";
+
+function FundModal({ onClose, onSuccess }: {
+  onClose: () => void; onSuccess: (newCash: number) => void;
 }) {
   const [amount, setAmount] = useState("");
-  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [state, setState] = useState<FundState>("idle");
   const [errMsg, setErrMsg] = useState("");
+  const [checkoutUrl, setCheckoutUrl] = useState("");
+  const [reference, setReference] = useState("");
+  const [fundedAmt, setFundedAmt] = useState(0);
 
   const parsed = parseFloat(amount) || 0;
-  const valid = parsed >= MIN_TRADE && parsed <= MAX_TRADE && parsed <= swiftBalance;
+  const valid = parsed >= MIN_TRADE;
 
-  async function submit() {
-    if (!valid || state === "loading") return;
-    setState("loading");
+  async function initiate() {
+    if (!valid || state !== "idle") return;
+    setState("initiating");
     setErrMsg("");
     try {
-      const res = await fetch("/api/exchange/fund", {
+      const res = await fetch("/api/exchange/korapay/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: parsed }),
+        body: JSON.stringify({ amountUsd: parsed }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? "Funding failed");
-      setState("done");
-      setTimeout(() => {
-        onSuccess(data.exchangeBalance, data.swiftBalance);
-        onClose();
-      }, 1500);
+      if (!res.ok) throw new Error(data.message ?? "Could not initiate payment");
+      setCheckoutUrl(data.checkoutUrl);
+      setReference(data.reference);
+      setFundedAmt(parsed);
+      setState("checkout");
     } catch (e: any) {
-      setErrMsg(e.message ?? "Funding failed");
+      setErrMsg(e.message ?? "Payment initiation failed");
       setState("error");
     }
   }
 
-  const presets = [10, 50, 100, 500].filter(p => p <= swiftBalance);
+  async function verify() {
+    if (!reference || state === "verifying") return;
+    setState("verifying");
+    setErrMsg("");
+    try {
+      const res = await fetch("/api/exchange/korapay/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Verification failed");
+      setState("done");
+      setTimeout(() => {
+        onSuccess(data.exchangeBalance ?? 0);
+        onClose();
+      }, 1800);
+    } catch (e: any) {
+      setErrMsg(e.message ?? "Payment not confirmed yet. Please wait a moment.");
+      setState("checkout");
+    }
+  }
+
+  const presets = [10, 50, 100, 500];
 
   return (
     <motion.div className="absolute inset-0 z-50 flex items-end"
-      style={{ background: "rgba(0,0,0,0.8)" }}
+      style={{ background: "rgba(0,0,0,0.85)" }}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <motion.div className="w-full rounded-t-3xl px-5 pt-5 pb-10"
@@ -174,8 +201,55 @@ function FundModal({ swiftBalance, onClose, onSuccess }: {
           <div className="flex flex-col items-center py-10 gap-3">
             <CheckCircle2 className="w-16 h-16 text-green-400" />
             <p className="text-white font-bold text-xl">Exchange Account Funded!</p>
-            <p className="text-gray-400 text-sm">${fmt(parsed)} added to your exchange cash.</p>
+            <p className="text-gray-400 text-sm">${fundedAmt.toFixed(2)} added to your exchange cash.</p>
           </div>
+
+        ) : state === "checkout" ? (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(34,197,94,0.15)" }}>
+                  <DollarSign className="w-5 h-5 text-green-400" />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-base">Complete Payment</p>
+                  <p className="text-gray-500 text-xs">Funding ${fundedAmt.toFixed(2)} to Exchange Account</p>
+                </div>
+              </div>
+              <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
+
+            <div className="rounded-2xl p-4 mb-5 text-center" style={{ background: "#1f2937" }}>
+              <p className="text-gray-400 text-xs mb-1">Amount to pay</p>
+              <p className="text-white font-bold text-2xl">${fundedAmt.toFixed(2)}</p>
+              <p className="text-gray-500 text-[10px] mt-1">Equivalent NGN will be charged at current rate</p>
+            </div>
+
+            <p className="text-gray-400 text-xs mb-4 text-center">
+              Click the button below to open the secure payment page. After completing payment, return here and click <strong className="text-white">"I've Paid"</strong> to confirm.
+            </p>
+
+            <a href={checkoutUrl} target="_blank" rel="noopener noreferrer"
+              className="w-full py-3.5 rounded-2xl font-bold text-white text-sm flex items-center justify-center gap-2 mb-3"
+              style={{ background: "var(--color-tsia-green)" }}>
+              Open Payment Page
+            </a>
+
+            {errMsg && (
+              <div className="flex items-center gap-2 mb-3 text-amber-400 text-xs">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" /> {errMsg}
+              </div>
+            )}
+
+            <button onClick={verify} disabled={state === "verifying"}
+              className="w-full py-3 rounded-2xl font-bold text-sm border transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              style={{ borderColor: "#374151", color: "#9ca3af" }}
+              data-testid="btn-fund-verify">
+              {state === "verifying" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              I've Paid — Confirm Payment
+            </button>
+          </>
+
         ) : (
           <>
             <div className="flex items-center justify-between mb-6">
@@ -185,43 +259,25 @@ function FundModal({ swiftBalance, onClose, onSuccess }: {
                 </div>
                 <div>
                   <p className="text-white font-bold text-base">Fund Exchange Account</p>
-                  <p className="text-gray-500 text-xs">Transfer from Swift wallet</p>
+                  <p className="text-gray-500 text-xs">Pay via card or bank transfer</p>
                 </div>
               </div>
               <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
 
-            <div className="rounded-2xl p-3 mb-4 flex justify-between" style={{ background: "#1f2937" }}>
-              <div>
-                <p className="text-gray-500 text-[10px]">Swift Wallet</p>
-                <p className="text-white font-bold text-sm">${fmt(swiftBalance)}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-gray-500 text-[10px]">Limits</p>
-                <p className="text-gray-400 text-xs font-semibold">${MIN_TRADE} – ${MAX_TRADE.toLocaleString()}</p>
-              </div>
-            </div>
-
-            {presets.length > 0 && (
-              <div className="flex gap-2 mb-4 flex-wrap">
-                {presets.map(p => (
-                  <button key={p} onClick={() => setAmount(String(p))}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
-                    style={{
-                      background: parseFloat(amount) === p ? "var(--color-tsia-green)" : "transparent",
-                      borderColor: parseFloat(amount) === p ? "var(--color-tsia-green)" : "#374151",
-                      color: parseFloat(amount) === p ? "#fff" : "#9ca3af",
-                    }}>
-                    ${p}
-                  </button>
-                ))}
-                <button onClick={() => setAmount(Math.min(swiftBalance, MAX_TRADE).toFixed(2))}
+            <div className="flex gap-2 mb-4 flex-wrap">
+              {presets.map(p => (
+                <button key={p} onClick={() => setAmount(String(p))}
                   className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
-                  style={{ borderColor: "#374151", color: "#9ca3af" }}>
-                  Max
+                  style={{
+                    background: parseFloat(amount) === p ? "var(--color-tsia-green)" : "transparent",
+                    borderColor: parseFloat(amount) === p ? "var(--color-tsia-green)" : "#374151",
+                    color: parseFloat(amount) === p ? "#fff" : "#9ca3af",
+                  }}>
+                  ${p}
                 </button>
-              </div>
-            )}
+              ))}
+            </div>
 
             <div className="mb-5">
               <label className="text-xs text-gray-400 mb-2 block">Amount (USD)</label>
@@ -230,7 +286,7 @@ function FundModal({ swiftBalance, onClose, onSuccess }: {
                 <Input
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
-                  type="number" step="1" min="10" max="1200"
+                  type="number" step="1" min="10"
                   placeholder="10.00"
                   className="pl-7 text-white border-gray-700 text-sm"
                   style={{ background: "#1f2937" }}
@@ -238,8 +294,6 @@ function FundModal({ swiftBalance, onClose, onSuccess }: {
                 />
               </div>
               {parsed > 0 && parsed < MIN_TRADE && <p className="text-red-400 text-xs mt-1">Minimum is ${MIN_TRADE}</p>}
-              {parsed > MAX_TRADE && <p className="text-red-400 text-xs mt-1">Maximum is ${MAX_TRADE.toLocaleString()}</p>}
-              {parsed > swiftBalance && parsed <= MAX_TRADE && <p className="text-red-400 text-xs mt-1">Exceeds Swift wallet balance</p>}
             </div>
 
             {state === "error" && (
@@ -248,12 +302,12 @@ function FundModal({ swiftBalance, onClose, onSuccess }: {
               </div>
             )}
 
-            <button onClick={submit} disabled={!valid || state === "loading"}
+            <button onClick={initiate} disabled={!valid || state === "initiating"}
               className="w-full py-3.5 rounded-2xl font-bold text-white text-sm transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
               style={{ background: "var(--color-tsia-green)" }}
               data-testid="btn-fund-confirm">
-              {state === "loading" && <Loader2 className="w-4 h-4 animate-spin" />}
-              Fund Exchange Account
+              {state === "initiating" && <Loader2 className="w-4 h-4 animate-spin" />}
+              {state === "initiating" ? "Opening payment…" : "Fund via Card / Bank Transfer"}
             </button>
           </>
         )}
@@ -1097,7 +1151,6 @@ export default function ExchangeMarket({ walletBalance = 0, onBack }: ExchangeMa
   const [orders, setOrders]         = useState<TradeOrder[]>([]);
   const [watchlist, setWatchlist]   = useState(new Set<string>());
   const [cash, setCash]             = useState(0);
-  const [swiftBalance, setSwiftBalance] = useState(walletBalance);
   const [loadingStocks, setLoadingStocks] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const refreshInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1160,19 +1213,9 @@ export default function ExchangeMarket({ walletBalance = 0, onBack }: ExchangeMa
     } catch {}
   }
 
-  async function loadSwiftBalance() {
-    try {
-      const res = await fetch("/api/wallet/balances");
-      if (res.ok) {
-        const data = await res.json();
-        setSwiftBalance(parseFloat(data.confirmedBalance ?? data.bookBalance ?? "0") || 0);
-      }
-    } catch {}
-  }
-
   useEffect(() => {
-    Promise.all([loadQuotes(), loadPortfolio(), loadOrders(), loadWatchlist(), loadUnreadCount(), loadSwiftBalance()]);
-    refreshInterval.current = setInterval(() => loadQuotes(), 60_000);
+    Promise.all([loadQuotes(), loadPortfolio(), loadOrders(), loadWatchlist(), loadUnreadCount()]);
+    refreshInterval.current = setInterval(() => loadQuotes(), 30_000);
     return () => { if (refreshInterval.current) clearInterval(refreshInterval.current); };
   }, []);
 
@@ -1367,11 +1410,9 @@ export default function ExchangeMarket({ walletBalance = 0, onBack }: ExchangeMa
       <AnimatePresence>
         {showFundModal && (
           <FundModal key="fund"
-            swiftBalance={swiftBalance}
             onClose={() => setShowFundModal(false)}
-            onSuccess={(newCash, newSwift) => {
+            onSuccess={(newCash) => {
               setCash(newCash);
-              setSwiftBalance(newSwift);
             }} />
         )}
       </AnimatePresence>

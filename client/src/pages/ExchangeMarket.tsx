@@ -856,14 +856,22 @@ function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, 
             <p className="text-white text-sm font-bold">${fmt(cash)}</p>
           </div>
         </div>
-        {cash === 0 && (
+        <div className="mt-3 flex gap-2 relative">
           <button onClick={onFund}
-            className="mt-3 relative w-full py-2 rounded-xl text-xs font-bold text-white transition-opacity hover:opacity-90"
+            className="flex-1 py-2 rounded-xl text-xs font-bold text-white transition-opacity hover:opacity-90"
             style={{ background: "rgba(34,197,94,0.35)", border: "1px solid rgba(34,197,94,0.4)" }}
             data-testid="btn-fund-home">
-            + Fund Exchange Account
+            + Fund
           </button>
-        )}
+          {cash > 0 && (
+            <button onClick={onWithdraw}
+              className="flex-1 py-2 rounded-xl text-xs font-bold transition-opacity hover:opacity-90"
+              style={{ background: "rgba(59,130,246,0.2)", border: "1px solid rgba(59,130,246,0.35)", color: "#60a5fa" }}
+              data-testid="btn-withdraw-home">
+              Withdraw
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Top movers */}
@@ -1048,12 +1056,22 @@ function PortfolioTab({ holdings, stocks, cash, onSelectStock, onFund, onWithdra
             <p className="text-gray-500 text-[10px]">Cash Balance</p>
             <p className="text-white text-base font-bold">${fmt(cash)}</p>
           </div>
-          <button onClick={onFund}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-white"
-            style={{ background: "var(--color-tsia-green)" }}
-            data-testid="btn-fund-portfolio">
-            + Fund Account
-          </button>
+          <div className="flex gap-2">
+            <button onClick={onFund}
+              className="px-3 py-2 rounded-xl text-xs font-bold text-white"
+              style={{ background: "var(--color-tsia-green)" }}
+              data-testid="btn-fund-portfolio">
+              + Fund
+            </button>
+            {cash > 0 && (
+              <button onClick={onWithdraw}
+                className="px-3 py-2 rounded-xl text-xs font-bold"
+                style={{ background: "rgba(59,130,246,0.2)", border: "1px solid rgba(59,130,246,0.35)", color: "#60a5fa" }}
+                data-testid="btn-withdraw-portfolio">
+                Withdraw
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1222,6 +1240,7 @@ export default function ExchangeMarket({ walletBalance = 0, onBack }: ExchangeMa
   const [selected, setSelected]     = useState<Stock | null>(null);
   const [tradeModal, setTradeModal]  = useState<{ stock: Stock; type: "buy"|"sell" } | null>(null);
   const [showFundModal, setShowFundModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showNotifs, setShowNotifs]  = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -1404,14 +1423,14 @@ export default function ExchangeMarket({ walletBalance = 0, onBack }: ExchangeMa
         {tab === "home" && (
           <HomeTab holdings={holdings} orders={orders} stocks={stocks} cash={cash}
             watchlistSet={watchlist} onSelectStock={s => setSelected(s)}
-            onGoMarket={() => setTab("market")} onFund={() => setShowFundModal(true)} />
+            onGoMarket={() => setTab("market")} onFund={() => setShowFundModal(true)} onWithdraw={() => setShowWithdrawModal(true)} />
         )}
         {tab === "market" && (
           <MarketTab stocks={stocks} loading={loadingStocks} onSelectStock={s => setSelected(s)} />
         )}
         {tab === "portfolio" && (
           <PortfolioTab holdings={holdings} stocks={stocks} cash={cash}
-            onSelectStock={s => setSelected(s)} onFund={() => setShowFundModal(true)} />
+            onSelectStock={s => setSelected(s)} onFund={() => setShowFundModal(true)} onWithdraw={() => setShowWithdrawModal(true)} />
         )}
         {tab === "watchlist" && (
           <WatchlistTab watchlistSet={watchlist} stocks={stocks}
@@ -1490,9 +1509,17 @@ export default function ExchangeMarket({ walletBalance = 0, onBack }: ExchangeMa
         {showFundModal && (
           <FundModal key="fund"
             onClose={() => setShowFundModal(false)}
-            onSuccess={(newCash) => {
-              setCash(newCash);
-            }} />
+            onSuccess={(newCash) => setCash(newCash)} />
+        )}
+      </AnimatePresence>
+
+      {/* Withdraw modal */}
+      <AnimatePresence>
+        {showWithdrawModal && (
+          <WithdrawModal key="withdraw"
+            cash={cash}
+            onClose={() => setShowWithdrawModal(false)}
+            onSuccess={(newCash) => setCash(newCash)} />
         )}
       </AnimatePresence>
 

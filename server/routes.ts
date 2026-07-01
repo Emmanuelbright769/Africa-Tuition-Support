@@ -10571,6 +10571,55 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Withdraw from exchange account → Swift wallet (no fee, instant) ──────────
+  app.post("/api/exchange/withdraw", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { amount: amountRaw } = req.body;
+      const amount = parseFloat(amountRaw);
+      if (isNaN(amount) || amount <= 0) return res.status(400).json({ message: "Invalid amount." });
+      if (amount < 5) return res.status(400).json({ message: "Minimum withdrawal is $5." });
+
+      const tw = await storage.getOrCreateTradeWallet(userId);
+      const exchangeBal = parseFloat(tw.exchangeBalance ?? "0");
+      if (amount > exchangeBal) {
+        return res.status(400).json({ message: `Insufficient exchange balance. Available: $${exchangeBal.toFixed(2)}.` });
+      }
+
+      // Deduct from exchange balance
+      const updated = await storage.updateExchangeBalance(userId, -amount);
+
+      // Credit Swift wallet in full (no fee, same as trade → wallet transfer)
+      const personalWallet = await storage.getOrCreateWallet(userId);
+      const newPersonalBal = (parseFloat(personalWallet.balance) + amount).toFixed(2);
+      await storage.updateWalletBalance(userId, newPersonalBal);
+      if (!personalWallet.activated && parseFloat(newPersonalBal) > 2) await storage.activateWallet(userId);
+
+      await storage.createTransaction({
+        userId, type: "deposit", amount: amount.toFixed(2), fee: "0.00",
+        paymentMethod: "internal",
+        description: `Exchange account withdrawal — $${amount.toFixed(2)} credited to Swift wallet in full (no fee)`,
+      });
+
+      const notif = await storage.createNotification({
+        userId, type: "wallet_credit",
+        title: "Exchange Withdrawal ✓",
+        message: `$${amount.toFixed(2)} moved from your Exchange account to your Swift wallet with no fee.`,
+        data: { amount }, isRead: false,
+      });
+      pushToUser(userId, "notification", notif);
+
+      res.json({
+        success: true,
+        exchangeBalance: parseFloat(updated.exchangeBalance ?? "0"),
+        swiftBalance: parseFloat(newPersonalBal),
+        withdrawn: amount.toFixed(2),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.post("/api/exchange/order", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

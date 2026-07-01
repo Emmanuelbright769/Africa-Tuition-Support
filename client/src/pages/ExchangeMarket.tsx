@@ -124,72 +124,49 @@ function PctBadge({ v }: { v: number }) {
   );
 }
 
-// ─── Fund Exchange Modal ───────────────────────────────────────────────────────
-type FundState = "idle" | "initiating" | "checkout" | "verifying" | "done" | "error";
-
+// ─── Fund Exchange Modal (Swift Wallet → Exchange, same flow as Trade Market) ──
 function FundModal({ onClose, onSuccess }: {
   onClose: () => void; onSuccess: (newCash: number) => void;
 }) {
   const [amount, setAmount] = useState("");
-  const [state, setState] = useState<FundState>("idle");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const [errMsg, setErrMsg] = useState("");
-  const [checkoutUrl, setCheckoutUrl] = useState("");
-  const [reference, setReference] = useState("");
-  const [fundedAmt, setFundedAmt] = useState(0);
+  const [swiftBal, setSwiftBal] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/wallet/balances").then(r => r.json()).then(d => {
+      setSwiftBal(parseFloat(d.confirmedBalance ?? d.bookBalance ?? "0") || 0);
+    }).catch(() => setSwiftBal(0));
+  }, []);
 
   const parsed = parseFloat(amount) || 0;
-  const valid = parsed >= MIN_TRADE;
+  const maxAllowed = swiftBal != null ? Math.max(0, swiftBal - 2) : 0; // keep $2 min in Swift
+  const valid = parsed >= MIN_TRADE && parsed <= maxAllowed;
 
-  async function initiate() {
-    if (!valid || state !== "idle") return;
-    setState("initiating");
-    setErrMsg("");
+  async function submit() {
+    if (!valid || busy) return;
+    setBusy(true); setErrMsg("");
     try {
-      const res = await fetch("/api/exchange/korapay/initiate", {
+      const res = await fetch("/api/exchange/fund", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountUsd: parsed }),
+        body: JSON.stringify({ amount: parsed }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? "Could not initiate payment");
-      setCheckoutUrl(data.checkoutUrl);
-      setReference(data.reference);
-      setFundedAmt(parsed);
-      setState("checkout");
+      if (!res.ok) throw new Error(data.message ?? "Transfer failed");
+      setDone(true);
+      setTimeout(() => { onSuccess(data.exchangeBalance ?? 0); onClose(); }, 1600);
     } catch (e: any) {
-      setErrMsg(e.message ?? "Payment initiation failed");
-      setState("error");
-    }
+      setErrMsg(e.message ?? "Transfer failed");
+    } finally { setBusy(false); }
   }
 
-  async function verify() {
-    if (!reference || state === "verifying") return;
-    setState("verifying");
-    setErrMsg("");
-    try {
-      const res = await fetch("/api/exchange/korapay/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message ?? "Verification failed");
-      setState("done");
-      setTimeout(() => {
-        onSuccess(data.exchangeBalance ?? 0);
-        onClose();
-      }, 1800);
-    } catch (e: any) {
-      setErrMsg(e.message ?? "Payment not confirmed yet. Please wait a moment.");
-      setState("checkout");
-    }
-  }
-
-  const presets = [10, 50, 100, 500];
+  const presets = [10, 50, 100, 500].filter(p => p <= maxAllowed);
 
   return (
     <motion.div className="absolute inset-0 z-50 flex items-end"
-      style={{ background: "rgba(0,0,0,0.85)" }}
+      style={{ background: "rgba(0,0,0,0.82)" }}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <motion.div className="w-full rounded-t-3xl px-5 pt-5 pb-10"
@@ -197,117 +174,219 @@ function FundModal({ onClose, onSuccess }: {
         initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 26, stiffness: 260 }}>
 
-        {state === "done" ? (
+        {done ? (
           <div className="flex flex-col items-center py-10 gap-3">
             <CheckCircle2 className="w-16 h-16 text-green-400" />
             <p className="text-white font-bold text-xl">Exchange Account Funded!</p>
-            <p className="text-gray-400 text-sm">${fundedAmt.toFixed(2)} added to your exchange cash.</p>
+            <p className="text-gray-400 text-sm">${fmt(parsed)} added to your exchange cash.</p>
           </div>
-
-        ) : state === "checkout" ? (
-          <>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(34,197,94,0.15)" }}>
-                  <DollarSign className="w-5 h-5 text-green-400" />
-                </div>
-                <div>
-                  <p className="text-white font-bold text-base">Complete Payment</p>
-                  <p className="text-gray-500 text-xs">Funding ${fundedAmt.toFixed(2)} to Exchange Account</p>
-                </div>
-              </div>
-              <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
-            </div>
-
-            <div className="rounded-2xl p-4 mb-5 text-center" style={{ background: "#1f2937" }}>
-              <p className="text-gray-400 text-xs mb-1">Amount to pay</p>
-              <p className="text-white font-bold text-2xl">${fundedAmt.toFixed(2)}</p>
-              <p className="text-gray-500 text-[10px] mt-1">Equivalent NGN will be charged at current rate</p>
-            </div>
-
-            <p className="text-gray-400 text-xs mb-4 text-center">
-              Click the button below to open the secure payment page. After completing payment, return here and click <strong className="text-white">"I've Paid"</strong> to confirm.
-            </p>
-
-            <a href={checkoutUrl} target="_blank" rel="noopener noreferrer"
-              className="w-full py-3.5 rounded-2xl font-bold text-white text-sm flex items-center justify-center gap-2 mb-3"
-              style={{ background: "var(--color-tsia-green)" }}>
-              Open Payment Page
-            </a>
-
-            {errMsg && (
-              <div className="flex items-center gap-2 mb-3 text-amber-400 text-xs">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" /> {errMsg}
-              </div>
-            )}
-
-            <button onClick={verify} disabled={state === "verifying"}
-              className="w-full py-3 rounded-2xl font-bold text-sm border transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              style={{ borderColor: "#374151", color: "#9ca3af" }}
-              data-testid="btn-fund-verify">
-              {state === "verifying" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              I've Paid — Confirm Payment
-            </button>
-          </>
-
         ) : (
           <>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(34,197,94,0.15)" }}>
                   <Wallet className="w-5 h-5 text-green-400" />
                 </div>
                 <div>
                   <p className="text-white font-bold text-base">Fund Exchange Account</p>
-                  <p className="text-gray-500 text-xs">Pay via card or bank transfer</p>
+                  <p className="text-gray-500 text-xs">Transfer from your Swift wallet</p>
                 </div>
               </div>
               <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
 
-            <div className="flex gap-2 mb-4 flex-wrap">
-              {presets.map(p => (
-                <button key={p} onClick={() => setAmount(String(p))}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
-                  style={{
-                    background: parseFloat(amount) === p ? "var(--color-tsia-green)" : "transparent",
-                    borderColor: parseFloat(amount) === p ? "var(--color-tsia-green)" : "#374151",
-                    color: parseFloat(amount) === p ? "#fff" : "#9ca3af",
-                  }}>
-                  ${p}
-                </button>
-              ))}
-            </div>
-
-            <div className="mb-5">
-              <label className="text-xs text-gray-400 mb-2 block">Amount (USD)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
-                <Input
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  type="number" step="1" min="10"
-                  placeholder="10.00"
-                  className="pl-7 text-white border-gray-700 text-sm"
-                  style={{ background: "#1f2937" }}
-                  data-testid="input-fund-amount"
-                />
+            {/* Swift balance row */}
+            <div className="rounded-2xl p-3 mb-4 flex justify-between items-center" style={{ background: "#1f2937" }}>
+              <div>
+                <p className="text-gray-500 text-[10px]">Swift Wallet</p>
+                <p className="text-white font-bold text-sm">
+                  {swiftBal == null ? <span className="text-gray-500">Loading…</span> : `$${fmt(swiftBal)}`}
+                </p>
               </div>
-              {parsed > 0 && parsed < MIN_TRADE && <p className="text-red-400 text-xs mt-1">Minimum is ${MIN_TRADE}</p>}
+              <div className="text-right">
+                <p className="text-gray-500 text-[10px]">Min / Available</p>
+                <p className="text-gray-400 text-xs font-semibold">${MIN_TRADE} / ${fmt(maxAllowed)}</p>
+              </div>
             </div>
 
-            {state === "error" && (
-              <div className="flex items-center gap-2 mb-3 text-red-400 text-xs">
-                <AlertCircle className="w-4 h-4" /> {errMsg}
+            {/* Quick-pick presets */}
+            {presets.length > 0 && (
+              <div className="flex gap-2 mb-4 flex-wrap">
+                {presets.map(p => (
+                  <button key={p} onClick={() => setAmount(String(p))}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
+                    style={{
+                      background: parsed === p ? "var(--color-tsia-green)" : "transparent",
+                      borderColor: parsed === p ? "var(--color-tsia-green)" : "#374151",
+                      color: parsed === p ? "#fff" : "#9ca3af",
+                    }}>${p}</button>
+                ))}
+                <button onClick={() => setAmount(maxAllowed.toFixed(2))}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
+                  style={{ borderColor: "#374151", color: "#9ca3af" }}>Max</button>
               </div>
             )}
 
-            <button onClick={initiate} disabled={!valid || state === "initiating"}
+            <div className="mb-4">
+              <label className="text-xs text-gray-400 mb-1.5 block">Amount (USD)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                <Input value={amount} onChange={e => setAmount(e.target.value)}
+                  type="number" step="1" min="10" placeholder="10.00"
+                  className="pl-7 text-white border-gray-700 text-sm" style={{ background: "#1f2937" }}
+                  data-testid="input-fund-amount" />
+              </div>
+              {parsed > 0 && parsed < MIN_TRADE && <p className="text-red-400 text-xs mt-1">Minimum is ${MIN_TRADE}</p>}
+              {parsed > maxAllowed && maxAllowed > 0 && <p className="text-red-400 text-xs mt-1">Exceeds available Swift balance</p>}
+            </div>
+
+            {/* Breakdown */}
+            {parsed >= MIN_TRADE && parsed <= maxAllowed && (
+              <div className="rounded-xl px-3 py-2.5 mb-4 text-xs space-y-1" style={{ background: "#0d1525", border: "1px solid #1a2236" }}>
+                <p className="font-semibold text-gray-300 mb-1">Breakdown</p>
+                <div className="flex justify-between text-gray-400"><span>You transfer</span><span className="text-white font-semibold">${fmt(parsed)}</span></div>
+                <div className="flex justify-between text-gray-400 border-t border-gray-800 pt-1 mt-1 font-bold"><span className="text-green-400">Exchange account receives</span><span className="text-green-400">${fmt(parsed)}</span></div>
+              </div>
+            )}
+
+            {errMsg && <div className="flex items-center gap-2 mb-3 text-red-400 text-xs"><AlertCircle className="w-4 h-4" />{errMsg}</div>}
+
+            <button onClick={submit} disabled={!valid || busy}
               className="w-full py-3.5 rounded-2xl font-bold text-white text-sm transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
               style={{ background: "var(--color-tsia-green)" }}
               data-testid="btn-fund-confirm">
-              {state === "initiating" && <Loader2 className="w-4 h-4 animate-spin" />}
-              {state === "initiating" ? "Opening payment…" : "Fund via Card / Bank Transfer"}
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+              Transfer ${fmt(parsed || 0)} to Exchange
+            </button>
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Withdraw Exchange Modal (Exchange → Swift wallet) ─────────────────────────
+function WithdrawModal({ cash, onClose, onSuccess }: {
+  cash: number; onClose: () => void; onSuccess: (newCash: number) => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [errMsg, setErrMsg] = useState("");
+
+  const MIN_WITHDRAW = 5;
+  const parsed = parseFloat(amount) || 0;
+  const valid = parsed >= MIN_WITHDRAW && parsed <= cash;
+
+  async function submit() {
+    if (!valid || busy) return;
+    setBusy(true); setErrMsg("");
+    try {
+      const res = await fetch("/api/exchange/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: parsed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Withdrawal failed");
+      setDone(true);
+      setTimeout(() => { onSuccess(data.exchangeBalance ?? 0); onClose(); }, 1600);
+    } catch (e: any) {
+      setErrMsg(e.message ?? "Withdrawal failed");
+    } finally { setBusy(false); }
+  }
+
+  const presets = [5, 20, 50, 100].filter(p => p <= cash);
+
+  return (
+    <motion.div className="absolute inset-0 z-50 flex items-end"
+      style={{ background: "rgba(0,0,0,0.82)" }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <motion.div className="w-full rounded-t-3xl px-5 pt-5 pb-10"
+        style={{ background: "#111827" }}
+        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 26, stiffness: 260 }}>
+
+        {done ? (
+          <div className="flex flex-col items-center py-10 gap-3">
+            <CheckCircle2 className="w-16 h-16 text-green-400" />
+            <p className="text-white font-bold text-xl">Withdrawal Successful!</p>
+            <p className="text-gray-400 text-sm">${fmt(parsed)} moved to your Swift wallet.</p>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(59,130,246,0.15)" }}>
+                  <ArrowLeft className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-base">Withdraw to Swift Wallet</p>
+                  <p className="text-gray-500 text-xs">Move earnings from Exchange to Swift</p>
+                </div>
+              </div>
+              <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
+
+            <div className="rounded-2xl p-3 mb-4 flex justify-between items-center" style={{ background: "#1f2937" }}>
+              <div>
+                <p className="text-gray-500 text-[10px]">Exchange Cash</p>
+                <p className="text-white font-bold text-sm">${fmt(cash)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-500 text-[10px]">Min withdraw</p>
+                <p className="text-gray-400 text-xs font-semibold">${MIN_WITHDRAW}</p>
+              </div>
+            </div>
+
+            {presets.length > 0 && (
+              <div className="flex gap-2 mb-4 flex-wrap">
+                {presets.map(p => (
+                  <button key={p} onClick={() => setAmount(String(p))}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
+                    style={{
+                      background: parsed === p ? "#3b82f6" : "transparent",
+                      borderColor: parsed === p ? "#3b82f6" : "#374151",
+                      color: parsed === p ? "#fff" : "#9ca3af",
+                    }}>${p}</button>
+                ))}
+                <button onClick={() => setAmount(cash.toFixed(2))}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
+                  style={{ borderColor: "#374151", color: "#9ca3af" }}>All</button>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="text-xs text-gray-400 mb-1.5 block">Amount (USD)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                <Input value={amount} onChange={e => setAmount(e.target.value)}
+                  type="number" step="1" min="5" placeholder="5.00"
+                  className="pl-7 text-white border-gray-700 text-sm" style={{ background: "#1f2937" }}
+                  data-testid="input-withdraw-amount" />
+              </div>
+              {parsed > 0 && parsed < MIN_WITHDRAW && <p className="text-red-400 text-xs mt-1">Minimum withdrawal is ${MIN_WITHDRAW}</p>}
+              {parsed > cash && <p className="text-red-400 text-xs mt-1">Exceeds exchange cash balance</p>}
+            </div>
+
+            {parsed >= MIN_WITHDRAW && parsed <= cash && (
+              <div className="rounded-xl px-3 py-2.5 mb-4 text-xs space-y-1" style={{ background: "#0d1525", border: "1px solid #1a2236" }}>
+                <p className="font-semibold text-gray-300 mb-1">Breakdown</p>
+                <div className="flex justify-between text-gray-400"><span>You withdraw</span><span className="text-white font-semibold">${fmt(parsed)}</span></div>
+                <div className="flex justify-between text-gray-400"><span>Fee</span><span className="text-green-400">None</span></div>
+                <div className="flex justify-between border-t border-gray-800 pt-1 mt-1 font-bold text-blue-400"><span>Swift wallet receives</span><span>${fmt(parsed)}</span></div>
+              </div>
+            )}
+
+            {errMsg && <div className="flex items-center gap-2 mb-3 text-red-400 text-xs"><AlertCircle className="w-4 h-4" />{errMsg}</div>}
+
+            <button onClick={submit} disabled={!valid || busy}
+              className="w-full py-3.5 rounded-2xl font-bold text-white text-sm transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
+              style={{ background: "#3b82f6" }}
+              data-testid="btn-withdraw-confirm">
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+              Withdraw ${fmt(parsed || 0)} to Swift Wallet
             </button>
           </>
         )}
@@ -732,10 +811,10 @@ function StockDetail({ stock, inWatchlist, cash, holding, onBack, onToggleWatch,
 }
 
 // ─── Home tab ──────────────────────────────────────────────────────────────────
-function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, onGoMarket, onFund }: {
+function HomeTab({ holdings, orders, stocks, cash, watchlistSet, onSelectStock, onGoMarket, onFund, onWithdraw }: {
   holdings: Holding[]; orders: TradeOrder[]; stocks: Stock[]; cash: number;
   watchlistSet: Set<string>; onSelectStock: (s: Stock) => void; onGoMarket: () => void;
-  onFund: () => void;
+  onFund: () => void; onWithdraw: () => void;
 }) {
   const stockMap = useMemo(() => new Map(stocks.map(s => [s.ticker, s])), [stocks]);
   const totalHoldings = holdings.reduce((sum, h) => sum + h.value, 0);
@@ -940,9 +1019,9 @@ function MarketTab({ stocks, loading, onSelectStock }: {
 }
 
 // ─── Portfolio tab ─────────────────────────────────────────────────────────────
-function PortfolioTab({ holdings, stocks, cash, onSelectStock, onFund }: {
+function PortfolioTab({ holdings, stocks, cash, onSelectStock, onFund, onWithdraw }: {
   holdings: Holding[]; stocks: Stock[]; cash: number;
-  onSelectStock: (s: Stock) => void; onFund: () => void;
+  onSelectStock: (s: Stock) => void; onFund: () => void; onWithdraw: () => void;
 }) {
   const stockMap = useMemo(() => new Map(stocks.map(s => [s.ticker, s])), [stocks]);
   const totalHoldings = holdings.reduce((sum, h) => sum + h.value, 0);

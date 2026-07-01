@@ -2836,11 +2836,15 @@ export async function registerRoutes(
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
       const twBalance = parseFloat(tradeWallet.tradeBalance);
       const twLocked = tradeWallet.roiComplete ? 0 : parseFloat(tradeWallet.lockedPrincipal ?? "0");
-      const twWithdrawable = Math.max(0, twBalance - twLocked);
+      const twTotalEarned = parseFloat(tradeWallet.totalBotEarnings ?? "0");
+      // 200% rule: earnings must reach 100% of capital before any transfer is unlocked
+      const tw200Reached = tradeWallet.roiComplete || twLocked === 0 || twTotalEarned >= twLocked;
+      const twWithdrawable = tw200Reached ? Math.max(0, twBalance - twLocked) : 0;
+      if (!tw200Reached && !tradeWallet.roiComplete && twLocked > 0) {
+        const twProgress = twLocked > 0 ? Math.min(100, (twTotalEarned / twLocked) * 100).toFixed(1) : "0.0";
+        return res.status(400).json({ message: `Transfers unlock at 200% total (earnings = capital). You are at ${twProgress}% — keep trading until your earnings equal your deposited capital ($${twLocked.toFixed(2)}).` });
+      }
       if (amount > twWithdrawable) {
-        if (twLocked > 0 && !tradeWallet.roiComplete) {
-          return res.status(400).json({ message: `Your invested capital ($${twLocked.toFixed(2)}) is non-refundable — it remains with the platform for the duration of the cycle. Only your accumulated trade earnings ($${twWithdrawable.toFixed(2)}) are transferable.` });
-        }
         return res.status(400).json({ message: `Insufficient trade balance. Available: $${twWithdrawable.toFixed(2)}` });
       }
       // Wallet-to-wallet: no reserve deduction — full amount credited
@@ -2895,11 +2899,15 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateTradeWallet(userId);
       const currentBalance = parseFloat(wallet.tradeBalance);
       const wdLocked = wallet.roiComplete ? 0 : parseFloat(wallet.lockedPrincipal ?? "0");
-      const wdWithdrawable = Math.max(0, currentBalance - wdLocked);
+      const wdTotalEarned = parseFloat(wallet.totalBotEarnings ?? "0");
+      // 200% rule: earnings must reach 100% of capital before any withdrawal is unlocked
+      const wd200Reached = wallet.roiComplete || wdLocked === 0 || wdTotalEarned >= wdLocked;
+      const wdWithdrawable = wd200Reached ? Math.max(0, currentBalance - wdLocked) : 0;
+      if (!wd200Reached && !wallet.roiComplete && wdLocked > 0) {
+        const wdProgress = wdLocked > 0 ? Math.min(100, (wdTotalEarned / wdLocked) * 100).toFixed(1) : "0.0";
+        return res.status(400).json({ message: `Withdrawals unlock at 200% total (earnings = capital). You are at ${wdProgress}% — keep trading until your earnings equal your deposited capital ($${wdLocked.toFixed(2)}).` });
+      }
       if (amount > wdWithdrawable) {
-        if (wdLocked > 0 && !wallet.roiComplete) {
-          return res.status(400).json({ message: `Your invested capital ($${wdLocked.toFixed(2)}) is non-refundable — it remains with the platform for the duration of the cycle. Only your accumulated trade earnings ($${wdWithdrawable.toFixed(2)}) are withdrawable.` });
-        }
         return res.status(400).json({ message: `Insufficient balance. Available: $${wdWithdrawable.toFixed(2)}` });
       }
 
@@ -3206,6 +3214,29 @@ export async function registerRoutes(
       const grossEarning = parseFloat((balance * rate).toFixed(6));
       const ratePercent = (rate * 100).toFixed(4);
 
+      // ── 100% return cap: must check BEFORE grossEarning guard ──────────
+      // Users who already have totalBotEarnings >= lockedPrincipal should
+      // trigger cycle completion rather than getting a "too small" error.
+      const lockedCapital   = parseFloat(wallet.lockedPrincipal ?? "0");
+      const priorEarnings   = parseFloat(wallet.totalBotEarnings ?? "0");
+      const remainingToTarget = Math.max(0, lockedCapital - priorEarnings);
+      if (lockedCapital > 0 && priorEarnings >= lockedCapital) {
+        // Already at 200% — complete the cycle immediately with no new earning
+        const swWallet200 = await storage.getOrCreateWallet(userId);
+        const preBalance200  = parseFloat(wallet.tradeBalance);
+        const cycleEarnings200 = Math.max(0, preBalance200 - lockedCapital);
+        if (cycleEarnings200 > 0) {
+          await storage.updateWalletBalance(userId, (parseFloat(swWallet200.balance) + cycleEarnings200).toFixed(2));
+          await storage.createTransaction({ userId, type: "admin_credit", amount: cycleEarnings200.toFixed(2), fee: "0.00", paymentMethod: "system", description: `${planDays}-day trade cycle payout (200% target reached) — earnings credited to SwiftWallet` });
+        }
+        await storage.markRoiComplete(userId);
+        await storage.incrementTradingDay(userId);
+        await storage.setBotActivatedAt(userId, null);
+        await storage.createNotification({ userId, type: "trade", title: "🎉 200% Target Reached — Cycle Complete!", message: `You've hit your 200% target! $${cycleEarnings200.toFixed(2)} in earnings have been credited to your SwiftWallet. Top up to start a fresh cycle.`, data: { cycleEarnings: cycleEarnings200 }, isRead: false });
+        const final200Wallet = await storage.getOrCreateTradeWallet(userId);
+        return res.json({ earning: "0.000000", elapsedHours, ratePercent, newBalance: final200Wallet.tradeBalance, totalBotEarnings: final200Wallet.totalBotEarnings, roiComplete: true, isLossDay: false, cycleDay: currentCycleDay, cycleDays: planDays, cycleComplete: true });
+      }
+
       if (grossEarning <= 0) return res.status(400).json({ message: "Earning too small to credit." });
 
       // 5% referral commission on bot earnings (deducted from gross, credited to referrer)
@@ -3214,10 +3245,6 @@ export async function registerRoutes(
       const hasBotReferrer = !!(botUser?.referredBy);
       let earning = hasBotReferrer ? parseFloat((grossEarning - botAffiliateCommission).toFixed(6)) : grossEarning;
 
-      // ── 100% return cap: earnings cannot exceed locked capital (net) ───
-      const lockedCapital   = parseFloat(wallet.lockedPrincipal ?? "0");
-      const priorEarnings   = parseFloat(wallet.totalBotEarnings ?? "0");
-      const remainingToTarget = Math.max(0, lockedCapital - priorEarnings);
       const cappedByTarget  = lockedCapital > 0 && earning > remainingToTarget;
       if (cappedByTarget) earning = parseFloat(remainingToTarget.toFixed(6));
 

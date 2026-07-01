@@ -1214,7 +1214,10 @@ export default function AffiliateDashboard() {
   const activePlanConfig = TRADING_PLANS.find(p => p.days === planDaysFromWallet) ?? TRADING_PLANS[2];
   const cycleProgress    = Math.min(100, (tradingDayNumber / planDaysFromWallet) * 100);
   const lockedPrincipal  = roiComplete ? 0 : parseFloat(tradeWallet?.lockedPrincipal ?? "0");
-  const withdrawableAmt  = Math.max(0, tradeBalance - lockedPrincipal);
+  // 200% rule: earnings only unlock when totalBotEarned >= lockedPrincipal
+  const reached200       = roiComplete || lockedPrincipal === 0 || totalBotEarned >= lockedPrincipal;
+  const withdrawableAmt  = reached200 ? Math.max(0, tradeBalance - lockedPrincipal) : 0;
+  const returnPct        = lockedPrincipal > 0 ? Math.min(100, (totalBotEarned / lockedPrincipal) * 100) : 0;
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);
 
@@ -1761,27 +1764,33 @@ export default function AffiliateDashboard() {
                               </div>
                             </div>
                             <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
-                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${reached200 ? "bg-emerald-500" : "bg-gray-300 dark:bg-gray-600"}`} />
                               <div>
-                                <p className="text-[10px] text-muted-foreground">Available to Withdraw</p>
-                                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{tradeBalanceHidden ? "••••" : `$${withdrawableAmt.toFixed(2)}`}</p>
+                                <p className="text-[10px] text-muted-foreground">{reached200 ? "Earnings (Unlocked)" : "Earnings (Locked)"}</p>
+                                <p className={`text-xs font-bold ${reached200 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                                  {tradeBalanceHidden ? "••••" : reached200 ? `$${withdrawableAmt.toFixed(2)}` : `Locked — ${returnPct.toFixed(0)}% of 200%`}
+                                </p>
                               </div>
                             </div>
                           </div>
-                          {/* Return progress toward 100% target */}
+                          {/* Return progress toward 200% total */}
                           {lockedPrincipal > 0 && (
                             <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-2">
                               <div className="flex items-center justify-between mb-1">
-                                <p className="text-[10px] text-muted-foreground font-medium">Return Progress</p>
-                                <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                                  {tradeBalanceHidden ? "••••" : `${Math.min(100, (totalBotEarned / lockedPrincipal) * 100).toFixed(1)}% of 100% target`}
+                                <p className="text-[10px] text-muted-foreground font-medium">Return Progress (toward 200%)</p>
+                                <p className={`text-[10px] font-bold ${returnPct >= 100 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                                  {tradeBalanceHidden ? "••••" : `${returnPct.toFixed(1)}% ${returnPct >= 100 ? "✓ Unlocked" : "of 100% earnings"}`}
                                 </p>
                               </div>
                               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                                <div className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                                  style={{ width: `${Math.min(100, (totalBotEarned / lockedPrincipal) * 100)}%` }} />
+                                <div className={`h-full rounded-full transition-all duration-500 ${returnPct >= 100 ? "bg-emerald-500" : "bg-amber-500"}`}
+                                  style={{ width: `${returnPct}%` }} />
                               </div>
-                              <p className="text-[9px] text-muted-foreground mt-0.5">{activePlanConfig.label} · {activePlanConfig.rateLabel} — target: ${tradeBalanceHidden ? "••••" : lockedPrincipal.toFixed(2)} in earnings</p>
+                              <p className="text-[9px] text-muted-foreground mt-0.5">
+                                {tradeBalanceHidden ? "••••" : returnPct >= 100
+                                  ? `200% reached — $${(tradeBalance - lockedPrincipal).toFixed(2)} earnings unlocked for withdrawal`
+                                  : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — earn $${(lockedPrincipal - totalBotEarned).toFixed(2)} more to reach 200%`}
+                              </p>
                             </div>
                           )}
                         </div>
@@ -1796,15 +1805,19 @@ export default function AffiliateDashboard() {
                     {/* Earnings row — always visible */}
                     <div className="bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                          <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${reached200 ? "bg-emerald-500/20" : "bg-amber-500/10"}`}>
+                          <TrendingUp className={`w-4 h-4 ${reached200 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500"}`} />
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground leading-none mb-0.5">Bot Earnings (withdrawable)</p>
-                          <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300" data-testid="text-total-bot-earnings">
-                            {tradeBalanceHidden ? "••••••" : `$${withdrawableAmt.toFixed(2)}`}
+                          <p className="text-xs text-muted-foreground leading-none mb-0.5">
+                            {reached200 ? "Bot Earnings (100% — withdrawable)" : `Bot Earnings (${returnPct.toFixed(0)}% — locked until 200%)`}
                           </p>
-                          {!tradeBalanceHidden && <p className="text-[10px] text-emerald-600/70">≈ {formatAmount(withdrawableAmt)}</p>}
+                          <p className={`text-xl font-bold ${reached200 ? "text-emerald-700 dark:text-emerald-300" : "text-amber-600 dark:text-amber-400"}`} data-testid="text-total-bot-earnings">
+                            {tradeBalanceHidden ? "••••••" : `$${totalBotEarned.toFixed(2)}`}
+                          </p>
+                          {!tradeBalanceHidden && <p className={`text-[10px] ${reached200 ? "text-emerald-600/70" : "text-amber-500/70"}`}>
+                            {reached200 ? `≈ ${formatAmount(withdrawableAmt)} — ready to withdraw` : `Need $${(lockedPrincipal - totalBotEarned).toFixed(2)} more to unlock`}
+                          </p>}
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1.5">
@@ -1813,15 +1826,17 @@ export default function AffiliateDashboard() {
                           size="sm"
                           variant="outline"
                           onClick={() => setWithdrawOpen(true)}
-                          disabled={withdrawableAmt < 2 || botActive}
+                          disabled={!reached200 || withdrawableAmt < 2 || botActive}
                           data-testid="button-trade-withdraw"
-                          title={botActive ? "Withdrawals are locked during an active trade session" : withdrawableAmt < 2 ? `Earnings must be above $2 (you have $${withdrawableAmt.toFixed(2)})` : "Withdraw your earnings"}
+                          title={botActive ? "Withdrawals are locked during an active trade session" : !reached200 ? `Earn $${(lockedPrincipal - totalBotEarned).toFixed(2)} more to reach 200% total` : withdrawableAmt < 2 ? `Available: $${withdrawableAmt.toFixed(2)}` : "Withdraw your earnings"}
                           className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 h-7 text-xs px-2.5 disabled:opacity-40"
                         >
                           {botActive ? <Lock className="w-3 h-3 mr-1" /> : <ArrowUpRight className="w-3 h-3 mr-1" />} Withdraw
                         </Button>
                         {botActive ? (
                           <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">🔒 Active session</p>
+                        ) : !reached200 ? (
+                          <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Reach 200% to unlock</p>
                         ) : withdrawableAmt > 0 && withdrawableAmt < 2 ? (
                           <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Above $2 to unlock</p>
                         ) : null}

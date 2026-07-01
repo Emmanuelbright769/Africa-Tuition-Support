@@ -2836,15 +2836,12 @@ export async function registerRoutes(
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
       const twBalance = parseFloat(tradeWallet.tradeBalance);
       const twLocked = tradeWallet.roiComplete ? 0 : parseFloat(tradeWallet.lockedPrincipal ?? "0");
-      const twTotalEarned = parseFloat(tradeWallet.totalBotEarnings ?? "0");
-      // 200% rule: earnings must reach 100% of capital before any transfer is unlocked
-      const tw200Reached = tradeWallet.roiComplete || twLocked === 0 || twTotalEarned >= twLocked;
-      const twWithdrawable = tw200Reached ? Math.max(0, twBalance - twLocked) : 0;
-      if (!tw200Reached && !tradeWallet.roiComplete && twLocked > 0) {
-        const twProgress = twLocked > 0 ? Math.min(100, (twTotalEarned / twLocked) * 100).toFixed(1) : "0.0";
-        return res.status(400).json({ message: `Transfers unlock at 200% total (earnings = capital). You are at ${twProgress}% — keep trading until your earnings equal your deposited capital ($${twLocked.toFixed(2)}).` });
-      }
+      // Only accumulated earnings (above capital) can be transferred; capital is non-refundable
+      const twWithdrawable = Math.max(0, twBalance - twLocked);
       if (amount > twWithdrawable) {
+        if (twLocked > 0 && !tradeWallet.roiComplete) {
+          return res.status(400).json({ message: `Only your trade earnings ($${twWithdrawable.toFixed(2)}) can be transferred. Your invested capital ($${twLocked.toFixed(2)}) is non-refundable.` });
+        }
         return res.status(400).json({ message: `Insufficient trade balance. Available: $${twWithdrawable.toFixed(2)}` });
       }
       // Wallet-to-wallet: no reserve deduction — full amount credited
@@ -2899,15 +2896,12 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateTradeWallet(userId);
       const currentBalance = parseFloat(wallet.tradeBalance);
       const wdLocked = wallet.roiComplete ? 0 : parseFloat(wallet.lockedPrincipal ?? "0");
-      const wdTotalEarned = parseFloat(wallet.totalBotEarnings ?? "0");
-      // 200% rule: earnings must reach 100% of capital before any withdrawal is unlocked
-      const wd200Reached = wallet.roiComplete || wdLocked === 0 || wdTotalEarned >= wdLocked;
-      const wdWithdrawable = wd200Reached ? Math.max(0, currentBalance - wdLocked) : 0;
-      if (!wd200Reached && !wallet.roiComplete && wdLocked > 0) {
-        const wdProgress = wdLocked > 0 ? Math.min(100, (wdTotalEarned / wdLocked) * 100).toFixed(1) : "0.0";
-        return res.status(400).json({ message: `Withdrawals unlock at 200% total (earnings = capital). You are at ${wdProgress}% — keep trading until your earnings equal your deposited capital ($${wdLocked.toFixed(2)}).` });
-      }
+      // Only accumulated earnings (above capital) can be withdrawn; capital is non-refundable
+      const wdWithdrawable = Math.max(0, currentBalance - wdLocked);
       if (amount > wdWithdrawable) {
+        if (wdLocked > 0 && !wallet.roiComplete) {
+          return res.status(400).json({ message: `Only your trade earnings ($${wdWithdrawable.toFixed(2)}) can be withdrawn. Your invested capital ($${wdLocked.toFixed(2)}) is non-refundable.` });
+        }
         return res.status(400).json({ message: `Insufficient balance. Available: $${wdWithdrawable.toFixed(2)}` });
       }
 
@@ -3166,12 +3160,9 @@ export async function registerRoutes(
         let updatedWallet = await storage.applyBotLoss(userId, lossAmount.toFixed(6));
         updatedWallet = await storage.incrementTradingDay(userId);
 
-        // ── Check plan-length or 100%-return cycle completion ───────────
-        const lossLockedCapital  = parseFloat(wallet.lockedPrincipal ?? "0");
-        const lossEarningsNow    = parseFloat(updatedWallet.totalBotEarnings ?? "0");
-        const lossHitTarget      = lossLockedCapital > 0 && lossEarningsNow >= lossLockedCapital;
+        // ── Check plan-length cycle completion (day counter only) ────────
         let cycleJustComplete = false;
-        if ((updatedWallet.tradingDayNumber ?? 0) >= planDays || lossHitTarget) {
+        if ((updatedWallet.tradingDayNumber ?? 0) >= planDays) {
           cycleJustComplete = true;
           // Credit remaining net earnings (profit above locked capital) to Swift wallet before zeroing
           const preCompleteBalance = parseFloat(updatedWallet.tradeBalance);
@@ -3214,29 +3205,6 @@ export async function registerRoutes(
       const grossEarning = parseFloat((balance * rate).toFixed(6));
       const ratePercent = (rate * 100).toFixed(4);
 
-      // ── 100% return cap: must check BEFORE grossEarning guard ──────────
-      // Users who already have totalBotEarnings >= lockedPrincipal should
-      // trigger cycle completion rather than getting a "too small" error.
-      const lockedCapital   = parseFloat(wallet.lockedPrincipal ?? "0");
-      const priorEarnings   = parseFloat(wallet.totalBotEarnings ?? "0");
-      const remainingToTarget = Math.max(0, lockedCapital - priorEarnings);
-      if (lockedCapital > 0 && priorEarnings >= lockedCapital) {
-        // Already at 200% — complete the cycle immediately with no new earning
-        const swWallet200 = await storage.getOrCreateWallet(userId);
-        const preBalance200  = parseFloat(wallet.tradeBalance);
-        const cycleEarnings200 = Math.max(0, preBalance200 - lockedCapital);
-        if (cycleEarnings200 > 0) {
-          await storage.updateWalletBalance(userId, (parseFloat(swWallet200.balance) + cycleEarnings200).toFixed(2));
-          await storage.createTransaction({ userId, type: "admin_credit", amount: cycleEarnings200.toFixed(2), fee: "0.00", paymentMethod: "system", description: `${planDays}-day trade cycle payout (200% target reached) — earnings credited to SwiftWallet` });
-        }
-        await storage.markRoiComplete(userId);
-        await storage.incrementTradingDay(userId);
-        await storage.setBotActivatedAt(userId, null);
-        await storage.createNotification({ userId, type: "trade", title: "🎉 200% Target Reached — Cycle Complete!", message: `You've hit your 200% target! $${cycleEarnings200.toFixed(2)} in earnings have been credited to your SwiftWallet. Top up to start a fresh cycle.`, data: { cycleEarnings: cycleEarnings200 }, isRead: false });
-        const final200Wallet = await storage.getOrCreateTradeWallet(userId);
-        return res.json({ earning: "0.000000", elapsedHours, ratePercent, newBalance: final200Wallet.tradeBalance, totalBotEarnings: final200Wallet.totalBotEarnings, roiComplete: true, isLossDay: false, cycleDay: currentCycleDay, cycleDays: planDays, cycleComplete: true });
-      }
-
       if (grossEarning <= 0) return res.status(400).json({ message: "Earning too small to credit." });
 
       // 5% referral commission on bot earnings (deducted from gross, credited to referrer)
@@ -3245,7 +3213,33 @@ export async function registerRoutes(
       const hasBotReferrer = !!(botUser?.referredBy);
       let earning = hasBotReferrer ? parseFloat((grossEarning - botAffiliateCommission).toFixed(6)) : grossEarning;
 
-      const cappedByTarget  = lockedCapital > 0 && earning > remainingToTarget;
+      // ── 100% earnings cap: profits cannot exceed locked capital ─────────
+      // This only limits how much is credited; it never triggers early cycle end.
+      const lockedCapital     = parseFloat(wallet.lockedPrincipal ?? "0");
+      const priorEarnings     = parseFloat(wallet.totalBotEarnings ?? "0");
+      const remainingToTarget = Math.max(0, lockedCapital - priorEarnings);
+      const cappedByTarget    = lockedCapital > 0 && earning > remainingToTarget;
+      // If already at cap, just increment the day counter (no earning, no cycle end)
+      if (lockedCapital > 0 && priorEarnings >= lockedCapital) {
+        await storage.incrementTradingDay(userId);
+        await storage.setBotActivatedAt(userId, null);
+        const cappedWallet = await storage.getOrCreateTradeWallet(userId);
+        // Still check for day-limit cycle completion even when capped
+        if (!cappedWallet.roiComplete && (cappedWallet.tradingDayNumber ?? 0) >= planDays) {
+          const capBalance = parseFloat(cappedWallet.tradeBalance);
+          const capLocked  = parseFloat(cappedWallet.lockedPrincipal ?? "0");
+          const capEarnings = Math.max(0, capBalance - capLocked);
+          if (capEarnings > 0) {
+            const swCapWallet = await storage.getOrCreateWallet(userId);
+            await storage.updateWalletBalance(userId, (parseFloat(swCapWallet.balance) + capEarnings).toFixed(2));
+            await storage.createTransaction({ userId, type: "admin_credit", amount: capEarnings.toFixed(2), fee: "0.00", paymentMethod: "system", description: `${planDays}-day trade cycle complete — remaining earnings auto-credited to SwiftWallet` });
+          }
+          await storage.markRoiComplete(userId);
+          await storage.createNotification({ userId, type: "trade", title: `🎉 ${planDays}-Day Trading Cycle Complete!`, message: `Your ${planDays}-day cycle has ended.${capEarnings > 0 ? ` $${capEarnings.toFixed(2)} in remaining earnings have been credited to your SwiftWallet.` : ""} Top up to start a fresh cycle.`, data: {}, isRead: false });
+        }
+        const finalCappedWallet = await storage.getOrCreateTradeWallet(userId);
+        return res.json({ earning: "0.000000", elapsedHours, ratePercent: "0.0000", newBalance: finalCappedWallet.tradeBalance, totalBotEarnings: finalCappedWallet.totalBotEarnings, roiComplete: finalCappedWallet.roiComplete, isLossDay: false, cycleDay: currentCycleDay, cycleDays: planDays, cycleComplete: finalCappedWallet.roiComplete, capped: true });
+      }
       if (cappedByTarget) earning = parseFloat(remainingToTarget.toFixed(6));
 
       await storage.createTradeTransaction({
@@ -3269,11 +3263,9 @@ export async function registerRoutes(
         await creditReferrerCommission(userId, grossEarning, "bot earnings").catch(() => {});
       }
 
-      // ── Cycle completion check: days elapsed OR 100% profit target hit ─
-      const totalEarningsNow = parseFloat(updatedWallet.totalBotEarnings ?? "0");
-      const hitReturnTarget  = lockedCapital > 0 && totalEarningsNow >= lockedCapital;
+      // ── Cycle completion check: day counter reaching plan length only ───
       let cycleJustComplete = false;
-      if (!updatedWallet.roiComplete && ((updatedWallet.tradingDayNumber ?? 0) >= planDays || hitReturnTarget)) {
+      if (!updatedWallet.roiComplete && (updatedWallet.tradingDayNumber ?? 0) >= planDays) {
         cycleJustComplete = true;
         const preCompleteBalance = parseFloat(updatedWallet.tradeBalance);
         const preCompleteLocked  = parseFloat(updatedWallet.lockedPrincipal ?? "0");
@@ -3281,17 +3273,15 @@ export async function registerRoutes(
         if (cycleEarnings > 0) {
           const swWallet = await storage.getOrCreateWallet(userId);
           await storage.updateWalletBalance(userId, (parseFloat(swWallet.balance) + cycleEarnings).toFixed(2));
-          await storage.createTransaction({ userId, type: "admin_credit", amount: cycleEarnings.toFixed(2), fee: "0.00", paymentMethod: "system", description: `${planDays}-day trade cycle payout${hitReturnTarget ? " (100% return reached)" : ""} — earnings credited to SwiftWallet` });
+          await storage.createTransaction({ userId, type: "admin_credit", amount: cycleEarnings.toFixed(2), fee: "0.00", paymentMethod: "system", description: `${planDays}-day trade cycle complete — remaining earnings auto-credited to SwiftWallet` });
         }
         await storage.markRoiComplete(userId);
         await storage.createNotification({
           userId,
           type: "trade",
-          title: hitReturnTarget ? "🎉 100% Return Achieved — Cycle Complete!" : `🎉 ${planDays}-Day Trading Cycle Complete!`,
-          message: hitReturnTarget
-            ? `You've hit your 100% profit target! $${cycleEarnings.toFixed(2)} in earnings have been credited to your SwiftWallet. Top up to start a fresh cycle.`
-            : `Congratulations! Your ${planDays}-day trading cycle is complete.${cycleEarnings > 0 ? ` $${cycleEarnings.toFixed(2)} in earnings have been credited to your SwiftWallet.` : ""} Top up to start a fresh cycle.`,
-          data: { tradingDayNumber: updatedWallet.tradingDayNumber, cycleEarnings, hitReturnTarget },
+          title: `🎉 ${planDays}-Day Trading Cycle Complete!`,
+          message: `Congratulations! Your ${planDays}-day trading cycle is complete.${cycleEarnings > 0 ? ` $${cycleEarnings.toFixed(2)} in remaining earnings have been credited to your SwiftWallet.` : ""} Top up to start a fresh cycle.`,
+          data: { tradingDayNumber: updatedWallet.tradingDayNumber, cycleEarnings },
           isRead: false,
         });
       }

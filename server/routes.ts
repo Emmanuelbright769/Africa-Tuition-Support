@@ -33,7 +33,7 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
 
@@ -4572,6 +4572,90 @@ export async function registerRoutes(
       }
       res.json({ message: `ToS email sent to ${sent} users. ${failed} failed.`, sent, failed });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // One-time fix: restore trade accounts prematurely completed by hitReturnTarget bug
+  app.post("/api/admin/fix-premature-trade-completions", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
+    try {
+      // Find all trade wallets that are roiComplete but haven't reached their plan day limit
+      const affected = await db.select().from(tradeWallets).where(eq(tradeWallets.roiComplete, true));
+      const results: any[] = [];
+
+      for (const tw of affected) {
+        const planDays = (tw as any).tradingPlanDays ?? 120;
+        const dayNumber = (tw as any).tradingDayNumber ?? 0;
+        if (dayNumber >= planDays) continue; // legitimately completed — skip
+
+        // Find the erroneous payout transaction
+        const payoutTxs = await db.select().from(transactions)
+          .where(and(
+            eq(transactions.userId, tw.userId),
+            eq(transactions.type, "admin_credit"),
+            sql`description LIKE '%100% return reached%' OR description LIKE '%200% target%' OR description LIKE '%cycle payout%'`
+          ))
+          .orderBy(desc(transactions.createdAt))
+          .limit(1);
+
+        const payoutTx = payoutTxs[0];
+        const creditedAmount = payoutTx ? parseFloat(payoutTx.amount) : 0;
+        const totalInvested = parseFloat(tw.totalInvested ?? "0");
+
+        // Restore: locked_principal = total_invested, trade_balance = total_invested + credited
+        const restoredPrincipal = totalInvested.toFixed(6);
+        const restoredBalance   = (totalInvested + creditedAmount).toFixed(6);
+
+        // Reverse swift wallet credit (floor at 0 — can't go negative)
+        const swWallet = await storage.getOrCreateWallet(tw.userId);
+        const currentSwBal = parseFloat(swWallet.balance);
+        const newSwBal = Math.max(0, currentSwBal - creditedAmount).toFixed(2);
+
+        // Restore trade wallet
+        await storage.restoreTradeWalletFromPrematureComplete(tw.userId, restoredBalance, restoredPrincipal);
+
+        // Deduct from swift wallet
+        await storage.updateWalletBalance(tw.userId, newSwBal);
+
+        // Record correction transaction for audit trail
+        await storage.createTransaction({
+          userId: tw.userId,
+          type: "admin_debit" as any,
+          amount: (currentSwBal - parseFloat(newSwBal)).toFixed(2),
+          fee: "0.00",
+          paymentMethod: "system",
+          description: `Admin correction: reversed premature trade cycle payout (day ${dayNumber}/${planDays}) — trade wallet restored`,
+        });
+
+        // Notify user
+        await storage.createNotification({
+          userId: tw.userId,
+          type: "trade",
+          title: "Trade Account Restored",
+          message: `Your trade account has been restored. A technical issue caused your cycle to end early at day ${dayNumber}. Your earnings ($${creditedAmount.toFixed(2)}) have been returned to your trade wallet and your cycle continues normally. Sorry for the inconvenience.`,
+          data: {},
+          isRead: false,
+        });
+
+        results.push({
+          userId: tw.userId,
+          dayNumber,
+          planDays,
+          creditedAmount,
+          restoredBalance,
+          restoredPrincipal,
+          swiftWalletBefore: currentSwBal,
+          swiftWalletAfter: newSwBal,
+        });
+      }
+
+      res.json({ message: `Fixed ${results.length} account(s)`, results });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
   });
 
   app.get("/api/admin/stats", async (req, res) => {

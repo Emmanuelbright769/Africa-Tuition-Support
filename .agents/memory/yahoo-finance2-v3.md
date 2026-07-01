@@ -1,21 +1,28 @@
 ---
 name: yahoo-finance2 v3 setup
-description: Correct instantiation pattern for yahoo-finance2 v3 in Node 20, and JSE price currency quirk
+description: Correct instantiation pattern for yahoo-finance2 v3 in Node 20, esbuild CJS interop quirk, and JSE price currency quirk
 ---
 
 ## Rule
-In yahoo-finance2 v3, the default export is a class constructor. You must instantiate it:
+In yahoo-finance2 v3, the default export is a class constructor. You must instantiate it.
+**But esbuild CJS bundle interop breaks the simple pattern** — use this robust form:
 
 ```typescript
 import YahooFinanceLib from "yahoo-finance2";
-const yahooFinance = new (YahooFinanceLib as any)({ suppressNotices: ["yahooSurvey"] });
-// Then: yahooFinance.quote(...), yahooFinance.historical(...)
+const _YFRaw: any = YahooFinanceLib;
+// In dev (tsx): _YFRaw is the class directly
+// In prod (esbuild CJS bundle): esbuild __toESM forces default=module, so class is at .default
+const _YFClass: any = typeof _YFRaw === "function" ? _YFRaw : _YFRaw?.default ?? _YFRaw;
+const yahooFinance = new _YFClass({ suppressNotices: ["yahooSurvey"] });
 ```
 
-The old pattern `import yahooFinance from 'yahoo-finance2'; yahooFinance.quote(...)` fails with:
-"Call `const yahooFinance = new YahooFinance()` first."
+**Why the interop issue happens:** esbuild's `__toESM(require("yahoo-finance2"), 1)` passes flag `1`
+(Node interop) which forces `default = module` regardless of `__esModule`. So in the bundle,
+`import default` = the whole module object, not the class. The class lives at `.default.default`.
+The `typeof === "function"` guard handles both environments without branching on NODE_ENV.
 
-**Why:** Package broke its API in v3 (installed v3.15.3). Node 20 also triggers an unsupported-runtime warning but works fine.
+**Why:** Package broke its API in v3 (installed v3.15.3). Node 20 also triggers an unsupported-runtime
+warning but works fine.
 
 ## JSE Stock Currency
 Yahoo Finance returns JSE stocks (e.g. NPN.JO, SBK.JO, MTN.JO) with currency "ZAc" (South African cents).

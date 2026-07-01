@@ -1,6 +1,11 @@
-// yahoo-finance2 v3: must be instantiated with `new`
+// yahoo-finance2 v3: must be instantiated with `new`.
+// esbuild CJS bundle interop wraps the module so `import default` becomes the module
+// object (not the class). In dev/tsx it's the class directly.
+// We detect which case we're in and unwrap as needed.
 import YahooFinanceLib from "yahoo-finance2";
-const yahooFinance = new (YahooFinanceLib as any)({ suppressNotices: ["yahooSurvey"] });
+const _YFRaw: any = YahooFinanceLib;
+const _YFClass: any = typeof _YFRaw === "function" ? _YFRaw : _YFRaw?.default ?? _YFRaw;
+const yahooFinance = new _YFClass({ suppressNotices: ["yahooSurvey"] });
 
 // ─── Stock catalogue ──────────────────────────────────────────────────────────
 export interface StockInfo {

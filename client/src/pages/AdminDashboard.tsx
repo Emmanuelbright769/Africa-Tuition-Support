@@ -193,6 +193,8 @@ export default function AdminDashboard() {
   const [tradeSaved, setTradeSaved] = useState(false);
   const [tosEmailState, setTosEmailState] = useState<"idle" | "sending" | "done">("idle");
   const [tosEmailResult, setTosEmailResult] = useState("");
+  const [tradeFixState, setTradeFixState] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [tradeFixResult, setTradeFixResult] = useState("");
   const [openSlotsInput, setOpenSlotsInput] = useState("1");
   const [inviteEmail, setInviteEmail]     = useState("");
   const [inviteName,  setInviteName]      = useState("");
@@ -4828,6 +4830,56 @@ export default function AdminDashboard() {
                           : tosEmailState === "done"
                             ? <><CheckCircle2 className="w-4 h-4 mr-2" />Emails Sent</>
                             : <><Mail className="w-4 h-4 mr-2" />Send ToS Update to All Users</>}
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* ── Fix Premature Trade Completions ─────────────────── */}
+                  <Card className="border-0 shadow-sm border-l-4 border-l-red-400">
+                    <CardHeader className="border-b pb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center"><AlertCircle className="w-5 h-5 text-red-500" /></div>
+                        <div>
+                          <CardTitle className="text-base">Fix Premature Trade Completions</CardTitle>
+                          <CardDescription>Restores trade accounts incorrectly marked complete before reaching their cycle day limit. Safe to run multiple times — only affects impacted accounts.</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-4">
+                      {tradeFixResult && (
+                        <div className={`text-sm px-4 py-3 rounded-xl font-medium whitespace-pre-wrap ${tradeFixState === "error" ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+                          {tradeFixResult}
+                        </div>
+                      )}
+                      <Button
+                        className="w-full h-11 font-semibold bg-red-600 hover:bg-red-700 text-white"
+                        disabled={tradeFixState === "running"}
+                        onClick={async () => {
+                          setTradeFixState("running");
+                          setTradeFixResult("");
+                          try {
+                            const res = await apiRequest("POST", "/api/admin/fix-premature-trade-completions");
+                            const d = await res.json();
+                            if (d.results?.length === 0) {
+                              setTradeFixResult("✅ No affected accounts found — all trade cycles are correct.");
+                            } else {
+                              const lines = (d.results ?? []).map((r: any) =>
+                                `✅ User #${r.userId}: Day ${r.dayNumber}/${r.planDays} restored — trade wallet $${parseFloat(r.restoredBalance).toFixed(2)}, SwiftWallet adjusted from $${r.swiftWalletBefore.toFixed(2)} → $${r.swiftWalletAfter}`
+                              );
+                              setTradeFixResult([d.message, ...lines].join("\n"));
+                            }
+                            setTradeFixState("done");
+                          } catch (e: any) {
+                            setTradeFixResult("Error: " + e.message);
+                            setTradeFixState("error");
+                          }
+                        }}
+                        data-testid="button-fix-premature-trade">
+                        {tradeFixState === "running"
+                          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Running fix…</>
+                          : tradeFixState === "done"
+                            ? <><CheckCircle2 className="w-4 h-4 mr-2" />Fix Applied</>
+                            : <><AlertCircle className="w-4 h-4 mr-2" />Run Trade Account Fix</>}
                       </Button>
                     </CardContent>
                   </Card>

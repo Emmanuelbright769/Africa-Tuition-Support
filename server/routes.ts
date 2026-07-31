@@ -3219,10 +3219,12 @@ export async function registerRoutes(
       // The bar stays where it is when the user withdraws — withdrawals are separate.
       const lockedCapital     = parseFloat(wallet.lockedPrincipal ?? "0");
       const priorEarnings     = parseFloat(wallet.totalBotEarnings ?? "0");
-      const remainingToTarget = Math.max(0, lockedCapital - priorEarnings);
+      // 100% promised return = profit of 2× capital (e.g. invest $100 → earn $200 profit)
+      const profitTarget      = lockedCapital * 2;
+      const remainingToTarget = Math.max(0, profitTarget - priorEarnings);
       const cappedByTarget    = lockedCapital > 0 && earning > remainingToTarget;
       // If already at cap, just increment the day counter (no earning, no cycle end)
-      if (lockedCapital > 0 && priorEarnings >= lockedCapital) {
+      if (lockedCapital > 0 && priorEarnings >= profitTarget) {
         await storage.incrementTradingDay(userId);
         await storage.setBotActivatedAt(userId, null);
         const cappedWallet = await storage.getOrCreateTradeWallet(userId);

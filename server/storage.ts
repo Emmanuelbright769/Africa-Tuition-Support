@@ -920,7 +920,10 @@ export class DatabaseStorage implements IStorage {
 
   async resetTradingDayForTopUp(userId: number, newLossDays: number[]): Promise<void> {
     await db.update(tradeWallets)
-      .set({ tradingDayNumber: 0, lossDayNumbers: newLossDays, updatedAt: new Date() })
+      // Also reset totalBotEarnings so the new cycle's cap is calculated cleanly
+      // from zero against the updated lockedPrincipal (which addToLockedPrincipal
+      // will set right after this call).
+      .set({ tradingDayNumber: 0, lossDayNumbers: newLossDays, totalBotEarnings: "0.000000", updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId));
   }
 

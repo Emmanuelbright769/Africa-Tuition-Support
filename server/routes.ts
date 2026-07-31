@@ -3214,16 +3214,15 @@ export async function registerRoutes(
       const hasBotReferrer = !!(botUser?.referredBy);
       let earning = hasBotReferrer ? parseFloat((grossEarning - botAffiliateCommission).toFixed(6)) : grossEarning;
 
-      // ── 100% earnings cap: current profit (balance − capital) cannot exceed capital ──
-      // Cap is based on CURRENT profit in wallet, not lifetime accumulated earnings.
-      // This means withdrawing earnings resets the race to the cap — the bot keeps
-      // working normally after every withdrawal, as intended.
+      // ── 100% earnings cap: cumulative profits cannot exceed locked capital ────────
+      // Bar and cap both use totalBotEarnings (lifetime, never decreases on withdrawal).
+      // The bar stays where it is when the user withdraws — withdrawals are separate.
       const lockedCapital     = parseFloat(wallet.lockedPrincipal ?? "0");
-      const currentProfit     = Math.max(0, balance - lockedCapital); // profit actually in wallet now
-      const remainingToTarget = Math.max(0, lockedCapital - currentProfit);
+      const priorEarnings     = parseFloat(wallet.totalBotEarnings ?? "0");
+      const remainingToTarget = Math.max(0, lockedCapital - priorEarnings);
       const cappedByTarget    = lockedCapital > 0 && earning > remainingToTarget;
-      // If already at cap (profit ≥ capital), increment the day counter only (no earning, no cycle end)
-      if (lockedCapital > 0 && currentProfit >= lockedCapital) {
+      // If already at cap, just increment the day counter (no earning, no cycle end)
+      if (lockedCapital > 0 && priorEarnings >= lockedCapital) {
         await storage.incrementTradingDay(userId);
         await storage.setBotActivatedAt(userId, null);
         const cappedWallet = await storage.getOrCreateTradeWallet(userId);
@@ -5695,10 +5694,13 @@ export async function registerRoutes(
       const targetId = parseInt(req.params.userId);
       if (isNaN(targetId)) return res.status(400).json({ message: "Invalid user ID" });
 
-      // Reset bot session state, clear bot activated timestamp, and lock the bot
+      // Reset bot session state, clear bot activated timestamp, and lock the bot.
+      // Also reset total_bot_earnings so the cap check starts clean if the user
+      // is ever re-enabled — prevents premature 100% bar on the next deposit.
       await db.execute(sql`
         UPDATE trade_wallets
         SET locked_principal = '0.000000',
+            total_bot_earnings = '0.000000',
             trading_day_number = 0,
             bot_activated_at = NULL,
             bot_locked = TRUE,

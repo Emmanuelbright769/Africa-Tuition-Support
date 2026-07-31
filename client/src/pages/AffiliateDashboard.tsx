@@ -1217,7 +1217,10 @@ export default function AffiliateDashboard() {
   // Earnings (above capital) are always withdrawable once ≥ $2 minimum
   const withdrawableAmt  = Math.max(0, tradeBalance - lockedPrincipal);
   // Progress toward 100% earnings cap (informational only — not a withdrawal gate)
-  const returnPct        = lockedPrincipal > 0 ? Math.min(100, (totalBotEarned / lockedPrincipal) * 100) : 0;
+  // Cap progress = current profit above capital (not lifetime accumulated).
+  // Withdrawing earnings brings this back down so the bot can earn again — by design.
+  const currentProfit    = Math.max(0, tradeBalance - lockedPrincipal);
+  const returnPct        = lockedPrincipal > 0 ? Math.min(100, (currentProfit / lockedPrincipal) * 100) : 0;
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);
 
@@ -1788,8 +1791,8 @@ export default function AffiliateDashboard() {
                               </div>
                               <p className="text-[9px] text-muted-foreground mt-0.5">
                                 {tradeBalanceHidden ? "••••" : returnPct >= 100
-                                  ? `Earnings capped — $${withdrawableAmt.toFixed(2)} available · cycle continues until day ${planDaysFromWallet}`
-                                  : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — $${(lockedPrincipal - totalBotEarned).toFixed(2)} remaining to cap`}
+                                  ? `Earnings capped — $${withdrawableAmt.toFixed(2)} available · withdraw to resume earning`
+                                  : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — $${(lockedPrincipal - currentProfit).toFixed(2)} remaining to cap`}
                               </p>
                             </div>
                           )}

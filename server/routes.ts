@@ -3214,14 +3214,16 @@ export async function registerRoutes(
       const hasBotReferrer = !!(botUser?.referredBy);
       let earning = hasBotReferrer ? parseFloat((grossEarning - botAffiliateCommission).toFixed(6)) : grossEarning;
 
-      // ── 100% earnings cap: profits cannot exceed locked capital ─────────
-      // This only limits how much is credited; it never triggers early cycle end.
+      // ── 100% earnings cap: current profit (balance − capital) cannot exceed capital ──
+      // Cap is based on CURRENT profit in wallet, not lifetime accumulated earnings.
+      // This means withdrawing earnings resets the race to the cap — the bot keeps
+      // working normally after every withdrawal, as intended.
       const lockedCapital     = parseFloat(wallet.lockedPrincipal ?? "0");
-      const priorEarnings     = parseFloat(wallet.totalBotEarnings ?? "0");
-      const remainingToTarget = Math.max(0, lockedCapital - priorEarnings);
+      const currentProfit     = Math.max(0, balance - lockedCapital); // profit actually in wallet now
+      const remainingToTarget = Math.max(0, lockedCapital - currentProfit);
       const cappedByTarget    = lockedCapital > 0 && earning > remainingToTarget;
-      // If already at cap, just increment the day counter (no earning, no cycle end)
-      if (lockedCapital > 0 && priorEarnings >= lockedCapital) {
+      // If already at cap (profit ≥ capital), increment the day counter only (no earning, no cycle end)
+      if (lockedCapital > 0 && currentProfit >= lockedCapital) {
         await storage.incrementTradingDay(userId);
         await storage.setBotActivatedAt(userId, null);
         const cappedWallet = await storage.getOrCreateTradeWallet(userId);

@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -123,6 +125,28 @@
   }
   body {
     @apply font-sans antialiased bg-background text-foreground;
+  }
+  .trade-market-shell {
+    font-family: 'DM Sans', sans-serif;
+    background:
+      radial-gradient(circle at 90% 2%, hsl(var(--tsia-gold) / .13), transparent 28rem),
+      radial-gradient(circle at 0% 38%, hsl(var(--tsia-green) / .08), transparent 30rem);
+  }
+  .trade-market-shell h1,
+  .trade-market-shell h2,
+  .trade-market-shell h3 {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+  .trade-market-hero {
+    background:
+      linear-gradient(135deg, hsl(var(--card) / .78), hsl(var(--tsia-green) / .07)),
+      linear-gradient(110deg, transparent 45%, hsl(var(--tsia-gold) / .10));
+  }
+  .trade-market-shell [data-testid^="card-"],
+  .trade-market-shell [data-testid^="panel-"] {
+    border-color: hsl(var(--foreground) / .09);
+    box-shadow: 0 16px 45px hsl(var(--tsia-green) / .07);
+    backdrop-filter: blur(18px);
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-sans tracking-tight;

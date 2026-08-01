@@ -43,6 +43,7 @@ import {
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
+import TradeMarketSection from "@/components/TradeMarketSection";
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
@@ -1539,17 +1540,26 @@ export default function AffiliateDashboard() {
             {/* ── TRADE MARKET ── */}
             {activeSection === "trade" && (
               <>
-                <motion.div variants={itemVariants}>
-                  <h2 className="text-2xl font-bold mb-1">
+                <TradeMarketSection>
+                <motion.div variants={itemVariants} data-trade-anchor="home" style={{ scrollMarginTop: "5rem" }}>
+                  <div className="trade-market-hero mb-6 overflow-hidden rounded-[2rem] border border-white/60 p-6 shadow-[0_24px_70px_rgba(26,64,46,.14)] backdrop-blur-xl sm:p-9 dark:border-white/10">
+                  <div className="mb-5 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.22em] text-tsia-green">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-tsia-green" /> Markets live
+                    </div>
+                    <span className="rounded-full border border-tsia-gold/30 bg-tsia-gold/10 px-3 py-1 text-[10px] font-bold text-tsia-gold">USDT · SECURED</span>
+                  </div>
+                  <h2 className="text-3xl font-black tracking-[-.04em] sm:text-5xl">
                     <span className="text-tsia-gold">Eduvault</span>{" "}
                     <span className="text-tsia-green">Trade</span>{" "}
                     <span className="text-red-500">Market</span>
                   </h2>
-                  <p className="text-muted-foreground text-sm mb-4">Invest globally — deposit & withdraw using BYBIT, BINANCE & more.</p>
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">A focused trading desk for your Itera BOT sessions, portfolio growth and exchange wallet flows.</p>
+                  </div>
                 </motion.div>
 
                 {/* ===== TRADING BOT ACTIVATION PANEL ===== */}
-                <motion.div variants={itemVariants}>
+                <motion.div variants={itemVariants} data-trade-anchor="bot" style={{ scrollMarginTop: "5rem" }}>
                   {(() => {
                     const ukHour = ukHourNow;
                     const ukMin  = ukNow.getMinutes();
@@ -1728,7 +1738,7 @@ export default function AffiliateDashboard() {
                 </motion.div>
 
                 {/* Trade wallet balance + bot earnings — always visible */}
-                <motion.div variants={itemVariants}>
+                <motion.div variants={itemVariants} data-trade-anchor="wallet" style={{ scrollMarginTop: "5rem" }}>
                   <div className="rounded-2xl border overflow-hidden shadow-sm">
                     {/* Balance row */}
                     <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 px-4 py-3">
@@ -2085,7 +2095,7 @@ export default function AffiliateDashboard() {
 
                 {/* ── Trade Transaction History — after broker selection, collapsible ── */}
                 {(tradeTxs as any[]).length > 0 && (
-                  <motion.div variants={itemVariants}>
+                  <motion.div variants={itemVariants} data-trade-anchor="activity" style={{ scrollMarginTop: "5rem" }}>
                     <Card className="shadow-md border-0 overflow-hidden" data-testid="panel-trade-tx-history">
                       <button
                         type="button"
@@ -2191,6 +2201,7 @@ export default function AffiliateDashboard() {
                 )}
 
 
+                </TradeMarketSection>
               </>
             )}
 

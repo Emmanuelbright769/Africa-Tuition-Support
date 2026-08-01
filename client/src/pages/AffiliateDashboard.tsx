@@ -1540,7 +1540,7 @@ export default function AffiliateDashboard() {
             {/* ── TRADE MARKET ── */}
             {activeSection === "trade" && (
               <>
-                <TradeMarketSection>
+                <TradeMarketSection tradeBalance={tradeBalance} userId={user?.id ?? 0}>
                 <motion.div variants={itemVariants} data-trade-anchor="home" style={{ scrollMarginTop: "5rem" }}>
                   <div className="trade-market-hero mb-6 overflow-hidden rounded-[2rem] border border-white/60 p-6 shadow-[0_24px_70px_rgba(26,64,46,.14)] backdrop-blur-xl sm:p-9 dark:border-white/10">
                   <div className="mb-5 flex items-center justify-between gap-4">

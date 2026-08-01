@@ -1302,3 +1302,44 @@ export type ExchangeOrder = typeof exchangeOrders.$inferSelect;
 export const insertExchangeWatchlistSchema = createInsertSchema(exchangeWatchlist).omit({ id: true, createdAt: true });
 export type InsertExchangeWatchlist = z.infer<typeof insertExchangeWatchlistSchema>;
 export type ExchangeWatchlistItem = typeof exchangeWatchlist.$inferSelect;
+
+export const signalTradeStatusEnum = pgEnum("signal_trade_status", ["open", "won", "lost", "cancelled"]);
+export const tradeDirectionEnum = pgEnum("trade_direction", ["long", "short"]);
+
+export const signalTrades = pgTable("signal_trades", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  symbol: text("symbol").notNull(),
+  symbolLabel: text("symbol_label").notNull(),
+  direction: tradeDirectionEnum("direction").notNull(),
+  entryPrice: decimal("entry_price", { precision: 20, scale: 8 }).notNull(),
+  exitPrice: decimal("exit_price", { precision: 20, scale: 8 }),
+  amountUsd: decimal("amount_usd", { precision: 16, scale: 6 }).notNull(),
+  pnlUsd: decimal("pnl_usd", { precision: 16, scale: 6 }),
+  pnlPct: decimal("pnl_pct", { precision: 10, scale: 4 }),
+  confidence: integer("confidence").notNull().default(70),
+  timeframe: text("timeframe").notNull().default("15m"),
+  status: signalTradeStatusEnum("status").notNull().default("open"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const manualTrades = pgTable("manual_trades", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  symbol: text("symbol").notNull(),
+  symbolLabel: text("symbol_label").notNull(),
+  direction: tradeDirectionEnum("direction").notNull(),
+  leverage: integer("leverage").notNull().default(1),
+  marginUsd: decimal("margin_usd", { precision: 16, scale: 6 }).notNull(),
+  sizeUsd: decimal("size_usd", { precision: 16, scale: 6 }).notNull(),
+  entryPrice: decimal("entry_price", { precision: 20, scale: 8 }).notNull(),
+  exitPrice: decimal("exit_price", { precision: 20, scale: 8 }),
+  stopLossPrice: decimal("stop_loss_price", { precision: 20, scale: 8 }),
+  takeProfitPrice: decimal("take_profit_price", { precision: 20, scale: 8 }),
+  pnlUsd: decimal("pnl_usd", { precision: 16, scale: 6 }),
+  pnlPct: decimal("pnl_pct", { precision: 10, scale: 4 }),
+  status: signalTradeStatusEnum("status").notNull().default("open"),
+  closedAt: timestamp("closed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

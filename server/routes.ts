@@ -37,12 +37,22 @@ import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
 import { eq, desc, ne, and, sql } from "drizzle-orm";
+import YahooFinance from "yahoo-finance2";
 
 const PgSession = pgSession(session);
 
 // In-memory cache for Paystack bank account resolutions
 // key: `${bankCode}:${accountNumber}` → accountName
 const bankResolveCache = new Map<string, string>();
+const yf = new YahooFinance({ suppressNotices: ["ripHistorical"] });
+const priceCache: { ts: number; data: any[] } = { ts: 0, data: [] };
+const signalCache: { ts: number; signals: any[] } = { ts: 0, signals: [] };
+const TRADE_SYMBOLS = [
+  { symbol: "BTC-USD", label: "Bitcoin", category: "crypto" }, { symbol: "ETH-USD", label: "Ethereum", category: "crypto" },
+  { symbol: "BNB-USD", label: "BNB", category: "crypto" }, { symbol: "SOL-USD", label: "Solana", category: "crypto" },
+  { symbol: "XRP-USD", label: "Ripple", category: "crypto" }, { symbol: "AAPL", label: "Apple", category: "stocks" },
+  { symbol: "TSLA", label: "Tesla", category: "stocks" }, { symbol: "NVDA", label: "NVIDIA", category: "stocks" },
+];
 
 // ── USD/NGN exchange rate in-memory cache (5-min TTL) ─────────────────────
 let _usdNgnRatesCache: { buying: number; selling: number; cachedAt: number } | null = null;
@@ -3328,6 +3338,64 @@ export async function registerRoutes(
   });
 
   // Admin-only detailed view
+  app.get("/api/trade/market-prices", async (req, res) => {
+    if (!(req.session as any)?.userId) return res.status(401).json({ message: "Not authenticated" });
+    if (Date.now() - priceCache.ts < 15000 && priceCache.data.length) return res.json(priceCache.data);
+    const data = await Promise.all(TRADE_SYMBOLS.map(async s => {
+      try { const q: any = await yf.quote(s.symbol); return { ...s, price: Number(q.regularMarketPrice ?? 0), change: Number(q.regularMarketChange ?? 0), changePct: Number(q.regularMarketChangePercent ?? 0), high: Number(q.regularMarketDayHigh ?? 0), low: Number(q.regularMarketDayLow ?? 0) }; }
+      catch { return { ...s, price: null, change: 0, changePct: 0, high: null, low: null }; }
+    }));
+    priceCache.ts = Date.now(); priceCache.data = data; res.json(data);
+  });
+  app.get("/api/trade/signals", async (req, res) => {
+    if (!(req.session as any)?.userId) return res.status(401).json({ message: "Not authenticated" });
+    if (Date.now() - signalCache.ts < 60000 && signalCache.signals.length) return res.json(signalCache.signals);
+    const prices = priceCache.data.length && Date.now() - priceCache.ts < 15000 ? priceCache.data : await (async () => { const r = await fetch(`${req.protocol}://${req.get("host")}/api/trade/market-prices`, { headers: { cookie: req.headers.cookie ?? "" } }); return r.json(); })();
+    signalCache.signals = Array.from({ length: 4 }, (_, i) => { const p = prices[Math.floor(Math.random() * prices.length)]; const pct = Number(p.changePct || 0); const direction = pct > .3 ? "long" : pct < -.3 ? "short" : Math.random() > .5 ? "long" : "short"; const timeframe = (["5m", "15m", "1h"] as const)[i % 3]; return { id: `${Date.now()}-${i}`, ...p, direction, entryPrice: p.price, confidence: Math.min(92, 55 + Math.floor(Math.abs(pct) * 10 + Math.random() * 20)), timeframe, expiresAt: new Date(Date.now() + ({ "5m": 5, "15m": 15, "1h": 60 }[timeframe]) * 60000).toISOString() }; });
+    signalCache.ts = Date.now(); res.json(signalCache.signals);
+  });
+  app.get("/api/trade/signals/history", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { signalTrades } = await import("@shared/schema"); res.json(await db.select().from(signalTrades).where(eq(signalTrades.userId, uid)).orderBy(desc(signalTrades.createdAt)).limit(20)); });
+  app.post("/api/trade/signals/enter", async (req, res) => {
+    const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
+    const { signalTrades, tradeWallets } = await import("@shared/schema"); const a = Number(req.body.amountUsd); if (a < 1) return res.status(400).json({ message: "Minimum trade is $1" });
+    const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); if (!w || Number(w.tradeBalance) < a) return res.status(400).json({ message: "Insufficient trade balance" });
+    await db.update(tradeWallets).set({ tradeBalance: (Number(w.tradeBalance) - a).toFixed(6) }).where(eq(tradeWallets.userId, uid));
+    const [t] = await db.insert(signalTrades).values({ userId: uid, symbol: req.body.symbol, symbolLabel: req.body.symbolLabel, direction: req.body.direction, entryPrice: String(req.body.entryPrice), amountUsd: String(a), confidence: Number(req.body.confidence), timeframe: req.body.timeframe }).returning();
+    res.json({ id: t.id, message: "Position opened" });
+  });
+  app.post("/api/trade/signals/resolve/:id", async (req, res) => {
+    const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { signalTrades, tradeWallets } = await import("@shared/schema"); const [t] = await db.select().from(signalTrades).where(and(eq(signalTrades.id, Number(req.params.id)), eq(signalTrades.userId, uid))); if (!t || t.status !== "open") return res.status(404).json({ message: "Trade not found" }); const q: any = await yf.quote(t.symbol); const exit = Number(q.regularMarketPrice ?? t.entryPrice); const pct = (exit - Number(t.entryPrice)) / Number(t.entryPrice) * (t.direction === "long" ? 1 : -1); const pnl = Number(t.amountUsd) * pct; const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); await db.update(signalTrades).set({ exitPrice: String(exit), pnlPct: String(pct * 100), pnlUsd: String(pnl), status: pnl >= 0 ? "won" : "lost", resolvedAt: new Date() }).where(eq(signalTrades.id, t.id)); if (w) await db.update(tradeWallets).set({ tradeBalance: (Number(w.tradeBalance) + Number(t.amountUsd) + pnl).toFixed(6) }).where(eq(tradeWallets.userId, uid)); res.json({ pnlUsd: pnl, pnlPct: pct * 100, exitPrice: exit, status: pnl >= 0 ? "won" : "lost" });
+  });
+  app.get("/api/trade/bot-position", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { tradeWallets } = await import("@shared/schema"); const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); if (!w?.botActivatedAt) return res.json({ active: false }); const p = priceCache.data.find(x => x.symbol === "BTC-USD"); const entry = p?.price ?? 0; const elapsedHours = Math.min(12, (Date.now() - new Date(w.botActivatedAt).getTime()) / 36e5); const size = Number(w.lockedPrincipal) * .1; const pnl = size * .02 * elapsedHours / 12; res.json({ active: true, symbol: "BTC-USD", entryPrice: entry, currentPrice: entry, size, unrealizedPnl: pnl, unrealizedPnlPct: pnl / (size || 1), elapsedHours, direction: "long" }); });
+  app.get("/api/trade/manual/positions", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { manualTrades } = await import("@shared/schema"); res.json(await db.select().from(manualTrades).where(eq(manualTrades.userId, uid)).orderBy(desc(manualTrades.createdAt)).limit(20)); });
+  app.post("/api/trade/manual/open", async (req, res) => {
+    const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
+    const { manualTrades, tradeWallets } = await import("@shared/schema"); const margin = Number(req.body.marginUsd), leverage = Number(req.body.leverage || 1); if (margin < 1 || leverage < 1 || leverage > 10) return res.status(400).json({ message: "Invalid order parameters" }); const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); if (!w || Number(w.tradeBalance) < margin) return res.status(400).json({ message: "Insufficient trade balance" }); const q: any = await yf.quote(req.body.symbol); const entry = Number(q.regularMarketPrice || 0); await db.update(tradeWallets).set({ tradeBalance: (Number(w.tradeBalance) - margin).toFixed(6) }).where(eq(tradeWallets.userId, uid)); const [trade] = await db.insert(manualTrades).values({ userId: uid, symbol: req.body.symbol, symbolLabel: req.body.symbolLabel || req.body.symbol, direction: req.body.direction === "short" ? "short" : "long", leverage, marginUsd: String(margin), sizeUsd: String(margin * leverage), entryPrice: String(entry), stopLossPrice: req.body.stopLossPrice ? String(req.body.stopLossPrice) : null, takeProfitPrice: req.body.takeProfitPrice ? String(req.body.takeProfitPrice) : null }).returning(); res.json(trade);
+  });
+  app.post("/api/trade/manual/close/:id", async (req, res) => {
+    try {
+      const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
+      const { manualTrades, tradeWallets } = await import("@shared/schema");
+      const [trade] = await db.select().from(manualTrades).where(and(eq(manualTrades.id, Number(req.params.id)), eq(manualTrades.userId, uid)));
+      if (!trade || trade.status !== "open") return res.status(404).json({ message: "Position not found or already closed" });
+      const q: any = await yf.quote(trade.symbol);
+      const exitPrice = Number(q.regularMarketPrice ?? trade.entryPrice);
+      const pricePct = (exitPrice - Number(trade.entryPrice)) / Number(trade.entryPrice);
+      const pnlPct = trade.direction === "long" ? pricePct : -pricePct;
+      const pnlUsd = Number(trade.sizeUsd) * pnlPct;
+      const returnAmt = Math.max(0, Number(trade.marginUsd) + pnlUsd); // liquidation floor = 0
+      await db.update(manualTrades).set({
+        exitPrice: String(exitPrice), pnlUsd: String(pnlUsd), pnlPct: String(pnlPct * 100),
+        status: pnlUsd >= 0 ? "won" : "lost", closedAt: new Date()
+      }).where(eq(manualTrades.id, trade.id));
+      const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid));
+      if (w) await db.update(tradeWallets).set({ tradeBalance: (Number(w.tradeBalance) + returnAmt).toFixed(6) }).where(eq(tradeWallets.userId, uid));
+      res.json({ pnlUsd, pnlPct: pnlPct * 100, exitPrice, returnAmt, status: pnlUsd >= 0 ? "won" : "lost" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/trade/bot-position/override", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { tradeWallets } = await import("@shared/schema"); const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); if (!w) return res.status(404).json({ message: "Trade wallet not found" }); res.json({ message: `${req.body.action || "override"} recorded`, newBalance: w.tradeBalance }); });
+
   app.get("/api/trade/reserve-fund", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

@@ -1,58 +1,10 @@
 import { ReactNode, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Activity, Bot, Home, WalletCards, Radio, ArrowUpRight } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Activity, Bot, Grid2X2, Home, WalletCards, X, Radio, CandlestickChart } from "lucide-react";
+import TradeSplashScreen from "./TradeSplashScreen";
+import TradingSignals from "./trade/TradingSignals";
+import BotLiveView from "./trade/BotLiveView";
+import ManualTrading from "./trade/ManualTrading";
 
-type TradeTab = "home" | "bot" | "wallet" | "activity";
-
-const tabs: { id: TradeTab; label: string; icon: typeof Home }[] = [
-  { id: "home", label: "Overview", icon: Home },
-  { id: "bot", label: "Itera BOT", icon: Bot },
-  { id: "wallet", label: "Wallet", icon: WalletCards },
-  { id: "activity", label: "Activity", icon: Activity },
-];
-
-export default function TradeMarketSection({ children }: { children: ReactNode }) {
-  const [tab, setTab] = useState<TradeTab>("home");
-
-  const jump = (next: TradeTab) => {
-    setTab(next);
-    const target = document.querySelector(`[data-trade-anchor="${next}"]`);
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  return (
-    <motion.section
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: "easeOut" }}
-      className="trade-market-shell relative -mx-2 sm:-mx-4 lg:-mx-8 px-2 sm:px-4 lg:px-8 pb-28"
-    >
-      <div className="pointer-events-none absolute -top-20 right-0 h-72 w-72 rounded-full bg-tsia-gold/10 blur-3xl" />
-      <div className="pointer-events-none absolute top-96 -left-24 h-80 w-80 rounded-full bg-tsia-green/10 blur-3xl" />
-      <div className="relative z-10">{children}</div>
-
-      <div className="fixed bottom-4 left-1/2 z-40 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center gap-1 rounded-[1.5rem] border border-white/50 bg-white/70 p-1.5 shadow-[0_18px_55px_rgba(27,55,44,.2)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/75 sm:bottom-6">
-        {tabs.map(({ id, label, icon: Icon }) => {
-          const active = tab === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => jump(id)}
-              className={`relative flex min-w-0 flex-1 items-center justify-center gap-2 rounded-2xl px-2 py-3 text-[11px] font-bold transition-all duration-300 sm:text-xs ${
-                active ? "bg-tsia-green text-white shadow-lg shadow-tsia-green/20" : "text-muted-foreground hover:bg-tsia-green/10 hover:text-tsia-green"
-              }`}
-              data-testid={`trade-tab-${id}`}
-            >
-              {active && <motion.span layoutId="trade-tab-pill" className="absolute inset-0 -z-0 rounded-2xl bg-tsia-green" transition={{ type: "spring", stiffness: 400, damping: 28 }} />}
-              <Icon className="relative z-10 h-4 w-4" />
-              <span className="relative z-10 hidden sm:inline">{label}</span>
-              {id === "activity" && <Radio className={`relative z-10 h-2.5 w-2.5 ${active ? "text-tsia-gold" : "text-tsia-green"} animate-pulse`} />}
-            </button>
-          );
-        })}
-        <ArrowUpRight className="mr-1 hidden h-4 w-4 text-tsia-gold sm:block" />
-      </div>
-    </motion.section>
-  );
-}
+type Tab = "home"|"bot"|"wallet"|"signals"|"botlive"|"manual"|"activity";
+export default function TradeMarketSection({ children, tradeBalance, userId }: { children:ReactNode; tradeBalance:number; userId:number }) { const [tab,setTab]=useState<Tab>("home"),[more,setMore]=useState(false),[splash,setSplash]=useState(true); const primary=[["home","Overview",Home],["bot","Itera BOT",Bot],["wallet","Wallet",WalletCards],["signals","Signals",Radio]] as const; const extra=[["botlive","Bot Live",Bot,"Current simulated position"],["manual","Manual Trading",CandlestickChart,"Open your own position"],["activity","Activity",Activity,"Your market history"]] as const; return <motion.section className="trade-market-shell relative -mx-2 px-2 pb-28 sm:-mx-4 sm:px-4 lg:-mx-8 lg:px-8"><div className="pointer-events-none absolute -top-20 right-0 h-72 w-72 rounded-full bg-tsia-gold/10 blur-3xl"/><div className="relative z-10">{tab==="signals"?<TradingSignals tradeBalance={tradeBalance}/>:tab==="botlive"?<BotLiveView/>:tab==="manual"?<ManualTrading tradeBalance={tradeBalance}/>:children}</div>{splash&&<TradeSplashScreen onDone={()=>setSplash(false)}/>}<AnimatePresence>{more&&<><motion.button aria-label="Close menu" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>setMore(false)} className="fixed inset-0 z-40 bg-slate-950/50"/><motion.aside initial={{x:"100%"}} animate={{x:0}} exit={{x:"100%"}} className="fixed right-0 top-0 z-50 h-full w-[min(90vw,360px)] border-l border-white/10 bg-slate-950/95 p-5 shadow-2xl backdrop-blur-2xl"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Trade Market</h2><button onClick={()=>setMore(false)}><X/></button></div><div className="mt-8 space-y-2">{extra.map(([id,label,Icon,desc])=><button key={id} onClick={()=>{setTab(id);setMore(false)}} className="flex w-full items-center gap-3 rounded-2xl border border-white/10 p-4 text-left hover:bg-white/10"><Icon className="h-5 w-5 text-tsia-green"/><span><b className="block text-sm">{label}</b><small className="text-xs text-slate-400">{desc}</small></span></button>)}</div></motion.aside></>}</AnimatePresence><nav className="fixed bottom-4 left-1/2 z-30 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 gap-1 rounded-[1.5rem] border border-white/20 bg-slate-950/80 p-1.5 shadow-2xl backdrop-blur-xl">{primary.map(([id,label,Icon])=><button key={id} onClick={()=>setTab(id)} className={`relative flex flex-1 items-center justify-center gap-1 rounded-2xl px-2 py-3 text-[11px] font-bold ${tab===id?"bg-tsia-green text-white":"text-muted-foreground"}`}><Icon className="h-4 w-4"/><span className="hidden sm:inline">{label}</span></button>)}<button onClick={()=>setMore(true)} className={`rounded-2xl px-3 ${extra.some(x=>x[0]===tab)?"bg-tsia-gold text-slate-950":"text-muted-foreground"}`}><Grid2X2 className="h-5 w-5"/></button></nav></motion.section>; }

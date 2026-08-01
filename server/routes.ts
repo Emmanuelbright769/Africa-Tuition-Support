@@ -48,10 +48,54 @@ const yf = new YahooFinance({ suppressNotices: ["ripHistorical"] });
 const priceCache: { ts: number; data: any[] } = { ts: 0, data: [] };
 const signalCache: { ts: number; signals: any[] } = { ts: 0, signals: [] };
 const TRADE_SYMBOLS = [
-  { symbol: "BTC-USD", label: "Bitcoin", category: "crypto" }, { symbol: "ETH-USD", label: "Ethereum", category: "crypto" },
-  { symbol: "BNB-USD", label: "BNB", category: "crypto" }, { symbol: "SOL-USD", label: "Solana", category: "crypto" },
-  { symbol: "XRP-USD", label: "Ripple", category: "crypto" }, { symbol: "AAPL", label: "Apple", category: "stocks" },
-  { symbol: "TSLA", label: "Tesla", category: "stocks" }, { symbol: "NVDA", label: "NVIDIA", category: "stocks" },
+  // Crypto
+  { symbol: "BTC-USD",  label: "Bitcoin",       category: "crypto" },
+  { symbol: "ETH-USD",  label: "Ethereum",      category: "crypto" },
+  { symbol: "BNB-USD",  label: "BNB",           category: "crypto" },
+  { symbol: "SOL-USD",  label: "Solana",        category: "crypto" },
+  { symbol: "XRP-USD",  label: "Ripple",        category: "crypto" },
+  { symbol: "ADA-USD",  label: "Cardano",       category: "crypto" },
+  { symbol: "DOGE-USD", label: "Dogecoin",      category: "crypto" },
+  { symbol: "AVAX-USD", label: "Avalanche",     category: "crypto" },
+  { symbol: "DOT-USD",  label: "Polkadot",      category: "crypto" },
+  { symbol: "LINK-USD", label: "Chainlink",     category: "crypto" },
+  // Forex
+  { symbol: "EURUSD=X", label: "EUR/USD",       category: "forex" },
+  { symbol: "GBPUSD=X", label: "GBP/USD",       category: "forex" },
+  { symbol: "JPY=X",    label: "USD/JPY",       category: "forex" },
+  { symbol: "AUDUSD=X", label: "AUD/USD",       category: "forex" },
+  { symbol: "CAD=X",    label: "USD/CAD",       category: "forex" },
+  { symbol: "NZDUSD=X", label: "NZD/USD",       category: "forex" },
+  { symbol: "EURGBP=X", label: "EUR/GBP",       category: "forex" },
+  { symbol: "CHF=X",    label: "USD/CHF",       category: "forex" },
+  { symbol: "EURJPY=X", label: "EUR/JPY",       category: "forex" },
+  { symbol: "GBPJPY=X", label: "GBP/JPY",       category: "forex" },
+  // Commodities
+  { symbol: "GC=F",     label: "Gold",          category: "commodities" },
+  { symbol: "SI=F",     label: "Silver",        category: "commodities" },
+  { symbol: "CL=F",     label: "WTI Crude Oil", category: "commodities" },
+  { symbol: "BZ=F",     label: "Brent Crude",   category: "commodities" },
+  { symbol: "NG=F",     label: "Natural Gas",   category: "commodities" },
+  { symbol: "HG=F",     label: "Copper",        category: "commodities" },
+  { symbol: "PL=F",     label: "Platinum",      category: "commodities" },
+  // Indices
+  { symbol: "^GSPC",    label: "S&P 500",       category: "indices" },
+  { symbol: "^IXIC",    label: "NASDAQ 100",    category: "indices" },
+  { symbol: "^DJI",     label: "Dow Jones",     category: "indices" },
+  { symbol: "^RUT",     label: "Russell 2000",  category: "indices" },
+  { symbol: "^FTSE",    label: "FTSE 100",      category: "indices" },
+  { symbol: "^GDAXI",   label: "DAX 40",        category: "indices" },
+  { symbol: "^N225",    label: "Nikkei 225",    category: "indices" },
+  { symbol: "^HSI",     label: "Hang Seng",     category: "indices" },
+  // Stocks
+  { symbol: "AAPL",     label: "Apple",         category: "stocks" },
+  { symbol: "MSFT",     label: "Microsoft",     category: "stocks" },
+  { symbol: "NVDA",     label: "NVIDIA",        category: "stocks" },
+  { symbol: "TSLA",     label: "Tesla",         category: "stocks" },
+  { symbol: "AMZN",     label: "Amazon",        category: "stocks" },
+  { symbol: "META",     label: "Meta",          category: "stocks" },
+  { symbol: "GOOGL",    label: "Alphabet",      category: "stocks" },
+  { symbol: "JPM",      label: "JPMorgan",      category: "stocks" },
 ];
 
 // ── USD/NGN exchange rate in-memory cache (5-min TTL) ─────────────────────

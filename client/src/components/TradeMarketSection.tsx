@@ -193,32 +193,21 @@ export default function TradeMarketSection({
               className="relative flex flex-1 items-center justify-center gap-1.5 rounded-2xl px-2 py-3 text-[11px] font-bold transition-colors"
               data-testid={`trade-tab-${id}`}
             >
-              <Icon className={`h-4 w-4 transition-colors ${active ? "text-tsia-green" : "text-white/40"}`} />
-              <span className={`hidden sm:inline text-[11px] font-bold transition-colors ${active ? "text-tsia-green" : "text-white/40"}`}>
-                {label}
-              </span>
               {active && (
                 <motion.span
-                  layoutId="trade-tab-dot"
-                  className="absolute bottom-1 left-1/2 h-1 w-4 -translate-x-1/2 rounded-full bg-tsia-green"
-                  transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                  layoutId="trade-tab-pill"
+                  className="absolute inset-0 rounded-2xl bg-tsia-green"
+                  transition={{ type: "spring", stiffness: 400, damping: 28 }}
                 />
               )}
+              <Icon className={`relative z-10 h-4 w-4 ${active ? "text-white" : "text-white/50"}`} />
+              <span className={`relative z-10 hidden sm:inline ${active ? "text-white" : "text-white/50"}`}>
+                {label}
+              </span>
             </button>
           );
         })}
 
-        {/* More / hamburger */}
-        <button
-          onClick={() => setMore(true)}
-          className={`relative flex items-center justify-center rounded-2xl px-3 py-3 transition-colors
-            ${isExtra ? "bg-tsia-gold" : "hover:bg-white/10"}`}
-        >
-          <Grid2X2 className={`h-5 w-5 ${isExtra ? "text-slate-950" : "text-white/50"}`} />
-          {isExtra && (
-            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-tsia-green border-2 border-slate-950 animate-pulse" />
-          )}
-        </button>
       </nav>
     </motion.section>
   );

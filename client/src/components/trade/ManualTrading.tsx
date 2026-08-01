@@ -121,7 +121,7 @@ function SymbolPicker({
         exit={{ y: "100%" }}
         transition={{ type: "spring", stiffness: 360, damping: 34 }}
         onClick={e => e.stopPropagation()}
-        className="mt-auto flex max-h-[88vh] flex-col rounded-t-3xl border-t border-white/10 bg-slate-900 shadow-2xl"
+        className="mt-auto flex h-[88vh] flex-col rounded-t-3xl border-t border-white/10 bg-slate-900 shadow-2xl"
       >
         {/* Handle */}
         <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-white/20" />
@@ -169,7 +169,7 @@ function SymbolPicker({
         )}
 
         {/* Symbol grid */}
-        <div className="flex-1 overflow-y-auto px-5 pb-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6" style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="grid grid-cols-2 gap-2">
             {visible.map(sym => {
               const active = sym.s === value;

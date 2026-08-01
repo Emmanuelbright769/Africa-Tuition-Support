@@ -193,17 +193,17 @@ export default function TradeMarketSection({
               className="relative flex flex-1 items-center justify-center gap-1.5 rounded-2xl px-2 py-3 text-[11px] font-bold transition-colors"
               data-testid={`trade-tab-${id}`}
             >
-              {active && (
-                <motion.span
-                  layoutId="trade-tab-pill"
-                  className="absolute inset-0 rounded-2xl bg-tsia-green"
-                  transition={{ type: "spring", stiffness: 400, damping: 28 }}
-                />
-              )}
-              <Icon className={`relative z-10 h-4 w-4 ${active ? "text-white" : "text-white/50"}`} />
-              <span className={`relative z-10 hidden sm:inline ${active ? "text-white" : "text-white/50"}`}>
+              <Icon className={`h-4 w-4 transition-colors ${active ? "text-tsia-green" : "text-white/40"}`} />
+              <span className={`hidden sm:inline text-[11px] font-bold transition-colors ${active ? "text-tsia-green" : "text-white/40"}`}>
                 {label}
               </span>
+              {active && (
+                <motion.span
+                  layoutId="trade-tab-dot"
+                  className="absolute bottom-1 left-1/2 h-1 w-4 -translate-x-1/2 rounded-full bg-tsia-green"
+                  transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                />
+              )}
             </button>
           );
         })}

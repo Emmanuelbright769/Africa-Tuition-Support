@@ -108,26 +108,30 @@ function SymbolPicker({
     : SYMBOLS.filter(s => s.cat === cat);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex flex-col bg-slate-950/80 backdrop-blur-md"
-      onClick={onClose}
-    >
+    <>
+      {/* ── Backdrop (separate element — never wraps the panel) ── */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 z-[60] bg-slate-950/75 backdrop-blur-sm"
+      />
+
+      {/* ── Sheet panel (independent fixed element at higher z) ── */}
       <motion.div
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", stiffness: 360, damping: 34 }}
-        onClick={e => e.stopPropagation()}
-        className="mt-auto flex h-[88vh] flex-col rounded-t-3xl border-t border-white/10 bg-slate-900 shadow-2xl"
+        className="fixed bottom-0 left-0 right-0 z-[61] rounded-t-3xl border-t border-white/10 bg-slate-900 shadow-2xl"
+        style={{ height: "88dvh", display: "flex", flexDirection: "column" }}
       >
-        {/* Handle */}
-        <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-white/20" />
+        {/* Drag handle */}
+        <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-white/20" />
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-4 pb-3">
+        <div className="flex shrink-0 items-center justify-between px-5 pt-4 pb-3">
           <div>
             <h3 className="text-lg font-black text-white">Select Market</h3>
             <p className="text-xs text-white/40">{SYMBOLS.length} instruments available</p>
@@ -141,7 +145,7 @@ function SymbolPicker({
         </div>
 
         {/* Search */}
-        <div className="relative mx-5 mb-3">
+        <div className="relative mx-5 mb-3 shrink-0">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30 pointer-events-none" />
           <input
             type="text"
@@ -154,7 +158,7 @@ function SymbolPicker({
 
         {/* Category tabs */}
         {!q && (
-          <div className="flex gap-2 overflow-x-auto px-5 pb-3 scrollbar-none">
+          <div className="flex shrink-0 gap-2 overflow-x-auto px-5 pb-3 scrollbar-none">
             {CATS.map(c => (
               <button
                 key={c}
@@ -168,8 +172,19 @@ function SymbolPicker({
           </div>
         )}
 
-        {/* Symbol grid */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6" style={{ WebkitOverflowScrolling: "touch" }}>
+        {/* ── Scrollable symbol grid — inline styles for iOS Safari ── */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "scroll",
+            overflowX: "hidden",
+            WebkitOverflowScrolling: "touch",
+            paddingLeft: "1.25rem",
+            paddingRight: "1.25rem",
+            paddingBottom: "6rem",
+          }}
+        >
           <div className="grid grid-cols-2 gap-2">
             {visible.map(sym => {
               const active = sym.s === value;
@@ -178,10 +193,9 @@ function SymbolPicker({
                 <button
                   key={sym.s}
                   onClick={() => { onSelect(sym); onClose(); }}
-                  className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition-all hover:scale-[1.02] active:scale-[0.98]
-                    ${active ? `${colors} ring-1 ring-current` : "border-white/10 bg-white/5 hover:bg-white/10"}`}
+                  className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition-all active:scale-[0.97]
+                    ${active ? `${colors} ring-1 ring-current` : "border-white/10 bg-white/5"}`}
                 >
-                  {/* Icon circle */}
                   <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base
                     ${active ? "bg-white/20" : "bg-white/5"}`}>
                     {sym.flag ?? sym.l[0]}
@@ -208,7 +222,7 @@ function SymbolPicker({
           )}
         </div>
       </motion.div>
-    </motion.div>
+    </>
   );
 }
 

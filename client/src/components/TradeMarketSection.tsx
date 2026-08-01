@@ -1,8 +1,8 @@
 import { ReactNode, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, Bot, Grid2X2, Home, WalletCards, X,
-  Radio, CandlestickChart, TrendingUp, BarChart2,
+  Grid2X2, Home, WalletCards, X,
+  Radio, CandlestickChart, TrendingUp, BarChart2, Bot,
 } from "lucide-react";
 import TradeSplashScreen from "./TradeSplashScreen";
 import TradingSignals from "./trade/TradingSignals";
@@ -10,7 +10,7 @@ import BotLiveView from "./trade/BotLiveView";
 import ManualTrading from "./trade/ManualTrading";
 import TradeWalletView from "./trade/TradeWalletView";
 
-type Tab = "home" | "bot" | "wallet" | "signals" | "botlive" | "manual" | "activity";
+type Tab = "home" | "wallet" | "signals" | "botlive" | "manual" | "activity";
 
 interface TradeMarketSectionProps {
   children: ReactNode;
@@ -23,23 +23,25 @@ interface TradeMarketSectionProps {
 }
 
 const PRIMARY_TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
-  { id: "home",    label: "Overview",  Icon: Home },
-  { id: "bot",     label: "Itera BOT", Icon: Bot },
-  { id: "wallet",  label: "Wallet",    Icon: WalletCards },
-  { id: "signals", label: "Signals",   Icon: Radio },
+  { id: "home",    label: "Overview", Icon: Home },
+  { id: "wallet",  label: "Wallet",   Icon: WalletCards },
+  { id: "signals", label: "Signals",  Icon: Radio },
 ];
 
 const EXTRA_TABS: { id: Tab; label: string; desc: string; Icon: React.ElementType }[] = [
-  { id: "botlive", label: "Bot Live",       desc: "Current simulated position",  Icon: TrendingUp },
-  { id: "manual",  label: "Manual Trading", desc: "Open your own market position", Icon: CandlestickChart },
-  { id: "activity",label: "Activity",       desc: "Your full market history",      Icon: BarChart2 },
+  { id: "botlive",  label: "Itera BOT",      desc: "Live bot position & controls",  Icon: Bot },
+  { id: "manual",   label: "Manual Trading", desc: "Open your own market position", Icon: CandlestickChart },
+  { id: "activity", label: "Activity",       desc: "Your full market history",      Icon: BarChart2 },
 ];
+
+// Tabs that render dedicated components (not the scrollable children)
+const COMPONENT_TABS = new Set<Tab>(["wallet", "signals", "botlive", "manual", "activity"]);
 
 export default function TradeMarketSection({
   children, tradeBalance, onDeposit, onWithdraw, onFund, onConnect,
 }: TradeMarketSectionProps) {
-  const [tab, setTab]     = useState<Tab>("home");
-  const [more, setMore]   = useState(false);
+  const [tab, setTab]       = useState<Tab>("home");
+  const [more, setMore]     = useState(false);
   const [splash, setSplash] = useState(true);
 
   const isExtra = EXTRA_TABS.some(t => t.id === tab);
@@ -47,14 +49,18 @@ export default function TradeMarketSection({
   const goTab = (next: Tab) => {
     setTab(next);
     setMore(false);
-    // for scroll-based tabs, scroll to anchor
-    if (next === "home" || next === "bot" || next === "activity") {
+    if (next === "home") {
+      // scroll back to top of the trade section
       setTimeout(() => {
-        const el = document.querySelector(`[data-trade-anchor="${next}"]`);
+        const el = document.querySelector("[data-trade-anchor='home']");
         el?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 50);
     }
   };
+
+  // We keep `children` always mounted to prevent blank flash on return.
+  // Component-tabs are lazily mounted once and kept in DOM thereafter.
+  const showChildren = !COMPONENT_TABS.has(tab);
 
   return (
     <motion.section
@@ -67,34 +73,65 @@ export default function TradeMarketSection({
       <div className="pointer-events-none absolute -top-20 right-0 h-72 w-72 rounded-full bg-tsia-gold/10 blur-3xl" />
       <div className="pointer-events-none absolute top-96 -left-24 h-80 w-80 rounded-full bg-tsia-green/10 blur-3xl" />
 
-      {/* Tab content */}
+      {/* ── Scroll-based children (home) — always mounted, shown/hidden via CSS ── */}
+      <div
+        className="relative z-10"
+        style={{ display: showChildren ? undefined : "none" }}
+        aria-hidden={!showChildren}
+      >
+        {children}
+      </div>
+
+      {/* ── Component-based tabs — animate in/out ── */}
       <div className="relative z-10">
         <AnimatePresence mode="wait">
-          {tab === "signals" ? (
-            <motion.div key="signals" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }}>
-              <TradingSignals tradeBalance={tradeBalance} />
-            </motion.div>
-          ) : tab === "wallet" ? (
-            <motion.div key="wallet" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }}>
+          {tab === "wallet" && (
+            <motion.div key="wallet"
+              initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.22 }}>
               <TradeWalletView
-                onDeposit={onDeposit}
-                onWithdraw={onWithdraw}
-                onFund={onFund}
-                onConnect={onConnect}
+                onDeposit={onDeposit} onWithdraw={onWithdraw}
+                onFund={onFund} onConnect={onConnect}
               />
             </motion.div>
-          ) : tab === "botlive" ? (
-            <motion.div key="botlive" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }}>
+          )}
+          {tab === "signals" && (
+            <motion.div key="signals"
+              initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.22 }}>
+              <TradingSignals tradeBalance={tradeBalance} />
+            </motion.div>
+          )}
+          {tab === "botlive" && (
+            <motion.div key="botlive"
+              initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.22 }}>
               <BotLiveView />
             </motion.div>
-          ) : tab === "manual" ? (
-            <motion.div key="manual" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }}>
+          )}
+          {tab === "manual" && (
+            <motion.div key="manual"
+              initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.22 }}>
               <ManualTrading tradeBalance={tradeBalance} />
             </motion.div>
-          ) : (
-            /* home / bot / activity — render the scrollable children */
-            <motion.div key="scroll" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-              {children}
+          )}
+          {tab === "activity" && (
+            <motion.div key="activity"
+              initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.22 }}>
+              {/* Activity placeholder — reuses closed positions from scroll content */}
+              <div className="py-12 text-center text-white/30">
+                <BarChart2 className="mx-auto mb-3 h-10 w-10 opacity-30" />
+                <p className="font-bold text-white/50">Activity Log</p>
+                <p className="mt-1 text-sm">Scroll to Activity in Overview to see your history.</p>
+                <button
+                  onClick={() => goTab("home")}
+                  className="mt-4 rounded-xl border border-white/10 px-5 py-2 text-sm font-bold text-white hover:bg-white/10 transition-colors"
+                >
+                  Go to Overview
+                </button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -208,6 +245,17 @@ export default function TradeMarketSection({
           );
         })}
 
+        {/* Hamburger / More button */}
+        <button
+          onClick={() => setMore(true)}
+          className={`relative flex items-center justify-center rounded-2xl px-3 py-3 transition-colors
+            ${isExtra ? "bg-tsia-gold" : "hover:bg-white/10"}`}
+        >
+          <Grid2X2 className={`h-5 w-5 ${isExtra ? "text-slate-950" : "text-white/50"}`} />
+          {isExtra && (
+            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-tsia-green border-2 border-slate-950 animate-pulse" />
+          )}
+        </button>
       </nav>
     </motion.section>
   );

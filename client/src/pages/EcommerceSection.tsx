@@ -654,16 +654,15 @@ function ImageLightbox({ images, startIndex = 0, open, onClose }: {
 }) {
   const [idx, setIdx] = useState(startIndex);
   const [imgLoaded, setImgLoaded] = useState(false);
+  // Touch swipe tracking
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
 
   useEffect(() => { setIdx(startIndex); }, [startIndex, open]);
   useEffect(() => { if (open) setImgLoaded(false); }, [open, idx]);
 
-  // Lock body scroll while open
-  useEffect(() => {
-    if (open) { document.body.style.overflow = "hidden"; }
-    else { document.body.style.overflow = ""; }
-    return () => { document.body.style.overflow = ""; };
-  }, [open]);
+  // NOTE: Do NOT lock body scroll here — the parent Dialog already does it.
+  // Double-locking causes iOS to drop touch events on the close button.
 
   // Close on Escape
   useEffect(() => {
@@ -673,61 +672,106 @@ function ImageLightbox({ images, startIndex = 0, open, onClose }: {
     return () => window.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
+  const goNext = () => { setImgLoaded(false); setIdx(i => (i + 1) % images.length); };
+  const goPrev = () => { setImgLoaded(false); setIdx(i => (i - 1 + images.length) % images.length); };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    // Swipe left/right to navigate (ignore small or mostly-vertical swipes)
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && images.length > 1) {
+      if (dx < 0) goNext(); else goPrev();
+      return;
+    }
+    // Swipe down to close
+    if (dy > 80 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+      onClose();
+    }
+  };
+
   if (!images.length || !open) return null;
 
   return createPortal(
     <div
       data-testid="image-lightbox"
-      style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.97)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", touchAction: "none" }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 99999,
+        background: "rgba(0,0,0,0.96)",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        // Use "manipulation" not "none" — "none" blocks tap events on iOS
+        touchAction: "manipulation",
+        cursor: "pointer",
+        WebkitTapHighlightColor: "transparent",
+      }}
       onClick={onClose}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     >
-      {/* Close */}
+      {/* Close — large tap area, explicit pointer-events so iOS never misses it */}
       <button
-        style={{ position: "absolute", top: 16, right: 16, zIndex: 2, width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-        onClick={e => { e.stopPropagation(); onClose(); }} data-testid="btn-lightbox-close"
+        style={{ position: "absolute", top: 52, right: 16, zIndex: 10, width: 48, height: 48, borderRadius: "50%", background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.25)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
+        onClick={e => { e.stopPropagation(); onClose(); }}
+        onTouchEnd={e => { e.stopPropagation(); e.preventDefault(); onClose(); }}
+        data-testid="btn-lightbox-close"
       >
         <X className="w-5 h-5 text-white" />
       </button>
 
-      {/* Counter */}
-      {images.length > 1 && (
-        <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 2, background: "rgba(0,0,0,0.4)", color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: 500, padding: "4px 14px", borderRadius: 20 }}>
-          {idx + 1} / {images.length}
-        </div>
-      )}
+      {/* Hint */}
+      <div style={{ position: "absolute", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 2, display: "flex", alignItems: "center", gap: 12 }}>
+        {images.length > 1 && (
+          <div style={{ background: "rgba(0,0,0,0.5)", color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: 500, padding: "4px 14px", borderRadius: 20 }}>
+            {idx + 1} / {images.length}
+          </div>
+        )}
+      </div>
+
+      {/* Swipe hint label */}
+      <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", zIndex: 2, color: "rgba(255,255,255,0.35)", fontSize: 11, whiteSpace: "nowrap", pointerEvents: "none" }}>
+        {images.length > 1 ? "Swipe to navigate · Swipe down to close" : "Swipe down to close"}
+      </div>
 
       {/* Loading spinner */}
       {!imgLoaded && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 1 }}>
           <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin" />
         </div>
       )}
 
-      {/* Image */}
+      {/* Image — stopPropagation prevents the overlay click-to-close firing on image tap */}
       <img
         key={idx}
         src={images[idx]}
         alt={`Image ${idx + 1}`}
-        style={{ maxWidth: "95vw", maxHeight: "80vh", objectFit: "contain", borderRadius: 12, userSelect: "none", opacity: imgLoaded ? 1 : 0, transition: "opacity 0.15s" }}
+        style={{ maxWidth: "95vw", maxHeight: "78vh", objectFit: "contain", borderRadius: 12, userSelect: "none", opacity: imgLoaded ? 1 : 0, transition: "opacity 0.15s", zIndex: 2, cursor: "default", touchAction: "pinch-zoom" }}
         onLoad={() => setImgLoaded(true)}
         draggable={false}
         decoding="async"
         onClick={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+        onTouchEnd={e => e.stopPropagation()}
       />
 
-      {/* Arrows */}
+      {/* Arrows (desktop / tablet) */}
       {images.length > 1 && (
         <>
           <button
-            onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i => (i - 1 + images.length) % images.length); }}
-            style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", zIndex: 2, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={e => { e.stopPropagation(); goPrev(); }}
+            style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", zIndex: 10, width: 48, height: 48, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}
             data-testid="btn-lightbox-prev"
           >
             <ChevronLeft className="w-6 h-6 text-white" />
           </button>
           <button
-            onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i => (i + 1) % images.length); }}
-            style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", zIndex: 2, width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={e => { e.stopPropagation(); goNext(); }}
+            style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", zIndex: 10, width: 48, height: 48, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}
             data-testid="btn-lightbox-next"
           >
             <ChevronRight className="w-6 h-6 text-white" />
@@ -735,34 +779,35 @@ function ImageLightbox({ images, startIndex = 0, open, onClose }: {
         </>
       )}
 
-      {/* Dot strip */}
+      {/* Dot indicators */}
       {images.length > 1 && (
-        <div style={{ position: "absolute", bottom: 24, display: "flex", alignItems: "center", gap: 8, zIndex: 2 }}>
+        <div style={{ position: "absolute", bottom: 40, display: "flex", alignItems: "center", gap: 8, zIndex: 2 }} onClick={e => e.stopPropagation()}>
           {images.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => { setImgLoaded(false); setIdx(i); }}
-                className={`rounded-full transition-all ${i === idx ? "w-5 h-2 bg-white" : "w-2 h-2 bg-white/40 hover:bg-white/70"}`}
-              />
-            ))}
-          </div>
-        )}
+            <button
+              key={i}
+              onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i); }}
+              style={{ touchAction: "manipulation" }}
+              className={`rounded-full transition-all ${i === idx ? "w-5 h-2 bg-white" : "w-2 h-2 bg-white/40"}`}
+            />
+          ))}
+        </div>
+      )}
 
-        {/* Thumbnail strip */}
-        {images.length > 1 && (
-          <div style={{ position: "absolute", bottom: 56, display: "flex", gap: 8, overflowX: "auto", maxWidth: "90vw", padding: "0 8px", zIndex: 2 }}
-            onClick={e => e.stopPropagation()}>
-            {images.map((src, i) => (
-              <button
-                key={i}
-                onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i); }}
-                style={{ flexShrink: 0, width: 48, height: 48, borderRadius: 8, overflow: "hidden", border: i === idx ? "2px solid white" : "2px solid rgba(255,255,255,0.2)", opacity: i === idx ? 1 : 0.6, cursor: "pointer", padding: 0, background: "none" }}
-              >
-                <img src={src} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" draggable={false} />
-              </button>
-            ))}
-          </div>
-        )}
+      {/* Thumbnail strip */}
+      {images.length > 1 && (
+        <div style={{ position: "absolute", bottom: 60, display: "flex", gap: 8, overflowX: "auto", maxWidth: "90vw", padding: "0 8px", zIndex: 2 }}
+          onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}>
+          {images.map((src, i) => (
+            <button
+              key={i}
+              onClick={e => { e.stopPropagation(); setImgLoaded(false); setIdx(i); }}
+              style={{ flexShrink: 0, width: 52, height: 52, borderRadius: 10, overflow: "hidden", border: i === idx ? "2.5px solid white" : "2px solid rgba(255,255,255,0.2)", opacity: i === idx ? 1 : 0.55, cursor: "pointer", padding: 0, background: "none", touchAction: "manipulation" }}
+            >
+              <img src={src} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" draggable={false} />
+            </button>
+          ))}
+        </div>
+      )}
     </div>,
     document.body
   );
@@ -1191,92 +1236,183 @@ function ListProductModal({ open, onClose, editProduct }: { open: boolean; onClo
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Tag className="w-5 h-5 text-tsia-green" /> {isEdit ? "Edit Listing" : "List a Product"}</DialogTitle>
-          <DialogDescription>{isEdit ? "Update your listing details below." : `TSIA takes ${ECOMMERCE.COMMISSION_RATE * 100}% commission. You keep ${(1 - ECOMMERCE.COMMISSION_RATE) * 100}%.`}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
+      {/* Explicit white/light background — prevents dark-mode bleed on device */}
+      <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto bg-white text-slate-900 border-0 rounded-2xl p-0 gap-0">
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-tsia-green/10 rounded-2xl flex items-center justify-center">
+              <Tag className="w-5 h-5 text-tsia-green" />
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-900 text-base">{isEdit ? "Edit Listing" : "List a Product"}</h2>
+              <p className="text-xs text-slate-400">{isEdit ? "Update your listing details below." : `TSIA takes ${ECOMMERCE.COMMISSION_RATE * 100}% commission. You keep ${(1 - ECOMMERCE.COMMISSION_RATE) * 100}%.`}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* Photos */}
           <div>
-            <Label className="text-sm font-semibold mb-2 block">Photos (up to {ECOMMERCE.MAX_IMAGES})</Label>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Photos (up to {ECOMMERCE.MAX_IMAGES})</p>
             <div className="flex gap-2 flex-wrap">
               {images.map((img, i) => (
-                <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-border">
+                <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-slate-200">
                   <img src={img} className="w-full h-full object-cover" alt="" />
-                  <button onClick={() => setImages(p => p.filter((_, j) => j !== i))} className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                  <button onClick={() => setImages(p => p.filter((_, j) => j !== i))} className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow">
                     <X className="w-3 h-3 text-white" />
                   </button>
                 </div>
               ))}
               {images.length < ECOMMERCE.MAX_IMAGES && (
-                <button onClick={() => fileRef.current?.click()} className="w-20 h-20 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors">
-                  <Camera className="w-5 h-5" /><span className="text-[10px] mt-1">Add photo</span>
+                <button onClick={() => fileRef.current?.click()} className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-tsia-green hover:text-tsia-green transition-colors bg-slate-50">
+                  <Camera className="w-5 h-5" />
+                  <span className="text-[10px] mt-1 font-medium">Add photo</span>
                 </button>
               )}
             </div>
             <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleImage} className="hidden" />
           </div>
-          <div><Label>Title *</Label><Input placeholder="e.g. iPhone 14 Pro, Brand New" value={form.title} onChange={e => setForm(p => ({...p, title: e.target.value}))} className="mt-1" data-testid="input-product-title" /></div>
-          <div><Label>Description *</Label><textarea rows={3} placeholder="Describe condition, features, specs..." value={form.description} onChange={e => setForm(p => ({...p, description: e.target.value}))} data-testid="input-product-description" className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none" /></div>
+
+          {/* Title */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1.5">Title *</label>
+            <input
+              placeholder="e.g. iPhone 14 Pro, Brand New"
+              value={form.title}
+              onChange={e => setForm(p => ({...p, title: e.target.value}))}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tsia-green/30"
+              data-testid="input-product-title"
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1.5">Description *</label>
+            <textarea
+              rows={3}
+              placeholder="Describe condition, features, specs..."
+              value={form.description}
+              onChange={e => setForm(p => ({...p, description: e.target.value}))}
+              data-testid="input-product-description"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tsia-green/30 resize-none"
+            />
+          </div>
+
+          {/* Price + Stock */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Price (USD) *</Label>
-              <Input type="number" min={ECOMMERCE.MIN_PRICE} max={ECOMMERCE.MAX_PRICE} step={0.01} placeholder="0.00" value={form.price} onChange={e => setForm(p => ({...p, price: e.target.value}))} className="mt-1" data-testid="input-product-price" />
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1.5">Price (USD) *</label>
+              <input
+                type="number" min={ECOMMERCE.MIN_PRICE} max={ECOMMERCE.MAX_PRICE} step={0.01} placeholder="0.00"
+                value={form.price} onChange={e => setForm(p => ({...p, price: e.target.value}))}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tsia-green/30"
+                data-testid="input-product-price"
+              />
               {parseFloat(form.price) > 0 && (
-                <p className="text-[11px] text-muted-foreground mt-1">≈ {formatAmount(parseFloat(form.price))}</p>
+                <p className="text-[11px] text-slate-400 mt-1">≈ {formatAmount(parseFloat(form.price))}</p>
               )}
             </div>
-            <div><Label>Stock qty</Label><Input type="number" min={1} value={form.stock} onChange={e => setForm(p => ({...p, stock: e.target.value}))} className="mt-1" data-testid="input-product-stock" /></div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1.5">Stock qty</label>
+              <input
+                type="number" min={1} value={form.stock} onChange={e => setForm(p => ({...p, stock: e.target.value}))}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-tsia-green/30"
+                data-testid="input-product-stock"
+              />
+            </div>
           </div>
+
+          {/* Category + Condition */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Category</Label>
-              <select value={form.category} onChange={e => setForm(p => ({...p, category: e.target.value}))} data-testid="select-product-category" className="mt-1 w-full h-10 rounded-xl border border-border bg-card px-3 text-sm">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1.5">Category</label>
+              <select
+                value={form.category} onChange={e => setForm(p => ({...p, category: e.target.value}))}
+                data-testid="select-product-category"
+                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-tsia-green/30"
+              >
                 {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_ICONS[c]} {CATEGORY_LABELS[c]}</option>)}
               </select>
             </div>
             <div>
-              <Label>Condition</Label>
-              <select value={form.condition} onChange={e => setForm(p => ({...p, condition: e.target.value}))} data-testid="select-product-condition" className="mt-1 w-full h-10 rounded-xl border border-border bg-card px-3 text-sm">
-                <option value="new">New</option><option value="used">Used</option><option value="refurbished">Refurbished</option>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1.5">Condition</label>
+              <select
+                value={form.condition} onChange={e => setForm(p => ({...p, condition: e.target.value}))}
+                data-testid="select-product-condition"
+                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-tsia-green/30"
+              >
+                <option value="new">New</option>
+                <option value="used">Used</option>
+                <option value="refurbished">Refurbished</option>
               </select>
             </div>
           </div>
-          <div><Label>Your location</Label><Input placeholder="London, UK" value={form.location} onChange={e => setForm(p => ({...p, location: e.target.value}))} className="mt-1" data-testid="input-product-location" /></div>
+
+          {/* Location */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1.5">Your location</label>
+            <input
+              placeholder="London, UK" value={form.location} onChange={e => setForm(p => ({...p, location: e.target.value}))}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tsia-green/30"
+              data-testid="input-product-location"
+            />
+          </div>
 
           {/* Negotiable toggle */}
-          <div className={`rounded-xl border-2 p-4 cursor-pointer transition-all ${form.negotiable ? "border-tsia-green bg-tsia-green/5" : "border-border bg-muted/30"}`}
+          <div
+            className={`rounded-2xl border-2 p-4 cursor-pointer transition-all ${form.negotiable ? "border-tsia-green bg-tsia-green/5" : "border-slate-200 bg-slate-50"}`}
             onClick={() => setForm(p => ({...p, negotiable: !p.negotiable}))}
             data-testid="toggle-negotiable"
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-semibold text-sm">Accept Price Negotiations</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Allow buyers to propose a different price via chat before paying</p>
+                <p className="font-semibold text-sm text-slate-800">Accept Price Negotiations</p>
+                <p className="text-xs text-slate-400 mt-0.5">Let buyers propose a price via chat before paying</p>
               </div>
-              <div className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ml-3 ${form.negotiable ? "bg-tsia-green" : "bg-muted-foreground/30"}`}>
+              <div className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ml-3 ${form.negotiable ? "bg-tsia-green" : "bg-slate-300"}`}>
                 <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.negotiable ? "translate-x-5" : "translate-x-0.5"}`} />
               </div>
             </div>
           </div>
 
+          {/* Earnings breakdown */}
           {parseFloat(form.price) > 0 && (
-            <div className="bg-tsia-green/5 rounded-xl p-4 border border-tsia-green/20">
-              <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1"><BadgePercent className="w-3.5 h-3.5 text-tsia-green" /> Earnings breakdown</p>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Listing price</span><span className="font-semibold">${parseFloat(form.price || "0").toFixed(2)} <span className="text-xs font-normal text-muted-foreground">({formatAmount(parseFloat(form.price || "0"))})</span></span></div>
-                <div className="flex justify-between"><span className="text-red-500">TSIA commission (8%)</span><span className="text-red-500">−${commission.toFixed(2)}</span></div>
-                <div className="flex justify-between border-t pt-1 mt-1"><span className="font-bold">You receive</span><span className="font-bold text-tsia-green">${youReceive.toFixed(2)} <span className="text-xs font-normal text-muted-foreground">({formatAmount(youReceive)})</span></span></div>
+            <div className="bg-tsia-green/5 rounded-2xl p-4 border border-tsia-green/20">
+              <p className="text-xs font-bold text-tsia-green mb-2 flex items-center gap-1.5">
+                <BadgePercent className="w-3.5 h-3.5" /> Earnings breakdown
+              </p>
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between text-slate-600">
+                  <span>Listing price</span>
+                  <span className="font-semibold text-slate-800">${parseFloat(form.price || "0").toFixed(2)} <span className="text-xs font-normal text-slate-400">({formatAmount(parseFloat(form.price || "0"))})</span></span>
+                </div>
+                <div className="flex justify-between text-red-500">
+                  <span>TSIA commission (8%)</span>
+                  <span>−${commission.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1.5 mt-1">
+                  <span className="font-bold text-slate-800">You receive</span>
+                  <span className="font-bold text-tsia-green">${youReceive.toFixed(2)} <span className="text-xs font-normal text-slate-400">({formatAmount(youReceive)})</span></span>
+                </div>
               </div>
             </div>
           )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => createMutation.mutate({...form, images, price: parseFloat(form.price), stock: parseInt(form.stock), negotiable: form.negotiable})} disabled={createMutation.isPending || !form.title || !form.description || !form.price} data-testid="button-submit-product" className="bg-tsia-green text-white">
-            {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />} {isEdit ? "Save Changes" : "List Product"}
+
+        {/* Footer actions */}
+        <div className="px-5 pb-5 pt-2 border-t border-slate-100 flex gap-2.5">
+          <Button variant="outline" onClick={onClose} className="flex-1 rounded-xl border-slate-200 text-slate-600">Cancel</Button>
+          <Button
+            onClick={() => createMutation.mutate({...form, images, price: parseFloat(form.price), stock: parseInt(form.stock), negotiable: form.negotiable})}
+            disabled={createMutation.isPending || !form.title || !form.description || !form.price}
+            data-testid="button-submit-product"
+            className="flex-1 bg-tsia-green text-white rounded-xl font-bold shadow-sm"
+          >
+            {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+            {isEdit ? "Save Changes" : "List Product"}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -1449,8 +1585,6 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
   const { formatAmount } = useLocalCurrency();
   const { user } = useAuth();
   const { toast } = useToast();
-  // Re-derive locally so same-email cross-account owners are always caught,
-  // even if the parent passed an incorrect isSeller prop.
   const isMyListing = isSeller
     || product?.sellerId === user?.id
     || (!!product?.sellerEmail && !!user?.email && product.sellerEmail === user.email);
@@ -1477,7 +1611,6 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
     enabled: !!product?.id && open,
   });
 
-  // Close lightbox whenever the parent dialog closes so body scroll is never left locked
   useEffect(() => { if (!open) setLightboxOpen(false); }, [open]);
 
   useEffect(() => {
@@ -1513,9 +1646,10 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
 
   return (<>
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-0 gap-0">
-        {/* Image hero */}
-        <div className="relative w-full aspect-video bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 rounded-t-2xl overflow-hidden group">
+      {/* Explicit white/light so device dark-mode doesn't bleed in */}
+      <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto p-0 gap-0 bg-white text-slate-900 border-0 rounded-2xl">
+        {/* ── Image hero ── */}
+        <div className="relative w-full bg-slate-100 rounded-t-2xl overflow-hidden" style={{ aspectRatio: "4/3" }}>
           {imgs.length > 0 ? (
             <img
               src={imgs[imgIdx]} alt={product.title}
@@ -1525,98 +1659,140 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
           ) : (
             <div className="w-full h-full flex items-center justify-center text-6xl">{CATEGORY_ICONS[product.category] || "📦"}</div>
           )}
-          <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 bg-black/50 rounded-full flex items-center justify-center"><X className="w-4 h-4 text-white" /></button>
-          {disc > 0 && <div className="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">−{disc}%</div>}
+          {/* Close */}
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 w-9 h-9 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center"
+            style={{ touchAction: "manipulation" }}
+          >
+            <X className="w-4 h-4 text-white" />
+          </button>
+          {/* Discount badge */}
+          {disc > 0 && (
+            <div className="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow">−{disc}%</div>
+          )}
+          {/* Expand to fullscreen */}
           {imgs.length > 0 && (
             <button
               onClick={() => setLightboxOpen(true)}
-              className="absolute bottom-3 right-3 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition-colors"
+              className="absolute bottom-3 right-3 w-8 h-8 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center"
               data-testid={`btn-detail-expand-${product.id}`}
+              style={{ touchAction: "manipulation" }}
             >
               <Expand className="w-4 h-4 text-white" />
             </button>
           )}
+          {/* Dot nav */}
           {imgs.length > 1 && (
-            <div className="absolute bottom-3 left-0 right-12 flex justify-center gap-1">
-              {imgs.map((_, i) => <button key={i} onClick={() => setImgIdx(i)} className={`w-1.5 h-1.5 rounded-full ${i === imgIdx ? "bg-white" : "bg-white/40"}`} />)}
+            <div className="absolute bottom-3 left-0 right-12 flex justify-center gap-1.5">
+              {imgs.map((_, i) => (
+                <button key={i} onClick={() => setImgIdx(i)} style={{ touchAction: "manipulation" }}
+                  className={`rounded-full transition-all ${i === imgIdx ? "w-4 h-2 bg-white" : "w-2 h-2 bg-white/50"}`} />
+              ))}
             </div>
           )}
         </div>
-        {/* Thumb strip */}
+
+        {/* ── Thumb strip ── */}
         {imgs.length > 1 && (
-          <div className="flex gap-2 px-4 pt-3 overflow-x-auto">
+          <div className="flex gap-2 px-4 pt-3 pb-1 overflow-x-auto scrollbar-none bg-white">
             {imgs.map((src, i) => (
               <button key={i}
-                onClick={() => { setImgIdx(i); }}
+                onClick={() => setImgIdx(i)}
                 onDoubleClick={() => { setImgIdx(i); setLightboxOpen(true); }}
-                className={`w-12 h-12 rounded-xl overflow-hidden shrink-0 border-2 transition-all ${i === imgIdx ? "border-tsia-green" : "border-transparent opacity-60 hover:opacity-100"}`}
+                style={{ touchAction: "manipulation" }}
+                className={`w-13 h-13 rounded-xl overflow-hidden shrink-0 border-2 transition-all ${i === imgIdx ? "border-tsia-green scale-105" : "border-slate-200 opacity-60 hover:opacity-100"}`}
               >
                 <img src={src} className="w-full h-full object-cover" alt="" />
               </button>
             ))}
           </div>
         )}
-        {/* Content */}
-        <div className="p-5 space-y-4">
+
+        {/* ── Content ── */}
+        <div className="p-5 space-y-4 bg-white">
+          {/* Title + category */}
           <div>
-            <p className="text-xs text-muted-foreground">{CATEGORY_ICONS[product.category]} {CATEGORY_LABELS[product.category]}</p>
-            <h2 className="text-xl font-bold mt-0.5 leading-tight">{product.title}</h2>
+            <p className="text-xs text-slate-400 font-medium">{CATEGORY_ICONS[product.category]} {CATEGORY_LABELS[product.category]}</p>
+            <h2 className="text-xl font-bold mt-1 leading-tight text-slate-900">{product.title}</h2>
           </div>
-          <div className="flex items-center justify-between">
+
+          {/* Price row */}
+          <div className="flex items-end justify-between">
             <div>
-              <span className="text-3xl font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
-              <span className="text-sm text-muted-foreground line-through ml-2">${orig}</span>
-              <p className="text-xs text-muted-foreground mt-0.5">{formatAmount(parseFloat(product.price))}</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
+                <span className="text-sm text-slate-400 line-through">${orig}</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">{formatAmount(parseFloat(product.price))}</p>
             </div>
-            <Badge className={product.condition === "new" ? "bg-tsia-green/10 text-tsia-green border-tsia-green/30" : "bg-muted text-muted-foreground"}>{product.condition}</Badge>
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-full border ${product.condition === "new" ? "bg-tsia-green/10 text-tsia-green border-tsia-green/20" : "bg-slate-100 text-slate-600 border-slate-200"}`}>
+              {product.condition}
+            </span>
           </div>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+
+          {/* Meta row */}
+          <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
             <div className="flex items-center gap-1">
               <StarRating rating={avgRating} count={ratingCount} />
               {avgRating > 0 && <span className="text-[11px] font-semibold text-amber-500 ml-0.5">{avgRating.toFixed(1)}</span>}
+              {ratingCount === 0 && <span className="text-slate-400">No ratings</span>}
             </div>
             <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{product.location}</span>
             <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{product.viewCount}</span>
           </div>
-          <p className="text-sm text-muted-foreground leading-relaxed">{product.description}</p>
-          <div className="flex items-center gap-3 bg-muted/40 rounded-xl p-3">
-            <div className="w-10 h-10 rounded-full bg-tsia-green/10 flex items-center justify-center font-bold text-tsia-green text-lg">{product.sellerName?.[0]}</div>
-            <div><p className="text-sm font-semibold">{product.sellerName}</p><p className="text-xs text-muted-foreground">Verified TSIA seller</p></div>
-            <Badge className="ml-auto bg-tsia-green/10 text-tsia-green text-[10px]">✓ Verified</Badge>
+
+          {/* Description */}
+          <p className="text-sm text-slate-600 leading-relaxed">{product.description}</p>
+
+          {/* Seller card */}
+          <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-2xl p-3">
+            <div className="w-11 h-11 rounded-full bg-tsia-green flex items-center justify-center font-bold text-white text-base shrink-0">
+              {product.sellerName?.[0]?.toUpperCase() ?? "S"}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-800">{product.sellerName}</p>
+              <p className="text-xs text-slate-400">Verified TSIA seller</p>
+            </div>
+            <span className="text-[11px] font-bold text-tsia-green bg-tsia-green/10 border border-tsia-green/20 px-2.5 py-1 rounded-full shrink-0">✓ Verified</span>
           </div>
-          <div className="flex items-center justify-between text-sm bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 flex-wrap gap-2">
-            <span className="text-amber-700 dark:text-amber-300 flex items-center gap-1"><Package className="w-3.5 h-3.5" />{product.stock} in stock</span>
+
+          {/* Stock + negotiable */}
+          <div className="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-xl p-3">
+            <span className="text-amber-700 text-sm flex items-center gap-1.5"><Package className="w-3.5 h-3.5" />{product.stock} in stock</span>
             {product.negotiable && (
-              <span className="flex items-center gap-1 text-xs font-bold bg-amber-100 text-amber-700 border border-amber-300 px-2.5 py-1 rounded-full">
-                <HandCoins className="w-3 h-3" /> Price Negotiable
+              <span className="flex items-center gap-1 text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full">
+                <HandCoins className="w-3 h-3" /> Negotiable
               </span>
             )}
           </div>
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-3 text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
-            <Truck className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <span>Shipping details are arranged directly with the seller in chat. Use your TSIA email address for all payments to stay protected.</span>
+
+          {/* Shipping note */}
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 flex items-start gap-2">
+            <Truck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-blue-500" />
+            <span>Shipping details are arranged with the seller in chat. Use your TSIA email for all payments to stay protected.</span>
           </div>
 
           {/* ── Rate this product ── */}
           {canRate && (
-            <div className="border rounded-2xl p-4 space-y-3">
-              <p className="text-sm font-semibold">{myRating ? "Update your rating" : "Rate this product"}</p>
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-bold text-slate-800">{myRating ? "Update your rating" : "Rate this product"}</p>
               <div className="flex items-center gap-2">
                 <StarRating rating={pendingRating} interactive onRate={r => setPendingRating(r)} />
                 {pendingRating > 0 && <span className="text-sm font-bold text-amber-500">{pendingRating}/5</span>}
               </div>
-              <Input
+              <input
                 placeholder="Leave a comment (optional)"
                 value={ratingComment}
                 onChange={e => setRatingComment(e.target.value)}
-                className="rounded-xl text-sm"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tsia-green/30"
                 data-testid="input-rating-comment"
               />
               <Button
                 onClick={() => rateMutation.mutate({ rating: pendingRating, comment: ratingComment })}
                 disabled={pendingRating === 0 || rateMutation.isPending}
                 size="sm"
-                className="bg-tsia-green text-white rounded-xl w-full"
+                className="bg-tsia-green text-white rounded-xl w-full font-semibold"
                 data-testid="btn-submit-rating"
               >
                 {rateMutation.isPending ? "Submitting…" : myRating ? "Update rating" : "Submit rating"}
@@ -1627,32 +1803,34 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
           {/* ── Reviews list ── */}
           {(ratingsData?.ratings?.length ?? 0) > 0 && (
             <div className="space-y-3">
-              <p className="text-sm font-semibold">{ratingsData!.ratings.length} Review{ratingsData!.ratings.length !== 1 ? "s" : ""}</p>
+              <p className="text-sm font-bold text-slate-800">{ratingsData!.ratings.length} Review{ratingsData!.ratings.length !== 1 ? "s" : ""}</p>
               {ratingsData!.ratings.slice(0, 5).map(r => (
-                <div key={r.id} className="bg-muted/40 rounded-xl p-3 space-y-1">
+                <div key={r.id} className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-1">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold">{r.userName}</p>
+                    <p className="text-xs font-semibold text-slate-800">{r.userName}</p>
                     <div className="flex items-center gap-0.5">
                       {[1,2,3,4,5].map(s => (
-                        <Star key={s} className={`w-2.5 h-2.5 ${s <= r.rating ? "text-amber-400 fill-amber-400" : "text-gray-300 fill-gray-300"}`} />
+                        <Star key={s} className={`w-2.5 h-2.5 ${s <= r.rating ? "text-amber-400 fill-amber-400" : "text-slate-200 fill-slate-200"}`} />
                       ))}
                     </div>
                   </div>
-                  {r.comment && <p className="text-xs text-muted-foreground">{r.comment}</p>}
-                  <p className="text-[10px] text-muted-foreground/60">{new Date(r.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                  {r.comment && <p className="text-xs text-slate-500">{r.comment}</p>}
+                  <p className="text-[10px] text-slate-400">{new Date(r.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</p>
                 </div>
               ))}
             </div>
           )}
         </div>
-        <div className="px-5 pb-5 flex flex-col gap-3">
+
+        {/* ── Action buttons ── */}
+        <div className="px-5 pb-6 pt-2 bg-white flex flex-col gap-2.5 border-t border-slate-100">
           {isMyListing ? (
-            <div className="w-full py-3 px-4 bg-muted rounded-2xl text-center text-sm font-semibold text-muted-foreground">
+            <div className="w-full py-3 px-4 bg-slate-100 rounded-2xl text-center text-sm font-semibold text-slate-500">
               This is your listing
             </div>
           ) : (
             <>
-              <Button onClick={onBuy} disabled={product.stock === 0} className="w-full py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base" data-testid={`btn-detail-buy-${product.id}`}>
+              <Button onClick={onBuy} disabled={product.stock === 0} className="w-full py-4 bg-tsia-green hover:bg-tsia-green/90 text-white font-bold rounded-2xl text-base shadow-sm" data-testid={`btn-detail-buy-${product.id}`}>
                 <Lock className="w-5 h-5 mr-2" />
                 {product.negotiable ? "Negotiate & Buy" : "Buy with Escrow"}
                 {" "}— ${parseFloat(product.price).toFixed(2)}
@@ -1661,7 +1839,7 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
                 <Button
                   variant="outline"
                   onClick={onCart}
-                  className={`w-full rounded-2xl font-semibold h-11 transition-all ${inCart ? "border-tsia-green text-tsia-green bg-tsia-green/5" : ""}`}
+                  className={`w-full rounded-2xl font-semibold h-11 border-slate-200 text-slate-700 transition-all ${inCart ? "border-tsia-green text-tsia-green bg-tsia-green/5" : ""}`}
                   data-testid={`btn-detail-cart-${product.id}`}
                 >
                   <ShoppingCart className="w-4 h-4 mr-2" />
@@ -1671,7 +1849,7 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
             </>
           )}
           {!isMyListing && onChat && (
-            <Button variant="outline" onClick={onChat} className="w-full rounded-2xl font-semibold h-11" data-testid={`btn-detail-chat-${product.id}`}>
+            <Button variant="outline" onClick={onChat} className="w-full rounded-2xl font-semibold h-11 border-slate-200 text-slate-700" data-testid={`btn-detail-chat-${product.id}`}>
               <MessageCircle className="w-4 h-4 mr-2" /> Chat with Seller
             </Button>
           )}
@@ -1951,7 +2129,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   ];
 
   return (
-    <div className="relative pb-24 w-full" style={{ background: "#F1F5F9", margin: "-16px", padding: "0", width: "calc(100% + 32px)", maxWidth: "none", overflowX: "clip" }}>
+    <div className="relative pb-24 w-full" style={{ background: "#F1F5F9", margin: "-16px", padding: "0", width: "calc(100% + 32px)", maxWidth: "none" }}>
 
       {/* ── Clean mobile header ────────────────────────────────────────────── */}
       <div className="bg-white shadow-sm sticky top-0 z-30 px-4 pt-4 pb-3">

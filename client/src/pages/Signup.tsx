@@ -158,12 +158,25 @@ export default function Signup() {
         body: JSON.stringify({ idType: kycIdType, idNumber: kycIdNumber.trim() }),
       });
       const data = await res.json();
-      if (!res.ok && !data.ok) {
-        // Non-blocking: if verification fails, show warning but allow proceeding
-        toast({ title: "Verification note", description: data.message || "Could not verify your ID — you can still proceed. We will verify manually.", variant: "destructive" });
+      if (!res.ok || data.ok === false) {
+        toast({
+          title: "Identity verification failed",
+          description: data.message || "We could not verify the ID number you entered. Please double-check and try again.",
+          variant: "destructive",
+        });
+        setKycVerifying(false);
+        setLoading(false);
+        return;
       }
     } catch {
-      // non-blocking
+      toast({
+        title: "Verification error",
+        description: "Could not reach the verification service. Please check your connection and try again.",
+        variant: "destructive",
+      });
+      setKycVerifying(false);
+      setLoading(false);
+      return;
     } finally {
       setKycVerifying(false);
     }

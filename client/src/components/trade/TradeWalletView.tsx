@@ -31,7 +31,9 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
   const lockedPrincipal = parseFloat(wallet?.lockedPrincipal ?? "0");
   const totalEarnings   = parseFloat(wallet?.totalBotEarnings ?? "0");
   const withdrawable    = Math.max(0, tradeBalance - lockedPrincipal);
-  const profitTarget    = lockedPrincipal * 2;
+  const planDays        = wallet?.tradingPlanDays ?? 120;
+  const profitCapPct    = planDays === 60 ? 0.70 : planDays === 90 ? 0.80 : 1.00;
+  const profitTarget    = lockedPrincipal * profitCapPct;
   const returnPct       = profitTarget > 0 ? Math.min(100, (totalEarnings / profitTarget) * 100) : 0;
   const hasWallet       = wallet?.trc20Address || wallet?.bep20Address;
   const depositCount    = wallet?.depositCount ?? 0;

@@ -2133,7 +2133,7 @@ export default function AdminDashboard() {
                               {u.isActive
                                 ? <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">● BOT ACTIVE</Badge>
                                 : u.tradingDayNumber > 0 && !u.botLocked
-                                  ? <Badge variant="outline" className="text-[10px] text-slate-500">Day {u.tradingDayNumber}/120</Badge>
+                                  ? <Badge variant="outline" className="text-[10px] text-slate-500">Day {u.tradingDayNumber}/{u.tradingPlanDays ?? 120}</Badge>
                                   : !u.botLocked && <Badge variant="outline" className="text-[10px] text-slate-400">No sessions</Badge>}
                             </div>
                             <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${tradeExpandedUser === u.userId ? "rotate-180" : ""}`} />
@@ -2237,7 +2237,7 @@ export default function AdminDashboard() {
                               </div>
                               <div className="bg-white dark:bg-slate-800 rounded-lg px-3 py-2">
                                 <p className="text-slate-400">Day Progress</p>
-                                <p className="font-bold">{u.tradingDayNumber}/120 {u.roiComplete && "✓"}</p>
+                                <p className="font-bold">{u.tradingDayNumber}/{u.tradingPlanDays ?? 120} {u.roiComplete && "✓"}</p>
                               </div>
                             </div>
 

@@ -1270,10 +1270,9 @@ export default function AffiliateDashboard() {
   // Earnings (above capital) are always withdrawable once ≥ $2 minimum
   const withdrawableAmt  = Math.max(0, tradeBalance - lockedPrincipal);
   // Progress toward 100% earnings cap (informational only — not a withdrawal gate)
-  // Bar tracks cumulative earnings toward the 2× capital profit target.
-  // 100% = profit of 2× capital (e.g. invest $100 → earn $200 in profit).
+  // Bar tracks cumulative earnings toward the plan's profit cap (70/80/100% of locked capital).
   // Withdrawals have no effect on the bar; it reflects total profits earned so far.
-  const profitTarget     = lockedPrincipal * 2;
+  const profitTarget     = lockedPrincipal * (activePlanConfig.profitCapPct ?? 1.00);
   const returnPct        = lockedPrincipal > 0 ? Math.min(100, (totalBotEarned / profitTarget) * 100) : 0;
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);
@@ -1846,8 +1845,8 @@ export default function AffiliateDashboard() {
                               </div>
                               <p className="text-[9px] text-muted-foreground mt-0.5">
                                 {tradeBalanceHidden ? "••••" : returnPct >= 100
-                                  ? `100% return reached — $${withdrawableAmt.toFixed(2)} available · cycle continues until day ${planDaysFromWallet}`
-                                  : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — $${(profitTarget - totalBotEarned).toFixed(2)} remaining to 100%`}
+                                  ? `${(activePlanConfig.profitCapPct * 100).toFixed(0)}% return reached — $${withdrawableAmt.toFixed(2)} available · cycle continues until day ${planDaysFromWallet}`
+                                  : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — $${(profitTarget - totalBotEarned).toFixed(2)} remaining to ${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap`}
                               </p>
                             </div>
                           )}

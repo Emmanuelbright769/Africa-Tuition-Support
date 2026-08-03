@@ -3058,10 +3058,11 @@ export async function registerRoutes(
   const LOSS_DAYS_PER_WEEK = 2;  // exactly 2 loss days every week
 
   // Per-plan profit/loss configuration
-  const TRADING_PLAN_CONFIGS: Record<number, { dailyRate: number; lossMin: number; lossMax: number }> = {
-    60:  { dailyRate: 0.04, lossMin: 0.010, lossMax: 0.040 },
-    90:  { dailyRate: 0.03, lossMin: 0.008, lossMax: 0.030 },
-    120: { dailyRate: 0.02, lossMin: 0.005, lossMax: 0.020 },
+  // profitCapPct: max cumulative bot earnings expressed as a fraction of locked principal
+  const TRADING_PLAN_CONFIGS: Record<number, { dailyRate: number; lossMin: number; lossMax: number; profitCapPct: number }> = {
+    60:  { dailyRate: 0.0200, lossMin: 0.005, lossMax: 0.020, profitCapPct: 0.70 },
+    90:  { dailyRate: 0.0150, lossMin: 0.004, lossMax: 0.015, profitCapPct: 0.80 },
+    120: { dailyRate: 0.0140, lossMin: 0.003, lossMax: 0.010, profitCapPct: 1.00 },
   };
 
   /**
@@ -3298,13 +3299,14 @@ export async function registerRoutes(
       const hasBotReferrer = !!(botUser?.referredBy);
       let earning = hasBotReferrer ? parseFloat((grossEarning - botAffiliateCommission).toFixed(6)) : grossEarning;
 
-      // ── 100% earnings cap: cumulative profits cannot exceed locked capital ────────
+      // ── Plan profit cap: cumulative earnings cannot exceed plan's stated return ────
       // Bar and cap both use totalBotEarnings (lifetime, never decreases on withdrawal).
       // The bar stays where it is when the user withdraws — withdrawals are separate.
       const lockedCapital     = parseFloat(wallet.lockedPrincipal ?? "0");
       const priorEarnings     = parseFloat(wallet.totalBotEarnings ?? "0");
-      // 100% promised return = profit of 2× capital (e.g. invest $100 → earn $200 profit)
-      const profitTarget      = lockedCapital * 2;
+      // Cap = plan's profitCapPct × locked capital (70%, 80%, or 100% depending on plan)
+      const profitCapPct      = planConfig.profitCapPct ?? 1.00;
+      const profitTarget      = lockedCapital * profitCapPct;
       const remainingToTarget = Math.max(0, profitTarget - priorEarnings);
       const cappedByTarget    = lockedCapital > 0 && earning > remainingToTarget;
       // If already at cap, just increment the day counter (no earning, no cycle end)
@@ -5625,8 +5627,8 @@ export async function registerRoutes(
         SELECT
           u.id, u.first_name, u.last_name, u.email,
           tw.trade_balance, tw.locked_principal, tw.trading_day_number,
-          tw.roi_complete, tw.bot_activated_at, tw.total_bot_earnings,
-          tw.referral_commission_balance, tw.bot_locked
+          tw.trading_plan_days, tw.roi_complete, tw.bot_activated_at,
+          tw.total_bot_earnings, tw.referral_commission_balance, tw.bot_locked
         FROM trade_wallets tw
         JOIN users u ON u.id = tw.user_id
         WHERE CAST(tw.trade_balance AS numeric) > 0
@@ -5637,6 +5639,10 @@ export async function registerRoutes(
       `);
       const nowMs = Date.now();
       const BOT_MAX_MS = 12 * 3600 * 1000;
+      // UK trading window helper (mirrors isTradeSessionActive)
+      const londonNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" }));
+      const ukDay = londonNow.getDay(); const ukHour = londonNow.getHours();
+      const inTradingWindow = (ukDay >= 1 && ukDay <= 5 && ukHour >= 13) || (ukDay >= 2 && ukDay <= 6 && ukHour < 1);
       res.json((rows.rows as any[]).map(r => ({
         userId: r.id,
         name: `${r.first_name} ${r.last_name}`,
@@ -5644,12 +5650,13 @@ export async function registerRoutes(
         balance: parseFloat(r.trade_balance ?? "0"),
         lockedPrincipal: parseFloat(r.locked_principal ?? "0"),
         tradingDayNumber: r.trading_day_number ?? 0,
+        tradingPlanDays: r.trading_plan_days && [60, 90, 120].includes(Number(r.trading_plan_days)) ? Number(r.trading_plan_days) : 120,
         roiComplete: r.roi_complete ?? false,
         totalBotEarnings: parseFloat(r.total_bot_earnings ?? "0"),
         referralCommission: parseFloat(r.referral_commission_balance ?? "0"),
         botActivatedAt: r.bot_activated_at,
         botLocked: r.bot_locked ?? false,
-        isActive: r.bot_activated_at
+        isActive: r.bot_activated_at && inTradingWindow
           ? (nowMs - new Date(r.bot_activated_at).getTime()) < BOT_MAX_MS
           : false,
       })));

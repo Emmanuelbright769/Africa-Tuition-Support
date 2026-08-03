@@ -10794,7 +10794,7 @@ export async function registerRoutes(
       const { amount: amountRaw } = req.body;
       const amount = parseFloat(amountRaw);
       if (isNaN(amount) || amount <= 0) return res.status(400).json({ message: "Invalid amount." });
-      if (amount < 5) return res.status(400).json({ message: "Minimum withdrawal is $5." });
+      if (amount < 2) return res.status(400).json({ message: "Minimum withdrawal is $2." });
 
       const tw = await storage.getOrCreateTradeWallet(userId);
       const exchangeBal = parseFloat(tw.exchangeBalance ?? "0");

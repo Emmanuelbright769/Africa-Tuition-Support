@@ -3599,7 +3599,7 @@ export default function AffiliateDashboard() {
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
-                  <Input type="number" min={5} max={withdrawableAmt} placeholder="Min $5.00 (earnings only)" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
+                  <Input type="number" min={2} max={withdrawableAmt} placeholder="Min $2.00 (earnings only)" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
                   {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
                 </div>
                 {withdrawAmt && parseFloat(withdrawAmt) >= 5 && parseFloat(withdrawAmt) <= withdrawableAmt && (
@@ -3716,7 +3716,7 @@ export default function AffiliateDashboard() {
                     </div>
                     <div className="space-y-2">
                       <Label>Amount (USD)</Label>
-                      <Input type="number" min={10} max={withdrawableAmt} placeholder="Min $10.00" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-bank-withdraw-amount" />
+                      <Input type="number" min={2} max={withdrawableAmt} placeholder="Min $2.00" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-bank-withdraw-amount" />
                     </div>
                     {withdrawAmt && parseFloat(withdrawAmt) >= 10 && (
                       <div className="border border-border rounded-xl px-3 py-2 bg-muted/30 text-xs space-y-1">
@@ -3739,13 +3739,13 @@ export default function AffiliateDashboard() {
             <Button variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
             {withdrawType === "transfer_wallet" ? (
               <Button onClick={() => transferToWalletMutation.mutate()}
-                disabled={transferToWalletMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 5 || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted}
+                disabled={transferToWalletMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 2 || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted}
                 className="bg-tsia-green hover:bg-tsia-green/90 text-white" data-testid="button-transfer-to-wallet">
                 {transferToWalletMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Wallet className="w-4 h-4 mr-2" />} Transfer to Fintech Wallet
               </Button>
             ) : (
               <Button onClick={() => withdrawMutation.mutate()}
-                disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 10 || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted || tradeBankStep !== "amount"}
+                disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 2 || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted || tradeBankStep !== "amount"}
                 className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="button-withdraw-bank">
                 {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Building2 className="w-4 h-4 mr-2" />} Withdraw to Bank
               </Button>

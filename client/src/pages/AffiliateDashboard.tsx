@@ -23,7 +23,7 @@ import {
   Home, Building2, Calculator, DollarSign, RefreshCw, AlertTriangle,
   Eye, EyeOff, Bell, Power, Timer, CreditCard, PiggyBank,
   HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Lock,
-  Film, MapPin, UserCircle2, Gift, Trophy, Unlock, Wrench, Truck, Settings, UserCheck, BatteryCharging, Construction
+  Film, MapPin, UserCircle2, Gift, Trophy, Unlock, Wrench, Truck, Settings, UserCheck, BatteryCharging, Construction, Search
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -689,6 +689,13 @@ export default function AffiliateDashboard() {
   const [tradeAcctName, setTradeAcctName] = useState("");
   const [tradeLookupLoading, setTradeLookupLoading] = useState(false);
   const [tradeBankStep, setTradeBankStep] = useState<"bank"|"amount">("bank");
+  // Searchable bank picker + auto-resolve (mirrors SwiftHub)
+  const [tradeBankSearch, setTradeBankSearch] = useState("");
+  const [tradeBankDropOpen, setTradeBankDropOpen] = useState(false);
+  const [tradeSelectedBank, setTradeSelectedBank] = useState<{ code: string; name: string } | null>(null);
+  const [tradeResolving, setTradeResolving] = useState(false);
+  const [tradeResolveError, setTradeResolveError] = useState<string | null>(null);
+  const [tradeResolveWarning, setTradeResolveWarning] = useState(false);
   const [trc20Input, setTrc20Input]     = useState("");
   const [bep20Input, setBep20Input]     = useState("");
   const [showTxHistory, setShowTxHistory] = useState(false);
@@ -1127,8 +1134,37 @@ export default function AffiliateDashboard() {
     onError: (err: any) => toast({ title: "Withdrawal Failed", description: err.message, variant: "destructive" }),
   });
 
+  // Auto-resolve trade bank account (mirrors SwiftHub behaviour)
+  useEffect(() => {
+    if (!tradeSelectedBank || tradeAcctNumber.length !== 10) {
+      setTradeAcctName(""); setTradeResolveError(null); setTradeResolveWarning(false); return;
+    }
+    let cancelled = false;
+    setTradeResolving(true);
+    setTradeAcctName(""); setTradeResolveError(null); setTradeResolveWarning(false);
+    apiRequest("POST", "/api/wallet/resolve-bank", { accountNumber: tradeAcctNumber, bankCode: tradeSelectedBank.code })
+      .then(r => r.json())
+      .then((d: any) => {
+        if (cancelled) return;
+        if (d.accountName) {
+          setTradeAcctName(d.accountName);
+        } else if (d.unverified) {
+          setTradeResolveWarning(true);
+          setTradeAcctName(d.message || "Could not verify — double-check before withdrawing");
+        } else if (d.accountNotFound) {
+          setTradeResolveError(d.message || "Account not found. Check the number and bank.");
+        } else {
+          setTradeResolveError(d.message || "Could not verify account");
+        }
+      })
+      .catch(() => { if (!cancelled) { setTradeResolveWarning(true); setTradeAcctName("Could not verify — double-check details before withdrawing"); } })
+      .finally(() => { if (!cancelled) setTradeResolving(false); });
+    return () => { cancelled = true; };
+  }, [tradeSelectedBank, tradeAcctNumber]);
+
   const tradeAccountLookup = () => {
-    if (!tradeBankCode || tradeAcctNumber.length !== 10 || !tradeAcctName.trim()) return;
+    if (!tradeSelectedBank || tradeAcctNumber.length !== 10 || tradeResolveError) return;
+    setTradeBankCode(tradeSelectedBank.code);
     setTradeBankStep("amount");
   };
 
@@ -1398,7 +1434,7 @@ export default function AffiliateDashboard() {
           </div>
         )}
 
-        <div className={activeSection !== "overview" ? "flex-1 overflow-y-auto px-4 py-6" : ""}>
+        <div className={activeSection !== "overview" ? "flex-1 overflow-y-auto overflow-x-hidden px-4 py-6" : ""}>
         <AnimatePresence mode="wait">
           <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
@@ -3522,7 +3558,7 @@ export default function AffiliateDashboard() {
       {/* Withdraw — SwiftWallet or Bank Account */}
       <Dialog open={withdrawOpen} onOpenChange={v => {
         setWithdrawOpen(v);
-        if (!v) { setWithdrawAmt(""); setWithdrawTradeTermsAccepted(false); setWithdrawType("transfer_wallet"); setTradeBankCode(""); setTradeAcctNumber(""); setTradeAcctName(""); setTradeBankStep("bank"); }
+        if (!v) { setWithdrawAmt(""); setWithdrawTradeTermsAccepted(false); setWithdrawType("transfer_wallet"); setTradeBankCode(""); setTradeAcctNumber(""); setTradeAcctName(""); setTradeBankStep("bank"); setTradeSelectedBank(null); setTradeBankSearch(""); setTradeBankDropOpen(false); setTradeResolveError(null); setTradeResolveWarning(false); }
       }}>
         <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
@@ -3579,22 +3615,92 @@ export default function AffiliateDashboard() {
                 </div>
                 {tradeBankStep === "bank" ? (
                   <div className="space-y-3">
+                    {/* ── Searchable bank picker ── */}
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold">Bank</Label>
-                      <select value={tradeBankCode} onChange={e => setTradeBankCode(e.target.value)} className="w-full h-10 rounded-lg border bg-background text-sm px-3" data-testid="select-trade-bank">
-                        <option value="">Select bank…</option>
-                        {(NIGERIAN_BANKS || []).map((b: any) => <option key={b.code} value={b.code}>{b.name}</option>)}
-                      </select>
+                      <Label className="text-xs font-bold uppercase tracking-wide">Select Bank</Label>
+                      <div className="relative">
+                        <button
+                          onClick={() => setTradeBankDropOpen(o => !o)}
+                          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-colors text-sm ${tradeSelectedBank ? "border-tsia-green bg-card font-semibold" : "border-border bg-muted/30 text-muted-foreground"}`}
+                          data-testid="btn-trade-bank-picker"
+                        >
+                          <span>{tradeSelectedBank?.name || "Choose bank…"}</span>
+                          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                        </button>
+                        {tradeBankDropOpen && (
+                          <div className="absolute z-50 top-full mt-1 w-full bg-card border rounded-xl shadow-xl overflow-hidden">
+                            <div className="p-2 border-b">
+                              <div className="flex items-center gap-2 px-2">
+                                <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+                                <input
+                                  autoFocus
+                                  placeholder="Search bank…"
+                                  value={tradeBankSearch}
+                                  onChange={e => setTradeBankSearch(e.target.value)}
+                                  className="flex-1 bg-transparent text-sm focus:outline-none py-1"
+                                />
+                              </div>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto">
+                              {(NIGERIAN_BANKS || [])
+                                .filter((b: any) => b.name.toLowerCase().includes(tradeBankSearch.toLowerCase()))
+                                .map((b: any) => (
+                                  <button
+                                    key={b.code}
+                                    onClick={() => { setTradeSelectedBank(b); setTradeBankDropOpen(false); setTradeBankSearch(""); setTradeAcctNumber(""); setTradeAcctName(""); setTradeResolveError(null); setTradeResolveWarning(false); }}
+                                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/50 transition-colors font-medium"
+                                  >
+                                    {b.name}
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
+
+                    {/* ── Account number ── */}
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold">Account Number</Label>
-                      <Input type="tel" maxLength={10} placeholder="10-digit account number" value={tradeAcctNumber} onChange={e => setTradeAcctNumber(e.target.value.replace(/\D/g,"").slice(0,10))} data-testid="input-trade-acct-number" />
+                      <Label className="text-xs font-bold uppercase tracking-wide">Account Number</Label>
+                      <Input
+                        type="tel" maxLength={10} placeholder="10-digit account number"
+                        value={tradeAcctNumber}
+                        onChange={e => setTradeAcctNumber(e.target.value.replace(/\D/g,"").slice(0,10))}
+                        disabled={!tradeSelectedBank}
+                        className="font-mono tracking-widest disabled:opacity-40"
+                        data-testid="input-trade-acct-number"
+                      />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold">Account Name</Label>
-                      <Input placeholder="Exact name on account" value={tradeAcctName} onChange={e => setTradeAcctName(e.target.value)} data-testid="input-trade-acct-name" />
+
+                    {/* ── Auto-resolved name ── */}
+                    <div className="min-h-[44px] flex items-center">
+                      {tradeResolving && (
+                        <div className="flex items-center gap-2 text-muted-foreground text-sm w-full px-3 py-2.5 rounded-xl border border-border">
+                          <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Verifying account…
+                        </div>
+                      )}
+                      {!tradeResolving && tradeAcctName && !tradeResolveError && (
+                        <div className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border ${tradeResolveWarning ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300" : "bg-green-50 dark:bg-green-900/20 border-tsia-green/30"}`}>
+                          {tradeResolveWarning
+                            ? <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                            : <CheckCircle2 className="w-4 h-4 text-tsia-green shrink-0" />}
+                          <span className={`font-bold text-sm ${tradeResolveWarning ? "text-amber-700 dark:text-amber-300" : "text-tsia-green"}`}>{tradeAcctName}</span>
+                        </div>
+                      )}
+                      {!tradeResolving && tradeResolveError && (
+                        <div className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200">
+                          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                          <span className="text-sm text-red-600 font-medium">{tradeResolveError}</span>
+                        </div>
+                      )}
                     </div>
-                    <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" onClick={tradeAccountLookup} disabled={!tradeBankCode || tradeAcctNumber.length !== 10 || !tradeAcctName.trim()} data-testid="btn-trade-bank-next">
+
+                    <Button
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={tradeAccountLookup}
+                      disabled={!tradeSelectedBank || tradeAcctNumber.length !== 10 || !!tradeResolveError || tradeResolving}
+                      data-testid="btn-trade-bank-next"
+                    >
                       Continue →
                     </Button>
                   </div>

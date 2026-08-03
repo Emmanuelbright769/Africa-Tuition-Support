@@ -1357,3 +1357,54 @@ export const manualTrades = pgTable("manual_trades", {
   closedAt: timestamp("closed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ─── P2P USD EXCHANGE ────────────────────────────────────────────────────────
+export const p2pOfferStatusEnum = pgEnum("p2p_offer_status", ["active", "paused", "completed", "cancelled"]);
+export const p2pOrderStatusEnum = pgEnum("p2p_order_status", ["pending", "paid", "completed", "cancelled"]);
+
+export const p2pOffers = pgTable("p2p_offers", {
+  id:              integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  sellerId:        integer("seller_id").notNull().references(() => users.id),
+  amountUsd:       decimal("amount_usd",    { precision: 10, scale: 2 }).notNull(),
+  availableUsd:    decimal("available_usd", { precision: 10, scale: 2 }).notNull(),
+  ratePerUsd:      decimal("rate_per_usd",  { precision: 12, scale: 2 }).notNull(),
+  localCurrency:   text("local_currency").notNull().default("NGN"),
+  minOrderUsd:     decimal("min_order_usd", { precision: 10, scale: 2 }).notNull().default("5.00"),
+  maxOrderUsd:     decimal("max_order_usd", { precision: 10, scale: 2 }).notNull(),
+  paymentMethod:   text("payment_method").notNull(),
+  paymentDetails:  text("payment_details").notNull(),
+  status:          p2pOfferStatusEnum("status").notNull().default("active"),
+  completedTrades: integer("completed_trades").notNull().default(0),
+  sellerName:      text("seller_name").notNull(),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+  updatedAt:       timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const p2pOrders = pgTable("p2p_orders", {
+  id:             integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  offerId:        integer("offer_id").notNull().references(() => p2pOffers.id),
+  sellerId:       integer("seller_id").notNull().references(() => users.id),
+  buyerId:        integer("buyer_id").notNull().references(() => users.id),
+  amountUsd:      decimal("amount_usd",   { precision: 10, scale: 2 }).notNull(),
+  ratePerUsd:     decimal("rate_per_usd", { precision: 12, scale: 2 }).notNull(),
+  localCurrency:  text("local_currency").notNull(),
+  localAmount:    decimal("local_amount", { precision: 14, scale: 2 }).notNull(),
+  paymentMethod:  text("payment_method").notNull(),
+  paymentDetails: text("payment_details").notNull(),
+  status:         p2pOrderStatusEnum("status").notNull().default("pending"),
+  buyerNote:      text("buyer_note"),
+  paidAt:         timestamp("paid_at"),
+  completedAt:    timestamp("completed_at"),
+  cancelledAt:    timestamp("cancelled_at"),
+  sellerName:     text("seller_name").notNull(),
+  buyerName:      text("buyer_name").notNull(),
+  createdAt:      timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertP2pOfferSchema = createInsertSchema(p2pOffers).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertP2pOffer = z.infer<typeof insertP2pOfferSchema>;
+export type P2pOffer = typeof p2pOffers.$inferSelect;
+
+export const insertP2pOrderSchema = createInsertSchema(p2pOrders).omit({ id: true, createdAt: true });
+export type InsertP2pOrder = z.infer<typeof insertP2pOrderSchema>;
+export type P2pOrder = typeof p2pOrders.$inferSelect;

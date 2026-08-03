@@ -36,7 +36,7 @@ import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
 import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist } from "@shared/schema";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
-import { eq, desc, ne, and, sql } from "drizzle-orm";
+import { eq, desc, ne, and, sql, or } from "drizzle-orm";
 import YahooFinance from "yahoo-finance2";
 
 const PgSession = pgSession(session);
@@ -10983,6 +10983,300 @@ export async function registerRoutes(
         await db.insert(exchangeWatchlist).values({ userId, ticker });
         res.json({ inWatchlist: true });
       }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // P2P USD EXCHANGE
+  // ══════════════════════════════════════════════════════════════════════════
+  const P2P_MIN_LISTING = 5;
+  const P2P_WALLET_MIN  = 2;
+
+  // GET /api/p2p/offers — all active offers, excluding own
+  app.get("/api/p2p/offers", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { p2pOffers: pt } = await import("@shared/schema");
+      const offers = await db.select().from(pt)
+        .where(and(eq(pt.status, "active"), ne(pt.sellerId, userId)))
+        .orderBy(desc(pt.createdAt));
+      res.json(offers);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/p2p/offers/my — my own offers
+  app.get("/api/p2p/offers/my", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { p2pOffers: pt } = await import("@shared/schema");
+      const offers = await db.select().from(pt)
+        .where(eq(pt.sellerId, userId))
+        .orderBy(desc(pt.createdAt));
+      res.json(offers);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/p2p/offers — create sell offer (deducts USD → escrow)
+  app.post("/api/p2p/offers", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { amountUsd, ratePerUsd, localCurrency, minOrderUsd, maxOrderUsd, paymentMethod, paymentDetails } = req.body;
+      const amt    = parseFloat(amountUsd);
+      const rate   = parseFloat(ratePerUsd);
+      const minOrd = parseFloat(minOrderUsd ?? "5");
+      const maxOrd = parseFloat(maxOrderUsd ?? amountUsd);
+      if (!amt || amt < P2P_MIN_LISTING)   return res.status(400).json({ message: `Minimum offer amount is $${P2P_MIN_LISTING}` });
+      if (!rate || rate <= 0)              return res.status(400).json({ message: "Invalid exchange rate" });
+      if (!paymentMethod?.trim())          return res.status(400).json({ message: "Payment method is required" });
+      if (!paymentDetails?.trim())         return res.status(400).json({ message: "Payment details are required" });
+      if (!localCurrency?.trim())          return res.status(400).json({ message: "Local currency is required" });
+      if (minOrd < 1)                      return res.status(400).json({ message: "Minimum order amount is $1" });
+      if (maxOrd > amt)                    return res.status(400).json({ message: "Max order cannot exceed offer amount" });
+
+      const wallet   = await storage.getOrCreateWallet(userId);
+      const walletBal = parseFloat(wallet.balance);
+      const lienAmt   = parseFloat((wallet as any).lienAmount ?? "0");
+      const available = walletBal - lienAmt - P2P_WALLET_MIN;
+      if (available < amt) return res.status(400).json({ message: `Insufficient balance. Available for P2P: $${Math.max(0, available).toFixed(2)}` });
+
+      const seller     = await storage.getUser(userId);
+      const sellerName = `${seller?.firstName ?? ""} ${seller?.lastName ?? ""}`.trim() || "Unknown";
+
+      await storage.updateWalletBalance(userId, (walletBal - amt).toFixed(2));
+      invalidateCacheKey(`wallet:${userId}`);
+
+      const { p2pOffers: pt } = await import("@shared/schema");
+      const [offer] = await db.insert(pt).values({
+        sellerId: userId, amountUsd: amt.toFixed(2), availableUsd: amt.toFixed(2),
+        ratePerUsd: rate.toFixed(2), localCurrency: localCurrency.toUpperCase(),
+        minOrderUsd: minOrd.toFixed(2), maxOrderUsd: maxOrd.toFixed(2),
+        paymentMethod: paymentMethod.trim(), paymentDetails: paymentDetails.trim(), sellerName,
+      }).returning();
+
+      await storage.createTransaction({
+        userId, type: "transfer", amount: (-amt).toFixed(2), fee: "0.00",
+        paymentMethod: "wallet",
+        description: `P2P escrow: $${amt.toFixed(2)} locked in offer #${offer.id}`,
+      });
+      invalidateCacheKey(`transactions:${userId}`);
+
+      const notif = await storage.createNotification({
+        userId, title: "P2P Offer Live",
+        message: `Your offer to sell $${amt.toFixed(2)} at ${localCurrency} ${rate.toLocaleString()}/USD is now live.`,
+        type: "transaction",
+      });
+      pushToUser(userId, "notification", notif);
+      res.json({ success: true, offer });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PATCH /api/p2p/offers/:id/pause — toggle active ↔ paused
+  app.patch("/api/p2p/offers/:id/pause", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { p2pOffers: pt } = await import("@shared/schema");
+      const [offer] = await db.select().from(pt).where(and(eq(pt.id, Number(req.params.id)), eq(pt.sellerId, userId)));
+      if (!offer) return res.status(404).json({ message: "Offer not found" });
+      if (offer.status !== "active" && offer.status !== "paused") return res.status(400).json({ message: "Offer cannot be toggled" });
+      const newStatus = offer.status === "active" ? "paused" : "active";
+      const [updated] = await db.update(pt).set({ status: newStatus, updatedAt: new Date() }).where(eq(pt.id, offer.id)).returning();
+      res.json({ success: true, offer: updated });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/p2p/offers/:id — cancel offer, return escrow to seller
+  app.delete("/api/p2p/offers/:id", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { p2pOffers: pt, p2pOrders: ot } = await import("@shared/schema");
+      const [offer] = await db.select().from(pt).where(and(eq(pt.id, Number(req.params.id)), eq(pt.sellerId, userId)));
+      if (!offer) return res.status(404).json({ message: "Offer not found" });
+      if (offer.status === "cancelled") return res.status(400).json({ message: "Offer already cancelled" });
+
+      const activeOrders = await db.select().from(ot)
+        .where(and(eq(ot.offerId, offer.id), or(eq(ot.status, "pending"), eq(ot.status, "paid"))));
+      if (activeOrders.length > 0) return res.status(400).json({ message: "Cancel or complete all active orders on this offer first." });
+
+      const avail = parseFloat(offer.availableUsd);
+      if (avail > 0) {
+        const wallet = await storage.getOrCreateWallet(userId);
+        await storage.updateWalletBalance(userId, (parseFloat(wallet.balance) + avail).toFixed(2));
+        invalidateCacheKey(`wallet:${userId}`);
+        await storage.createTransaction({
+          userId, type: "transfer", amount: avail.toFixed(2), fee: "0.00",
+          paymentMethod: "wallet",
+          description: `P2P escrow returned: offer #${offer.id} cancelled`,
+        });
+        invalidateCacheKey(`transactions:${userId}`);
+      }
+      await db.update(pt).set({ status: "cancelled", updatedAt: new Date() }).where(eq(pt.id, offer.id));
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/p2p/orders — buyer places order against an offer
+  app.post("/api/p2p/orders", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { offerId, amountUsd, note } = req.body;
+      const amt = parseFloat(amountUsd);
+      if (!offerId || !amt || amt <= 0) return res.status(400).json({ message: "Invalid order parameters" });
+
+      const { p2pOffers: pt, p2pOrders: ot } = await import("@shared/schema");
+      const [offer] = await db.select().from(pt).where(eq(pt.id, Number(offerId)));
+      if (!offer) return res.status(404).json({ message: "Offer not found" });
+      if (offer.status !== "active") return res.status(400).json({ message: "This offer is not available" });
+      if (offer.sellerId === userId)  return res.status(400).json({ message: "You cannot buy from your own offer" });
+
+      const minOrd    = parseFloat(offer.minOrderUsd);
+      const maxOrd    = parseFloat(offer.maxOrderUsd);
+      const available = parseFloat(offer.availableUsd);
+      if (amt < minOrd)    return res.status(400).json({ message: `Minimum order is $${minOrd}` });
+      if (amt > maxOrd)    return res.status(400).json({ message: `Maximum order is $${maxOrd}` });
+      if (amt > available) return res.status(400).json({ message: `Only $${available.toFixed(2)} available` });
+
+      const buyer     = await storage.getUser(userId);
+      const buyerName = `${buyer?.firstName ?? ""} ${buyer?.lastName ?? ""}`.trim() || "Unknown";
+
+      const newAvail = (available - amt).toFixed(2);
+      await db.update(pt).set({ availableUsd: newAvail, updatedAt: new Date() }).where(eq(pt.id, offer.id));
+
+      const rate        = parseFloat(offer.ratePerUsd);
+      const localAmount = (amt * rate).toFixed(2);
+      const [order] = await db.insert(ot).values({
+        offerId: offer.id, sellerId: offer.sellerId, buyerId: userId,
+        amountUsd: amt.toFixed(2), ratePerUsd: offer.ratePerUsd,
+        localCurrency: offer.localCurrency, localAmount,
+        paymentMethod: offer.paymentMethod, paymentDetails: offer.paymentDetails,
+        buyerNote: note ?? null, sellerName: offer.sellerName, buyerName,
+      }).returning();
+
+      const sellerNotif = await storage.createNotification({
+        userId: offer.sellerId, title: "New P2P Order!",
+        message: `${buyerName.split(" ")[0]} wants to buy $${amt.toFixed(2)}. Awaiting their payment.`,
+        type: "transaction",
+      });
+      pushToUser(offer.sellerId, "notification", sellerNotif);
+      res.json({ success: true, order });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PATCH /api/p2p/orders/:id/paid — buyer marks payment as sent
+  app.patch("/api/p2p/orders/:id/paid", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { p2pOrders: ot } = await import("@shared/schema");
+      const [order] = await db.select().from(ot).where(and(eq(ot.id, Number(req.params.id)), eq(ot.buyerId, userId)));
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status !== "pending") return res.status(400).json({ message: "Order is not pending" });
+
+      const [updated] = await db.update(ot).set({ status: "paid", paidAt: new Date() }).where(eq(ot.id, order.id)).returning();
+
+      const sellerNotif = await storage.createNotification({
+        userId: order.sellerId, title: "Payment Sent — Release USD!",
+        message: `${order.buyerName.split(" ")[0]} has paid ${order.localCurrency} ${parseFloat(order.localAmount).toLocaleString()} for Order #${order.id}. Verify and release the USD.`,
+        type: "transaction",
+      });
+      pushToUser(order.sellerId, "notification", sellerNotif);
+      res.json({ success: true, order: updated });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PATCH /api/p2p/orders/:id/complete — seller confirms payment, releases USD to buyer
+  app.patch("/api/p2p/orders/:id/complete", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { p2pOrders: ot, p2pOffers: pt } = await import("@shared/schema");
+      const [order] = await db.select().from(ot).where(and(eq(ot.id, Number(req.params.id)), eq(ot.sellerId, userId)));
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status !== "paid") return res.status(400).json({ message: "Order must be marked paid by buyer first" });
+
+      const amt         = parseFloat(order.amountUsd);
+      const buyerWallet = await storage.getOrCreateWallet(order.buyerId);
+      await storage.updateWalletBalance(order.buyerId, (parseFloat(buyerWallet.balance) + amt).toFixed(2));
+      invalidateCacheKey(`wallet:${order.buyerId}`);
+
+      await storage.createTransaction({
+        userId: order.sellerId, type: "transfer", amount: (-amt).toFixed(2), fee: "0.00",
+        paymentMethod: "p2p",
+        description: `P2P: sold $${amt.toFixed(2)} to ${order.buyerName.split(" ")[0]} (Order #${order.id})`,
+      });
+      await storage.createTransaction({
+        userId: order.buyerId, type: "transfer", amount: amt.toFixed(2), fee: "0.00",
+        paymentMethod: "p2p",
+        description: `P2P: bought $${amt.toFixed(2)} from ${order.sellerName.split(" ")[0]} (Order #${order.id})`,
+      });
+      invalidateCacheKey(`transactions:${order.buyerId}`);
+      invalidateCacheKey(`transactions:${order.sellerId}`);
+
+      const [updatedOrder] = await db.update(ot).set({ status: "completed", completedAt: new Date() }).where(eq(ot.id, order.id)).returning();
+      await db.update(pt).set({ completedTrades: sql`${pt.completedTrades} + 1`, updatedAt: new Date() }).where(eq(pt.id, order.offerId));
+
+      const buyerNotif = await storage.createNotification({
+        userId: order.buyerId, title: "Trade Complete! 🎉",
+        message: `$${amt.toFixed(2)} has been added to your wallet from ${order.sellerName.split(" ")[0]}.`,
+        type: "transaction",
+      });
+      pushToUser(order.buyerId, "notification", buyerNotif);
+      res.json({ success: true, order: updatedOrder });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PATCH /api/p2p/orders/:id/cancel — cancel order (both parties, pending/paid only)
+  app.patch("/api/p2p/orders/:id/cancel", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { p2pOrders: ot, p2pOffers: pt } = await import("@shared/schema");
+      const [order] = await db.select().from(ot).where(
+        and(eq(ot.id, Number(req.params.id)), or(eq(ot.buyerId, userId), eq(ot.sellerId, userId)))
+      );
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status !== "pending" && order.status !== "paid") return res.status(400).json({ message: "Order cannot be cancelled" });
+
+      const amt = parseFloat(order.amountUsd);
+      const [offer] = await db.select().from(pt).where(eq(pt.id, order.offerId));
+      if (offer && offer.status !== "cancelled") {
+        await db.update(pt).set({ availableUsd: (parseFloat(offer.availableUsd) + amt).toFixed(2), updatedAt: new Date() }).where(eq(pt.id, offer.id));
+      } else {
+        // Offer gone — return USD to seller
+        const sw = await storage.getOrCreateWallet(order.sellerId);
+        await storage.updateWalletBalance(order.sellerId, (parseFloat(sw.balance) + amt).toFixed(2));
+        invalidateCacheKey(`wallet:${order.sellerId}`);
+      }
+
+      const [updated] = await db.update(ot).set({ status: "cancelled", cancelledAt: new Date() }).where(eq(ot.id, order.id)).returning();
+
+      const otherUserId = userId === order.buyerId ? order.sellerId : order.buyerId;
+      const cancellerName = userId === order.buyerId ? order.buyerName : order.sellerName;
+      const notif = await storage.createNotification({
+        userId: otherUserId, title: "Order Cancelled",
+        message: `Order #${order.id} ($${amt.toFixed(2)}) was cancelled by ${cancellerName.split(" ")[0]}.`,
+        type: "transaction",
+      });
+      pushToUser(otherUserId, "notification", notif);
+      res.json({ success: true, order: updated });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/p2p/orders/my — all orders where user is buyer or seller
+  app.get("/api/p2p/orders/my", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { p2pOrders: ot } = await import("@shared/schema");
+      const orders = await db.select().from(ot)
+        .where(or(eq(ot.buyerId, userId), eq(ot.sellerId, userId)))
+        .orderBy(desc(ot.createdAt));
+      res.json(orders);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

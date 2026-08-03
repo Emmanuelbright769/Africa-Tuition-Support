@@ -217,7 +217,7 @@ export default function P2PExchange() {
     const usdAmt   = parseFloat(o.amountUsd);
     return (
       <AnimatePresence mode="wait">
-        <motion.div key="p2p-order" initial={{ opacity:0, x:24 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-24 }} transition={{ duration:0.22 }} className="space-y-4 pb-4">
+        <motion.div key="p2p-order" initial={{ opacity:0, x:24 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-24 }} transition={{ duration:0.22 }} className="space-y-4 pb-4 bg-slate-900 rounded-2xl p-4 min-h-[400px]">
           <BackBtn onBack={() => { setView("list"); setOrderSelected(null); }} />
 
           {/* Status card */}
@@ -371,7 +371,7 @@ export default function P2PExchange() {
     const isValid = buyAmt >= minOrd && buyAmt <= maxOrd;
     return (
       <AnimatePresence mode="wait">
-        <motion.div key="p2p-buy" initial={{ opacity:0, x:24 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-24 }} transition={{ duration:0.22 }} className="space-y-4 pb-4">
+        <motion.div key="p2p-buy" initial={{ opacity:0, x:24 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-24 }} transition={{ duration:0.22 }} className="space-y-4 pb-4 bg-slate-900 rounded-2xl p-4 min-h-[400px]">
           <BackBtn onBack={() => { setView("list"); setOfferSelected(null); setBuyAmount(""); }} />
 
           {/* Seller card */}
@@ -450,7 +450,7 @@ export default function P2PExchange() {
     const isValid = amt >= 5 && amt <= avail && rate > 0 && sellPaymentMethod.trim() !== "" && sellPaymentDetails.trim() !== "";
     return (
       <AnimatePresence mode="wait">
-        <motion.div key="p2p-create" initial={{ opacity:0, x:24 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-24 }} transition={{ duration:0.22 }} className="space-y-4 pb-4">
+        <motion.div key="p2p-create" initial={{ opacity:0, x:24 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-24 }} transition={{ duration:0.22 }} className="space-y-4 pb-4 bg-slate-900 rounded-2xl p-4 min-h-[400px]">
           <BackBtn onBack={() => setCreateView("list")} />
 
           {/* Wallet info */}
@@ -556,7 +556,7 @@ export default function P2PExchange() {
   // ── Main tabbed view ──────────────────────────────────────────────────────
   return (
     <AnimatePresence mode="wait">
-      <motion.div key="p2p-main" initial={{ opacity:0, x:24 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-24 }} transition={{ duration:0.22 }} className="space-y-4 pb-4">
+      <motion.div key="p2p-main" initial={{ opacity:0, x:24 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-24 }} transition={{ duration:0.22 }} className="space-y-4 pb-4 bg-slate-900 rounded-2xl p-4 min-h-[400px]">
 
         {/* Tab bar */}
         <div className="flex rounded-2xl bg-white/5 border border-white/10 p-1">

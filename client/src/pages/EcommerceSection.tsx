@@ -153,7 +153,7 @@ function StarRating({ rating = 0, count = 0, interactive = false, onRate }: { ra
 }
 
 // ─── Promo Banner Carousel (modern rounded) ──────────────────────────────────
-function PromoBanner() {
+function PromoBanner({ onAction }: { onAction: (slideId: number) => void }) {
   const [idx, setIdx] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setIdx(i => (i + 1) % PROMO_SLIDES.length), 4500);
@@ -170,7 +170,8 @@ function PromoBanner() {
           exit={{ opacity: 0, scale: 0.97 }}
           transition={{ duration: 0.35 }}
           style={{ background: `linear-gradient(135deg,${s.accent.replace("from-[","").replace("] to-[",",").replace("]","")})` }}
-          className="relative flex items-center justify-between px-6 py-7 min-h-[180px] overflow-hidden"
+          className="relative flex items-center justify-between px-6 py-7 min-h-[180px] overflow-hidden cursor-pointer"
+          onClick={() => onAction(s.id)}
         >
           {/* decorative circles */}
           <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10" />
@@ -180,7 +181,11 @@ function PromoBanner() {
             <span className="text-[11px] font-bold bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full">{s.badge}</span>
             <h2 className="text-white text-2xl font-black mt-3 mb-1 leading-tight drop-shadow">{s.headline}</h2>
             <p className="text-white/85 text-sm mb-4 leading-snug">{s.sub}</p>
-            <button className="text-sm font-bold px-5 py-2 bg-white/90 backdrop-blur-sm rounded-xl flex items-center gap-1.5 hover:bg-white transition-colors shadow-sm" style={{ color: "#1E293B" }}>
+            <button
+              className="text-sm font-bold px-5 py-2 bg-white/90 backdrop-blur-sm rounded-xl flex items-center gap-1.5 hover:bg-white transition-colors shadow-sm active:scale-95"
+              style={{ color: "#1E293B" }}
+              onClick={e => { e.stopPropagation(); onAction(s.id); }}
+            >
               {s.tag} <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -190,7 +195,7 @@ function PromoBanner() {
       {/* Dots */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
         {PROMO_SLIDES.map((_, i) => (
-          <button key={i} onClick={() => setIdx(i)}
+          <button key={i} onClick={e => { e.stopPropagation(); setIdx(i); }}
             className={`rounded-full transition-all duration-300 ${i === idx ? "w-6 h-2 bg-white" : "w-2 h-2 bg-white/50"}`} />
         ))}
       </div>
@@ -2335,12 +2340,31 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
             </div>
           )}
 
-          {/* Promo Banner — hidden during active search */}
-          {!activeSearch && <PromoBanner />}
-
-          {/* Hero category tiles — always visible, fall back to gradient emoji when no products */}
+          {/* Hero category tiles — shown first so content is visible before promo */}
           {!activeSearch && (
             <HeroCategoryTiles products={products as Product[]} onPick={(c) => setActiveCategory(c)} />
+          )}
+
+          {/* Promo Banner — after tiles so it doesn't feel like part of the header */}
+          {!activeSearch && (
+            <PromoBanner onAction={(slideId) => {
+              setActiveCategory("");
+              setActiveSearch("");
+              setSearch("");
+              if (slideId === 1) {
+                // Mega Sale → show popular / most-viewed items
+                setFilterSort("popular");
+                setShowAllProducts(true);
+              } else if (slideId === 2) {
+                // Fresh Drops → show newest listings
+                setFilterSort("newest");
+                setShowAllProducts(true);
+              } else {
+                // Exclusive Picks → show all products sorted by popularity
+                setFilterSort("popular");
+                setShowAllProducts(true);
+              }
+            }} />
           )}
 
           {/* Category shelf — scrollable row of all categories */}

@@ -1367,11 +1367,173 @@ function ProductDetailModal({ product, open, onClose, onBuy, onChat, isSeller, i
   </>);
 }
 
+// ─── Splash Screen ──────────────────────────────────────────────────────────
+const SPLASH_EMOJIS = ["👗","👟","📚","💻","🎮","🎧","🏠","🌿","🍜","💄","⌚","🛋️","📷","🎸","🧸"];
+function EcommerceSplash({ onDone }: { onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2600);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  const floaters = SPLASH_EMOJIS.map((emoji, i) => {
+    const angle = (i / SPLASH_EMOJIS.length) * 360;
+    const radius = 38 + (i % 3) * 10;
+    const duration = 6 + (i % 4) * 1.5;
+    const delay = -(i * 0.4);
+    return { emoji, angle, radius, duration, delay };
+  });
+
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        key="splash"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0, scale: 1.06 }}
+        transition={{ duration: 0.4, ease: "easeInOut" }}
+        className="fixed inset-0 z-[300] flex flex-col items-center justify-center overflow-hidden select-none"
+        style={{ background: "linear-gradient(160deg, #05103A 0%, #0F2080 40%, #1B4FFF 75%, #4F7FFF 100%)" }}
+      >
+        {/* Animated background rings */}
+        {[1,2,3,4].map(n => (
+          <motion.div key={n}
+            className="absolute rounded-full border border-white/10"
+            style={{ width: `${n * 22}vw`, height: `${n * 22}vw`, minWidth: `${n * 120}px`, minHeight: `${n * 120}px` }}
+            animate={{ scale: [1, 1.04, 1], opacity: [0.15, 0.08, 0.15] }}
+            transition={{ duration: 3 + n, repeat: Infinity, ease: "easeInOut", delay: n * 0.5 }}
+          />
+        ))}
+
+        {/* Floating emoji icons */}
+        {floaters.map(({ emoji, angle, radius, duration, delay }, i) => (
+          <motion.div key={i}
+            className="absolute text-2xl pointer-events-none"
+            style={{ top: "50%", left: "50%", transformOrigin: "center" }}
+            animate={{ rotate: [angle, angle + 360] }}
+            transition={{ duration, repeat: Infinity, ease: "linear", delay }}
+          >
+            <motion.span
+              style={{ display: "block", transform: `translate(-50%, calc(-${radius}vw - 60px))` }}
+              animate={{ opacity: [0.35, 0.7, 0.35] }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: i * 0.2 }}
+            >
+              {emoji}
+            </motion.span>
+          </motion.div>
+        ))}
+
+        {/* Central glow */}
+        <motion.div
+          className="absolute rounded-full"
+          style={{ width: 220, height: 220, background: "radial-gradient(circle, rgba(79,127,255,0.45) 0%, transparent 70%)" }}
+          animate={{ scale: [1, 1.15, 1], opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+        />
+
+        {/* Logo area */}
+        <motion.div
+          className="relative z-10 flex flex-col items-center gap-5"
+          initial={{ scale: 0.7, opacity: 0, y: 30 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          transition={{ duration: 0.65, ease: [0.34, 1.56, 0.64, 1], delay: 0.15 }}
+        >
+          {/* Icon badge */}
+          <div className="relative">
+            <motion.div
+              className="absolute inset-0 rounded-[28px]"
+              style={{ background: "rgba(255,255,255,0.18)", filter: "blur(16px)" }}
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <div className="relative w-24 h-24 rounded-[28px] flex items-center justify-center shadow-2xl"
+              style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.08) 100%)", border: "1.5px solid rgba(255,255,255,0.25)" }}>
+              <ShoppingBag className="w-12 h-12 text-white" strokeWidth={1.6} />
+            </div>
+          </div>
+
+          {/* Brand name */}
+          <div className="flex flex-col items-center gap-1.5">
+            <motion.h1
+              className="text-white font-black tracking-[0.18em] text-4xl"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.5 }}
+            >
+              TS-MART
+            </motion.h1>
+            <motion.div
+              className="h-0.5 rounded-full"
+              style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent)" }}
+              initial={{ width: 0 }}
+              animate={{ width: 160 }}
+              transition={{ delay: 0.65, duration: 0.6, ease: "easeOut" }}
+            />
+            <motion.p
+              className="text-white/65 text-sm font-medium tracking-widest uppercase mt-0.5"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.8, duration: 0.5 }}
+            >
+              Africa's Student Marketplace
+            </motion.p>
+          </div>
+
+          {/* Feature pills */}
+          <motion.div
+            className="flex items-center gap-2 mt-1"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.0, duration: 0.5 }}
+          >
+            {["🛡️ Secure Escrow", "🚀 Fast Delivery", "🌍 Pan-Africa"].map(f => (
+              <span key={f} className="text-[11px] px-3 py-1 rounded-full font-medium"
+                style={{ background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.82)", border: "1px solid rgba(255,255,255,0.18)" }}>
+                {f}
+              </span>
+            ))}
+          </motion.div>
+        </motion.div>
+
+        {/* Progress bar */}
+        <motion.div
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 rounded-full overflow-hidden"
+          style={{ width: 160, height: 3, background: "rgba(255,255,255,0.15)" }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+        >
+          <motion.div
+            className="h-full rounded-full"
+            style={{ background: "linear-gradient(90deg, rgba(255,255,255,0.5), white)" }}
+            initial={{ width: "0%" }}
+            animate={{ width: "100%" }}
+            transition={{ delay: 0.3, duration: 2.1, ease: "easeInOut" }}
+          />
+        </motion.div>
+
+        {/* TSIA footer badge */}
+        <motion.p
+          className="absolute bottom-5 text-white/40 text-[11px] font-medium tracking-widest uppercase"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.9 }}
+        >
+          Powered by TSIA
+        </motion.p>
+      </motion.div>
+    </AnimatePresence>,
+    document.body
+  );
+}
+
 // ─── Main EcommerceSection Component ─────────────────────────────────────────
-export default function EcommerceSection({ initialOpenChatId }: { initialOpenChatId?: number | null }) {
+export default function EcommerceSection({ initialOpenChatId, onBack }: { initialOpenChatId?: number | null; onBack?: () => void }) {
   const { user } = useAuth();
   const { toast } = useToast();
   const { formatAmount } = useLocalCurrency();
+
+  // ── Splash ──
+  const [showSplash, setShowSplash] = useState(true);
 
   // ── Tab state ──
   const [tab, setTab] = useState<Tab>("home");
@@ -1605,9 +1767,12 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   const wishlistProducts = (products as Product[]).filter(p => wishlist.has(p.id));
 
   return (
+    <>
+      {showSplash && <EcommerceSplash onDone={() => setShowSplash(false)} />}
+
     <div
       className="relative"
-      style={{ background: S.bg, marginTop: "-24px", marginBottom: "-24px", marginLeft: "-16px", marginRight: "-16px", paddingBottom: "80px", width: "calc(100% + 32px)", maxWidth: "none" }}
+      style={{ background: S.bg, minHeight: "100vh", paddingBottom: "80px" }}
     >
 
       {/* ═══════════════════════════════════════════════════════════════════
@@ -1618,6 +1783,14 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
         {/* Top row */}
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <div className="flex items-center gap-3">
+            {/* Back button */}
+            {onBack && (
+              <button onClick={onBack}
+                className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center hover:bg-white/25 transition-colors shrink-0"
+                aria-label="Go back" data-testid="btn-ecommerce-back">
+                <ChevronLeft className="w-5 h-5 text-white" />
+              </button>
+            )}
             <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-base shrink-0">
               {user?.firstName?.[0]?.toUpperCase() ?? "G"}
             </div>
@@ -2617,5 +2790,6 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
       </AnimatePresence>
 
     </div>
+    </>
   );
 }

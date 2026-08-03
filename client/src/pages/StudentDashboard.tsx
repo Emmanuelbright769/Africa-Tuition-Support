@@ -590,8 +590,8 @@ export default function StudentDashboard() {
       {/* Main content — overview normal, services cover entire screen (above nav) */}
       <main className={activeSection !== "overview" ? "fixed inset-0 z-50 bg-background overflow-y-auto" : "container mx-auto px-4 pt-8 pb-20 max-w-5xl"}>
 
-        {/* Back button bar — shown for all service sections */}
-        {activeSection !== "overview" && (
+        {/* Back button bar — shown for all service sections (hidden for ecommerce — it has its own header) */}
+        {activeSection !== "overview" && activeSection !== "ecommerce" && (
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b flex items-center gap-2 px-4 h-13 py-3 shadow-sm">
             <button onClick={goBack} className="p-1.5 rounded-xl hover:bg-muted transition-colors shrink-0" data-testid="btn-student-section-back">
               <ChevronRight className="w-5 h-5 rotate-180" />
@@ -600,7 +600,7 @@ export default function StudentDashboard() {
           </div>
         )}
 
-        <div className={activeSection !== "overview" ? "container mx-auto px-4 pt-4 pb-24 max-w-5xl" : ""}>
+        <div className={activeSection !== "overview" ? (activeSection === "ecommerce" ? "" : "container mx-auto px-4 pt-4 pb-24 max-w-5xl") : ""}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeSection}
@@ -1157,7 +1157,7 @@ export default function StudentDashboard() {
             {/* ── E-COMMERCE ── */}
             {activeSection === "ecommerce" && (
               <motion.div variants={itemVariants}>
-                <EcommerceSection initialOpenChatId={openChatId} />
+                <EcommerceSection initialOpenChatId={openChatId} onBack={goBack} />
               </motion.div>
             )}
 

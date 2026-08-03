@@ -1408,8 +1408,8 @@ export default function AffiliateDashboard() {
       {/* Main — overview stays below nav, services go full-screen */}
       <main className={activeSection !== "overview" ? "fixed inset-0 z-50 bg-background flex flex-col" : "container mx-auto px-4 pt-8 pb-20 max-w-5xl"}>
 
-        {/* Compact top bar for service sections */}
-        {activeSection !== "overview" && (
+        {/* Compact top bar for service sections (hidden for ecommerce — it has its own header) */}
+        {activeSection !== "overview" && activeSection !== "ecommerce" && (
           <div className="flex items-center justify-between px-4 h-14 border-b bg-card shrink-0 shadow-sm">
             <div className="flex items-center gap-2">
               <button onClick={goBack}
@@ -1434,7 +1434,7 @@ export default function AffiliateDashboard() {
           </div>
         )}
 
-        <div className={activeSection !== "overview" ? "flex-1 overflow-y-auto overflow-x-hidden px-4 py-6" : ""}>
+        <div className={activeSection !== "overview" ? (activeSection === "ecommerce" ? "flex-1 overflow-y-auto overflow-x-hidden" : "flex-1 overflow-y-auto overflow-x-hidden px-4 py-6") : ""}>
         <AnimatePresence mode="wait">
           <motion.div key={activeSection} variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
@@ -2616,7 +2616,7 @@ export default function AffiliateDashboard() {
                 Opacity-only fade avoids any CSS transform on this wrapper. */}
             {activeSection === "ecommerce" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-                <EcommerceSection initialOpenChatId={openChatId} />
+                <EcommerceSection initialOpenChatId={openChatId} onBack={goBack} />
               </motion.div>
             )}
 

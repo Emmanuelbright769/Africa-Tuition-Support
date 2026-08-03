@@ -2605,7 +2605,13 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateTradeWallet(userId);
-      res.json(wallet);
+      // Per-user top-up count (both crypto deposits and SwiftWallet top-ups)
+      const countResult = await db.execute(sql`
+        SELECT COUNT(*) AS deposit_count FROM trade_transactions
+        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
+      `);
+      const depositCount = parseInt((countResult.rows[0] as any)?.deposit_count ?? "0", 10);
+      res.json({ ...wallet, depositCount });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2920,6 +2926,30 @@ export async function registerRoutes(
       pushToUser(userId, "notification", notif);
       const updatedTrade = await storage.getOrCreateTradeWallet(userId);
       res.json({ newTradeBalance: updatedTrade.tradeBalance, newPersonalBalance: newPersonalBal, transferred: amount.toFixed(2), reserveDeducted: "0.00" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── REINVEST earnings back into locked principal ──────────────────────────
+  app.post("/api/trade/reinvest", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Re-invest is disabled during an active trade session. Wait until the session ends." });
+      }
+      const wallet = await storage.getOrCreateTradeWallet(userId);
+      const tradeBalance    = parseFloat(wallet.tradeBalance ?? "0");
+      const lockedPrincipal = parseFloat(wallet.lockedPrincipal ?? "0");
+      const withdrawable    = parseFloat((Math.max(0, tradeBalance - lockedPrincipal)).toFixed(6));
+      if (withdrawable < 2) {
+        return res.status(400).json({ message: "Minimum $2 in withdrawable earnings required to re-invest." });
+      }
+      // Lock earnings as new principal and reset cycle
+      await storage.addToLockedPrincipal(userId, withdrawable.toFixed(6));
+      const currentPlanDays: number = [60, 90, 120].includes(Number(wallet.tradingPlanDays)) ? Number(wallet.tradingPlanDays) : 120;
+      await storage.resetTradingDayForTopUp(userId, generateLossDays(currentPlanDays));
+      const updated = await storage.getOrCreateTradeWallet(userId);
+      res.json({ success: true, reinvestedAmount: withdrawable.toFixed(2), newLockedPrincipal: updated.lockedPrincipal, message: `$${withdrawable.toFixed(2)} re-invested! Your cycle has been reset with a fresh earning period.` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

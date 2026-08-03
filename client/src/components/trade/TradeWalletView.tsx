@@ -3,17 +3,20 @@ import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Wallet, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight,
-  Link2, Eye, EyeOff, TrendingUp, Shield, RefreshCw, ChevronRight,
+  Link2, Eye, EyeOff, TrendingUp, Shield, RefreshCw, RefreshCcw,
 } from "lucide-react";
+
+const MAX_TOPUPS = 3;
 
 interface TradeWalletViewProps {
   onDeposit: () => void;
   onWithdraw: () => void;
   onFund: () => void;
   onConnect: () => void;
+  onReinvest: () => void;
 }
 
-export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConnect }: TradeWalletViewProps) {
+export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConnect, onReinvest }: TradeWalletViewProps) {
   const [hidden, setHidden] = useState(false);
   const { data: wallet, isLoading, refetch } = useQuery<any>({
     queryKey: ["/api/trade/wallet"],
@@ -31,6 +34,9 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
   const profitTarget    = lockedPrincipal * 2;
   const returnPct       = profitTarget > 0 ? Math.min(100, (totalEarnings / profitTarget) * 100) : 0;
   const hasWallet       = wallet?.trc20Address || wallet?.bep20Address;
+  const depositCount    = wallet?.depositCount ?? 0;
+  const topupsLeft      = Math.max(0, MAX_TOPUPS - depositCount);
+  const limitReached    = depositCount >= MAX_TOPUPS;
 
   const fmt = (n: number) => hidden ? "••••••" : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -40,18 +46,23 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
       label: "Deposit",
       sublabel: "Via crypto (TRC20/BEP20)",
       icon: ArrowDownToLine,
-      color: "bg-tsia-green/15 text-tsia-green border-tsia-green/30",
-      iconBg: "bg-tsia-green",
-      onClick: onDeposit,
+      color: limitReached
+        ? "bg-slate-400/10 text-slate-400 border-slate-400/20 opacity-50 cursor-not-allowed"
+        : "bg-tsia-green/15 text-tsia-green border-tsia-green/30",
+      iconBg: limitReached ? "bg-slate-600" : "bg-tsia-green",
+      onClick: limitReached ? undefined : onDeposit,
+      badge: !limitReached ? `${topupsLeft} left` : null,
     },
     {
       id: "fund",
-      label: "Top Up",
-      sublabel: "From SwiftWallet",
-      icon: Wallet,
-      color: "bg-tsia-gold/15 text-tsia-gold border-tsia-gold/30",
+      label: limitReached ? "Re-invest" : "Top Up",
+      sublabel: limitReached ? "Roll earnings into principal" : `From SwiftWallet · ${topupsLeft} left`,
+      icon: limitReached ? RefreshCcw : Wallet,
+      color: limitReached
+        ? "bg-tsia-gold/15 text-tsia-gold border-tsia-gold/30"
+        : "bg-tsia-gold/15 text-tsia-gold border-tsia-gold/30",
       iconBg: "bg-tsia-gold",
-      onClick: onFund,
+      onClick: limitReached ? onReinvest : onFund,
     },
     {
       id: "withdraw",
@@ -102,6 +113,44 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
           <RefreshCw className="h-4 w-4 text-muted-foreground" />
         </button>
       </header>
+
+      {/* Top-up usage indicator */}
+      <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-3.5 w-3.5 text-white/40" />
+          <span className="text-xs text-white/50">Top-up slots used</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {Array.from({ length: MAX_TOPUPS }).map((_, i) => (
+            <div
+              key={i}
+              className={`h-2 w-5 rounded-full transition-colors ${
+                i < depositCount ? "bg-tsia-gold" : "bg-white/15"
+              }`}
+            />
+          ))}
+          <span className={`ml-1 text-[10px] font-bold ${limitReached ? "text-tsia-gold" : "text-white/50"}`}>
+            {depositCount}/{MAX_TOPUPS}
+          </span>
+        </div>
+      </div>
+
+      {/* Limit-reached banner */}
+      {limitReached && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-start gap-3 rounded-2xl border border-tsia-gold/30 bg-tsia-gold/10 px-4 py-3"
+        >
+          <RefreshCcw className="h-4 w-4 shrink-0 text-tsia-gold mt-0.5" />
+          <div>
+            <p className="text-xs font-bold text-tsia-gold">Top-up limit reached</p>
+            <p className="mt-0.5 text-[10px] text-tsia-gold/70 leading-snug">
+              You've used all 3 top-up slots. Use <span className="font-bold">Re-invest</span> to roll your withdrawable earnings back into your principal and restart the earning cycle.
+            </p>
+          </div>
+        </motion.div>
+      )}
 
       {/* Balance card */}
       <motion.div
@@ -174,7 +223,8 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.06 }}
             onClick={a.onClick}
-            className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${a.color}`}
+            disabled={!a.onClick}
+            className={`relative flex items-center gap-3 rounded-2xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] disabled:pointer-events-none ${a.color}`}
           >
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${a.iconBg}`}>
               <a.icon className="h-5 w-5 text-white" />
@@ -183,6 +233,11 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
               <p className="text-sm font-bold leading-tight">{a.label}</p>
               <p className="mt-0.5 text-[10px] opacity-70 leading-snug">{a.sublabel}</p>
             </div>
+            {a.badge && (
+              <span className="absolute top-2 right-2 rounded-full bg-white/20 px-1.5 py-0.5 text-[9px] font-bold">
+                {a.badge}
+              </span>
+            )}
           </motion.button>
         ))}
       </div>

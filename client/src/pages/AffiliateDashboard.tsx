@@ -705,6 +705,7 @@ export default function AffiliateDashboard() {
   const [showTrustCategories, setShowTrustCategories] = useState(false);
   const [fundTradeOpen, setFundTradeOpen] = useState(false);
   const [fundTradeAmt, setFundTradeAmt]   = useState("");
+  const [reinvestOpen, setReinvestOpen]   = useState(false);
 
   // Trade balance visibility (persisted)
   const [tradeBalanceHidden, setTradeBalanceHidden] = useState<boolean>(() => {
@@ -1067,6 +1068,21 @@ export default function AffiliateDashboard() {
       setActivationPopupOpen(true);
     }
   }, [personalWalletData, user?.id]);
+
+  const reinvestMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/trade/reinvest", {});
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: (data) => {
+      toast({ title: "Re-invested! ✓", description: data.message, className: "border-tsia-green" });
+      setReinvestOpen(false);
+      refetchTradeWallet(); refetchTradeTxs();
+    },
+    onError: (err: any) => toast({ title: "Re-invest Failed", description: err.message, variant: "destructive" }),
+  });
 
   const fundTradeMutation = useMutation({
     mutationFn: async () => {
@@ -1583,6 +1599,7 @@ export default function AffiliateDashboard() {
                   onWithdraw={() => setWithdrawOpen(true)}
                   onFund={() => setFundTradeOpen(true)}
                   onConnect={() => setConnectOpen(true)}
+                  onReinvest={() => setReinvestOpen(true)}
                 >
                 <motion.div variants={itemVariants} data-trade-anchor="home" style={{ scrollMarginTop: "5rem" }}>
                   <div className="trade-market-hero mb-6 overflow-hidden rounded-[2rem] border border-white/60 p-6 shadow-[0_24px_70px_rgba(26,64,46,.14)] backdrop-blur-xl sm:p-9 dark:border-white/10">
@@ -1793,22 +1810,6 @@ export default function AffiliateDashboard() {
                           </p>
                           {!tradeBalanceHidden && <p className="text-xs text-blue-500/70">≈ {formatAmount(tradeBalance)}</p>}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button size="sm"
-                            onClick={() => setFundTradeOpen(true)}
-                            disabled={botActive}
-                            title={botActive ? "Top-ups are locked during an active trade session" : "Fund your trade wallet"}
-                            data-testid="button-fund-trade-wallet"
-                            className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50">
-                            {botActive ? <Lock className="w-3.5 h-3.5 mr-1.5" /> : <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" />}
-                            Top Up
-                          </Button>
-                        </div>
-                        {botActive && (
-                          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-right mt-1">
-                            🔒 Locked during active trade session
-                          </p>
-                        )}
                       </div>
                       {!roiComplete && lockedPrincipal > 0 && (
                         <div className="space-y-2">
@@ -1873,25 +1874,7 @@ export default function AffiliateDashboard() {
                           {!tradeBalanceHidden && <p className="text-[10px] text-emerald-600/70">≈ {formatAmount(withdrawableAmt)}</p>}
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-1.5">
-                        <p className="text-xs text-muted-foreground">+{(activePlanConfig.dailyRate * 100).toFixed(0)}% / session</p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setWithdrawOpen(true)}
-                          disabled={withdrawableAmt < 2 || botActive}
-                          data-testid="button-trade-withdraw"
-                          title={botActive ? "Withdrawals are locked during an active trade session" : withdrawableAmt < 2 ? `Minimum $2 to withdraw (you have $${withdrawableAmt.toFixed(2)})` : "Withdraw your earnings"}
-                          className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 h-7 text-xs px-2.5 disabled:opacity-40"
-                        >
-                          {botActive ? <Lock className="w-3 h-3 mr-1" /> : <ArrowUpRight className="w-3 h-3 mr-1" />} Withdraw
-                        </Button>
-                        {botActive ? (
-                          <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">🔒 Active session</p>
-                        ) : withdrawableAmt > 0 && withdrawableAmt < 2 ? (
-                          <p className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Above $2 to unlock</p>
-                        ) : null}
-                      </div>
+                      <p className="text-xs text-muted-foreground">+{(activePlanConfig.dailyRate * 100).toFixed(0)}% / session</p>
                     </div>
                     {/* Trading Cycle Progress bar */}
                     {totalInvested > 0 && (
@@ -3370,6 +3353,49 @@ export default function AffiliateDashboard() {
             <Button variant="outline" onClick={() => setConnectOpen(false)}>Cancel</Button>
             <Button onClick={() => connectMutation.mutate()} disabled={connectMutation.isPending || (!trc20Input && !bep20Input)} data-testid="button-confirm-connect">
               {connectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2" />} Save Wallet(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Re-invest Earnings Dialog */}
+      <Dialog open={reinvestOpen} onOpenChange={setReinvestOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-tsia-gold">↺</span> Re-invest Earnings
+            </DialogTitle>
+            <DialogDescription>
+              Roll your withdrawable bot earnings back into your locked principal and restart the earning cycle.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-xl border border-tsia-gold/30 bg-tsia-gold/10 p-4 space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Withdrawable earnings</span>
+                <span className="font-bold text-tsia-gold">${withdrawableAmt.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-tsia-gold/20 pt-2">
+                <span className="text-muted-foreground">New locked principal</span>
+                <span className="font-bold">${(lockedPrincipal + withdrawableAmt).toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2.5 text-xs text-blue-700 dark:text-blue-300">
+              ℹ Your earning cycle will reset from Day 1 using your current plan. Earnings cap resets to 100% of the new principal.
+            </div>
+            {withdrawableAmt < 2 && (
+              <p className="text-xs text-red-500 font-semibold text-center">You need at least $2 in withdrawable earnings to re-invest.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReinvestOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => reinvestMutation.mutate()}
+              disabled={reinvestMutation.isPending || withdrawableAmt < 2}
+              className="bg-tsia-gold hover:bg-tsia-gold/90 text-white font-bold"
+            >
+              {reinvestMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <span className="mr-2">↺</span>}
+              Re-invest ${withdrawableAmt.toFixed(2)}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -226,6 +226,15 @@ export default function AdminDashboard() {
   const [releaseConfirm, setReleaseConfirm] = useState<{ userId: number; name: string } | null>(null);
   const [declineSchDialog, setDeclineSchDialog] = useState<{ id: number; name: string } | null>(null);
   const [declineSchReason, setDeclineSchReason] = useState("");
+  const [tradeEditDialog, setTradeEditDialog] = useState<{ userId: number; name: string; tw: any } | null>(null);
+  const [tradeEditBalance, setTradeEditBalance] = useState("");
+  const [tradeEditLocked, setTradeEditLocked] = useState("");
+  const [tradeEditInvested, setTradeEditInvested] = useState("");
+  const [tradeEditBotEarnings, setTradeEditBotEarnings] = useState("");
+  const [tradeEditDayNumber, setTradeEditDayNumber] = useState("");
+  const [tradeEditPlanDays, setTradeEditPlanDays] = useState("120");
+  const [tradeEditRoiComplete, setTradeEditRoiComplete] = useState(false);
+  const [tradeEditSaving, setTradeEditSaving] = useState(false);
 
   const { user, logout, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -1706,6 +1715,9 @@ export default function AdminDashboard() {
                                 <Button size="sm" variant="outline" className="h-7 text-xs text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => { setSetReferrerDialog({ open: true, user: u }); setReferrerCode(u.referredBy || ""); }} data-testid={`button-set-referrer-${u.id}`} title={u.referredBy ? `Referred by: ${u.referredBy}` : "Set referral source"}>
                                   <Share2 className="w-3 h-3 mr-1" /> {u.referredBy ? "Re-assign" : "Referrer"}
                                 </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-orange-600 border-orange-200 hover:bg-orange-50" onClick={() => { setLienDialog({ open: true, user: u, wallet: u.wallet ?? {} }); setLienAmount(""); setLienReason(""); }} data-testid={`button-lien-user-${u.id}`} title="Place or edit wallet lien">
+                                  <Lock className="w-3 h-3 mr-1" /> Lien
+                                </Button>
                                 <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeleteUserDialog({ open: true, user: u })} data-testid={`button-delete-user-${u.id}`}>
                                   <Trash2 className="w-3 h-3" />
                                 </Button>
@@ -2154,6 +2166,20 @@ export default function AdminDashboard() {
                               onClick={() => { setTradeWarnDialog({ userId: u.userId, name: u.name }); setTradeWarnMsg(""); }}
                               data-testid={`button-warn-trade-${u.userId}`}>
                               <AlertTriangle className="w-3 h-3 mr-1" /> Warn
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-[11px] h-6 px-2.5 shrink-0 border-blue-300 text-blue-700 hover:bg-blue-50"
+                              onClick={() => {
+                                setTradeEditDialog({ userId: u.userId, name: u.name, tw: u });
+                                setTradeEditBalance(u.balance ?? "0");
+                                setTradeEditLocked(u.lockedPrincipal ?? "0");
+                                setTradeEditInvested(u.totalInvested ?? "0");
+                                setTradeEditBotEarnings(u.totalBotEarnings ?? "0");
+                                setTradeEditDayNumber(String(u.tradingDayNumber ?? 0));
+                                setTradeEditPlanDays(String(u.tradingPlanDays ?? 120));
+                                setTradeEditRoiComplete(!!u.roiComplete);
+                              }}
+                              data-testid={`button-trade-edit-${u.userId}`}>
+                              <Edit className="w-3 h-3 mr-1" /> Full Edit
                             </Button>
                             <Button size="sm" variant="outline" className="text-[11px] h-6 px-2.5 shrink-0 border-red-300 text-red-700 hover:bg-red-50"
                               onClick={() => setRemoveTradeConfirm({ userId: u.userId, name: u.name })}
@@ -5136,6 +5162,79 @@ export default function AdminDashboard() {
                 }
               }}>
               Confirm Release
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Trade Wallet Full Edit dialog */}
+      <Dialog open={!!tradeEditDialog} onOpenChange={open => !open && setTradeEditDialog(null)}>
+        <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="w-5 h-5 text-blue-600" /> Edit Trade Wallet — {tradeEditDialog?.name}
+            </DialogTitle>
+            <DialogDescription>Edit all trade wallet fields directly. Changes take effect immediately.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Trade Balance ($)", val: tradeEditBalance, set: setTradeEditBalance, testId: "trade-edit-balance" },
+                { label: "Locked Principal ($)", val: tradeEditLocked, set: setTradeEditLocked, testId: "trade-edit-locked" },
+                { label: "Total Invested ($)", val: tradeEditInvested, set: setTradeEditInvested, testId: "trade-edit-invested" },
+                { label: "Total Bot Earnings ($)", val: tradeEditBotEarnings, set: setTradeEditBotEarnings, testId: "trade-edit-bot-earnings" },
+                { label: "Trading Day Number", val: tradeEditDayNumber, set: setTradeEditDayNumber, testId: "trade-edit-day-number" },
+              ].map(f => (
+                <div key={f.label} className="space-y-1">
+                  <Label className="text-xs font-semibold">{f.label}</Label>
+                  <Input type="number" value={f.val} onChange={e => f.set(e.target.value)} className="h-9 text-sm" data-testid={`input-${f.testId}`} />
+                </div>
+              ))}
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Trading Plan</Label>
+                <select value={tradeEditPlanDays} onChange={e => setTradeEditPlanDays(e.target.value)} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm" data-testid="select-trade-plan">
+                  <option value="60">60 days</option>
+                  <option value="90">90 days</option>
+                  <option value="120">120 days</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+              <input type="checkbox" id="roi-complete" checked={tradeEditRoiComplete} onChange={e => setTradeEditRoiComplete(e.target.checked)} className="w-4 h-4" data-testid="checkbox-roi-complete" />
+              <label htmlFor="roi-complete" className="text-sm font-medium cursor-pointer">ROI Complete (unlocks full balance withdrawal)</label>
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
+              ⚠ These changes are applied immediately and override calculated values. Use carefully.
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setTradeEditDialog(null)}>Cancel</Button>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={tradeEditSaving}
+              data-testid="button-save-trade-edit"
+              onClick={async () => {
+                if (!tradeEditDialog) return;
+                setTradeEditSaving(true);
+                try {
+                  const res = await apiRequest("PATCH", `/api/admin/trade-wallet/${tradeEditDialog.userId}`, {
+                    tradeBalance: tradeEditBalance,
+                    lockedPrincipal: tradeEditLocked,
+                    totalInvested: tradeEditInvested,
+                    totalBotEarnings: tradeEditBotEarnings,
+                    tradingDayNumber: tradeEditDayNumber,
+                    tradingPlanDays: tradeEditPlanDays,
+                    roiComplete: tradeEditRoiComplete,
+                  });
+                  if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+                  toast({ title: "Trade wallet updated ✓", className: "border-tsia-green" });
+                  setTradeEditDialog(null);
+                  refetchTradeUsers();
+                } catch (e: any) {
+                  toast({ title: "Error", description: e.message, variant: "destructive" });
+                } finally { setTradeEditSaving(false); }
+              }}>
+              {tradeEditSaving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> Saving…</> : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

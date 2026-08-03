@@ -10,7 +10,7 @@ import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   KeyRound, GraduationCap, Briefcase, Sparkles, ChevronRight, ArrowLeft,
-  CheckCircle2, Wallet, Zap, Info, Lock, Eye, EyeOff, ShieldCheck
+  CheckCircle2, Wallet, Zap, Info, Lock, Eye, EyeOff, ShieldCheck, Fingerprint, Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
@@ -34,7 +34,8 @@ const AFRICAN_COUNTRIES = [
 ];
 
 type RoleChoice = "student" | "affiliate" | "both";
-type Step = 0 | 1 | 2;
+type Step = 0 | 1 | 2 | 3;
+type KycIdType = "nin" | "bvn" | "passport" | "voters_card";
 
 const ROLE_CARDS: { id: RoleChoice; icon: any; label: string; sub: string; highlight?: boolean;
   card: string; pill: string; iconBg: string; badge?: string }[] = [
@@ -87,6 +88,9 @@ export default function Signup() {
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
+  const [kycIdType, setKycIdType] = useState<KycIdType>("nin");
+  const [kycIdNumber, setKycIdNumber] = useState("");
+  const [kycVerifying, setKycVerifying] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { requestOtp, verifyOtp } = useAuth();
   const { toast } = useToast();
@@ -137,6 +141,33 @@ export default function Signup() {
         return;
       }
     }
+    setStep(2);
+  };
+
+  const handleKycSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!kycIdNumber.trim()) {
+      toast({ title: "ID number required", description: "Please enter your identification number.", variant: "destructive" });
+      return;
+    }
+    setKycVerifying(true);
+    try {
+      const res = await fetch("/api/verification/validate-id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idType: kycIdType, idNumber: kycIdNumber.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok && !data.ok) {
+        // Non-blocking: if verification fails, show warning but allow proceeding
+        toast({ title: "Verification note", description: data.message || "Could not verify your ID — you can still proceed. We will verify manually.", variant: "destructive" });
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setKycVerifying(false);
+    }
+    // Request OTP and move to step 3
     setLoading(true);
     try {
       const result = await requestOtp({
@@ -146,7 +177,7 @@ export default function Signup() {
         ...(wantsPassword && signupPassword ? { password: signupPassword } : {}),
       });
       if (!result.otpSent) throw new Error(result as any);
-      setStep(2);
+      setStep(3);
       toast({ title: "OTP Sent", description: "Check your email for the 6-digit verification code." });
     } catch (err: any) {
       toast({ title: "Signup failed", description: parseApiError(err), variant: "destructive" });
@@ -402,8 +433,90 @@ export default function Signup() {
                 </>
               )}
 
-              {/* ── Step 2: OTP verification ── */}
+              {/* ── Step 2: Identity Verification ── */}
               {step === 2 && (
+                <>
+                  <CardHeader className="space-y-1 pt-8 pb-4">
+                    <div className="flex justify-center mb-3">
+                      <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+                        <Fingerprint className="w-7 h-7 text-blue-600" />
+                      </div>
+                    </div>
+                    <CardTitle className="text-2xl text-center font-bold">Verify Your Identity</CardTitle>
+                    <CardDescription className="text-center text-sm">
+                      A quick identity check — required for all TSIA accounts
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pb-6">
+                    <form onSubmit={handleKycSubmit} className="space-y-4">
+                      <div className="space-y-1.5">
+                        <Label>ID Type</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([
+                            { id: "nin" as KycIdType, label: "NIN", desc: "National ID" },
+                            { id: "bvn" as KycIdType, label: "BVN", desc: "Bank Verification" },
+                            { id: "passport" as KycIdType, label: "Passport", desc: "International" },
+                            { id: "voters_card" as KycIdType, label: "Voter's Card", desc: "INEC voter ID" },
+                          ]).map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => { setKycIdType(opt.id); setKycIdNumber(""); }}
+                              className={`flex flex-col items-start p-3 rounded-xl border-2 transition-all text-left ${kycIdType === opt.id ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-border bg-muted/20 hover:border-border/80"}`}
+                              data-testid={`btn-kyc-type-${opt.id}`}
+                            >
+                              <span className="font-bold text-sm">{opt.label}</span>
+                              <span className="text-xs text-muted-foreground">{opt.desc}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="kycIdNumber">
+                          {kycIdType === "nin" ? "11-digit NIN" : kycIdType === "bvn" ? "11-digit BVN" : kycIdType === "passport" ? "Passport Number" : "Voter's Card Number"}
+                        </Label>
+                        <Input
+                          id="kycIdNumber"
+                          placeholder={kycIdType === "nin" ? "Enter your NIN" : kycIdType === "bvn" ? "Enter your BVN" : kycIdType === "passport" ? "e.g. A00000000" : "Enter voter's card number"}
+                          value={kycIdNumber}
+                          onChange={e => setKycIdNumber(e.target.value)}
+                          className="h-11 bg-muted/30"
+                          required
+                          data-testid="input-kyc-id-number"
+                        />
+                        <p className="text-xs text-muted-foreground">Used only for identity verification. Your data is kept secure and never shared.</p>
+                      </div>
+
+                      <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl px-3 py-2.5">
+                        <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                        <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                          TSIA uses Prembly to verify identities. This is a one-time check and does not affect your credit score.
+                        </p>
+                      </div>
+
+                      <Button
+                        type="submit"
+                        className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                        disabled={loading || kycVerifying || !kycIdNumber.trim()}
+                        data-testid="button-kyc-submit"
+                      >
+                        {kycVerifying || loading ? (
+                          <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {kycVerifying ? "Verifying…" : "Setting up…"}</>
+                        ) : (
+                          <><ShieldCheck className="w-4 h-4 mr-2" /> Verify & Continue</>
+                        )}
+                      </Button>
+                      <button type="button" onClick={() => setStep(1)} className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                        <ArrowLeft className="w-4 h-4" /> Go back
+                      </button>
+                    </form>
+                  </CardContent>
+                </>
+              )}
+
+              {/* ── Step 3: OTP verification ── */}
+              {step === 3 && (
                 <>
                   <CardHeader className="space-y-1 pt-8 pb-4">
                     <div className="flex justify-center mb-3">
@@ -438,7 +551,7 @@ export default function Signup() {
                         {loading ? "Verifying..." : "Verify & Access Dashboard"}
                       </Button>
                       <div className="flex items-center justify-between text-sm">
-                        <button type="button" onClick={() => setStep(1)} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
+                        <button type="button" onClick={() => setStep(2)} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
                           <ArrowLeft className="w-4 h-4" /> Go back
                         </button>
                         <button type="button" onClick={handleResendOtp} disabled={loading} className="text-primary font-medium hover:underline" data-testid="button-resend-signup-otp">

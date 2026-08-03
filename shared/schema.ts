@@ -504,6 +504,20 @@ export const insertLoanSchema = createInsertSchema(loans).omit({ id: true, creat
 export type InsertLoan = z.infer<typeof insertLoanSchema>;
 export type Loan = typeof loans.$inferSelect;
 
+// ─── BENEFICIARIES ────────────────────────────────────────────────────────────
+export const beneficiaries = pgTable("beneficiaries", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  bankCode: text("bank_code").notNull(),
+  bankName: text("bank_name").notNull(),
+  accountNumber: text("account_number").notNull(),
+  accountName: text("account_name").notNull(),
+  nickname: text("nickname"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type Beneficiary = typeof beneficiaries.$inferSelect;
+
 export function calculateStudentLoanLimit(tier: string): number {
   if (tier === "platinum") return 200;
   if (tier === "gold") return 150;

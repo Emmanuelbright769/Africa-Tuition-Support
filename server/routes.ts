@@ -5797,6 +5797,31 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ADMIN: Full trade wallet edit ───────────────────────────────────────────
+  app.patch("/api/admin/trade-wallet/:userId", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const targetId = parseInt(req.params.userId);
+      const { tradeBalance, lockedPrincipal, totalInvested, totalBotEarnings, tradingDayNumber, roiComplete, tradingPlanDays } = req.body;
+      const sets: string[] = [];
+      if (tradeBalance !== undefined) sets.push(`trade_balance = '${parseFloat(tradeBalance).toFixed(6)}'`);
+      if (lockedPrincipal !== undefined) sets.push(`locked_principal = '${parseFloat(lockedPrincipal).toFixed(6)}'`);
+      if (totalInvested !== undefined) sets.push(`total_invested = '${parseFloat(totalInvested).toFixed(6)}'`);
+      if (totalBotEarnings !== undefined) sets.push(`total_bot_earnings = '${parseFloat(totalBotEarnings).toFixed(6)}'`);
+      if (tradingDayNumber !== undefined) sets.push(`trading_day_number = ${parseInt(tradingDayNumber)}`);
+      if (roiComplete !== undefined) sets.push(`roi_complete = ${!!roiComplete}`);
+      if (tradingPlanDays !== undefined) sets.push(`trading_plan_days = ${parseInt(tradingPlanDays)}`);
+      if (sets.length === 0) return res.status(400).json({ message: "Nothing to update" });
+      sets.push("updated_at = NOW()");
+      await db.execute(sql.raw(`UPDATE trade_wallets SET ${sets.join(", ")} WHERE user_id = ${targetId}`));
+      const updated = await db.execute(sql`SELECT * FROM trade_wallets WHERE user_id = ${targetId}`);
+      res.json(updated.rows[0] ?? { ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── ADMIN: Stop a user's active bot trade session ───────────────────────────
   app.post("/api/admin/trade-users/:userId/stop-bot", async (req, res) => {
     try {
@@ -6376,6 +6401,77 @@ export async function registerRoutes(
         fullAddress: fullAddress.trim(),
       }).catch(() => {});
       res.json(loan);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── BENEFICIARIES ROUTES ────────────────────────────────────────────────────
+  app.get("/api/beneficiaries", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const rows = await db.execute(sql`SELECT * FROM beneficiaries WHERE user_id = ${userId} ORDER BY created_at DESC`);
+      res.json(rows.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/beneficiaries", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { bankCode, bankName, accountNumber, accountName, nickname } = req.body;
+      if (!bankCode || !bankName || !accountNumber || !accountName) return res.status(400).json({ message: "bankCode, bankName, accountNumber, and accountName are required" });
+      // Check for duplicate
+      const existing = await db.execute(sql`SELECT id FROM beneficiaries WHERE user_id = ${userId} AND account_number = ${accountNumber} AND bank_code = ${bankCode}`);
+      if ((existing.rows as any[]).length > 0) return res.status(409).json({ message: "This account is already saved as a beneficiary" });
+      const result = await db.execute(sql`
+        INSERT INTO beneficiaries (user_id, bank_code, bank_name, account_number, account_name, nickname, created_at)
+        VALUES (${userId}, ${bankCode}, ${bankName}, ${accountNumber}, ${accountName}, ${nickname || null}, NOW())
+        RETURNING *
+      `);
+      res.json(result.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/beneficiaries/:id", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const id = parseInt(req.params.id);
+      await db.execute(sql`DELETE FROM beneficiaries WHERE id = ${id} AND user_id = ${userId}`);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── LOAN: User accept/decline offer ─────────────────────────────────────────
+  app.post("/api/loans/:id/respond", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const loanId = parseInt(req.params.id);
+      const { action } = req.body;
+      if (!["accept", "decline"].includes(action)) return res.status(400).json({ message: "action must be 'accept' or 'decline'" });
+
+      const loan = await storage.getLoan(loanId);
+      if (!loan) return res.status(404).json({ message: "Loan not found" });
+      if (loan.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      if (loan.status !== "approved") return res.status(400).json({ message: "This loan offer is no longer pending your response" });
+
+      if (action === "accept") {
+        const updated = await storage.updateLoan(loanId, { status: "active", disbursedAt: new Date() });
+        const loanWallet = await storage.getOrCreateWallet(userId);
+        await storage.updateWalletBalance(userId, (parseFloat(loanWallet.balance) + parseFloat(loan.amountUsd)).toFixed(2));
+        await storage.createTransaction({ userId, type: "loan", amount: loan.amountUsd, fee: "0.00", paymentMethod: "wallet", description: `Loan disbursed: $${loan.amountUsd}` });
+        await storage.setWalletLien(userId, loan.totalPayableUsd, `loan_active:${loanId}`);
+        const notif = await storage.createNotification({ userId, type: "verification_update", title: "Loan Accepted & Disbursed 💰", message: `Your $${loan.amountUsd} loan has been credited to your wallet. Your wallet is now frozen — you may only withdraw the loan to your bank account. All other transactions are blocked until repaid.`, data: { loanId }, isRead: false });
+        pushToUser(userId, "notification", notif);
+        storage.getUser(userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "approved", loan.amountUsd).catch(() => {}); });
+        res.json(updated);
+      } else {
+        const updated = await storage.updateLoan(loanId, { status: "rejected" });
+        const notif = await storage.createNotification({ userId, type: "verification_update", title: "Loan Offer Declined", message: `You have declined the loan offer of $${loan.amountUsd}. You may apply again any time.`, data: { loanId }, isRead: false });
+        pushToUser(userId, "notification", notif);
+        res.json(updated);
+      }
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

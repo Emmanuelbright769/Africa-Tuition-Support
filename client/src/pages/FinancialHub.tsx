@@ -567,6 +567,23 @@ export default function FinancialHub() {
   const { data: exchangeRatesData } = useQuery<{ buying: number; selling: number; currencies: Record<string, { buying: number; selling: number }>; updatedAt: number }>({ queryKey: ["/api/exchange-rates"], staleTime: 5 * 60 * 1000 });
   const { data: loanLimit, isLoading: loanLimitLoading } = useQuery<{ eligible: boolean; reason?: string; limitUsd: number; tier?: string; activeLoan?: any; interestRate?: number; terms?: number[] }>({ queryKey: ["/api/loans/limit"], staleTime: 60_000, enabled: bottomNav === "finance" });
   const { data: myLoans = [], refetch: refetchLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"], staleTime: 60_000, enabled: bottomNav === "finance" });
+  const { data: beneficiaries = [], refetch: refetchBenef } = useQuery<any[]>({ queryKey: ["/api/beneficiaries"], staleTime: 60_000 });
+  const saveBenefMutation = useMutation({
+    mutationFn: async (b: { bankCode: string; bankName: string; accountNumber: string; accountName: string; nickname?: string }) => {
+      const res = await apiRequest("POST", "/api/beneficiaries", b);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => { refetchBenef(); setSaveBenefDialog(null); toast({ title: "Beneficiary saved ✓", className: "border-tsia-green" }); },
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+  const deleteBenefMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/beneficiaries/${id}`);
+      if (!res.ok) throw new Error("Failed to delete");
+    },
+    onSuccess: () => { refetchBenef(); toast({ title: "Beneficiary removed" }); },
+  });
 
   // ── Loan application state ────────────────────────────────────────────────
   const [loanDialogOpen, setLoanDialogOpen]   = useState(false);
@@ -1041,7 +1058,16 @@ export default function FinancialHub() {
       const savedName = resolvedName || acctNumber;
       const savedAcct = acctNumber;
       const savedBank = selectedBank?.name || "—";
+      const savedBankCode = selectedBank?.code || "";
       const savedNote = note;
+      // Offer to save beneficiary if not already saved
+      const alreadySaved = (beneficiaries as any[]).some((b: any) => b.accountNumber === savedAcct && b.bankCode === savedBankCode);
+      if (!alreadySaved && savedName && savedAcct && savedBankCode) {
+        // Small delay so TxDone screen renders first
+        setTimeout(() => {
+          saveBenefMutation.mutate({ bankCode: savedBankCode, bankName: savedBank, accountNumber: savedAcct, accountName: savedName });
+        }, 1800);
+      }
       resetSend();
       showTxDone({
         isSuccess: true,
@@ -3544,6 +3570,45 @@ export default function FinancialHub() {
 
         {sendMode === "bank" ? (
           <div className="space-y-4">
+            {/* Saved beneficiaries */}
+            {(beneficiaries as any[]).length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">Recent / Saved</p>
+                <div className="flex flex-wrap gap-2">
+                  {(beneficiaries as any[]).map((b: any) => (
+                    <div key={b.id} className="group flex items-center gap-1.5 bg-muted/50 border rounded-full pl-3 pr-1 py-1 cursor-pointer hover:border-tsia-green hover:bg-tsia-green/5 transition-colors"
+                      data-testid={`chip-benef-${b.id}`}>
+                      <button
+                        className="flex items-center gap-1.5 text-left"
+                        onClick={() => {
+                          const bank = (banks as any[]).find(bk => bk.code === b.bankCode);
+                          if (bank) { setSelectedBank(bank); setBankGateway(bank.gateway || "korapay"); }
+                          setAcctNumber(b.accountNumber);
+                          setResolvedName(b.accountName);
+                        }}
+                      >
+                        <div className="w-6 h-6 rounded-full bg-tsia-green/20 flex items-center justify-center shrink-0">
+                          <span className="text-[10px] font-bold text-tsia-green">{b.accountName.charAt(0)}</span>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold leading-tight">{b.nickname || b.accountName.split(" ")[0]}</p>
+                          <p className="text-[10px] text-muted-foreground">{b.bankName}</p>
+                        </div>
+                      </button>
+                      <button
+                        className="ml-1 w-5 h-5 flex items-center justify-center rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                        onClick={() => deleteBenefMutation.mutate(b.id)}
+                        title="Remove beneficiary"
+                        data-testid={`btn-del-benef-${b.id}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Bank picker */}
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 block">Select Bank</label>
@@ -5390,6 +5455,45 @@ export default function FinancialHub() {
   }
 
   return null;
+}
+
+// ─── Save Beneficiary Dialog — rendered at root of FinancialHub (outside view routing) ───
+function SaveBenefDialog({ open, bankCode, bankName, accountNumber, accountName, onSave, onSkip }: {
+  open: boolean; bankCode: string; bankName: string; accountNumber: string; accountName: string;
+  onSave: (nickname?: string) => void; onSkip: () => void;
+}) {
+  const [nickname, setNickname] = useState("");
+  if (!open) return null;
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onSkip()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BookMarked className="w-5 h-5 text-tsia-green" /> Save Beneficiary?
+          </DialogTitle>
+          <DialogDescription>
+            Save <strong>{accountName}</strong> ({bankName}) for faster future transfers.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="bg-muted/40 rounded-lg px-3 py-2 text-sm">
+            <p className="font-semibold">{accountName}</p>
+            <p className="text-muted-foreground text-xs">{accountNumber} · {bankName}</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-bold">Nickname (optional)</Label>
+            <Input placeholder="e.g. Mum, Rent, Business" value={nickname} onChange={e => setNickname(e.target.value)} data-testid="input-benef-nickname" />
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onSkip} data-testid="btn-benef-skip">Skip</Button>
+          <Button className="bg-tsia-green hover:bg-tsia-green/90 text-white" onClick={() => onSave(nickname || undefined)} data-testid="btn-benef-save">
+            Save Beneficiary
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ─── Empty State ───────────────────────────────────────────────────────────────

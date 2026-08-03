@@ -15,7 +15,7 @@ import {
 
 type ScholarshipType = "student" | "masters";
 type Step = "welcome" | "tertiary" | "waec" | "pay_fee" | "commitment" | "test_intro" | "test" | "result" | "cooldown" | "declined";
-type TestPhase = "verbal" | "transition" | "quant" | "submitting";
+type TestPhase = "verbal" | "transition" | "quant" | "submitting" | "waiting_min_time";
 type TertiaryGrade = "first_class" | "second_upper" | "second_lower";
 type MscDuration = "1year" | "2year";
 
@@ -72,6 +72,49 @@ function TimerRing({ seconds, max, size = 80, color = "#6366f1" }: { seconds: nu
         {seconds}
       </text>
     </svg>
+  );
+}
+
+function WaitingMinTime({ testStartedAt, onReady }: { testStartedAt: number; onReady: () => void }) {
+  const [secsLeft, setSecsLeft] = useState(() => {
+    const elapsed = Date.now() - testStartedAt;
+    const remaining = Math.max(0, 10 * 60 * 1000 - elapsed);
+    return Math.ceil(remaining / 1000);
+  });
+
+  useEffect(() => {
+    if (secsLeft <= 0) { onReady(); return; }
+    const t = setInterval(() => {
+      setSecsLeft(prev => {
+        const next = prev - 1;
+        if (next <= 0) { clearInterval(t); onReady(); }
+        return Math.max(0, next);
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const mins = Math.floor(secsLeft / 60).toString().padStart(2, "0");
+  const secs = (secsLeft % 60).toString().padStart(2, "0");
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center text-white max-w-sm">
+        <div className="w-24 h-24 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-6 border-4 border-indigo-400/30">
+          <Clock className="w-12 h-12 text-indigo-300" />
+        </div>
+        <h2 className="text-2xl font-black mb-2">All Questions Answered!</h2>
+        <p className="text-indigo-200 mb-6 text-sm leading-relaxed">
+          The test requires a minimum of 10 minutes. Your answers are saved — the test will be submitted automatically when the time is up.
+        </p>
+        <div className="bg-white/10 rounded-3xl px-10 py-5 inline-block mb-6">
+          <p className="text-xs text-indigo-300 uppercase tracking-widest mb-1 font-bold">Time remaining</p>
+          <p className="text-5xl font-black tabular-nums text-white">{mins}:{secs}</p>
+        </div>
+        <p className="text-white/40 text-xs">Do not close this page. Your answers are saved.</p>
+      </motion.div>
+    </div>
   );
 }
 
@@ -176,6 +219,7 @@ export default function ScholarshipPortal() {
   const sectionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSubmitRef = useRef(false);
+  const testStartedAtRef = useRef<number>(0);
   const cheatCountRef = useRef(0);
   const cheatAutoSubmittedRef = useRef(false);
   const lastFocusLossRef = useRef(0);
@@ -339,7 +383,12 @@ export default function ScholarshipPortal() {
             setVerbalsComplete(true);
             setTestPhase("transition");
           } else {
-            setTestPhase("submitting");
+            const elapsed = Date.now() - testStartedAtRef.current;
+            if (elapsed < 10 * 60 * 1000) {
+              setTestPhase("waiting_min_time");
+            } else {
+              setTestPhase("submitting");
+            }
           }
           return 0;
         }
@@ -646,6 +695,7 @@ export default function ScholarshipPortal() {
       setShowFeedback(null);
       setVerbalsComplete(false);
       autoSubmitRef.current = false;
+      testStartedAtRef.current = Date.now();
       cheatCountRef.current = 0;
       cheatAutoSubmittedRef.current = false;
       lastFocusLossRef.current = 0;
@@ -731,6 +781,10 @@ export default function ScholarshipPortal() {
       );
     }
 
+    if (testPhase === "waiting_min_time") {
+      return <WaitingMinTime testStartedAt={testStartedAtRef.current} onReady={() => setTestPhase("submitting")} />;
+    }
+
     const isVerbal = testPhase === "verbal";
     const bgGradient = isVerbal
       ? "from-indigo-950 via-purple-950 to-slate-950"
@@ -808,10 +862,12 @@ export default function ScholarshipPortal() {
                       const isSelected = showFeedback?.selected === origIdx;
                       const isCorrectAnswer = showFeedback?.correct === origIdx;
 
+                      const userPickedCorrectly = isFeedback && isSelected && isCorrectAnswer;
+                      const userPickedWrong = isFeedback && isSelected && !isCorrectAnswer;
                       let optStyle = "bg-white/8 border-white/20 hover:bg-white/15 hover:border-white/40 cursor-pointer";
                       if (isFeedback) {
-                        if (isCorrectAnswer) optStyle = "bg-emerald-500/30 border-emerald-400 cursor-default";
-                        else if (isSelected && !isCorrectAnswer) optStyle = "bg-red-500/30 border-red-400 cursor-default";
+                        if (userPickedCorrectly) optStyle = "bg-emerald-500/30 border-emerald-400 cursor-default";
+                        else if (userPickedWrong) optStyle = "bg-red-500/30 border-red-400 cursor-default";
                         else optStyle = "bg-white/5 border-white/10 cursor-default opacity-50";
                       }
 
@@ -823,12 +879,12 @@ export default function ScholarshipPortal() {
                           className={`w-full flex items-center gap-4 p-4 rounded-2xl border text-left text-white transition-all ${optStyle}`}
                         >
                           <span className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm shrink-0"
-                            style={{ background: isFeedback ? "transparent" : `${accentColor}30`, color: isFeedback && isCorrectAnswer ? "#4ade80" : isFeedback && isSelected ? "#f87171" : accentColor }}>
+                            style={{ background: isFeedback ? "transparent" : `${accentColor}30`, color: userPickedCorrectly ? "#4ade80" : userPickedWrong ? "#f87171" : isFeedback ? "rgba(255,255,255,0.25)" : accentColor }}>
                             {letter}
                           </span>
                           <span className="text-sm sm:text-base">{opt}</span>
-                          {isFeedback && isCorrectAnswer && <CheckCircle2 className="w-5 h-5 text-emerald-400 ml-auto shrink-0" />}
-                          {isFeedback && isSelected && !isCorrectAnswer && <XCircle className="w-5 h-5 text-red-400 ml-auto shrink-0" />}
+                          {userPickedCorrectly && <CheckCircle2 className="w-5 h-5 text-emerald-400 ml-auto shrink-0" />}
+                          {userPickedWrong && <XCircle className="w-5 h-5 text-red-400 ml-auto shrink-0" />}
                         </motion.button>
                       );
                     })}

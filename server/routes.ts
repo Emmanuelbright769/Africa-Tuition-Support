@@ -3060,9 +3060,9 @@ export async function registerRoutes(
   // Per-plan profit/loss configuration
   // profitCapPct: max cumulative bot earnings expressed as a fraction of locked principal
   const TRADING_PLAN_CONFIGS: Record<number, { dailyRate: number; lossMin: number; lossMax: number; profitCapPct: number }> = {
-    60:  { dailyRate: 0.0200, lossMin: 0.005, lossMax: 0.020, profitCapPct: 0.70 },
-    90:  { dailyRate: 0.0150, lossMin: 0.004, lossMax: 0.015, profitCapPct: 0.80 },
-    120: { dailyRate: 0.0140, lossMin: 0.003, lossMax: 0.010, profitCapPct: 1.00 },
+    60:  { dailyRate: 0.04, lossMin: 0.010, lossMax: 0.040, profitCapPct: 0.70 },
+    90:  { dailyRate: 0.03, lossMin: 0.008, lossMax: 0.030, profitCapPct: 0.80 },
+    120: { dailyRate: 0.02, lossMin: 0.005, lossMax: 0.020, profitCapPct: 1.00 },
   };
 
   /**

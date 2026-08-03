@@ -112,22 +112,22 @@ const STATUS_COLORS: Record<string, string> = {
 // Fake "original" price for discount display
 const originalPrice = (price: string) => (parseFloat(price) * 1.28).toFixed(2);
 
-// ─── Amazon-style color palette ──────────────────────────────────────────────
+// ─── Modern design tokens ────────────────────────────────────────────────────
 const AMZ = {
-  navy:    "#232F3E",
-  navyMid: "#37475A",
-  gold:    "#FFD814",
-  goldHov: "#F7CA00",
-  orange:  "#FF9900",
-  text:    "#0F1111",
-  muted:   "#565959",
-  border:  "#D5D9D9",
-  bg:      "#EAEDED",
-  link:    "#007185",
-  linkAlt: "#C45500",
-  green:   "#067D62",
-  red:     "#CC0C39",
-  prime:   "#00A8E1",
+  navy:    "#FFFFFF",       // header/card backgrounds → white
+  navyMid: "#F1F5F9",      // light gray for secondary surfaces
+  gold:    "#10B981",      // primary CTA → tsia-green
+  goldHov: "#059669",
+  orange:  "#F59E0B",      // deal/accent → amber
+  text:    "#0F172A",      // dark slate text
+  muted:   "#64748B",      // muted slate
+  border:  "#E2E8F0",
+  bg:      "#F1F5F9",      // page background
+  link:    "#10B981",
+  linkAlt: "#D97706",
+  green:   "#10B981",
+  red:     "#EF4444",
+  prime:   "#6366F1",
 };
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
@@ -152,77 +152,73 @@ function StarRating({ rating = 0, count = 0, interactive = false, onRate }: { ra
   );
 }
 
-// ─── Promo Banner Carousel (Amazon style) ──────────────────────────────────
+// ─── Promo Banner Carousel (modern rounded) ──────────────────────────────────
 function PromoBanner() {
   const [idx, setIdx] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setIdx(i => (i + 1) % PROMO_SLIDES.length), 4000);
+    const t = setInterval(() => setIdx(i => (i + 1) % PROMO_SLIDES.length), 4500);
     return () => clearInterval(t);
   }, []);
   const s = PROMO_SLIDES[idx];
   return (
-    <div className="relative mb-3 rounded overflow-hidden">
+    <div className="relative rounded-2xl overflow-hidden shadow-sm">
       <AnimatePresence mode="wait">
         <motion.div
           key={s.id}
-          initial={{ opacity: 0, x: 30 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -30 }}
-          transition={{ duration: 0.3 }}
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.97 }}
+          transition={{ duration: 0.35 }}
           style={{ background: `linear-gradient(135deg,${s.accent.replace("from-[","").replace("] to-[",",").replace("]","")})` }}
-          className="relative flex items-center justify-between px-8 py-8 min-h-[200px] overflow-hidden"
+          className="relative flex items-center justify-between px-6 py-7 min-h-[180px] overflow-hidden"
         >
-          <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-white/5" />
-          <div className="absolute right-10 -bottom-8 w-28 h-28 rounded-full bg-white/5" />
-          <div className="z-10">
-            <span className="text-[11px] font-bold bg-black/20 text-white px-3 py-1 rounded-full">{s.badge}</span>
-            <h2 className="text-white text-3xl font-black mt-3 mb-1 leading-tight">{s.headline}</h2>
-            <p className="text-white/80 text-sm mb-4">{s.sub}</p>
-            <button style={{ background: AMZ.gold, color: AMZ.text, border: `1px solid ${AMZ.goldHov}` }}
-              className="text-sm font-bold px-6 py-2 rounded flex items-center gap-2 hover:opacity-90 transition-opacity">
-              {s.tag} <ArrowRight className="w-4 h-4" />
+          {/* decorative circles */}
+          <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10" />
+          <div className="absolute right-8 -bottom-6 w-24 h-24 rounded-full bg-white/10" />
+          <div className="absolute -left-4 -bottom-8 w-28 h-28 rounded-full bg-black/10" />
+          <div className="z-10 flex-1">
+            <span className="text-[11px] font-bold bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full">{s.badge}</span>
+            <h2 className="text-white text-2xl font-black mt-3 mb-1 leading-tight drop-shadow">{s.headline}</h2>
+            <p className="text-white/85 text-sm mb-4 leading-snug">{s.sub}</p>
+            <button className="text-sm font-bold px-5 py-2 bg-white/90 backdrop-blur-sm rounded-xl flex items-center gap-1.5 hover:bg-white transition-colors shadow-sm" style={{ color: "#1E293B" }}>
+              {s.tag} <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="text-8xl z-10 select-none">{s.emoji}</div>
+          <div className="text-7xl z-10 select-none ml-4 drop-shadow-md">{s.emoji}</div>
         </motion.div>
       </AnimatePresence>
-      {/* Prev / Next */}
-      <button onClick={() => setIdx(i => (i - 1 + PROMO_SLIDES.length) % PROMO_SLIDES.length)}
-        className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-colors z-20">
-        <ChevronLeft className="w-5 h-5 text-gray-700" />
-      </button>
-      <button onClick={() => setIdx(i => (i + 1) % PROMO_SLIDES.length)}
-        className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-colors z-20">
-        <ChevronRight className="w-5 h-5 text-gray-700" />
-      </button>
       {/* Dots */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
         {PROMO_SLIDES.map((_, i) => (
           <button key={i} onClick={() => setIdx(i)}
-            style={{ background: i === idx ? AMZ.gold : "rgba(255,255,255,0.5)" }}
-            className={`rounded-full transition-all duration-300 ${i === idx ? "w-5 h-2" : "w-2 h-2"}`} />
+            className={`rounded-full transition-all duration-300 ${i === idx ? "w-6 h-2 bg-white" : "w-2 h-2 bg-white/50"}`} />
         ))}
       </div>
     </div>
   );
 }
 
-// ─── Category Row (Amazon style) ─────────────────────────────────────────────
+// ─── Category Row (modern pill chips) ────────────────────────────────────────
 function CategoryRow({ activeCategory, setActiveCategory }: { activeCategory: string; setActiveCategory: (c: string) => void }) {
   return (
     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
       <button onClick={() => setActiveCategory("")} data-testid="cat-all"
-        style={{ border: !activeCategory ? `2px solid ${AMZ.orange}` : `1px solid ${AMZ.border}`, background: !activeCategory ? "#FFF3E0" : "white" }}
-        className="flex flex-col items-center gap-1.5 shrink-0 px-4 py-3 rounded text-center min-w-[70px] transition-all">
-        <span className="text-2xl">🛍️</span>
-        <span style={{ color: !activeCategory ? AMZ.linkAlt : AMZ.text }} className="text-[11px] font-semibold whitespace-nowrap">All</span>
+        className={`flex items-center gap-1.5 shrink-0 px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all border ${
+          !activeCategory
+            ? "bg-tsia-green text-white border-tsia-green shadow-sm"
+            : "bg-white text-slate-600 border-slate-200 hover:border-tsia-green/50"
+        }`}>
+        <span className="text-base">🛍️</span> All
       </button>
       {CATEGORIES.map(c => (
         <button key={c} onClick={() => setActiveCategory(activeCategory === c ? "" : c)} data-testid={`cat-${c}`}
-          style={{ border: activeCategory === c ? `2px solid ${AMZ.orange}` : `1px solid ${AMZ.border}`, background: activeCategory === c ? "#FFF3E0" : "white" }}
-          className="flex flex-col items-center gap-1.5 shrink-0 px-4 py-3 rounded text-center min-w-[70px] transition-all">
-          <span className="text-2xl">{CATEGORY_ICONS[c]}</span>
-          <span style={{ color: activeCategory === c ? AMZ.linkAlt : AMZ.text }} className="text-[11px] font-semibold whitespace-nowrap truncate max-w-[68px]">{CATEGORY_LABELS[c]}</span>
+          className={`flex items-center gap-1.5 shrink-0 px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all border ${
+            activeCategory === c
+              ? "bg-tsia-green text-white border-tsia-green shadow-sm"
+              : "bg-white text-slate-600 border-slate-200 hover:border-tsia-green/50"
+          }`}>
+          <span className="text-base">{CATEGORY_ICONS[c]}</span>
+          <span className="truncate max-w-[60px]">{CATEGORY_LABELS[c]}</span>
         </button>
       ))}
     </div>
@@ -246,8 +242,8 @@ function CountdownBadge() {
   const m = Math.floor((remaining % 3600000) / 60000);
   const s = Math.floor((remaining % 60000) / 1000);
   return (
-    <span style={{ background: AMZ.red, color: "white" }} className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded">
-      <Clock className="w-2.5 h-2.5" /> Ends in {String(h).padStart(2,"0")}:{String(m).padStart(2,"0")}:{String(s).padStart(2,"0")}
+    <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-full bg-red-500 text-white">
+      <Clock className="w-2.5 h-2.5" /> {String(h).padStart(2,"0")}:{String(m).padStart(2,"0")}:{String(s).padStart(2,"0")}
     </span>
   );
 }
@@ -274,26 +270,25 @@ function HeroCategoryTiles({ products, onPick }: { products: Product[]; onPick: 
           <button
             key={t.cat}
             onClick={() => onPick(t.cat)}
-            style={{ background: "white", border: `1px solid ${AMZ.border}`, textAlign: "left" }}
-            className="rounded p-0 overflow-hidden hover:shadow-md transition-shadow"
+            className="bg-white rounded-2xl overflow-hidden hover:shadow-lg transition-all hover:-translate-y-0.5 border border-slate-100 text-left"
             data-testid={`hero-tile-${t.cat}`}
           >
-            {/* Gradient header with emoji */}
+            {/* Gradient header */}
             <div style={{ background: heroImg ? "none" : t.gradient, position: "relative", overflow: "hidden" }} className="h-28 flex items-center justify-center">
               {heroImg ? (
                 <img src={heroImg} alt="" className="w-full h-full object-cover" />
               ) : (
                 <>
                   <div style={{ position: "absolute", inset: 0, background: t.gradient, opacity: 0.9 }} />
-                  <span style={{ fontSize: 56, position: "relative", zIndex: 1, lineHeight: 1 }}>{t.emoji}</span>
+                  <span style={{ fontSize: 48, position: "relative", zIndex: 1, lineHeight: 1 }}>{t.emoji}</span>
                 </>
               )}
             </div>
             {/* Label */}
-            <div className="p-2.5">
-              <p style={{ color: AMZ.text }} className="font-black text-[12px] leading-tight">{t.label}</p>
-              <p style={{ color: AMZ.muted }} className="text-[10px] mt-0.5 leading-tight line-clamp-1">{t.sub}</p>
-              <span style={{ color: AMZ.link }} className="text-[11px] font-semibold mt-1 block">Shop now →</span>
+            <div className="p-3">
+              <p className="font-bold text-[12px] text-slate-800 leading-tight">{t.label}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5 leading-tight line-clamp-1">{t.sub}</p>
+              <span className="text-[11px] font-semibold text-tsia-green mt-1 block">Shop now →</span>
             </div>
           </button>
         );
@@ -305,17 +300,17 @@ function HeroCategoryTiles({ products, onPick }: { products: Product[]; onPick: 
 // ─── Extended category shelf (scrollable row) ─────────────────────────────────
 function CategoryShelf({ onPick }: { onPick: (cat: string) => void }) {
   return (
-    <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+    <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
       <div className="flex items-center justify-between mb-3">
-        <h3 style={{ color: AMZ.text }} className="font-bold text-sm">Browse by Category</h3>
+        <h3 className="font-bold text-sm text-slate-800">Browse by Category</h3>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
         {HERO_TILES.map(t => (
-          <button key={t.cat} onClick={() => onPick(t.cat)} className="flex flex-col items-center gap-1.5 shrink-0 min-w-[60px]" data-testid={`shelf-cat-${t.cat}`}>
-            <div style={{ background: t.gradient }} className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-sm">
+          <button key={t.cat} onClick={() => onPick(t.cat)} className="flex flex-col items-center gap-2 shrink-0 min-w-[60px] group" data-testid={`shelf-cat-${t.cat}`}>
+            <div style={{ background: t.gradient }} className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-sm group-hover:scale-105 transition-transform">
               {t.emoji}
             </div>
-            <span style={{ color: AMZ.text }} className="text-[10px] font-semibold text-center leading-tight max-w-[64px]">
+            <span className="text-[10px] font-semibold text-slate-600 text-center leading-tight max-w-[64px]">
               {t.label.split(" & ")[0].split(" ")[0]}
             </span>
           </button>
@@ -616,26 +611,31 @@ function CategoryBrowserOverlay({ open, onClose, onPick }: {
   );
 }
 
-// ─── Top Sellers (Amazon "Sponsored Brands" style) ───────────────────────────
+// ─── Top Sellers (modern stories style) ──────────────────────────────────────
 function SellerStories({ products }: { products: Product[] }) {
   const seen = new Set<number>();
   const unique = products.filter(p => { if (seen.has(p.sellerId)) return false; seen.add(p.sellerId); return true; }).slice(0, 8);
-  const BADGE_COLORS = ["#E57728","#1BA39C","#8059D4","#C0392B","#2980B9","#27AE60","#7F8C8D","#D35400"];
+  const BADGE_COLORS = ["#10B981","#6366F1","#F59E0B","#EF4444","#3B82F6","#8B5CF6","#EC4899","#14B8A6"];
   if (unique.length === 0) return null;
   return (
-    <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+    <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
       <div className="flex items-center justify-between mb-3">
-        <h3 style={{ color: AMZ.text }} className="font-bold text-sm">Top Sellers on TSIA Market</h3>
-        <span style={{ color: AMZ.link }} className="text-xs font-semibold cursor-pointer hover:underline">See all sellers →</span>
+        <h3 className="font-bold text-sm text-slate-800">Top Sellers</h3>
+        <span className="text-xs font-semibold text-tsia-green cursor-pointer hover:underline">See all →</span>
       </div>
       <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
         {unique.map((p, i) => (
-          <div key={p.sellerId} className="flex flex-col items-center gap-2 shrink-0 min-w-[64px]">
-            <div style={{ background: BADGE_COLORS[i % BADGE_COLORS.length] }}
-              className="w-14 h-14 rounded flex items-center justify-center text-white text-xl font-black shadow-sm">
-              {p.sellerName?.[0]?.toUpperCase() ?? "S"}
+          <div key={p.sellerId} className="flex flex-col items-center gap-2 shrink-0 min-w-[56px]">
+            {/* Ring story-style */}
+            <div className="w-14 h-14 rounded-full p-[2px]" style={{ background: `linear-gradient(135deg, ${BADGE_COLORS[i % BADGE_COLORS.length]}, ${BADGE_COLORS[(i+2) % BADGE_COLORS.length]})` }}>
+              <div className="w-full h-full rounded-full bg-white flex items-center justify-center p-[2px]">
+                <div style={{ background: BADGE_COLORS[i % BADGE_COLORS.length] }}
+                  className="w-full h-full rounded-full flex items-center justify-center text-white text-base font-black">
+                  {p.sellerName?.[0]?.toUpperCase() ?? "S"}
+                </div>
+              </div>
             </div>
-            <span style={{ color: AMZ.link }} className="text-[10px] font-semibold truncate max-w-[64px] text-center hover:underline cursor-pointer">
+            <span className="text-[10px] font-semibold text-slate-600 truncate max-w-[56px] text-center">
               {p.sellerName?.split(" ")[0]}
             </span>
           </div>
@@ -926,7 +926,7 @@ function CartDrawer({ open, onClose, cartIds, onBuy, onRemove, onClearAll }: {
   );
 }
 
-// ─── Product Card (Grid) ───────────────────────────────────────────────────
+// ─── Product Card (Grid — modern mobile design) ────────────────────────────
 function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart, watched, onWatch, isSeller }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
   inCart: boolean; onCart: () => void; watched?: boolean; onWatch?: () => void; isSeller?: boolean;
@@ -937,103 +937,100 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
   const discPct = Math.round((1 - parseFloat(product.price) / parseFloat(orig)) * 100);
   return (
     <div
-      style={{ background: "white", border: `1px solid ${AMZ.border}` }}
-      className="rounded overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group flex flex-col"
+      className="bg-white rounded-2xl overflow-hidden hover:shadow-lg transition-all hover:-translate-y-0.5 cursor-pointer group flex flex-col border border-slate-100"
       onClick={onView}
       data-testid={`card-product-${product.id}`}
     >
       {/* Image area */}
-      <div className="relative bg-[#F7F8F8] flex items-center justify-center overflow-hidden" style={{ aspectRatio: "1/1" }}>
+      <div className="relative bg-slate-50 flex items-center justify-center overflow-hidden rounded-t-2xl" style={{ aspectRatio: "1/1" }}>
         {img ? (
           <img src={img} alt={product.title}
-            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-400 p-2" />
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         ) : (
           <span className="text-5xl select-none">{CATEGORY_ICONS[product.category] || "📦"}</span>
         )}
         {/* Wishlist */}
         <button onClick={e => { e.stopPropagation(); onWishlist(); }}
           data-testid={`btn-wishlist-${product.id}`}
-          className="absolute top-2 right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors">
-          <Heart className={`w-4 h-4 ${wishlisted ? "fill-red-500 text-red-500" : "text-gray-400"}`} />
+          className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm border border-white/80 hover:scale-110 transition-transform">
+          <Heart className={`w-4 h-4 ${wishlisted ? "fill-red-500 text-red-500" : "text-slate-400"}`} />
         </button>
         {onWatch && (
           <button onClick={e => { e.stopPropagation(); onWatch(); }}
             data-testid={`btn-watch-${product.id}`}
-            className="absolute top-12 right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors">
-            <Bell className={`w-4 h-4 ${watched ? "fill-amber-400 text-amber-400" : "text-gray-400"}`} />
+            className="absolute top-12 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm border border-white/80 hover:scale-110 transition-transform">
+            <Bell className={`w-4 h-4 ${watched ? "fill-amber-400 text-amber-400" : "text-slate-400"}`} />
           </button>
         )}
         {/* Badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-1">
           {product.condition === "new" && (
-            <span style={{ background: AMZ.green }} className="text-[9px] font-bold text-white px-1.5 py-0.5 rounded-sm">NEW</span>
+            <span className="text-[9px] font-bold text-white px-2 py-0.5 rounded-full bg-tsia-green">NEW</span>
           )}
           {discPct > 0 && (
-            <span style={{ background: AMZ.red }} className="text-[9px] font-bold text-white px-1.5 py-0.5 rounded-sm">-{discPct}%</span>
+            <span className="text-[9px] font-bold text-white px-2 py-0.5 rounded-full bg-red-500">-{discPct}%</span>
           )}
           {product.negotiable && (
-            <span className="text-[9px] font-bold bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded-sm">NEGO</span>
+            <span className="text-[9px] font-bold bg-amber-400 text-slate-900 px-2 py-0.5 rounded-full">NEGO</span>
           )}
         </div>
         {product.stock === 0 && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <span className="text-white text-xs font-bold bg-black/70 px-3 py-1 rounded-sm">Out of Stock</span>
+          <div className="absolute inset-0 bg-black/50 rounded-t-2xl flex items-center justify-center backdrop-blur-sm">
+            <span className="text-white text-xs font-bold bg-black/60 px-3 py-1.5 rounded-xl">Out of Stock</span>
           </div>
         )}
       </div>
 
       {/* Info */}
       <div className="p-3 flex-1 flex flex-col gap-1">
-        <p style={{ color: AMZ.muted }} className="text-[11px] uppercase tracking-wide">{CATEGORY_LABELS[product.category]}</p>
-        <h3 style={{ color: AMZ.link }} className="text-[13px] leading-snug line-clamp-2 min-h-[2.5rem] hover:underline cursor-pointer">{product.title}</h3>
+        <p className="text-[10px] text-slate-400 uppercase tracking-wide font-medium">{CATEGORY_LABELS[product.category]}</p>
+        <h3 className="text-[13px] font-semibold text-slate-800 leading-snug line-clamp-2 min-h-[2.5rem]">{product.title}</h3>
         <StarRating rating={product.avgRating ?? 0} count={product.ratingCount ?? 0} />
-        <div className="mt-1">
-          <span style={{ color: AMZ.red }} className="text-[11px] font-bold">{discPct}% off </span>
-          <span style={{ color: AMZ.text }} className="text-base font-black">${parseFloat(product.price).toFixed(2)}</span>
-          <span style={{ color: AMZ.muted }} className="text-[11px] line-through ml-1">${orig}</span>
+        <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
+          <span className="text-base font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
+          <span className="text-[11px] text-slate-400 line-through">${orig}</span>
+          {discPct > 0 && <span className="text-[10px] font-bold text-red-500">{discPct}% off</span>}
         </div>
-        <p style={{ color: AMZ.muted }} className="text-[10px]">{formatAmount(parseFloat(product.price))}</p>
-        {/* Stock indicator */}
+        <p className="text-[10px] text-slate-400">{formatAmount(parseFloat(product.price))}</p>
         {product.stock > 0 && product.stock <= 5 && (
-          <p style={{ color: AMZ.red }} className="text-[11px] font-semibold">Only {product.stock} left in stock!</p>
-        )}
-        {product.stock > 5 && (
-          <p style={{ color: AMZ.green }} className="text-[11px] font-semibold">In Stock</p>
+          <p className="text-[10px] font-semibold text-red-500">Only {product.stock} left!</p>
         )}
       </div>
 
-      {/* CTA buttons — Amazon style */}
+      {/* CTA buttons */}
       {!isSeller && (
-        <div className="px-3 pb-3 flex flex-col gap-1.5 mt-auto">
+        <div className="px-3 pb-3 flex gap-2 mt-auto">
           <button
             onClick={e => { e.stopPropagation(); onCart(); }}
             data-testid={`btn-cart-add-${product.id}`}
-            style={{ background: inCart ? AMZ.goldHov : AMZ.gold, border: `1px solid ${AMZ.goldHov}`, color: AMZ.text }}
-            className="w-full py-2 text-[12px] font-bold rounded-full transition-opacity hover:opacity-90 flex items-center justify-center gap-1.5 disabled:opacity-40">
+            className={`flex-1 py-2 text-[11px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 border ${
+              inCart
+                ? "bg-tsia-green/10 border-tsia-green text-tsia-green"
+                : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-tsia-green/10 hover:border-tsia-green hover:text-tsia-green"
+            }`}>
             <ShoppingCart className="w-3.5 h-3.5" />
-            {inCart ? "In Cart ✓" : "Add to Cart"}
+            {inCart ? "✓" : "Cart"}
           </button>
           <button
             onClick={e => { e.stopPropagation(); onBuy(); }}
             disabled={product.stock === 0}
             data-testid={`btn-buy-${product.id}`}
-            style={{ background: AMZ.orange, border: `1px solid #E07B00`, color: "white" }}
-            className="w-full py-2 text-[12px] font-bold rounded-full transition-opacity hover:opacity-90 flex items-center justify-center gap-1.5 disabled:opacity-40">
+            className="flex-1 py-2 text-[11px] font-bold bg-tsia-green hover:bg-tsia-green/90 text-white rounded-xl transition-all flex items-center justify-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed">
             <Lock className="w-3.5 h-3.5" />
-            Buy Now (Escrow)
+            Buy
           </button>
         </div>
       )}
       {isSeller && (
         <div className="px-3 pb-3">
-          <span style={{ color: AMZ.muted }} className="text-[10px] font-semibold block text-center py-1">Your listing</span>
+          <span className="text-[10px] font-semibold text-tsia-green bg-tsia-green/10 rounded-lg px-2 py-1 block text-center">Your listing</span>
         </div>
       )}
     </div>
   );
 }
 
-// ─── Featured Card (Amazon horizontal scroll) ─────────────────────────────
+// ─── Featured Card (horizontal scroll — modern design) ────────────────────
 function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, onCart, watched, onWatch, isSeller }: {
   product: Product; onView: () => void; onBuy: () => void; wishlisted: boolean; onWishlist: () => void;
   inCart: boolean; onCart: () => void; watched?: boolean; onWatch?: () => void; isSeller?: boolean;
@@ -1046,59 +1043,60 @@ function FeaturedCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, 
     <div
       onClick={onView}
       data-testid={`card-featured-${product.id}`}
-      style={{ background: "white", border: `1px solid ${AMZ.border}` }}
-      className="shrink-0 w-44 rounded overflow-hidden cursor-pointer hover:shadow-md transition-shadow group flex flex-col"
+      className="shrink-0 w-44 bg-white rounded-2xl overflow-hidden cursor-pointer hover:shadow-lg transition-all hover:-translate-y-0.5 group flex flex-col border border-slate-100"
     >
       {/* Image */}
-      <div className="relative bg-[#F7F8F8] flex items-center justify-center" style={{ height: 160 }}>
+      <div className="relative bg-slate-50 flex items-center justify-center rounded-t-2xl overflow-hidden" style={{ height: 152 }}>
         {img ? (
-          <img src={img} alt={product.title} className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform" />
+          <img src={img} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         ) : (
           <span className="text-5xl">{CATEGORY_ICONS[product.category] || "📦"}</span>
         )}
         <button onClick={e => { e.stopPropagation(); onWishlist(); }}
-          className="absolute top-1.5 right-1.5 w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-200 hover:bg-gray-50">
-          <Heart className={`w-3.5 h-3.5 ${wishlisted ? "fill-red-500 text-red-500" : "text-gray-400"}`} />
+          className="absolute top-1.5 right-1.5 w-7 h-7 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm border border-white/80">
+          <Heart className={`w-3.5 h-3.5 ${wishlisted ? "fill-red-500 text-red-500" : "text-slate-400"}`} />
         </button>
         {discPct > 0 && (
-          <span style={{ background: AMZ.red }} className="absolute top-1.5 left-1.5 text-[9px] font-bold text-white px-1.5 py-0.5 rounded-sm">-{discPct}%</span>
+          <span className="absolute top-1.5 left-1.5 text-[9px] font-bold text-white px-2 py-0.5 rounded-full bg-red-500">-{discPct}%</span>
         )}
         {product.stock === 0 && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <span className="text-white text-[9px] font-bold bg-black/70 px-2 py-0.5 rounded-sm">Out of Stock</span>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center rounded-t-2xl">
+            <span className="text-white text-[9px] font-bold bg-black/60 px-2 py-1 rounded-lg">Out of Stock</span>
           </div>
         )}
       </div>
       {/* Info */}
       <div className="p-2.5 flex-1 flex flex-col gap-1">
-        <p style={{ color: AMZ.link }} className="text-[12px] line-clamp-2 leading-snug hover:underline">{product.title}</p>
+        <p className="text-[12px] font-semibold text-slate-800 line-clamp-2 leading-snug">{product.title}</p>
         <StarRating rating={product.avgRating ?? 0} count={product.ratingCount ?? 0} />
-        <div>
-          <span style={{ color: AMZ.text }} className="text-[13px] font-black">${parseFloat(product.price).toFixed(2)}</span>
-          <span style={{ color: AMZ.muted }} className="text-[10px] line-through ml-1">${orig}</span>
+        <div className="flex items-baseline gap-1 mt-0.5">
+          <span className="text-[13px] font-black text-tsia-green">${parseFloat(product.price).toFixed(2)}</span>
+          <span className="text-[10px] text-slate-400 line-through">${orig}</span>
         </div>
-        <p style={{ color: AMZ.muted }} className="text-[9px]">{formatAmount(parseFloat(product.price))}</p>
+        <p className="text-[9px] text-slate-400">{formatAmount(parseFloat(product.price))}</p>
       </div>
       {/* CTA */}
       {!isSeller ? (
         <div className="px-2.5 pb-2.5 flex gap-1.5">
           <button onClick={e => { e.stopPropagation(); onCart(); }}
             data-testid={`btn-featured-cart-${product.id}`}
-            style={{ background: inCart ? AMZ.goldHov : AMZ.gold, border: `1px solid ${AMZ.goldHov}`, color: AMZ.text }}
-            className="flex-1 py-1.5 text-[10px] font-bold rounded-full flex items-center justify-center gap-0.5">
+            className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg flex items-center justify-center gap-0.5 transition-all border ${
+              inCart
+                ? "bg-tsia-green/10 border-tsia-green text-tsia-green"
+                : "bg-slate-100 border-slate-200 text-slate-600 hover:bg-tsia-green/10 hover:border-tsia-green hover:text-tsia-green"
+            }`}>
             <ShoppingCart className="w-3 h-3" /> {inCart ? "✓" : "Cart"}
           </button>
           <button onClick={e => { e.stopPropagation(); onBuy(); }}
             disabled={product.stock === 0}
             data-testid={`btn-featured-buy-${product.id}`}
-            style={{ background: AMZ.orange, border: "1px solid #E07B00", color: "white" }}
-            className="flex-1 py-1.5 text-[10px] font-bold rounded-full flex items-center justify-center gap-0.5 disabled:opacity-40">
+            className="flex-1 py-1.5 text-[10px] font-bold bg-tsia-green hover:bg-tsia-green/90 text-white rounded-lg flex items-center justify-center gap-0.5 disabled:opacity-40 transition-all">
             <Lock className="w-3 h-3" /> Buy
           </button>
         </div>
       ) : (
         <div className="px-2.5 pb-2.5">
-          <span style={{ color: AMZ.muted }} className="text-[9px] font-semibold block text-center">Your listing</span>
+          <span className="text-[9px] font-semibold text-tsia-green bg-tsia-green/10 rounded-lg block text-center py-1">Your listing</span>
         </div>
       )}
     </div>
@@ -1795,7 +1793,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   });
 
   const { data: myListings = [] } = useQuery<Product[]>({ queryKey: ["/api/products/my"], enabled: tab === "my-listings" });
-  const { data: purchases = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/purchases"], enabled: tab === "purchases" });
+  const { data: purchases = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/purchases"], enabled: !!user });
   const { data: sales = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/sales"], enabled: tab === "sales" });
 
   // Price alerts
@@ -1953,39 +1951,37 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   ];
 
   return (
-    <div className="relative pb-24 w-full" style={{ background: AMZ.bg, margin: "-16px", padding: "0", width: "calc(100% + 32px)", maxWidth: "none", overflowX: "clip" }}>
+    <div className="relative pb-24 w-full" style={{ background: "#F1F5F9", margin: "-16px", padding: "0", width: "calc(100% + 32px)", maxWidth: "none", overflowX: "clip" }}>
 
-      {/* ── Amazon-style header ──────────────────────────────────────────── */}
-      <div style={{ background: AMZ.navy }} className="px-4 pt-4 pb-2">
-        {/* Top row: branding + icons */}
+      {/* ── Clean mobile header ────────────────────────────────────────────── */}
+      <div className="bg-white shadow-sm sticky top-0 z-30 px-4 pt-4 pb-3">
+        {/* Top row: greeting + icons */}
         <div className="flex items-center justify-between mb-3">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-white font-black text-xl tracking-tight">TSIA</span>
-              <span style={{ color: AMZ.gold }} className="font-black text-xl tracking-tight">Market</span>
-            </div>
-            <button
-              onClick={() => { setDeliverToInput(deliverTo); setDeliverToOpen(true); }}
-              data-testid="btn-deliver-to"
-              className="flex items-center gap-1 hover:opacity-80 transition-opacity"
-            >
-              <MapPin style={{ color: "#ccc" }} className="w-3 h-3" />
-              <p style={{ color: "#ccc" }} className="text-[11px]">
-                Hello, {user?.firstName || "Shopper"} ·
-                <span className="text-white font-semibold ml-1">
-                  {deliverTo ? `Deliver to ${deliverTo}` : "Add delivery address"}
-                </span>
-              </p>
-            </button>
-          </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setChatDrawerOpen(true)} data-testid="btn-messages" className="relative flex items-center gap-1 text-white hover:opacity-80 transition-opacity">
-              <MessageCircle className="w-6 h-6" />
+            {/* User avatar */}
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-tsia-green to-emerald-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+              {user?.firstName?.[0]?.toUpperCase() ?? "G"}
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Welcome back,</p>
+              <button
+                onClick={() => { setDeliverToInput(deliverTo); setDeliverToOpen(true); }}
+                data-testid="btn-deliver-to"
+                className="flex items-center gap-1 hover:opacity-80 transition-opacity"
+              >
+                <p className="text-sm font-bold text-slate-800">{user?.firstName || "Shopper"}</p>
+                {deliverTo && <p className="text-[11px] text-tsia-green flex items-center gap-0.5"><MapPin className="w-2.5 h-2.5" />{deliverTo}</p>}
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setChatDrawerOpen(true)} data-testid="btn-messages" className="relative w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center hover:bg-slate-200 transition-colors">
+              <MessageCircle className="w-4.5 h-4.5 text-slate-700 w-5 h-5" />
             </button>
-            <button onClick={() => setCartOpen(true)} data-testid="btn-cart" className="relative flex items-center gap-1 text-white hover:opacity-80 transition-opacity">
-              <ShoppingCart className="w-6 h-6" />
+            <button onClick={() => setCartOpen(true)} data-testid="btn-cart" className="relative w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center hover:bg-slate-200 transition-colors">
+              <ShoppingCart className="w-5 h-5 text-slate-700" />
               {cart.size > 0 && (
-                <span style={{ background: AMZ.gold, color: AMZ.text }} className="absolute -top-2 -right-2 w-5 h-5 text-[9px] font-black rounded-full flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 w-[18px] h-[18px] bg-tsia-green text-white text-[9px] font-black rounded-full flex items-center justify-center">
                   {Math.min(cart.size, 99)}
                 </span>
               )}
@@ -1994,9 +1990,9 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
         </div>
 
         {/* Search bar */}
-        <div className="flex items-center gap-0 mb-2 relative" ref={searchBoxRef}>
-          <div className="flex-1 flex items-center gap-2 bg-white rounded-l-md px-3 h-10 border border-white">
-            <Search className="w-4 h-4 text-gray-400 shrink-0" />
+        <div className="flex items-center gap-2 relative" ref={searchBoxRef}>
+          <div className="flex-1 flex items-center gap-2 bg-slate-100 rounded-2xl px-4 h-11 border border-transparent focus-within:border-tsia-green/50 focus-within:bg-white transition-all">
+            <Search className="w-4 h-4 text-slate-400 shrink-0" />
             <input
               type="text"
               placeholder="Search TSIA Market..."
@@ -2005,18 +2001,19 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
               onFocus={() => setSearchFocused(true)}
               onKeyDown={e => { if (e.key === "Enter") submitSearch(search); }}
               data-testid="input-search"
-              style={{ color: AMZ.text }}
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+              className="flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
             />
-            {search && <button onClick={() => { setSearch(""); setActiveSearch(""); }} data-testid="btn-clear-search"><X className="w-3.5 h-3.5 text-gray-400" /></button>}
+            {search && <button onClick={() => { setSearch(""); setActiveSearch(""); }} data-testid="btn-clear-search"><X className="w-3.5 h-3.5 text-slate-400" /></button>}
           </div>
           <button
-            style={{ background: AMZ.orange }}
-            className="w-12 h-10 rounded-r-md flex items-center justify-center shrink-0 hover:opacity-90 transition-opacity"
-            onClick={() => submitSearch(search)}
-            data-testid="btn-search"
+            className="w-11 h-11 bg-tsia-green rounded-2xl flex items-center justify-center shrink-0 hover:bg-tsia-green/90 transition-colors shadow-sm relative"
+            onClick={() => setFilterOpen(true)}
+            data-testid="btn-filter"
           >
-            <Search className="w-5 h-5 text-white" />
+            <SlidersHorizontal className="w-4 h-4 text-white" />
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 text-slate-900 text-[9px] font-bold rounded-full flex items-center justify-center">{activeFilterCount}</span>
+            )}
           </button>
 
           {/* Search suggestions dropdown */}
@@ -2030,28 +2027,27 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
             const trendingTerms = Array.from(new Set(trending.map(p => p.title.split(" ").slice(0, 3).join(" ")))).slice(0, 6);
             return (
               <div
-                className="absolute left-0 right-14 top-11 z-50 bg-white rounded-md shadow-2xl border border-gray-200 max-h-[70vh] overflow-y-auto"
+                className="absolute left-0 right-14 top-12 z-50 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-[70vh] overflow-y-auto"
                 data-testid="search-suggestions-dropdown"
-                style={{ color: AMZ.text }}
               >
                 {q && liveSuggestions.length > 0 && (
-                  <div className="border-b border-gray-100">
-                    <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Products matching "{search}"</div>
+                  <div className="border-b border-slate-100">
+                    <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Matching "{search}"</div>
                     {liveSuggestions.map(p => (
                       <button
                         key={p.id}
                         onClick={() => { setSelectedProduct(p); setDetailOpen(true); setSearchFocused(false); }}
-                        className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 text-left"
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-left"
                         data-testid={`suggestion-product-${p.id}`}
                       >
-                        <div className="w-9 h-9 rounded bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden shrink-0">
                           {p.images?.[0] ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" /> : <span className="text-lg">{CATEGORY_ICONS[p.category] || "📦"}</span>}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{p.title}</div>
-                          <div className="text-[11px] text-gray-500">{CATEGORY_LABELS[p.category]} · {formatAmount(parseFloat(p.price))}</div>
+                          <div className="text-sm font-medium text-slate-800 truncate">{p.title}</div>
+                          <div className="text-[11px] text-slate-400">{CATEGORY_LABELS[p.category]} · {formatAmount(parseFloat(p.price))}</div>
                         </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       </button>
                     ))}
                   </div>
@@ -2059,8 +2055,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                 {q && (
                   <button
                     onClick={() => submitSearch(search)}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 hover:bg-orange-50 border-b border-gray-100 text-left font-semibold text-sm"
-                    style={{ color: AMZ.linkAlt }}
+                    className="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-tsia-green/5 border-b border-slate-100 text-left font-semibold text-sm text-tsia-green"
                     data-testid="btn-see-all-results"
                   >
                     <span className="flex items-center gap-2"><Search className="w-4 h-4" /> See all results for "{search}"</span>
@@ -2068,37 +2063,36 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                   </button>
                 )}
                 {!q && recentSearches.length > 0 && (
-                  <div className="border-b border-gray-100">
-                    <div className="px-3 py-2 flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Your recent searches</span>
-                      <button onClick={clearRecentSearches} className="text-[10px] text-gray-400 hover:text-red-500" data-testid="btn-clear-recent-searches">Clear</button>
+                  <div className="border-b border-slate-100">
+                    <div className="px-4 py-2.5 flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Recent searches</span>
+                      <button onClick={clearRecentSearches} className="text-[10px] text-slate-400 hover:text-red-500" data-testid="btn-clear-recent-searches">Clear</button>
                     </div>
-                    <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+                    <div className="flex flex-wrap gap-1.5 px-4 pb-3">
                       {recentSearches.map(s => (
                         <button
                           key={s}
                           onClick={() => submitSearch(s)}
-                          className="px-2.5 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-xs text-gray-700"
+                          className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 flex items-center gap-1"
                           data-testid={`recent-search-${s}`}
                         >
-                          <Clock className="w-3 h-3 inline mr-1 -mt-0.5" />{s}
+                          <Clock className="w-3 h-3" />{s}
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
                 {!q && trendingTerms.length > 0 && (
-                  <div className="border-b border-gray-100">
-                    <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500 flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" /> Trending on TSIA Market
+                  <div className="border-b border-slate-100">
+                    <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3" /> Trending
                     </div>
-                    <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+                    <div className="flex flex-wrap gap-1.5 px-4 pb-3">
                       {trendingTerms.map(t => (
                         <button
                           key={t}
                           onClick={() => submitSearch(t)}
-                          className="px-2.5 py-1 rounded-full text-xs font-semibold"
-                          style={{ background: "#FFF3E0", color: AMZ.linkAlt }}
+                          className="px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"
                           data-testid={`trending-${t}`}
                         >
                           🔥 {t}
@@ -2109,17 +2103,17 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                 )}
                 {!q && (
                   <div>
-                    <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Browse by category</div>
-                    <div className="grid grid-cols-3 gap-1 px-2 pb-2">
+                    <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Browse by category</div>
+                    <div className="grid grid-cols-3 gap-1 px-3 pb-3">
                       {CATEGORIES.slice(0, 12).map(c => (
                         <button
                           key={c}
                           onClick={() => { setActiveCategory(c); setSearchFocused(false); }}
-                          className="flex flex-col items-center gap-0.5 py-2 rounded hover:bg-gray-50"
+                          className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl hover:bg-slate-50"
                           data-testid={`suggest-cat-${c}`}
                         >
-                          <span className="text-lg">{CATEGORY_ICONS[c]}</span>
-                          <span className="text-[10px] font-semibold text-gray-700 text-center leading-tight px-1 line-clamp-1">{CATEGORY_LABELS[c]}</span>
+                          <span className="text-xl">{CATEGORY_ICONS[c]}</span>
+                          <span className="text-[10px] font-semibold text-slate-700 text-center leading-tight px-1 line-clamp-1">{CATEGORY_LABELS[c]}</span>
                         </button>
                       ))}
                     </div>
@@ -2128,52 +2122,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
               </div>
             );
           })()}
-          <button
-            style={{ background: AMZ.navyMid, border: `1px solid ${AMZ.gold}` }}
-            className="relative w-10 h-10 ml-2 rounded-md flex items-center justify-center shrink-0 hover:opacity-90 transition-opacity"
-            onClick={() => setFilterOpen(true)}
-            data-testid="btn-filter"
-          >
-            <SlidersHorizontal className="w-4 h-4 text-white" />
-            {activeFilterCount > 0 && (
-              <span style={{ background: AMZ.gold, color: AMZ.text }} className="absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full flex items-center justify-center">{activeFilterCount}</span>
-            )}
-          </button>
         </div>
-      </div>
-
-      {/* ── Amazon sub-nav (tabs) ─────────────────────────────────────────── */}
-      <div style={{ background: AMZ.navyMid }} className="flex overflow-x-auto scrollbar-none border-b border-[#3a5068]">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} data-testid={`tab-${t.id}`}
-            style={{
-              color: tab === t.id ? AMZ.gold : "rgba(255,255,255,0.85)",
-              borderBottom: tab === t.id ? `2px solid ${AMZ.gold}` : "2px solid transparent",
-            }}
-            className="flex items-center gap-1.5 px-5 py-3 text-xs font-semibold shrink-0 whitespace-nowrap transition-colors hover:text-white">
-            <t.icon className="w-3.5 h-3.5" />{t.label}
-          </button>
-        ))}
-        <button onClick={() => setListOpen(true)} data-testid="btn-sell"
-          style={{ background: AMZ.gold, color: AMZ.text, marginLeft: "auto", marginRight: 8, marginTop: 6, marginBottom: 6 }}
-          className="flex items-center gap-1 px-4 text-[11px] font-black rounded shrink-0 hover:opacity-90 transition-opacity">
-          <Plus className="w-3.5 h-3.5" /> Sell
-        </button>
-      </div>
-
-      {/* ── Trust badge strip ─────────────────────────────────────────────── */}
-      <div style={{ background: "white", borderBottom: `1px solid ${AMZ.border}` }} className="flex items-center justify-around px-4 py-2.5">
-        {[
-          { icon: Lock, label: "Escrow Protected", color: "#067D62" },
-          { icon: ShieldCheck, label: "Verified Sellers", color: "#007185" },
-          { icon: RotateCcw, label: "Easy Returns", color: "#C45500" },
-          { icon: MessageCircle, label: "Live Chat", color: "#232F3E" },
-        ].map(b => (
-          <div key={b.label} className="flex flex-col items-center gap-0.5">
-            <b.icon style={{ color: b.color }} className="w-5 h-5" />
-            <span style={{ color: AMZ.text }} className="text-[9px] font-semibold text-center leading-tight">{b.label}</span>
-          </div>
-        ))}
       </div>
 
       {/* ── Main content wrapper ──────────────────────────────────────────── */}
@@ -2199,10 +2148,10 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
 
           {/* Categories — hidden during active search */}
           {!activeSearch && (
-            <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
               <div className="flex items-center justify-between mb-3">
-                <h3 style={{ color: AMZ.text }} className="font-bold text-sm">Shop by Category</h3>
-                <button onClick={() => setShowCategoriesModal(true)} style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" data-testid="btn-view-all-cats">See all <ChevronRight className="w-3.5 h-3.5" /></button>
+                <h3 className="font-bold text-sm text-slate-800">Shop by Category</h3>
+                <button onClick={() => setShowCategoriesModal(true)} className="text-xs font-semibold text-tsia-green hover:underline flex items-center gap-0.5" data-testid="btn-view-all-cats">See all <ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
               <CategoryRow activeCategory={activeCategory} setActiveCategory={setActiveCategory} />
             </div>
@@ -2223,13 +2172,13 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
 
           {/* Today's Deals — with live countdown */}
           {!activeSearch && filteredProducts.length > 0 && (
-            <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4" data-testid="rail-todays-deals">
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100" data-testid="rail-todays-deals">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                <h3 style={{ color: AMZ.text }} className="font-bold text-sm flex items-center gap-2">
-                  <Zap className="w-4 h-4" style={{ color: AMZ.red }} /> Today's Deals
+                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-red-500" /> Today's Deals
                   <CountdownBadge />
                 </h3>
-                <button style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" onClick={() => setShowAllProducts(true)}>See all deals <ChevronRight className="w-3.5 h-3.5" /></button>
+                <button className="text-xs font-semibold text-tsia-green hover:underline flex items-center gap-0.5" onClick={() => setShowAllProducts(true)}>See all <ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
                 {[...filteredProducts].sort((a, b) => b.viewCount - a.viewCount).slice(0, 12).map((p, i) => {
@@ -2256,12 +2205,12 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
 
           {/* Buy it again — purchase history */}
           {!activeSearch && (purchases as Order[]).length > 0 && (
-            <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4" data-testid="rail-buy-again">
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100" data-testid="rail-buy-again">
               <div className="flex items-center justify-between mb-3">
-                <h3 style={{ color: AMZ.text }} className="font-bold text-sm flex items-center gap-1.5">
-                  <RotateCcw className="w-4 h-4" style={{ color: AMZ.green }} /> Buy it again
+                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                  <RotateCcw className="w-4 h-4 text-tsia-green" /> Buy it again
                 </h3>
-                <button style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" onClick={() => setTab("purchases")}>Your orders <ChevronRight className="w-3.5 h-3.5" /></button>
+                <button className="text-xs font-semibold text-tsia-green hover:underline flex items-center gap-0.5" onClick={() => setTab("purchases")}>Your orders <ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
                 {(() => {
@@ -2297,12 +2246,12 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
 
           {/* Featured */}
           {!activeSearch && (
-            <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
               <div className="flex items-center justify-between mb-3">
-                <h3 style={{ color: AMZ.text }} className="font-bold text-sm flex items-center gap-1.5">
-                  <Flame className="w-4 h-4" style={{ color: AMZ.orange }} /> Best Sellers
+                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                  <Flame className="w-4 h-4 text-amber-500" /> Best Sellers
                 </h3>
-                <button style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline flex items-center gap-0.5" onClick={() => setShowAllProducts(true)}>See all <ChevronRight className="w-3.5 h-3.5" /></button>
+                <button className="text-xs font-semibold text-tsia-green hover:underline flex items-center gap-0.5" onClick={() => setShowAllProducts(true)}>See all <ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
               {isLoading ? (
                 <div className="flex items-center gap-3 overflow-hidden">
@@ -2332,13 +2281,13 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
               .filter(Boolean) as Product[];
             if (items.length === 0) return null;
             return (
-              <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4" data-testid="rail-recently-viewed">
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100" data-testid="rail-recently-viewed">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 style={{ color: AMZ.text }} className="font-bold text-sm flex items-center gap-1.5">
-                    <Eye className="w-4 h-4" style={{ color: AMZ.link }} /> Inspired by your browsing
+                  <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                    <Eye className="w-4 h-4 text-tsia-green" /> Recently Viewed
                   </h3>
                   <button onClick={() => { setRecentlyViewed([]); try { localStorage.removeItem("tsia_recently_viewed"); } catch {} }}
-                    style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline" data-testid="btn-clear-recent">Clear</button>
+                    className="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors" data-testid="btn-clear-recent">Clear</button>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
                   {items.map(p => (
@@ -2359,9 +2308,9 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
           })()}
 
           {/* All Products / Search results */}
-          <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="rounded p-4">
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-3">
-              <h3 style={{ color: AMZ.text }} className="font-bold text-sm">
+              <h3 className="font-bold text-sm text-slate-800">
                 {activeSearch ? `Results for "${activeSearch}"` : activeCategory ? `${CATEGORY_LABELS[activeCategory] || activeCategory}` : "New Arrivals"}
               </h3>
               <div className="flex items-center gap-2">
@@ -2370,33 +2319,36 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                     onClick={() => toggleCategorySubscription(activeCategory)}
                     data-testid={`btn-subscribe-cat-${activeCategory}`}
                     title={subscribedCats.has(activeCategory) ? "Unsubscribe from new arrivals" : "Get notified of new arrivals"}
-                    style={{ color: subscribedCats.has(activeCategory) ? AMZ.green : AMZ.link, borderColor: subscribedCats.has(activeCategory) ? AMZ.green : AMZ.link }}
-                    className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all hover:opacity-80"
+                    className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all hover:opacity-80 ${
+                      subscribedCats.has(activeCategory)
+                        ? "text-tsia-green border-tsia-green bg-tsia-green/5"
+                        : "text-slate-500 border-slate-300"
+                    }`}
                   >
                     <Bell className="w-3 h-3" />
                     {subscribedCats.has(activeCategory) ? "Subscribed" : "Subscribe"}
                   </button>
                 )}
                 {(products as Product[]).length > 12 && !showAllProducts && (
-                  <button style={{ color: AMZ.link }} className="text-xs font-semibold hover:underline" onClick={() => setShowAllProducts(true)}>See all {(products as Product[]).length}</button>
+                  <button className="text-xs font-semibold text-tsia-green hover:underline" onClick={() => setShowAllProducts(true)}>See all {(products as Product[]).length}</button>
                 )}
               </div>
             </div>
             {isLoading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                {[1,2,3,4].map(i => <div key={i} className="aspect-square rounded bg-gray-100 animate-pulse" />)}
+                {[1,2,3,4].map(i => <div key={i} className="aspect-square rounded-2xl bg-slate-100 animate-pulse" />)}
               </div>
             ) : (products as Product[]).length === 0 ? (
-              <div className="text-center py-16 border-2 border-dashed rounded">
-                <ShoppingBag style={{ color: AMZ.muted }} className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p style={{ color: AMZ.text }} className="font-semibold mb-1">No products found</p>
-                <p style={{ color: AMZ.muted }} className="text-sm mb-4">Try a different search or category.</p>
-                <Button onClick={() => setListOpen(true)} style={{ background: AMZ.gold, color: AMZ.text, border: `1px solid ${AMZ.goldHov}` }} className="font-bold rounded-full"><Plus className="w-4 h-4 mr-1.5" /> Be the first to list</Button>
+              <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl">
+                <ShoppingBag className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p className="font-semibold mb-1 text-slate-700">No products found</p>
+                <p className="text-sm mb-4 text-slate-400">Try a different search or category.</p>
+                <Button onClick={() => setListOpen(true)} className="font-bold rounded-full bg-tsia-green text-white"><Plus className="w-4 h-4 mr-1.5" /> Be the first to list</Button>
               </div>
             ) : (
               <>
                 {filterViewMode === "grid" ? (
-                  <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     {gridProducts.map(p => (
                       <ProductCard key={p.id} product={p} onView={() => handleView(p)} onBuy={() => handleBuy(p)} wishlisted={wishlist.has(p.id)} onWishlist={() => toggleWishlist(p.id)} inCart={cart.has(p.id)} onCart={() => { toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }} watched={watchedIds.has(p.id)} onWatch={() => toggleWatch(p)} isSeller={p.sellerId === user?.id || (!!p.sellerEmail && p.sellerEmail === user?.email)} />
                     ))}
@@ -2406,30 +2358,30 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                     {gridProducts.map(p => {
                       const img = p.images?.[0];
                       return (
-                        <div key={p.id} className="flex items-center gap-3 bg-card border rounded-2xl p-3 hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleView(p)}>
-                          <div className="w-16 h-16 rounded-xl bg-muted overflow-hidden shrink-0">
+                        <div key={p.id} className="flex items-center gap-3 bg-white border border-slate-100 rounded-2xl p-3 hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleView(p)}>
+                          <div className="w-16 h-16 rounded-xl bg-slate-50 overflow-hidden shrink-0">
                             {img ? <img src={img} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-xl">{CATEGORY_ICONS[p.category]}</div>}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-bold text-sm line-clamp-1">{p.title}</p>
-                            <p className="text-xs text-muted-foreground capitalize">{p.condition} · {p.category}</p>
+                            <p className="font-bold text-sm line-clamp-1 text-slate-800">{p.title}</p>
+                            <p className="text-xs text-slate-400 capitalize">{p.condition} · {p.category}</p>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-tsia-green font-black text-sm">${parseFloat(p.price).toFixed(2)}</span>
-                              <span className="text-[11px] text-muted-foreground line-through">${originalPrice(p.price)}</span>
+                              <span className="text-[11px] text-slate-400 line-through">${originalPrice(p.price)}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
                             {(p.sellerId === user?.id || (!!p.sellerEmail && p.sellerEmail === user?.email)) ? (
-                              <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-full shrink-0">Your listing</span>
+                              <span className="text-[10px] font-semibold text-tsia-green bg-tsia-green/10 px-2 py-1 rounded-full shrink-0">Your listing</span>
                             ) : (
                               <>
                                 <button onClick={e => { e.stopPropagation(); toggleCart(p.id); if (!cart.has(p.id)) { toast({ title: "Added to cart", description: `${p.title} saved to your cart.` }); } }}
                                   data-testid={`btn-list-cart-${p.id}`}
-                                  className={`w-11 h-11 rounded-xl flex items-center justify-center border transition-colors shrink-0 ${cart.has(p.id) ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-muted border-border text-muted-foreground"}`}
+                                  className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-colors shrink-0 ${cart.has(p.id) ? "bg-tsia-green/10 border-tsia-green text-tsia-green" : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-tsia-green/5"}`}
                                   title={cart.has(p.id) ? "Remove from cart" : "Add to cart"}>
                                   <ShoppingCart className="w-4 h-4" />
                                 </button>
-                                <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-11 h-11 bg-tsia-green rounded-xl flex items-center justify-center shrink-0" title="Buy (Escrow Protected)">
+                                <button onClick={e => { e.stopPropagation(); handleBuy(p); }} className="w-10 h-10 bg-tsia-green hover:bg-tsia-green/90 rounded-xl flex items-center justify-center shrink-0 transition-colors" title="Buy (Escrow Protected)">
                                   <Lock className="w-4 h-4 text-white" />
                                 </button>
                               </>
@@ -2442,8 +2394,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
                 )}
                 {!showAllProducts && filteredProducts.length > 12 && (
                   <button
-                    style={{ background: AMZ.gold, color: AMZ.text, border: `1px solid ${AMZ.goldHov}` }}
-                    className="w-full mt-4 py-2.5 font-bold text-sm rounded-full hover:opacity-90 flex items-center justify-center gap-2"
+                    className="w-full mt-4 py-2.5 font-bold text-sm rounded-2xl bg-tsia-green text-white hover:bg-tsia-green/90 flex items-center justify-center gap-2 transition-colors shadow-sm"
                     onClick={() => setShowAllProducts(true)}>
                     Load more ({filteredProducts.length - 12} more) <ChevronRight className="w-4 h-4" />
                   </button>
@@ -2458,45 +2409,50 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
       {tab === "my-listings" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground font-medium">{(myListings as Product[]).length} listing{(myListings as Product[]).length !== 1 ? "s" : ""}</p>
-            <Button onClick={() => setListOpen(true)} size="sm" data-testid="btn-new-listing" className="bg-tsia-green text-white rounded-xl h-9">
+            <div>
+              <h2 className="font-bold text-base text-slate-800">My Listings</h2>
+              <p className="text-xs text-slate-400">{(myListings as Product[]).length} product{(myListings as Product[]).length !== 1 ? "s" : ""}</p>
+            </div>
+            <Button onClick={() => setListOpen(true)} size="sm" data-testid="btn-new-listing" className="bg-tsia-green text-white rounded-xl h-9 shadow-sm">
               <Plus className="w-3.5 h-3.5 mr-1.5" /> New listing
             </Button>
           </div>
           {(myListings as Product[]).length === 0 ? (
-            <div className="text-center py-20 border-2 border-dashed rounded-2xl">
-              <Tag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="font-semibold mb-1">No listings yet</p>
-              <p className="text-muted-foreground text-sm mb-4">Start selling — TSIA only takes 8%.</p>
-              <Button onClick={() => setListOpen(true)} className="bg-tsia-green text-white"><Plus className="w-4 h-4 mr-1.5" /> List a Product</Button>
+            <div className="text-center py-20 border-2 border-dashed border-slate-200 rounded-2xl bg-white">
+              <div className="w-16 h-16 bg-tsia-green/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Tag className="w-8 h-8 text-tsia-green" />
+              </div>
+              <p className="font-bold text-slate-800 mb-1">No listings yet</p>
+              <p className="text-slate-400 text-sm mb-4">Start selling — TSIA only takes 8%.</p>
+              <Button onClick={() => setListOpen(true)} className="bg-tsia-green text-white rounded-xl shadow-sm"><Plus className="w-4 h-4 mr-1.5" /> List a Product</Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {(myListings as Product[]).map(p => {
                 const img = p.images?.[0];
                 return (
-                  <div key={p.id} data-testid={`card-listing-${p.id}`} className="bg-card border rounded-2xl overflow-hidden hover:shadow-md transition-shadow">
-                    <div className="aspect-square bg-muted relative">
+                  <div key={p.id} data-testid={`card-listing-${p.id}`} className="bg-white border border-slate-100 rounded-2xl overflow-hidden hover:shadow-md transition-all hover:-translate-y-0.5">
+                    <div className="aspect-square bg-slate-50 relative">
                       {img ? <img src={img} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-3xl">{CATEGORY_ICONS[p.category]}</div>}
-                      <Badge className={`absolute top-2 left-2 text-[10px] ${STATUS_COLORS[p.status] || ""}`}>{p.status}</Badge>
+                      <Badge className={`absolute top-2 left-2 text-[10px] rounded-full ${STATUS_COLORS[p.status] || ""}`}>{p.status}</Badge>
                     </div>
                     <div className="p-3">
-                      <p className="font-semibold text-sm line-clamp-1">{p.title}</p>
+                      <p className="font-semibold text-sm line-clamp-1 text-slate-800">{p.title}</p>
                       <p className="text-base font-black text-tsia-green">${parseFloat(p.price).toFixed(2)}</p>
-                      <p className="text-xs text-muted-foreground">{p.stock} in stock · {p.viewCount} views</p>
+                      <p className="text-xs text-slate-400">{p.stock} in stock · {p.viewCount} views</p>
                       <div className="grid grid-cols-2 gap-1.5 mt-2">
-                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl" onClick={() => handleView(p)} data-testid={`btn-view-listing-${p.id}`}>View</Button>
-                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl text-amber-600 border-amber-300"
+                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl border-slate-200" onClick={() => handleView(p)} data-testid={`btn-view-listing-${p.id}`}>View</Button>
+                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl text-amber-600 border-amber-200"
                           onClick={() => { apiRequest("PATCH", `/api/products/${p.id}`, { status: p.status === "paused" ? "active" : "paused" }).then(() => queryClient.invalidateQueries({ queryKey: ["/api/products/my"] })); }}
                           data-testid={`btn-toggle-listing-${p.id}`}>
                           {p.status === "paused" ? "Activate" : "Pause"}
                         </Button>
-                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl text-blue-600 border-blue-300"
+                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl text-blue-600 border-blue-200"
                           onClick={() => { setEditingListing(p); setListOpen(true); }}
                           data-testid={`btn-edit-listing-${p.id}`}>
                           Edit
                         </Button>
-                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl text-red-600 border-red-300"
+                        <Button size="sm" variant="outline" className="text-xs h-7 rounded-xl text-red-500 border-red-200"
                           onClick={() => setDeleteConfirmId(p.id)}
                           data-testid={`btn-delete-listing-${p.id}`}>
                           Remove
@@ -2514,12 +2470,18 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
       {/* ═══════════ PURCHASES ════════════════════════════════════════ */}
       {tab === "purchases" && (
         <div className="space-y-3">
+          <div>
+            <h2 className="font-bold text-base text-slate-800">My Orders</h2>
+            <p className="text-xs text-slate-400">{(purchases as Order[]).length} order{(purchases as Order[]).length !== 1 ? "s" : ""}</p>
+          </div>
           {(purchases as Order[]).length === 0 ? (
-            <div className="text-center py-20 border-2 border-dashed rounded-2xl">
-              <ShoppingCart className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="font-semibold mb-1">No orders yet</p>
-              <p className="text-muted-foreground text-sm mb-4">Browse the marketplace and place your first order.</p>
-              <Button onClick={() => setTab("browse")} variant="outline" className="rounded-2xl"><ShoppingBag className="w-4 h-4 mr-1.5" /> Shop now</Button>
+            <div className="text-center py-20 border-2 border-dashed border-slate-200 rounded-2xl bg-white">
+              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <ShoppingCart className="w-8 h-8 text-slate-400" />
+              </div>
+              <p className="font-bold text-slate-800 mb-1">No orders yet</p>
+              <p className="text-slate-400 text-sm mb-4">Browse the marketplace and place your first order.</p>
+              <Button onClick={() => setTab("browse")} variant="outline" className="rounded-xl"><ShoppingBag className="w-4 h-4 mr-1.5" /> Shop now</Button>
             </div>
           ) : (purchases as Order[]).map(o => {
             const trackingOpen = expandedTracking.has(o.id);
@@ -2588,12 +2550,18 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
       {/* ═══════════ SALES ════════════════════════════════════════════ */}
       {tab === "sales" && (
         <div className="space-y-3">
+          <div>
+            <h2 className="font-bold text-base text-slate-800">My Sales</h2>
+            <p className="text-xs text-slate-400">{(sales as Order[]).length} sale{(sales as Order[]).length !== 1 ? "s" : ""}</p>
+          </div>
           {(sales as Order[]).length === 0 ? (
-            <div className="text-center py-20 border-2 border-dashed rounded-2xl">
-              <TrendingUp className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="font-semibold mb-1">No sales yet</p>
-              <p className="text-muted-foreground text-sm mb-4">List a product to start earning.</p>
-              <Button onClick={() => setListOpen(true)} className="bg-tsia-green text-white rounded-2xl"><Tag className="w-4 h-4 mr-1.5" /> List a Product</Button>
+            <div className="text-center py-20 border-2 border-dashed border-slate-200 rounded-2xl bg-white">
+              <div className="w-16 h-16 bg-tsia-green/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <TrendingUp className="w-8 h-8 text-tsia-green" />
+              </div>
+              <p className="font-bold text-slate-800 mb-1">No sales yet</p>
+              <p className="text-slate-400 text-sm mb-4">List a product to start earning.</p>
+              <Button onClick={() => setListOpen(true)} className="bg-tsia-green text-white rounded-xl shadow-sm"><Tag className="w-4 h-4 mr-1.5" /> List a Product</Button>
             </div>
           ) : (sales as Order[]).map(o => {
             const trackingOpen = expandedTracking.has(o.id);
@@ -2693,23 +2661,15 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
         </div>
       )}
 
-      {/* ── Floating sell button (browse tab, mobile) ─────────────────── */}
-      {tab === "browse" && (
-        <button onClick={() => setListOpen(true)} data-testid="btn-float-sell"
-          className="fixed bottom-24 right-4 sm:hidden w-14 h-14 bg-tsia-green rounded-full shadow-xl flex items-center justify-center z-50 hover:bg-tsia-green/90">
-          <Plus className="w-7 h-7 text-white" />
-        </button>
-      )}
-
       {/* ── Stats bar (browse tab only) ───────────────────────────────── */}
       {tab === "browse" && (products as Product[]).length > 0 && (
-        <div style={{ background: "white", border: `1px solid ${AMZ.border}` }} className="grid grid-cols-3 gap-0 mt-3 rounded overflow-hidden">
+        <div className="grid grid-cols-3 gap-0 mt-3 bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
           {[
-            { label: "Products", value: (products as Product[]).length, icon: Package, color: "#007185" },
-            { label: "Saved", value: wishlist.size, icon: Heart, color: "#CC0C39" },
-            { label: "Commission", value: "8%", icon: BadgePercent, color: "#067D62" },
+            { label: "Products", value: (products as Product[]).length, icon: Package, color: "#10B981" },
+            { label: "Saved", value: wishlist.size, icon: Heart, color: "#EF4444" },
+            { label: "Commission", value: "8%", icon: BadgePercent, color: "#10B981" },
           ].map((s, i) => (
-            <div key={s.label} style={{ borderRight: i < 2 ? `1px solid ${AMZ.border}` : "none" }} className="p-3 text-center">
+            <div key={s.label} style={{ borderRight: i < 2 ? "1px solid #E2E8F0" : "none" }} className="p-3 text-center">
               <s.icon style={{ color: s.color }} className="w-5 h-5 mx-auto mb-1" />
               <p style={{ color: AMZ.text }} className="font-black text-lg">{s.value}</p>
               <p style={{ color: AMZ.muted }} className="text-[10px]">{s.label}</p>
@@ -2839,34 +2799,58 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
         </DialogContent>
       </Dialog>
 
-      {/* ── Service footer + back to top ──────────────────────────────── */}
-      <div style={{ background: AMZ.navyMid }} className="mt-6 -mx-4 px-4 py-3 text-center cursor-pointer hover:opacity-90"
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} data-testid="btn-back-to-top">
-        <span className="text-white text-xs font-semibold flex items-center justify-center gap-1.5">
-          <ChevronUp className="w-3.5 h-3.5" /> Back to top
-        </span>
-      </div>
-      <div style={{ background: AMZ.navy }} className="-mx-4 px-4 py-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-white">
-        {[
-          { title: "Get to Know Us", links: ["About TSIA", "Careers", "Press"] },
-          { title: "Make Money With Us", links: ["Sell on TSIA Market", "Become an Affiliate", "Advertise"] },
-          { title: "Payment Products", links: ["TSIA Wallet", "Reward Points", "Reload Balance"] },
-          { title: "Let Us Help You", links: ["Your Account", "Your Orders", "Help Center"] },
-        ].map(col => (
-          <div key={col.title}>
-            <p className="font-bold text-xs mb-2">{col.title}</p>
-            <ul className="space-y-1">
-              {col.links.map(l => <li key={l} className="text-[11px] opacity-80 hover:opacity-100 cursor-pointer">{l}</li>)}
-            </ul>
+      {/* ── Mini footer ──────────────────────────────────────────────────── */}
+      <div className="mt-6 -mx-4 px-4 py-4 bg-white border-t border-slate-100">
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <div className="w-7 h-7 rounded-xl bg-tsia-green flex items-center justify-center">
+            <ShoppingBag className="w-4 h-4 text-white" />
           </div>
-        ))}
-      </div>
-      <div style={{ background: "#131A22" }} className="-mx-4 px-4 py-4 text-center">
-        <div className="flex items-center justify-center gap-1.5 mb-1.5">
-          <span className="text-white font-black text-sm">TSIA</span>
-          <span style={{ color: AMZ.gold }} className="font-black text-sm">Market</span>
+          <span className="font-black text-slate-800">TSIA <span className="text-tsia-green">Market</span></span>
         </div>
-        <p className="text-[10px] text-white/50">SMAKEMGGOLD Ltd · RC: 1359954 · Escrow Protected · Verified Sellers</p>
+        <p className="text-[10px] text-slate-400 text-center">Escrow Protected · Verified Sellers · SMAKEMGGOLD Ltd</p>
+        <button onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} data-testid="btn-back-to-top"
+          className="mt-3 w-full text-xs text-slate-500 flex items-center justify-center gap-1 hover:text-tsia-green transition-colors">
+          <ChevronUp className="w-3.5 h-3.5" /> Back to top
+        </button>
+      </div>
+
+      {/* ── Bottom Navigation Bar ─────────────────────────────────────────── */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] safe-area-inset-bottom">
+        <div className="flex items-center px-2 py-1">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              data-testid={`tab-${t.id}`}
+              className="flex-1 flex flex-col items-center gap-1 py-2 px-1 rounded-2xl transition-all relative"
+            >
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                tab === t.id
+                  ? "bg-tsia-green text-white shadow-sm shadow-tsia-green/30"
+                  : "text-slate-400"
+              }`}>
+                <t.icon className="w-5 h-5" />
+                {t.id === "purchases" && (purchases as Order[]).length > 0 && tab !== "purchases" && (
+                  <span className="absolute top-1.5 right-2.5 w-2 h-2 bg-red-500 rounded-full" />
+                )}
+              </div>
+              <span className={`text-[10px] font-semibold transition-colors ${tab === t.id ? "text-tsia-green" : "text-slate-400"}`}>
+                {t.label}
+              </span>
+            </button>
+          ))}
+          {/* Sell FAB */}
+          <button
+            onClick={() => setListOpen(true)}
+            data-testid="btn-sell"
+            className="flex-1 flex flex-col items-center gap-1 py-2 px-1"
+          >
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-tsia-green to-emerald-600 flex items-center justify-center shadow-sm shadow-tsia-green/30">
+              <Plus className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-[10px] font-semibold text-tsia-green">Sell</span>
+          </button>
+        </div>
       </div>
 
       {/* ── Filter Panel (slide-up sheet) ────────────────────────────── */}

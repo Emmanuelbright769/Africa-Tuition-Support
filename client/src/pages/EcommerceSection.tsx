@@ -2134,7 +2134,7 @@ export default function EcommerceSection({ initialOpenChatId }: { initialOpenCha
   ];
 
   return (
-    <div className="relative pb-24 w-full" style={{ background: "#F1F5F9", margin: "-16px", padding: "0", width: "calc(100% + 32px)", maxWidth: "none" }}>
+    <div className="relative" style={{ background: "#F1F5F9", marginTop: "-24px", marginBottom: "-24px", marginLeft: "-16px", marginRight: "-16px", paddingBottom: "96px", width: "calc(100% + 32px)", maxWidth: "none" }}>
 
       {/* ── Clean mobile header ────────────────────────────────────────────── */}
       <div className="bg-white shadow-sm sticky top-0 z-30 px-4 pt-4 pb-3">

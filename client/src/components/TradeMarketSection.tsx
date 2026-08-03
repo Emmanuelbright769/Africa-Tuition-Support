@@ -2,15 +2,16 @@ import { ReactNode, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Grid2X2, Home, WalletCards, X,
-  Radio, CandlestickChart, TrendingUp, BarChart2, Bot,
+  Radio, CandlestickChart, BarChart2, Bot, Handshake,
 } from "lucide-react";
 import TradeSplashScreen from "./TradeSplashScreen";
 import TradingSignals from "./trade/TradingSignals";
 import BotLiveView from "./trade/BotLiveView";
 import ManualTrading from "./trade/ManualTrading";
 import TradeWalletView from "./trade/TradeWalletView";
+import P2PExchange from "./trade/P2PExchange";
 
-type Tab = "home" | "wallet" | "signals" | "botlive" | "manual" | "activity";
+type Tab = "home" | "wallet" | "signals" | "botlive" | "manual" | "activity" | "p2p";
 
 interface TradeMarketSectionProps {
   children: ReactNode;
@@ -29,13 +30,14 @@ const PRIMARY_TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
 ];
 
 const EXTRA_TABS: { id: Tab; label: string; desc: string; Icon: React.ElementType }[] = [
-  { id: "botlive",  label: "Itera BOT",      desc: "Live bot position & controls",  Icon: Bot },
-  { id: "manual",   label: "Manual Trading", desc: "Open your own market position", Icon: CandlestickChart },
-  { id: "activity", label: "Activity",       desc: "Your full market history",      Icon: BarChart2 },
+  { id: "botlive",  label: "Itera BOT",      desc: "Live bot position & controls",    Icon: Bot },
+  { id: "manual",   label: "Manual Trading", desc: "Open your own market position",   Icon: CandlestickChart },
+  { id: "activity", label: "Activity",       desc: "Your full market history",        Icon: BarChart2 },
+  { id: "p2p",      label: "P2P Exchange",   desc: "Buy & sell USD peer-to-peer",     Icon: Handshake },
 ];
 
 // Tabs that render dedicated components (not the scrollable children)
-const COMPONENT_TABS = new Set<Tab>(["wallet", "signals", "botlive", "manual", "activity"]);
+const COMPONENT_TABS = new Set<Tab>(["wallet", "signals", "botlive", "manual", "activity", "p2p"]);
 
 export default function TradeMarketSection({
   children, tradeBalance, onDeposit, onWithdraw, onFund, onConnect,
@@ -132,6 +134,13 @@ export default function TradeMarketSection({
                   Go to Overview
                 </button>
               </div>
+            </motion.div>
+          )}
+          {tab === "p2p" && (
+            <motion.div key="p2p"
+              initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.22 }}>
+              <P2PExchange />
             </motion.div>
           )}
         </AnimatePresence>

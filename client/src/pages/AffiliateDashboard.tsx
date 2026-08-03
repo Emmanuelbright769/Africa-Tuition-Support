@@ -2611,8 +2611,11 @@ export default function AffiliateDashboard() {
             )}
 
             {/* ── E-COMMERCE ── */}
+            {/* NOTE: must NOT use itemVariants here — itemVariants applies translateY which creates a
+                new containing block and silently breaks position:sticky inside EcommerceSection.
+                Opacity-only fade avoids any CSS transform on this wrapper. */}
             {activeSection === "ecommerce" && (
-              <motion.div variants={itemVariants}>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
                 <EcommerceSection initialOpenChatId={openChatId} />
               </motion.div>
             )}

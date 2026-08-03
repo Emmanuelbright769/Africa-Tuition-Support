@@ -1,1 +1,2 @@
 - [yahoo-finance2 v3 setup](yahoo-finance2-v3.md) — must use `new YahooFinance()` not default import; JSE prices in ZAc (÷100 for ZAR).
+- [Framer-motion transforms break position:sticky](framer-motion-sticky-break.md) — itemVariants (y:18→y:0) on a motion.div ancestor silently breaks sticky; use opacity-only animation instead.

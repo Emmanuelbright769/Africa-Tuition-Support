@@ -18,3 +18,9 @@ attached_assets/
 
 # Local development screenshots
 screenshots/
+
+# npm/tool cache — not needed at runtime
+.cache/
+
+# Mockup sandbox (design tool only, not the production app)
+artifacts/

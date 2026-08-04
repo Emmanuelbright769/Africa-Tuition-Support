@@ -165,16 +165,19 @@ async function runMigrations() {
       )
     `);
 
-    // ── Fix roi_complete for users whose cycle earnings ≥ profit target ─────────
-    // Earnings are computed from actual bot_earning transactions since cycle_started_at
-    // (not from the potentially-corrupted total_bot_earnings wallet field).
+    // ── Fix roi_complete: SET true for users whose bot-session earnings ≥ profit target ─
+    // Only counts actual bot trading sessions — referral commissions are excluded because
+    // they inflate the cap calculation and are not the user's own trading performance.
     await db.execute(sql`
       UPDATE trade_wallets tw
       SET roi_complete = TRUE, updated_at = NOW()
       WHERE tw.roi_complete = FALSE
       AND tw.locked_principal::numeric > 0
       AND (
-        SELECT COALESCE(SUM(t.amount_usd::numeric) FILTER (WHERE t.amount_usd::numeric > 0), 0)
+        SELECT COALESCE(SUM(t.amount_usd::numeric) FILTER (
+          WHERE t.amount_usd::numeric > 0
+          AND COALESCE(t.note, '') NOT LIKE 'Referral commission%'
+        ), 0)
         FROM trade_transactions t
         WHERE t.user_id = tw.user_id AND t.type = 'bot_earning'
         AND t.created_at >= COALESCE(tw.cycle_started_at, '1970-01-01'::timestamptz)
@@ -185,7 +188,30 @@ async function runMigrations() {
         END
     `);
 
-    console.log("[MIGRATE] cycle_started_at column and data fix applied");
+    // ── Revert roi_complete for users incorrectly set by a previous migration ────────
+    // The previous migration included referral commissions in the cap sum, which could
+    // push users over the threshold when their actual bot-session earnings were below it.
+    await db.execute(sql`
+      UPDATE trade_wallets tw
+      SET roi_complete = FALSE, updated_at = NOW()
+      WHERE tw.roi_complete = TRUE
+      AND tw.locked_principal::numeric > 0
+      AND (
+        SELECT COALESCE(SUM(t.amount_usd::numeric) FILTER (
+          WHERE t.amount_usd::numeric > 0
+          AND COALESCE(t.note, '') NOT LIKE 'Referral commission%'
+        ), 0)
+        FROM trade_transactions t
+        WHERE t.user_id = tw.user_id AND t.type = 'bot_earning'
+        AND t.created_at >= COALESCE(tw.cycle_started_at, '1970-01-01'::timestamptz)
+      ) < tw.locked_principal::numeric * CASE
+          WHEN tw.trading_plan_days = 60  THEN 0.70
+          WHEN tw.trading_plan_days = 90  THEN 0.80
+          ELSE 1.00
+        END
+    `);
+
+    console.log("[MIGRATE] cycle_started_at column and roi_complete data fix applied");
     console.log("[MIGRATE] Schema migrations applied successfully");
   } catch (e) {
     console.error("[MIGRATE] Migration error:", e);

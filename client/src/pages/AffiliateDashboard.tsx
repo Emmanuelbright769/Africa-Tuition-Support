@@ -1986,11 +1986,19 @@ export default function AffiliateDashboard() {
                           <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground leading-none mb-0.5">Bot Earnings (withdrawable anytime)</p>
+                          <p className="text-xs text-muted-foreground leading-none mb-0.5">Bot Earnings This Cycle</p>
                           <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300" data-testid="text-total-bot-earnings">
-                            {tradeBalanceHidden ? "••••••" : `$${withdrawableAmt.toFixed(2)}`}
+                            {tradeBalanceHidden ? "••••••" : `$${totalBotEarned.toFixed(2)}`}
                           </p>
-                          {!tradeBalanceHidden && <p className="text-[10px] text-emerald-600/70">≈ {formatAmount(withdrawableAmt)}</p>}
+                          {!tradeBalanceHidden && (
+                            <p className="text-[10px] text-emerald-600/70 mt-0.5">
+                              {withdrawableAmt > 0.01
+                                ? `$${withdrawableAmt.toFixed(2)} available to withdraw now`
+                                : totalBotEarned > 0.01
+                                  ? "All earnings withdrawn or offset by recent losses"
+                                  : "Earnings accumulate each session"}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground">+{(activePlanConfig.dailyRate * 100).toFixed(0)}% / session</p>

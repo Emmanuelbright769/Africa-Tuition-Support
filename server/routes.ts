@@ -2610,8 +2610,11 @@ export async function registerRoutes(
       // This is immune to wallet-field corruption (totalBotEarnings being reset by admin stop-bot, etc.)
       const cycleMetrics = await db.execute(sql`
         SELECT
+          -- Exclude referral commissions: the cap measures YOUR OWN trading performance,
+          -- not earnings from your referrals' sessions.
           COALESCE(SUM(amount_usd::numeric) FILTER (
             WHERE type = 'bot_earning' AND amount_usd::numeric > 0
+            AND COALESCE(note, '') NOT LIKE 'Referral commission%'
           ), 0) AS current_cycle_earnings,
           COUNT(*) FILTER (
             WHERE type = 'topup' AND status = 'completed'

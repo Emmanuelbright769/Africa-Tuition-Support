@@ -70,7 +70,9 @@ export default function TradeWalletView({
 
   // ── Action grid (2 × 2) ─────────────────────────────────────
   const depositDisabled = limitReached;
-  const topUpDisabled   = limitReached;
+  // When all slots are used AND the cycle is complete, the "Top Up" slot becomes "Reinvest"
+  const topUpIsReinvest = limitReached && cycleComplete;
+  const topUpDisabled   = limitReached && !cycleComplete;
 
   const actions = [
     {
@@ -99,17 +101,31 @@ export default function TradeWalletView({
     },
     {
       id: "fund",
-      label: "Top Up",
-      sublabel: topUpDisabled
-        ? cycleComplete ? "Use Re-invest below" : "Limit reached — 3/3 used"
-        : `From SwiftWallet · ${topupsLeft} left`,
-      icon: Wallet,
-      color: topUpDisabled
-        ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
-        : "bg-tsia-gold/15 text-tsia-gold border-tsia-gold/30",
-      iconBg: topUpDisabled ? "bg-slate-600" : "bg-tsia-gold",
-      onClick: topUpDisabled ? undefined : onFund,
-      badge: null,
+      label: topUpIsReinvest ? "Reinvest" : "Top Up",
+      sublabel: topUpIsReinvest
+        ? withdrawable >= 2
+          ? `Roll $${withdrawable.toFixed(2)} into new cycle`
+          : "Need ≥$2 withdrawable earnings"
+        : topUpDisabled
+          ? "Limit reached — 3/3 used"
+          : `From SwiftWallet · ${topupsLeft} left`,
+      icon: topUpIsReinvest ? RefreshCcw : Wallet,
+      color: topUpIsReinvest
+        ? withdrawable >= 2
+          ? "bg-tsia-gold/20 text-tsia-gold border-tsia-gold/50"
+          : "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
+        : topUpDisabled
+          ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
+          : "bg-tsia-gold/15 text-tsia-gold border-tsia-gold/30",
+      iconBg: topUpIsReinvest
+        ? withdrawable >= 2 ? "bg-tsia-gold" : "bg-slate-600"
+        : topUpDisabled ? "bg-slate-600" : "bg-tsia-gold",
+      onClick: topUpIsReinvest
+        ? withdrawable >= 2 ? onReinvest : undefined
+        : topUpDisabled ? undefined : onFund,
+      badge: topUpIsReinvest && withdrawable >= 2
+        ? "Cycle done"
+        : (!topUpDisabled && !topUpIsReinvest && topupsLeft > 0) ? `${topupsLeft} left` : null,
     },
     {
       id: "withdraw",
@@ -319,8 +335,9 @@ export default function TradeWalletView({
         )}
       </motion.button>
 
-      {/* Re-invest — only shown after cycle is complete */}
-      {cycleComplete && (
+      {/* Re-invest card — shown when cycle is complete but slots aren't all used
+          (when all 3 slots ARE used + cycle complete, the Top Up button transforms to Reinvest instead) */}
+      {cycleComplete && !topUpIsReinvest && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}

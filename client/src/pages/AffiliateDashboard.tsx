@@ -1372,7 +1372,8 @@ export default function AffiliateDashboard() {
   const mySharePct         = myCoAff ? (parseFloat(myCoAff.sharePercentage) * 100).toFixed(8) : "0";
   const tradeBalance     = parseFloat(tradeWallet?.tradeBalance ?? "0");
   const totalInvested    = parseFloat(tradeWallet?.totalInvested ?? "0");
-  const totalBotEarned   = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
+  // Use transaction-computed cycle earnings (immune to admin resets of totalBotEarnings field)
+  const totalBotEarned   = parseFloat((tradeWallet as any)?.currentCycleEarnings ?? tradeWallet?.totalBotEarnings ?? "0");
   const roiComplete      = !!(tradeWallet?.roiComplete);
   const tradingDayNumber = (tradeWallet as any)?.tradingDayNumber ?? 0;
   const planDaysFromWallet: 60 | 90 | 120 = (() => {
@@ -1380,15 +1381,18 @@ export default function AffiliateDashboard() {
     return ([60, 90, 120] as const).includes(v) ? v : 120;
   })();
   const activePlanConfig = TRADING_PLANS.find(p => p.days === planDaysFromWallet) ?? TRADING_PLANS[2];
+  // cycleTimeComplete: the full plan day-count has elapsed.
+  // This is DIFFERENT from roiComplete (profit cap reached) — a user can hit their cap at Day 67
+  // but still have 53 days left in their cycle; the bot keeps running until the day count ends.
+  const cycleTimeComplete = tradingDayNumber >= planDaysFromWallet;
   const cycleProgress    = Math.min(100, (tradingDayNumber / planDaysFromWallet) * 100);
-  const lockedPrincipal  = roiComplete ? 0 : parseFloat(tradeWallet?.lockedPrincipal ?? "0");
+  // Capital is only "released" (set to 0) when the time cycle ends, not merely because the cap was reached
+  const lockedPrincipal  = (roiComplete && cycleTimeComplete) ? 0 : parseFloat(tradeWallet?.lockedPrincipal ?? "0");
   // Earnings (above capital) are always withdrawable once ≥ $2 minimum
   const withdrawableAmt  = Math.max(0, tradeBalance - lockedPrincipal);
-  // Progress toward 100% earnings cap (informational only — not a withdrawal gate)
-  // Bar tracks cumulative earnings toward the plan's profit cap (70/80/100% of locked capital).
-  // Withdrawals have no effect on the bar; it reflects total profits earned so far.
-  const profitTarget     = lockedPrincipal * (activePlanConfig.profitCapPct ?? 1.00);
-  const returnPct        = lockedPrincipal > 0 ? Math.min(100, (totalBotEarned / profitTarget) * 100) : 0;
+  // Progress toward earnings cap (informational — not a withdrawal gate)
+  const profitTarget     = lockedPrincipal > 0 ? lockedPrincipal * (activePlanConfig.profitCapPct ?? 1.00) : 0;
+  const returnPct        = lockedPrincipal > 0 && profitTarget > 0 ? Math.min(100, (totalBotEarned / profitTarget) * 100) : 0;
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);
 
@@ -1827,8 +1831,8 @@ export default function AffiliateDashboard() {
                         </div>
                         {/* Action footer */}
                         <div className="bg-card p-4 flex items-center gap-3">
-                          {roiComplete ? (
-                            // Cycle complete
+                          {cycleTimeComplete ? (
+                            // Full day-count cycle ended
                             <div className="flex-1 flex items-center gap-3">
                               <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
                                 <span className="text-lg">🎉</span>
@@ -1926,7 +1930,7 @@ export default function AffiliateDashboard() {
                           {!tradeBalanceHidden && <p className="text-xs text-blue-500/70">≈ {formatAmount(tradeBalance)}</p>}
                         </div>
                       </div>
-                      {!roiComplete && lockedPrincipal > 0 && (
+                      {!cycleTimeComplete && lockedPrincipal > 0 && (
                         <div className="space-y-2">
                           <div className="grid grid-cols-2 gap-2">
                             <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
@@ -1952,7 +1956,7 @@ export default function AffiliateDashboard() {
                               <div className="flex items-center justify-between mb-1">
                                 <p className="text-[10px] text-muted-foreground font-medium">Earnings Progress</p>
                                 <p className={`text-[10px] font-bold ${returnPct >= 100 ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-blue-400"}`}>
-                                  {tradeBalanceHidden ? "••••" : `${returnPct.toFixed(1)}% ${returnPct >= 100 ? "✓ Max reached" : "of 100% cap"}`}
+                                  {tradeBalanceHidden ? "••••" : `${returnPct.toFixed(1)}% ${returnPct >= 100 ? "✓ Cap reached" : `of ${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap`}`}
                                 </p>
                               </div>
                               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
@@ -1961,14 +1965,14 @@ export default function AffiliateDashboard() {
                               </div>
                               <p className="text-[9px] text-muted-foreground mt-0.5">
                                 {tradeBalanceHidden ? "••••" : returnPct >= 100
-                                  ? `${(activePlanConfig.profitCapPct * 100).toFixed(0)}% return reached — $${withdrawableAmt.toFixed(2)} available · cycle continues until day ${planDaysFromWallet}`
-                                  : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — $${(profitTarget - totalBotEarned).toFixed(2)} remaining to ${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap`}
+                                  ? `${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap reached — bot runs until Day ${planDaysFromWallet} · $${withdrawableAmt.toFixed(2)} available to withdraw`
+                                  : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — $${Math.max(0, profitTarget - totalBotEarned).toFixed(2)} remaining to ${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap`}
                               </p>
                             </div>
                           )}
                         </div>
                       )}
-                      {roiComplete && (
+                      {cycleTimeComplete && (
                         <div className="bg-emerald-100 dark:bg-emerald-900/30 rounded-lg px-3 py-1.5 flex items-center gap-2">
                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                           <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{planDaysFromWallet}-day cycle complete — earnings credited to SwiftWallet. Top up to start a new cycle.</p>
@@ -1997,19 +2001,21 @@ export default function AffiliateDashboard() {
                         <div className="flex items-center justify-between mb-1.5">
                           <p className="text-xs text-muted-foreground font-medium">Trading Cycle Progress</p>
                           <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            {roiComplete ? `Day ${planDaysFromWallet} / ${planDaysFromWallet} — Complete` : `Day ${tradingDayNumber} / ${planDaysFromWallet}`}
+                            {cycleTimeComplete ? `Day ${planDaysFromWallet} / ${planDaysFromWallet} — Complete` : `Day ${tradingDayNumber} / ${planDaysFromWallet}`}
                           </p>
                         </div>
                         <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                           <div
-                            className={`h-full rounded-full transition-all duration-500 ${roiComplete ? "bg-emerald-500" : "bg-amber-500"}`}
+                            className={`h-full rounded-full transition-all duration-500 ${cycleTimeComplete ? "bg-emerald-500" : "bg-amber-500"}`}
                             style={{ width: `${cycleProgress}%` }}
                           />
                         </div>
                         <p className="text-[10px] text-muted-foreground mt-1">
-                          {roiComplete
+                          {cycleTimeComplete
                             ? `Cycle complete. Earnings sent to SwiftWallet. Top up to start a new ${planDaysFromWallet}-day cycle.`
-                            : `${planDaysFromWallet - tradingDayNumber} trading session${planDaysFromWallet - tradingDayNumber !== 1 ? "s" : ""} remaining in this cycle (${activePlanConfig.rateLabel}).`}
+                            : roiComplete
+                              ? `Profit cap reached — bot continues running until Day ${planDaysFromWallet} (${planDaysFromWallet - tradingDayNumber} session${planDaysFromWallet - tradingDayNumber !== 1 ? "s" : ""} left).`
+                              : `${planDaysFromWallet - tradingDayNumber} trading session${planDaysFromWallet - tradingDayNumber !== 1 ? "s" : ""} remaining in this cycle (${activePlanConfig.rateLabel}).`}
                         </p>
                       </div>
                     )}

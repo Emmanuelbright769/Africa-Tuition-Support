@@ -170,8 +170,8 @@ export default function TradeWalletView({
       {/* Top-up usage indicator */}
       <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <TrendingUp className="h-3.5 w-3.5 text-white/60" />
-          <span className="text-xs font-medium text-white/70">Top-up slots used</span>
+          <TrendingUp className="h-3.5 w-3.5 text-slate-400" />
+          <span className="text-xs font-medium text-slate-300">Top-up slots used</span>
         </div>
         <div className="flex items-center gap-1.5">
           {Array.from({ length: MAX_TOPUPS }).map((_, i) => (
@@ -182,7 +182,7 @@ export default function TradeWalletView({
               }`}
             />
           ))}
-          <span className={`ml-1 text-xs font-bold ${limitReached ? "text-tsia-gold" : "text-white/70"}`}>
+          <span className={`ml-1 text-xs font-bold ${limitReached ? "text-tsia-gold" : "text-slate-300"}`}>
             {depositCount}/{MAX_TOPUPS}
           </span>
         </div>
@@ -216,7 +216,7 @@ export default function TradeWalletView({
 
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Total Balance</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-300">Total Balance</p>
             <div className="mt-2 flex items-end gap-3">
               <span className="text-4xl font-black text-white">{fmt(tradeBalance)}</span>
               <span className="mb-1 text-sm font-bold text-tsia-gold">USDT</span>
@@ -233,15 +233,15 @@ export default function TradeWalletView({
         {/* Stats row */}
         <div className="mt-5 grid grid-cols-3 gap-3">
           <div className="rounded-xl bg-white/5 px-3 py-2.5">
-            <p className="text-[10px] text-white/60">Locked Capital</p>
+            <p className="text-[10px] text-slate-400">Locked Capital</p>
             <p className="mt-0.5 text-sm font-black text-white">{fmt(lockedPrincipal)}</p>
           </div>
           <div className="rounded-xl bg-white/5 px-3 py-2.5">
-            <p className="text-[10px] text-white/60">Withdrawable</p>
+            <p className="text-[10px] text-slate-400">Withdrawable</p>
             <p className="mt-0.5 text-sm font-black text-tsia-green">{fmt(withdrawable)}</p>
           </div>
           <div className="rounded-xl bg-white/5 px-3 py-2.5">
-            <p className="text-[10px] text-white/60">Bot Earnings</p>
+            <p className="text-[10px] text-slate-400">Bot Earnings</p>
             <p className="mt-0.5 text-sm font-black text-tsia-gold">{fmt(totalEarnings)}</p>
           </div>
         </div>
@@ -250,7 +250,7 @@ export default function TradeWalletView({
         {lockedPrincipal > 0 && (
           <div className="mt-4">
             <div className="flex items-center justify-between text-[10px]">
-              <span className="text-white/70 flex items-center gap-1 font-medium">
+              <span className="text-slate-300 flex items-center gap-1 font-medium">
                 <TrendingUp className="h-3 w-3" /> ROI Progress
               </span>
               <span className={`font-bold ${capReached ? "text-tsia-gold" : "text-white/90"}`}>
@@ -268,14 +268,14 @@ export default function TradeWalletView({
               />
             </div>
             <div className="mt-1.5 flex items-center justify-between text-[10px]">
-              <span className="text-white/55">
+              <span className="text-slate-400">
                 {capReached
                   ? withdrawable > 0
                     ? `$${withdrawable.toFixed(2)} available to withdraw`
                     : "Earnings fully withdrawn"
                   : `Target: $${profitTarget.toFixed(2)}`}
               </span>
-              <span className="text-white/55">
+              <span className="text-slate-400">
                 Day {Math.min(tradingDayNumber, planDays)}/{planDays}
               </span>
             </div>

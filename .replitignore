@@ -1,0 +1,14 @@
+# Exclude directories that are not needed at runtime and would bloat the
+# deployment layer, causing HTTP 413 errors when Replit pushes to its CDN.
+
+# Agent chat uploads (user screenshots shared with the AI assistant)
+attached_assets/
+
+# Replit internal skills & MCP data — large, never referenced by the app
+.local/
+
+# Agent memory & task files
+.agents/
+
+# Local development screenshots
+screenshots/

@@ -756,12 +756,12 @@ export async function registerRoutes(
   };
 
   // ── Unified ID validation endpoint ──────────────────────────────────────
+  // Intentionally public (no session required): this is called during signup
+  // Step 2 before the user's account exists. It is a pure Prembly lookup —
+  // no user data is written here. The downstream /api/verification/identity
+  // route (which persists the result) still requires authentication.
   app.post("/api/verification/validate-id", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const wallet = await storage.getOrCreateWallet(userId);
-
       const { idType = "nin", idNumber, lastName } = req.body;
       if (!idNumber || !idType) return res.status(400).json({ message: "ID type and number are required." });
 

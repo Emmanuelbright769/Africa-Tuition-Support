@@ -2734,6 +2734,11 @@ export async function registerRoutes(
       if (!["trc20", "bep20"].includes(walletType)) {
         return res.status(400).json({ message: "walletType must be trc20 or bep20." });
       }
+      // Enforce 3 top-up limit server-side
+      const depositLimitRow = await db.execute(sql`SELECT COUNT(*) AS cnt FROM trade_transactions WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'`);
+      if (parseInt((depositLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
+        return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots. Re-invest your earnings after your cycle completes to continue." });
+      }
       // Allocations on deposit — 5% affiliate pool only; no reserve fund on direct crypto deposits
       const reserveCut   = 0;
       const affiliateCut = parseFloat((amount * 0.05).toFixed(6));
@@ -2809,6 +2814,11 @@ export async function registerRoutes(
       const fwTradingPlanDays: number = [60, 90, 120].includes(Number(rawFwPlanDays)) ? Number(rawFwPlanDays) : 120;
       if (isNaN(amount) || amount < minDeposit) {
         return res.status(400).json({ message: `Minimum funding amount for ${broker ? broker.name : "this exchange"} is $${minDeposit}.` });
+      }
+      // Enforce 3 top-up limit server-side
+      const fwDepositLimitRow = await db.execute(sql`SELECT COUNT(*) AS cnt FROM trade_transactions WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'`);
+      if (parseInt((fwDepositLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
+        return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots. Re-invest your earnings after your cycle completes to continue." });
       }
       if (amount > TRADE_MARKET.MAX_DEPOSIT) {
         return res.status(400).json({ message: `Maximum deposit is $${TRADE_MARKET.MAX_DEPOSIT}.` });
@@ -2926,6 +2936,119 @@ export async function registerRoutes(
       pushToUser(userId, "notification", notif);
       const updatedTrade = await storage.getOrCreateTradeWallet(userId);
       res.json({ newTradeBalance: updatedTrade.tradeBalance, newPersonalBalance: newPersonalBal, transferred: amount.toFixed(2), reserveDeducted: "0.00" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Trade Market — Paystack bank/card deposit ─────────────────────────────
+  app.post("/api/trade/paystack/initialize", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Deposits are disabled during an active trade session. Wait until the session ends." });
+      }
+      // Enforce 3 top-up limit
+      const tpLimitRow = await db.execute(sql`SELECT COUNT(*) AS cnt FROM trade_transactions WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'`);
+      if (parseInt((tpLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
+        return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots." });
+      }
+      const { amountUsd, brokerId: tpBrokerId, tradingPlanDays: rawTpPlan } = req.body;
+      const amount = parseFloat(amountUsd);
+      const tpBroker = TRADE_BROKERS.find(b => b.id === tpBrokerId);
+      const tpMinDeposit = tpBroker ? tpBroker.minDeposit : TRADE_MARKET.MIN_DEPOSIT;
+      const tpPlanDays: number = [60, 90, 120].includes(Number(rawTpPlan)) ? Number(rawTpPlan) : 120;
+      if (isNaN(amount) || amount < tpMinDeposit) {
+        return res.status(400).json({ message: `Minimum deposit for ${tpBroker ? tpBroker.name : "this exchange"} is $${tpMinDeposit}.` });
+      }
+      if (amount > TRADE_MARKET.MAX_DEPOSIT) {
+        return res.status(400).json({ message: `Maximum deposit is $${TRADE_MARKET.MAX_DEPOSIT}.` });
+      }
+      const key = process.env.PAYSTACK_SECRET_KEY;
+      if (!key) return res.status(500).json({ message: "Payment service not configured" });
+      const tpUser = await storage.getUser(userId);
+      if (!tpUser) return res.status(404).json({ message: "User not found" });
+      const rates = await getUsdNgnRates();
+      const USD_TO_KOBO = Math.round(rates.buying * 100);
+      const amountKobo = Math.round(amount * USD_TO_KOBO);
+      const reference = `TRADE-${userId}-${Date.now()}`;
+      const tpRes = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: tpUser.email,
+          amount: amountKobo,
+          currency: "NGN",
+          reference,
+          metadata: { userId, amountUsd: amount.toFixed(2), brokerId: tpBrokerId, tradingPlanDays: tpPlanDays, custom_fields: [{ display_name: "Purpose", variable_name: "purpose", value: "Trade Market Deposit" }] },
+          channels: ["card", "bank", "ussd", "bank_transfer", "mobile_money"],
+        }),
+      });
+      const tpData = await tpRes.json() as any;
+      if (!tpData.status) return res.status(400).json({ message: tpData.message || "Could not initialize payment" });
+      // Store pending deposit record (walletType 'paystack_trade' to distinguish from personal wallet)
+      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "paystack_trade", status: "pending" });
+      res.json({ authorization_url: tpData.data.authorization_url, reference: tpData.data.reference, access_code: tpData.data.access_code });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Trade Market — Paystack verify & credit trade wallet ──────────────────
+  app.post("/api/trade/paystack/verify", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { reference } = req.body;
+      if (!reference) return res.status(400).json({ message: "Reference is required" });
+      const key = process.env.PAYSTACK_SECRET_KEY;
+      if (!key) return res.status(500).json({ message: "Payment service not configured" });
+      // Double-credit check
+      const allDeposits = await storage.getWalletDepositsByUser(userId);
+      const pending = allDeposits.find((d: any) => d.txHash === reference && d.walletType === "paystack_trade");
+      if (pending && pending.status === "completed") return res.status(400).json({ message: "This payment has already been credited to your trade wallet" });
+      // Verify with Paystack
+      const verRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      const verData = await verRes.json() as any;
+      if (!verData.status || verData.data?.status !== "success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again." });
+      const rates = await getUsdNgnRates();
+      const tpGross = parseFloat(verData.data.metadata?.amountUsd || (verData.data.amount / Math.round(rates.buying * 100)).toFixed(2));
+      const tpBrokerId = verData.data.metadata?.brokerId;
+      const tpPlanDays: number = [60, 90, 120].includes(Number(verData.data.metadata?.tradingPlanDays))
+        ? Number(verData.data.metadata.tradingPlanDays) : 120;
+      // 5% affiliate pool, 95% to user
+      const tpAffiliateCut = parseFloat((tpGross * 0.05).toFixed(6));
+      const tpUserCredit   = parseFloat((tpGross * 0.95).toFixed(6));
+      await storage.getOrCreateTradeWallet(userId);
+      const tpTx = await storage.createTradeTransaction({
+        userId, type: "deposit", walletType: "paystack_trade",
+        amountUsd: tpGross.toFixed(6), feeUsd: "0.000000",
+        reserveFundDeduction: "0.000000", affiliateShareDeduction: tpAffiliateCut.toFixed(6),
+        netAmount: tpUserCredit.toFixed(6), txHash: reference, status: "completed",
+        note: `Trade deposit via Paystack bank/card (${reference}) — 5% affiliate pool, 95% credited`,
+      });
+      await storage.updateTradeBalance(userId, tpUserCredit.toFixed(6));
+      await storage.addToTotalInvested(userId, tpUserCredit.toFixed(6));
+      // Cycle management (same as crypto deposit)
+      const tpPostWallet = await storage.getOrCreateTradeWallet(userId);
+      if (tpPostWallet.roiComplete) {
+        await storage.resetRoiForNewCycle(userId);
+        await storage.assignLossDays(userId, generateLossDays(tpPlanDays));
+      } else if ((tpPostWallet.lossDayNumbers?.length ?? 0) === 0) {
+        await storage.assignLossDays(userId, generateLossDays(tpPlanDays));
+      } else if ((tpPostWallet.tradingDayNumber ?? 0) > 0) {
+        await storage.resetTradingDayForTopUp(userId, generateLossDays(tpPlanDays));
+      }
+      await storage.setTradingPlanDays(userId, tpPlanDays);
+      await storage.addToLockedPrincipal(userId, tpUserCredit.toFixed(6));
+      // Affiliate pool distribution
+      const tpAffCount = await storage.getAffiliateCount();
+      const tpPerAff   = tpAffCount > 0 ? tpAffiliateCut / tpAffCount : 0;
+      await storage.recordAffiliateTradeShare(tpTx.id, tpAffiliateCut.toFixed(6), tpAffCount, tpPerAff.toFixed(6));
+      // Mark wallet_deposit as completed
+      if (pending) await storage.updateWalletDeposit(pending.id, { status: "completed" });
+      const tpNotif = await storage.createNotification({ userId, type: "deposit", title: "Trade Wallet Funded ✓", message: `$${tpUserCredit.toFixed(2)} credited to your Trade Wallet (95%) · $${tpAffiliateCut.toFixed(2)} affiliate pool (5%)`, data: { reference }, isRead: false });
+      pushToUser(userId, "notification", tpNotif);
+      res.json({ message: `$${tpUserCredit.toFixed(2)} has been credited to your Trade Wallet`, amountUsd: tpUserCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

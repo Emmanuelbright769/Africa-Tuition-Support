@@ -690,7 +690,7 @@ function ProductCard({ product, onView, onBuy, wishlisted, onWishlist, inCart, o
       {/* Image */}
       <div className="relative overflow-hidden rounded-t-2xl bg-gray-50" style={{ aspectRatio: "1/1" }}>
         {img ? (
-          <img src={img} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          <img src={img} alt={product.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-5xl bg-gray-50">{CATEGORY_ICONS[product.category] || "📦"}</div>
         )}
@@ -1645,11 +1645,13 @@ export default function EcommerceSection({ initialOpenChatId, onBack }: { initia
       const res = await fetch(`/api/products?${p}`, { credentials: "include" });
       return res.json();
     },
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
   });
 
-  const { data: myListings = [] } = useQuery<Product[]>({ queryKey: ["/api/products/my"], enabled: tab === "account" && accountSubTab === "listings" });
-  const { data: purchases = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/purchases"], enabled: !!user });
-  const { data: sales = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/sales"], enabled: tab === "account" && accountSubTab === "sales" });
+  const { data: myListings = [] } = useQuery<Product[]>({ queryKey: ["/api/products/my"], enabled: tab === "account" && accountSubTab === "listings", staleTime: 30_000 });
+  const { data: purchases = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/purchases"], enabled: !!user, staleTime: 30_000 });
+  const { data: sales = [] } = useQuery<Order[]>({ queryKey: ["/api/orders/sales"], enabled: tab === "account" && accountSubTab === "sales", staleTime: 30_000 });
 
   const { data: alertData } = useQuery<{ productIds: number[] }>({ queryKey: ["/api/price-alerts"], enabled: !!user });
   const watchedIds = new Set(alertData?.productIds ?? []);

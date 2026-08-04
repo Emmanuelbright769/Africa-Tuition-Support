@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Wallet, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight,
   Link2, Eye, EyeOff, TrendingUp, Shield, RefreshCw, RefreshCcw,
+  CreditCard, Banknote, Lock,
 } from "lucide-react";
 
 const MAX_TOPUPS = 3;
@@ -14,9 +15,12 @@ interface TradeWalletViewProps {
   onFund: () => void;
   onConnect: () => void;
   onReinvest: () => void;
+  onBankDeposit: () => void;
 }
 
-export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConnect, onReinvest }: TradeWalletViewProps) {
+export default function TradeWalletView({
+  onDeposit, onWithdraw, onFund, onConnect, onReinvest, onBankDeposit,
+}: TradeWalletViewProps) {
   const [hidden, setHidden] = useState(false);
   const { data: wallet, isLoading, refetch } = useQuery<any>({
     queryKey: ["/api/trade/wallet"],
@@ -31,60 +35,79 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
   const lockedPrincipal = parseFloat(wallet?.lockedPrincipal ?? "0");
   const totalEarnings   = parseFloat(wallet?.totalBotEarnings ?? "0");
   const withdrawable    = Math.max(0, tradeBalance - lockedPrincipal);
+
   const planDays        = wallet?.tradingPlanDays ?? 120;
   const profitCapPct    = planDays === 60 ? 0.70 : planDays === 90 ? 0.80 : 1.00;
   const profitTarget    = lockedPrincipal * profitCapPct;
   const returnPct       = profitTarget > 0 ? Math.min(100, (totalEarnings / profitTarget) * 100) : 0;
+
   const hasWallet       = wallet?.trc20Address || wallet?.bep20Address;
-  const depositCount    = wallet?.depositCount ?? 0;
-  const topupsLeft      = Math.max(0, MAX_TOPUPS - depositCount);
-  const limitReached    = depositCount >= MAX_TOPUPS;
+
+  // Top-up tracking — clamp display to avoid showing "11/3"
+  const rawDepositCount = wallet?.depositCount ?? 0;
+  const depositCount    = Math.min(rawDepositCount, MAX_TOPUPS);   // display-only
+  const limitReached    = rawDepositCount >= MAX_TOPUPS;            // real gate
+  const topupsLeft      = Math.max(0, MAX_TOPUPS - rawDepositCount);
+
+  // Cycle state
+  const roiComplete      = !!(wallet?.roiComplete);
+  const tradingDayNumber = wallet?.tradingDayNumber ?? 0;
+  const cycleComplete    = roiComplete || tradingDayNumber >= planDays;
 
   const fmt = (n: number) => hidden ? "••••••" : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  // ── Action grid (2 × 2) ─────────────────────────────────────
+  const depositDisabled = limitReached;
+  const topUpDisabled   = limitReached;
+
   const actions = [
     {
-      id: "deposit",
-      label: "Deposit",
-      sublabel: "Via crypto (TRC20/BEP20)",
-      icon: ArrowDownToLine,
-      color: limitReached
-        ? "bg-slate-400/10 text-slate-400 border-slate-400/20 opacity-50 cursor-not-allowed"
+      id: "bank",
+      label: "Bank Deposit",
+      sublabel: depositDisabled ? "Top-up limit reached" : "Paystack · card / bank",
+      icon: CreditCard,
+      color: depositDisabled
+        ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
         : "bg-tsia-green/15 text-tsia-green border-tsia-green/30",
-      iconBg: limitReached ? "bg-slate-600" : "bg-tsia-green",
-      onClick: limitReached ? undefined : onDeposit,
-      badge: !limitReached ? `${topupsLeft} left` : null,
+      iconBg: depositDisabled ? "bg-slate-600" : "bg-tsia-green",
+      onClick: depositDisabled ? undefined : onBankDeposit,
+      badge: (!depositDisabled && topupsLeft > 0) ? `${topupsLeft} left` : null,
+    },
+    {
+      id: "deposit",
+      label: "Crypto Deposit",
+      sublabel: depositDisabled ? "Top-up limit reached" : "Via TRC20 / BEP20",
+      icon: ArrowDownToLine,
+      color: depositDisabled
+        ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
+        : "bg-emerald-400/15 text-emerald-400 border-emerald-400/30",
+      iconBg: depositDisabled ? "bg-slate-600" : "bg-emerald-600",
+      onClick: depositDisabled ? undefined : onDeposit,
+      badge: null,
     },
     {
       id: "fund",
-      label: limitReached ? "Re-invest" : "Top Up",
-      sublabel: limitReached ? "Roll earnings into principal" : `From SwiftWallet · ${topupsLeft} left`,
-      icon: limitReached ? RefreshCcw : Wallet,
-      color: limitReached
-        ? "bg-tsia-gold/15 text-tsia-gold border-tsia-gold/30"
+      label: "Top Up",
+      sublabel: topUpDisabled
+        ? cycleComplete ? "Use Re-invest below" : "Limit reached — 3/3 used"
+        : `From SwiftWallet · ${topupsLeft} left`,
+      icon: Wallet,
+      color: topUpDisabled
+        ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
         : "bg-tsia-gold/15 text-tsia-gold border-tsia-gold/30",
-      iconBg: "bg-tsia-gold",
-      onClick: limitReached ? onReinvest : onFund,
+      iconBg: topUpDisabled ? "bg-slate-600" : "bg-tsia-gold",
+      onClick: topUpDisabled ? undefined : onFund,
+      badge: null,
     },
     {
       id: "withdraw",
       label: "Withdraw",
-      sublabel: "Earnings to wallet/bank",
+      sublabel: "Earnings to wallet / bank",
       icon: ArrowUpFromLine,
       color: "bg-blue-400/15 text-blue-400 border-blue-400/30",
       iconBg: "bg-blue-500",
       onClick: onWithdraw,
-    },
-    {
-      id: "connect",
-      label: hasWallet ? "Exchange Wallet" : "Connect Wallet",
-      sublabel: hasWallet ? "TRC20/BEP20 connected" : "Link your exchange address",
-      icon: hasWallet ? Link2 : ArrowLeftRight,
-      color: hasWallet
-        ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30"
-        : "bg-slate-400/15 text-slate-300 border-slate-400/30",
-      iconBg: hasWallet ? "bg-emerald-500" : "bg-slate-600",
-      onClick: onConnect,
+      badge: null,
     },
   ];
 
@@ -137,18 +160,18 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
         </div>
       </div>
 
-      {/* Limit-reached banner */}
-      {limitReached && (
+      {/* Limit-reached banner (shows when limit hit but cycle not yet complete) */}
+      {limitReached && !cycleComplete && (
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           className="flex items-start gap-3 rounded-2xl border border-tsia-gold/30 bg-tsia-gold/10 px-4 py-3"
         >
-          <RefreshCcw className="h-4 w-4 shrink-0 text-tsia-gold mt-0.5" />
+          <Lock className="h-4 w-4 shrink-0 text-tsia-gold mt-0.5" />
           <div>
             <p className="text-xs font-bold text-tsia-gold">Top-up limit reached</p>
             <p className="mt-0.5 text-[10px] text-tsia-gold/70 leading-snug">
-              You've used all 3 top-up slots. Use <span className="font-bold">Re-invest</span> to roll your withdrawable earnings back into your principal and restart the earning cycle.
+              You've used all 3 top-up slots. Continue your current cycle — when your cycle completes, you can <span className="font-bold">Re-invest</span> earnings into a new cycle.
             </p>
           </div>
         </motion.div>
@@ -201,7 +224,9 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
             <div className="flex items-center justify-between text-[10px]">
               <span className="text-white/50 flex items-center gap-1"><TrendingUp className="h-3 w-3" /> ROI Progress</span>
               <span className={`font-bold ${returnPct >= 100 ? "text-tsia-gold" : "text-white/70"}`}>
-                {returnPct >= 100 ? "100% reached ✓" : `${returnPct.toFixed(1)}% of 100%`}
+                {returnPct >= 100
+                  ? `${(profitCapPct * 100).toFixed(0)}% cap reached ✓`
+                  : `${returnPct.toFixed(1)}% of ${(profitCapPct * 100).toFixed(0)}%`}
               </span>
             </div>
             <div className="mt-1.5 h-1.5 rounded-full bg-white/10">
@@ -212,11 +237,16 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
                 className={`h-full rounded-full ${returnPct >= 100 ? "bg-tsia-gold" : "bg-tsia-green"}`}
               />
             </div>
+            {returnPct >= 100 && (
+              <p className="mt-1 text-[9px] text-tsia-gold/60">
+                Profit cap reached · {withdrawable > 0 ? `$${withdrawable.toFixed(2)} available to withdraw` : "earnings fully withdrawn"}
+              </p>
+            )}
           </div>
         )}
       </motion.div>
 
-      {/* Action buttons */}
+      {/* Action buttons — 2×2 grid */}
       <div className="grid grid-cols-2 gap-3">
         {actions.map((a, i) => (
           <motion.button
@@ -244,6 +274,60 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
         ))}
       </div>
 
+      {/* Connect Wallet — full width */}
+      <motion.button
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.28 }}
+        onClick={onConnect}
+        className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-all hover:scale-[1.01] active:scale-[0.99] ${
+          hasWallet
+            ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30"
+            : "bg-slate-400/15 text-slate-300 border-slate-400/30"
+        }`}
+      >
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${hasWallet ? "bg-emerald-500" : "bg-slate-600"}`}>
+          {hasWallet ? <Link2 className="h-5 w-5 text-white" /> : <ArrowLeftRight className="h-5 w-5 text-white" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold leading-tight">{hasWallet ? "Exchange Wallet" : "Connect Wallet"}</p>
+          <p className="mt-0.5 text-[10px] opacity-70 leading-snug">{hasWallet ? "TRC20/BEP20 connected" : "Link your exchange address"}</p>
+        </div>
+        {hasWallet && (
+          <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-[9px] font-bold text-emerald-300">Edit</span>
+        )}
+      </motion.button>
+
+      {/* Re-invest — only shown after cycle is complete */}
+      {cycleComplete && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-tsia-gold/40 bg-tsia-gold/10 p-4"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tsia-gold">
+              <RefreshCcw className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-tsia-gold">Cycle Complete — Re-invest</p>
+              <p className="mt-0.5 text-[10px] text-tsia-gold/70 leading-snug">
+                {withdrawable >= 2
+                  ? `Roll $${withdrawable.toFixed(2)} earnings back into principal and start a new cycle.`
+                  : "Add at least $2 in withdrawable earnings to re-invest."}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onReinvest}
+            disabled={withdrawable < 2}
+            className="mt-3 w-full rounded-xl bg-tsia-gold py-2.5 text-sm font-bold text-white transition-all hover:bg-tsia-gold/90 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {withdrawable >= 2 ? `Re-invest $${withdrawable.toFixed(2)}` : "Insufficient earnings"}
+          </button>
+        </motion.div>
+      )}
+
       {/* Exchange wallet status */}
       {hasWallet && (
         <motion.div
@@ -267,9 +351,6 @@ export default function TradeWalletView({ onDeposit, onWithdraw, onFund, onConne
               )}
             </div>
           </div>
-          <button onClick={onConnect} className="rounded-lg bg-emerald-500/20 px-3 py-1.5 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/30 transition-colors">
-            Edit
-          </button>
         </motion.div>
       )}
 

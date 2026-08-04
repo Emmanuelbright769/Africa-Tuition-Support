@@ -706,6 +706,12 @@ export default function AffiliateDashboard() {
   const [fundTradeOpen, setFundTradeOpen] = useState(false);
   const [fundTradeAmt, setFundTradeAmt]   = useState("");
   const [reinvestOpen, setReinvestOpen]   = useState(false);
+  // Trade Market — Bank/Card Deposit via Paystack state
+  const [tradePSDepositOpen, setTradePSDepositOpen] = useState(false);
+  const [tradePSStep, setTradePSStep] = useState<"broker"|"plan"|"amount"|"verify">("broker");
+  const [tradePSAmt, setTradePSAmt]   = useState("");
+  const [tradePSPayUrl, setTradePSPayUrl] = useState("");
+  const [tradePSRef, setTradePSRef]   = useState("");
 
   // Trade balance visibility (persisted)
   const [tradeBalanceHidden, setTradeBalanceHidden] = useState<boolean>(() => {
@@ -1068,6 +1074,43 @@ export default function AffiliateDashboard() {
       setActivationPopupOpen(true);
     }
   }, [personalWalletData, user?.id]);
+
+  // Trade Paystack Deposit — initialize
+  const tradePSInitMutation = useMutation({
+    mutationFn: async () => {
+      const amt = parseFloat(tradePSAmt);
+      const minAmt = selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT;
+      if (!amt || amt < minAmt) throw new Error(`Minimum for ${selectedBroker?.name ?? "this exchange"} is $${minAmt}`);
+      const res = await apiRequest("POST", "/api/trade/paystack/initialize", { amountUsd: amt, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: (data) => {
+      setTradePSPayUrl(data.authorization_url);
+      setTradePSRef(data.reference);
+      setTradePSStep("verify");
+      window.open(data.authorization_url, "_blank", "noopener,noreferrer");
+    },
+    onError: (err: any) => toast({ title: "Payment Init Failed", description: err.message, variant: "destructive" }),
+  });
+
+  // Trade Paystack Deposit — verify
+  const tradePSVerifyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/trade/paystack/verify", { reference: tradePSRef });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: (data) => {
+      toast({ title: "Trade Wallet Funded! ✓", description: data.message, className: "border-tsia-green" });
+      setTradePSDepositOpen(false);
+      setTradePSStep("broker"); setTradePSAmt(""); setTradePSRef(""); setTradePSPayUrl("");
+      refetchTradeWallet(); refetchTradeTxs();
+    },
+    onError: (err: any) => toast({ title: "Verification Failed", description: err.message, variant: "destructive" }),
+  });
 
   const reinvestMutation = useMutation({
     mutationFn: async () => {
@@ -1599,6 +1642,7 @@ export default function AffiliateDashboard() {
                   onFund={() => setFundTradeOpen(true)}
                   onConnect={() => setConnectOpen(true)}
                   onReinvest={() => setReinvestOpen(true)}
+                  onBankDeposit={() => { setTradePSStep("broker"); setTradePSAmt(""); setTradePSRef(""); setTradePSPayUrl(""); setTradePSDepositOpen(true); }}
                 >
                 <motion.div variants={itemVariants} data-trade-anchor="home" style={{ scrollMarginTop: "5rem" }}>
                   <div className="trade-market-hero mb-6 overflow-hidden rounded-[2rem] border border-white/60 p-6 shadow-[0_24px_70px_rgba(26,64,46,.14)] backdrop-blur-xl sm:p-9 dark:border-white/10">
@@ -3397,6 +3441,118 @@ export default function AffiliateDashboard() {
               Re-invest ${withdrawableAmt.toFixed(2)}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Trade Market — Bank/Card Deposit via Paystack */}
+      <Dialog open={tradePSDepositOpen} onOpenChange={o => { setTradePSDepositOpen(o); if (!o) { setTradePSStep("broker"); setTradePSAmt(""); setTradePSRef(""); setTradePSPayUrl(""); } }}>
+        <DialogContent className="max-w-sm">
+          {tradePSStep === "broker" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><Globe className="w-5 h-5 text-tsia-green" /> Bank / Card Deposit</DialogTitle>
+                <DialogDescription>Choose your exchange, then pay securely via Paystack (bank transfer, card, USSD).</DialogDescription>
+              </DialogHeader>
+              <div className="py-2 space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                {TRADE_BROKERS.map(broker => (
+                  <button key={broker.id} type="button"
+                    onClick={() => { handleBrokerChange(broker.id); setTradePSStep("plan"); setTradePSAmt(""); }}
+                    className="w-full text-left flex items-center justify-between gap-3 rounded-xl border-2 border-border hover:border-tsia-green bg-card hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all duration-150 px-4 py-3 group">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm group-hover:text-tsia-green transition-colors">{broker.name}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">{broker.specialty}</p>
+                    </div>
+                    <span className="text-xs font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-full shrink-0">
+                      Min. ${broker.minDeposit}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <DialogFooter><Button variant="outline" onClick={() => setTradePSDepositOpen(false)}>Cancel</Button></DialogFooter>
+            </>
+          ) : tradePSStep === "plan" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-600" /> Choose Trading Plan</DialogTitle>
+                <DialogDescription>Select your cycle length — earnings cap at the plan's promised return on your capital.</DialogDescription>
+              </DialogHeader>
+              <div className="py-2 space-y-2">
+                {TRADING_PLANS.map(plan => (
+                  <button key={plan.days} type="button"
+                    onClick={() => { setSelectedTradingPlan(plan.days as 60|90|120); try { localStorage.setItem("tsia_trading_plan", String(plan.days)); } catch {} setTradePSStep("amount"); }}
+                    className={`w-full text-left flex items-center justify-between gap-3 rounded-xl border-2 transition-all duration-150 px-4 py-3.5 ${selectedTradingPlan === plan.days ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-border hover:border-emerald-400 bg-card"}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm">{plan.label}
+                        {plan.days === 120 && <span className="ml-2 text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">Recommended</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{plan.description}</p>
+                    </div>
+                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 shrink-0">{plan.rateLabel}</span>
+                  </button>
+                ))}
+              </div>
+              <DialogFooter><Button variant="outline" onClick={() => setTradePSStep("broker")}>← Back</Button></DialogFooter>
+            </>
+          ) : tradePSStep === "amount" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><CreditCard className="w-5 h-5 text-tsia-green" /> Enter Deposit Amount</DialogTitle>
+                <DialogDescription>{selectedBroker?.name ?? "Exchange"} · {TRADING_PLANS.find(p => p.days === selectedTradingPlan)?.label ?? "120-Day"} · Min. ${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div>
+                  <Label>Amount (USD)</Label>
+                  <Input type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} max={TRADE_MARKET.MAX_DEPOSIT}
+                    placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}`}
+                    value={tradePSAmt} onChange={e => setTradePSAmt(e.target.value)} className="mt-1" />
+                  {tradePSAmt && parseFloat(tradePSAmt) > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(tradePSAmt))} — 5% affiliate pool, 95% credited to trade wallet</p>
+                  )}
+                </div>
+                <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+                  ℹ Paystack opens in a new tab. After paying, return here and click <strong>Verify Payment</strong>.
+                </div>
+              </div>
+              <DialogFooter className="flex gap-2">
+                <Button variant="outline" onClick={() => setTradePSStep("plan")}>← Back</Button>
+                <Button
+                  onClick={() => tradePSInitMutation.mutate()}
+                  disabled={tradePSInitMutation.isPending || !tradePSAmt || parseFloat(tradePSAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT)}
+                  className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold flex-1">
+                  {tradePSInitMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CreditCard className="w-4 h-4 mr-2" />}
+                  Pay ${tradePSAmt || "0"} via Paystack
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-tsia-green" /> Verify Payment</DialogTitle>
+                <DialogDescription>After completing payment in Paystack, click Verify to credit your trade wallet.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="rounded-xl border border-tsia-green/30 bg-tsia-green/10 px-4 py-3 text-sm space-y-1">
+                  <p className="font-semibold text-tsia-green">Payment reference: <span className="font-mono text-xs">{tradePSRef}</span></p>
+                  <p className="text-xs text-muted-foreground">Amount: ${tradePSAmt} · {selectedBroker?.name} · {TRADING_PLANS.find(p => p.days === selectedTradingPlan)?.label}</p>
+                </div>
+                {tradePSPayUrl && (
+                  <Button variant="outline" size="sm" className="w-full" onClick={() => window.open(tradePSPayUrl, "_blank", "noopener,noreferrer")}>
+                    <ExternalLink className="w-4 h-4 mr-2" /> Reopen Payment Page
+                  </Button>
+                )}
+              </div>
+              <DialogFooter className="flex gap-2">
+                <Button variant="outline" onClick={() => setTradePSStep("amount")}>← Back</Button>
+                <Button
+                  onClick={() => tradePSVerifyMutation.mutate()}
+                  disabled={tradePSVerifyMutation.isPending}
+                  className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold flex-1">
+                  {tradePSVerifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                  Verify Payment
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

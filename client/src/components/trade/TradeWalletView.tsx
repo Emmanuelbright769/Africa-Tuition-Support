@@ -39,7 +39,15 @@ export default function TradeWalletView({
   const planDays        = wallet?.tradingPlanDays ?? 120;
   const profitCapPct    = planDays === 60 ? 0.70 : planDays === 90 ? 0.80 : 1.00;
   const profitTarget    = lockedPrincipal * profitCapPct;
-  const returnPct       = profitTarget > 0 ? Math.min(100, (totalEarnings / profitTarget) * 100) : 0;
+
+  // ── ROI bar ──────────────────────────────────────────────────────────────────
+  // Use `roiComplete` (server-set flag) as the ONLY gate for "cap reached".
+  // totalBotEarnings can be inflated by data issues (e.g. a deposit being
+  // double-counted), so never show 100% unless the server has explicitly
+  // confirmed the cycle is done.
+  const rawReturnPct    = profitTarget > 0 ? (totalEarnings / profitTarget) * 100 : 0;
+  const returnPct       = roiComplete ? 100 : Math.min(99.9, rawReturnPct);
+  const capReached      = roiComplete;                     // single source of truth
 
   const hasWallet       = wallet?.trc20Address || wallet?.bep20Address;
 
@@ -142,19 +150,19 @@ export default function TradeWalletView({
       {/* Top-up usage indicator */}
       <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <TrendingUp className="h-3.5 w-3.5 text-white/40" />
-          <span className="text-xs text-white/50">Top-up slots used</span>
+          <TrendingUp className="h-3.5 w-3.5 text-white/60" />
+          <span className="text-xs font-medium text-white/70">Top-up slots used</span>
         </div>
         <div className="flex items-center gap-1.5">
           {Array.from({ length: MAX_TOPUPS }).map((_, i) => (
             <div
               key={i}
-              className={`h-2 w-5 rounded-full transition-colors ${
-                i < depositCount ? "bg-tsia-gold" : "bg-white/15"
+              className={`h-2 w-6 rounded-full transition-colors ${
+                i < depositCount ? "bg-tsia-gold" : "bg-white/20"
               }`}
             />
           ))}
-          <span className={`ml-1 text-[10px] font-bold ${limitReached ? "text-tsia-gold" : "text-white/50"}`}>
+          <span className={`ml-1 text-xs font-bold ${limitReached ? "text-tsia-gold" : "text-white/70"}`}>
             {depositCount}/{MAX_TOPUPS}
           </span>
         </div>
@@ -205,15 +213,15 @@ export default function TradeWalletView({
         {/* Stats row */}
         <div className="mt-5 grid grid-cols-3 gap-3">
           <div className="rounded-xl bg-white/5 px-3 py-2.5">
-            <p className="text-[10px] text-white/40">Locked Capital</p>
+            <p className="text-[10px] text-white/60">Locked Capital</p>
             <p className="mt-0.5 text-sm font-black text-white">{fmt(lockedPrincipal)}</p>
           </div>
           <div className="rounded-xl bg-white/5 px-3 py-2.5">
-            <p className="text-[10px] text-white/40">Withdrawable</p>
+            <p className="text-[10px] text-white/60">Withdrawable</p>
             <p className="mt-0.5 text-sm font-black text-tsia-green">{fmt(withdrawable)}</p>
           </div>
           <div className="rounded-xl bg-white/5 px-3 py-2.5">
-            <p className="text-[10px] text-white/40">Bot Earnings</p>
+            <p className="text-[10px] text-white/60">Bot Earnings</p>
             <p className="mt-0.5 text-sm font-black text-tsia-gold">{fmt(totalEarnings)}</p>
           </div>
         </div>
@@ -222,26 +230,35 @@ export default function TradeWalletView({
         {lockedPrincipal > 0 && (
           <div className="mt-4">
             <div className="flex items-center justify-between text-[10px]">
-              <span className="text-white/50 flex items-center gap-1"><TrendingUp className="h-3 w-3" /> ROI Progress</span>
-              <span className={`font-bold ${returnPct >= 100 ? "text-tsia-gold" : "text-white/70"}`}>
-                {returnPct >= 100
+              <span className="text-white/70 flex items-center gap-1 font-medium">
+                <TrendingUp className="h-3 w-3" /> ROI Progress
+              </span>
+              <span className={`font-bold ${capReached ? "text-tsia-gold" : "text-white/90"}`}>
+                {capReached
                   ? `${(profitCapPct * 100).toFixed(0)}% cap reached ✓`
                   : `${returnPct.toFixed(1)}% of ${(profitCapPct * 100).toFixed(0)}%`}
               </span>
             </div>
-            <div className="mt-1.5 h-1.5 rounded-full bg-white/10">
+            <div className="mt-1.5 h-2 rounded-full bg-white/10">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${returnPct}%` }}
                 transition={{ duration: 1, ease: "easeOut" }}
-                className={`h-full rounded-full ${returnPct >= 100 ? "bg-tsia-gold" : "bg-tsia-green"}`}
+                className={`h-full rounded-full ${capReached ? "bg-tsia-gold" : "bg-tsia-green"}`}
               />
             </div>
-            {returnPct >= 100 && (
-              <p className="mt-1 text-[9px] text-tsia-gold/60">
-                Profit cap reached · {withdrawable > 0 ? `$${withdrawable.toFixed(2)} available to withdraw` : "earnings fully withdrawn"}
-              </p>
-            )}
+            <div className="mt-1.5 flex items-center justify-between text-[10px]">
+              <span className="text-white/55">
+                {capReached
+                  ? withdrawable > 0
+                    ? `$${withdrawable.toFixed(2)} available to withdraw`
+                    : "Earnings fully withdrawn"
+                  : `Target: $${profitTarget.toFixed(2)}`}
+              </span>
+              <span className="text-white/55">
+                Day {Math.min(tradingDayNumber, planDays)}/{planDays}
+              </span>
+            </div>
           </div>
         )}
       </motion.div>

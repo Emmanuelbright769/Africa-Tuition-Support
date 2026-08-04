@@ -10,7 +10,7 @@ export const tierEnum = pgEnum("tier", ["platinum", "gold", "silver", "none"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["verification_fee", "plan_payment", "sponsorship_credit", "withdrawal", "vat_deduction", "deposit", "transfer", "bill", "trade_transfer", "loan", "admin_credit", "admin_adjustment", "crypto_withdrawal", "refund", "maintenance_fee"]);
 export const disbursementStatusEnum = pgEnum("disbursement_status", ["pending", "approved", "rejected", "completed"]);
 export const tradeWalletTypeEnum = pgEnum("trade_wallet_type", ["trc20", "bep20"]);
-export const tradeTransactionTypeEnum = pgEnum("trade_transaction_type", ["deposit", "withdraw_exchange", "withdraw_bank", "bot_earning"]);
+export const tradeTransactionTypeEnum = pgEnum("trade_transaction_type", ["deposit", "topup", "withdraw_exchange", "withdraw_bank", "bot_earning"]);
 export const tradeTransactionStatusEnum = pgEnum("trade_transaction_status", ["pending", "completed", "failed"]);
 
 export const users = pgTable("users", {

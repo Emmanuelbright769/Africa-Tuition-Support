@@ -2614,7 +2614,7 @@ export async function registerRoutes(
             WHERE type = 'bot_earning' AND amount_usd::numeric > 0
           ), 0) AS current_cycle_earnings,
           COUNT(*) FILTER (
-            WHERE type = 'deposit' AND status = 'completed'
+            WHERE type = 'topup' AND status = 'completed'
           ) AS deposit_count
         FROM trade_transactions
         WHERE user_id = ${userId}
@@ -2749,27 +2749,35 @@ export async function registerRoutes(
       if (!["trc20", "bep20"].includes(walletType)) {
         return res.status(400).json({ message: "walletType must be trc20 or bep20." });
       }
-      // Enforce 3 top-up limit per cycle (since cycle_started_at, not lifetime)
-      const depositLimitRow = await db.execute(sql`
-        SELECT COUNT(*) AS cnt FROM trade_transactions
-        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
-        AND created_at >= COALESCE(
-          (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
-          '1970-01-01'::timestamptz
-        )
-      `);
-      if (parseInt((depositLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
-        return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots. Re-invest your earnings after your cycle completes to continue." });
+      // Determine if this is an initial deposit or a mid-cycle top-up.
+      // Initial deposit: no loss schedule yet, OR the previous cycle just completed.
+      // Top-up: cycle is actively running (schedule exists, not roi-complete).
+      const preDepositWallet = await storage.getOrCreateTradeWallet(userId);
+      const isCryptoTopUp = !preDepositWallet.roiComplete && (preDepositWallet.lossDayNumbers?.length ?? 0) > 0;
+
+      // Enforce 3 top-up limit per cycle — only for mid-cycle top-ups, not the initial deposit
+      if (isCryptoTopUp) {
+        const depositLimitRow = await db.execute(sql`
+          SELECT COUNT(*) AS cnt FROM trade_transactions
+          WHERE user_id = ${userId} AND type = 'topup' AND status = 'completed'
+          AND created_at >= COALESCE(
+            (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
+            '1970-01-01'::timestamptz
+          )
+        `);
+        if (parseInt((depositLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
+          return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots. Re-invest your earnings after your cycle completes to continue." });
+        }
       }
+
       // Allocations on deposit — 5% affiliate pool only; no reserve fund on direct crypto deposits
       const reserveCut   = 0;
       const affiliateCut = parseFloat((amount * 0.05).toFixed(6));
       const userCredit   = parseFloat((amount * 0.95).toFixed(6));
 
-      await storage.getOrCreateTradeWallet(userId);
       const tx = await storage.createTradeTransaction({
         userId,
-        type: "deposit",
+        type: isCryptoTopUp ? "topup" : "deposit",
         walletType,
         amountUsd: amount.toFixed(6),
         feeUsd: "0.000000",
@@ -2839,18 +2847,25 @@ export async function registerRoutes(
       if (isNaN(amount) || amount < minDeposit) {
         return res.status(400).json({ message: `Minimum funding amount for ${broker ? broker.name : "this exchange"} is $${minDeposit}.` });
       }
-      // Enforce 3 top-up limit per cycle (since cycle_started_at)
-      const fwDepositLimitRow = await db.execute(sql`
-        SELECT COUNT(*) AS cnt FROM trade_transactions
-        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
-        AND created_at >= COALESCE(
-          (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
-          '1970-01-01'::timestamptz
-        )
-      `);
-      if (parseInt((fwDepositLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
-        return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots. Re-invest your earnings after your cycle completes to continue." });
+      // Determine if this is an initial deposit or a mid-cycle top-up.
+      const preFwWallet = await storage.getOrCreateTradeWallet(userId);
+      const isFwTopUp = !preFwWallet.roiComplete && (preFwWallet.lossDayNumbers?.length ?? 0) > 0;
+
+      // Enforce 3 top-up limit per cycle — only for mid-cycle top-ups, not the initial deposit
+      if (isFwTopUp) {
+        const fwDepositLimitRow = await db.execute(sql`
+          SELECT COUNT(*) AS cnt FROM trade_transactions
+          WHERE user_id = ${userId} AND type = 'topup' AND status = 'completed'
+          AND created_at >= COALESCE(
+            (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
+            '1970-01-01'::timestamptz
+          )
+        `);
+        if (parseInt((fwDepositLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
+          return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots. Re-invest your earnings after your cycle completes to continue." });
+        }
       }
+
       if (amount > TRADE_MARKET.MAX_DEPOSIT) {
         return res.status(400).json({ message: `Maximum deposit is $${TRADE_MARKET.MAX_DEPOSIT}.` });
       }
@@ -2868,10 +2883,9 @@ export async function registerRoutes(
       const affiliateCut  = parseFloat((amount * 0.05).toFixed(6));
       const userCredit    = parseFloat((amount - affiliateCut).toFixed(6)); // 95%
       // Credit trade wallet
-      await storage.getOrCreateTradeWallet(userId);
       const tx = await storage.createTradeTransaction({
         userId,
-        type: "deposit",
+        type: isFwTopUp ? "topup" : "deposit",
         walletType: "trc20",
         amountUsd: amount.toFixed(6),
         feeUsd: "0.000000",
@@ -2980,9 +2994,11 @@ export async function registerRoutes(
   ): Promise<{ userCredit: number; affiliateCut: number }> {
     const affiliateCut = parseFloat((gross * 0.05).toFixed(6));
     const userCredit   = parseFloat((gross * 0.95).toFixed(6));
-    await storage.getOrCreateTradeWallet(userId);
+    // Read pre-deposit wallet state to determine if this is an initial deposit or a mid-cycle top-up
+    const preWallet = await storage.getOrCreateTradeWallet(userId);
+    const isBankTopUp = !preWallet.roiComplete && (preWallet.lossDayNumbers?.length ?? 0) > 0;
     const tx = await storage.createTradeTransaction({
-      userId, type: "deposit", walletType,
+      userId, type: isBankTopUp ? "topup" : "deposit", walletType,
       amountUsd: gross.toFixed(6), feeUsd: "0.000000",
       reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
       netAmount: userCredit.toFixed(6), txHash: txRef, status: "completed",
@@ -3022,15 +3038,20 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       if (await isTradeSessionActive(userId)) return res.status(403).json({ message: "Deposits are disabled during an active trade session." });
-      const tdLimitRow = await db.execute(sql`
-        SELECT COUNT(*) AS cnt FROM trade_transactions
-        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
-        AND created_at >= COALESCE(
-          (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
-          '1970-01-01'::timestamptz
-        )
-      `);
-      if (parseInt((tdLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots." });
+      // Only enforce the 3-slot limit for mid-cycle top-ups, not initial deposits
+      const sqPreWallet = await storage.getOrCreateTradeWallet(userId);
+      const isSqTopUp = !sqPreWallet.roiComplete && (sqPreWallet.lossDayNumbers?.length ?? 0) > 0;
+      if (isSqTopUp) {
+        const tdLimitRow = await db.execute(sql`
+          SELECT COUNT(*) AS cnt FROM trade_transactions
+          WHERE user_id = ${userId} AND type = 'topup' AND status = 'completed'
+          AND created_at >= COALESCE(
+            (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
+            '1970-01-01'::timestamptz
+          )
+        `);
+        if (parseInt((tdLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots." });
+      }
       const { amountUsd, brokerId: sqBrokerId, tradingPlanDays: rawSqPlan } = req.body;
       const amount = parseFloat(amountUsd);
       const sqBroker = TRADE_BROKERS.find(b => b.id === sqBrokerId);
@@ -3087,15 +3108,20 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       if (await isTradeSessionActive(userId)) return res.status(403).json({ message: "Deposits are disabled during an active trade session." });
-      const tkLimitRow = await db.execute(sql`
-        SELECT COUNT(*) AS cnt FROM trade_transactions
-        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
-        AND created_at >= COALESCE(
-          (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
-          '1970-01-01'::timestamptz
-        )
-      `);
-      if (parseInt((tkLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots." });
+      // Only enforce the 3-slot limit for mid-cycle top-ups, not initial deposits
+      const krPreWallet = await storage.getOrCreateTradeWallet(userId);
+      const isKrTopUp = !krPreWallet.roiComplete && (krPreWallet.lossDayNumbers?.length ?? 0) > 0;
+      if (isKrTopUp) {
+        const tkLimitRow = await db.execute(sql`
+          SELECT COUNT(*) AS cnt FROM trade_transactions
+          WHERE user_id = ${userId} AND type = 'topup' AND status = 'completed'
+          AND created_at >= COALESCE(
+            (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
+            '1970-01-01'::timestamptz
+          )
+        `);
+        if (parseInt((tkLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots." });
+      }
       const { amountUsd, brokerId: krBrokerId, tradingPlanDays: rawKrPlan } = req.body;
       const amount = parseFloat(amountUsd);
       const krBroker = TRADE_BROKERS.find(b => b.id === krBrokerId);
@@ -3746,13 +3772,13 @@ export async function registerRoutes(
       const walletsAtMin       = parseInt(floorRow.wallets_at_min ?? "0", 10);
       const totalWallets       = parseInt(floorRow.total_wallets ?? "0", 10);
 
-      // Sum actual trade deposit amounts (the source that generates the 20% reserve)
+      // Sum actual trade deposit amounts (initial deposits + mid-cycle top-ups)
       const depositSumResult = await db.execute(sql`
         SELECT
           COALESCE(SUM(CAST(amount_usd AS numeric)), 0) AS total_trade_deposits,
           COUNT(*) AS deposit_count
         FROM trade_transactions
-        WHERE type = 'deposit'
+        WHERE type IN ('deposit', 'topup')
       `);
       const depositSumRow      = (depositSumResult.rows[0] as any) ?? {};
       const totalTradeDeposits = parseFloat(depositSumRow.total_trade_deposits ?? "0");
@@ -5835,9 +5861,9 @@ export async function registerRoutes(
       const depositAggResult = await db.execute(sql`
         SELECT
           COALESCE(SUM(CAST(amount_usd AS numeric)), 0) AS total_deposits,
-          COUNT(*) FILTER (WHERE type = 'deposit') AS deposit_count
+          COUNT(*) AS deposit_count
         FROM trade_transactions
-        WHERE type = 'deposit'
+        WHERE type IN ('deposit', 'topup')
       `);
       const depositAgg = (depositAggResult.rows[0] as any) ?? {};
       const totalTradeDeposits = parseFloat(depositAgg.total_deposits ?? "0");

@@ -140,6 +140,9 @@ async function runMigrations() {
     `);
     console.log("[MIGRATE] Co-affiliate share_percentage backfill applied");
 
+    // ── topup type for mid-cycle top-ups (distinct from initial deposit) ──────
+    await db.execute(sql`ALTER TYPE trade_transaction_type ADD VALUE IF NOT EXISTS 'topup'`);
+
     // ── cycle_started_at column (tracks start of current deposit cycle) ────────
     await db.execute(sql`
       ALTER TABLE trade_wallets

@@ -33,7 +33,9 @@ export default function TradeWalletView({
 
   const tradeBalance    = parseFloat(wallet?.tradeBalance ?? "0");
   const lockedPrincipal = parseFloat(wallet?.lockedPrincipal ?? "0");
-  const totalEarnings   = parseFloat(wallet?.totalBotEarnings ?? "0");
+  // currentCycleEarnings is the server-computed sum of positive bot earnings
+  // since cycle_started_at — immune to wallet-field corruption or admin resets.
+  const totalEarnings   = parseFloat(wallet?.currentCycleEarnings ?? wallet?.totalBotEarnings ?? "0");
   const withdrawable    = Math.max(0, tradeBalance - lockedPrincipal);
 
   const planDays        = wallet?.tradingPlanDays ?? 120;
@@ -52,7 +54,9 @@ export default function TradeWalletView({
   // confirmed the cycle is done.
   const rawReturnPct    = profitTarget > 0 ? (totalEarnings / profitTarget) * 100 : 0;
   const returnPct       = roiComplete ? 100 : Math.min(99.9, rawReturnPct);
-  const capReached      = roiComplete;                     // single source of truth
+  // capReached: true when server set roiComplete=true OR when cumulative earnings
+  // have actually reached/exceeded the profit target (using transaction-computed value).
+  const capReached      = roiComplete || (profitTarget > 0 && totalEarnings >= profitTarget);
 
   const hasWallet       = wallet?.trc20Address || wallet?.bep20Address;
 

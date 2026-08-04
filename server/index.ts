@@ -139,6 +139,50 @@ async function runMigrations() {
         AND status = 'active'
     `);
     console.log("[MIGRATE] Co-affiliate share_percentage backfill applied");
+
+    // ── cycle_started_at column (tracks start of current deposit cycle) ────────
+    await db.execute(sql`
+      ALTER TABLE trade_wallets
+        ADD COLUMN IF NOT EXISTS cycle_started_at TIMESTAMP
+    `);
+
+    // ── Backfill cycle_started_at: set it to the user's most recent deposit ─────
+    // This ensures per-cycle deposit counts and earnings computations are correct
+    // for all users who deposited before this column was added.
+    await db.execute(sql`
+      UPDATE trade_wallets tw
+      SET cycle_started_at = (
+        SELECT MAX(created_at) FROM trade_transactions
+        WHERE user_id = tw.user_id AND type = 'deposit' AND status = 'completed'
+      )
+      WHERE tw.cycle_started_at IS NULL
+      AND EXISTS (
+        SELECT 1 FROM trade_transactions
+        WHERE user_id = tw.user_id AND type = 'deposit' AND status = 'completed'
+      )
+    `);
+
+    // ── Fix roi_complete for users whose cycle earnings ≥ profit target ─────────
+    // Earnings are computed from actual bot_earning transactions since cycle_started_at
+    // (not from the potentially-corrupted total_bot_earnings wallet field).
+    await db.execute(sql`
+      UPDATE trade_wallets tw
+      SET roi_complete = TRUE, updated_at = NOW()
+      WHERE tw.roi_complete = FALSE
+      AND tw.locked_principal::numeric > 0
+      AND (
+        SELECT COALESCE(SUM(t.amount_usd::numeric) FILTER (WHERE t.amount_usd::numeric > 0), 0)
+        FROM trade_transactions t
+        WHERE t.user_id = tw.user_id AND t.type = 'bot_earning'
+        AND t.created_at >= COALESCE(tw.cycle_started_at, '1970-01-01'::timestamptz)
+      ) >= tw.locked_principal::numeric * CASE
+          WHEN tw.trading_plan_days = 60  THEN 0.70
+          WHEN tw.trading_plan_days = 90  THEN 0.80
+          ELSE 1.00
+        END
+    `);
+
+    console.log("[MIGRATE] cycle_started_at column and data fix applied");
     console.log("[MIGRATE] Schema migrations applied successfully");
   } catch (e) {
     console.error("[MIGRATE] Migration error:", e);

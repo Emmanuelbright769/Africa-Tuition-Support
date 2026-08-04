@@ -2605,13 +2605,28 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const wallet = await storage.getOrCreateTradeWallet(userId);
-      // Per-user top-up count (both crypto deposits and SwiftWallet top-ups)
-      const countResult = await db.execute(sql`
-        SELECT COUNT(*) AS deposit_count FROM trade_transactions
-        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
+      // Compute per-cycle deposit count AND current-cycle bot earnings from transaction history.
+      // cycle_started_at marks the beginning of the current cycle (set on each deposit/reinvest).
+      // This is immune to wallet-field corruption (totalBotEarnings being reset by admin stop-bot, etc.)
+      const cycleMetrics = await db.execute(sql`
+        SELECT
+          COALESCE(SUM(amount_usd::numeric) FILTER (
+            WHERE type = 'bot_earning' AND amount_usd::numeric > 0
+          ), 0) AS current_cycle_earnings,
+          COUNT(*) FILTER (
+            WHERE type = 'deposit' AND status = 'completed'
+          ) AS deposit_count
+        FROM trade_transactions
+        WHERE user_id = ${userId}
+        AND created_at >= COALESCE(
+          (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
+          '1970-01-01'::timestamptz
+        )
       `);
-      const depositCount = parseInt((countResult.rows[0] as any)?.deposit_count ?? "0", 10);
-      res.json({ ...wallet, depositCount });
+      const cm = (cycleMetrics.rows[0] as any) ?? {};
+      const depositCount         = parseInt(cm.deposit_count ?? "0", 10);
+      const currentCycleEarnings = parseFloat(cm.current_cycle_earnings ?? "0");
+      res.json({ ...wallet, depositCount, currentCycleEarnings });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2734,8 +2749,15 @@ export async function registerRoutes(
       if (!["trc20", "bep20"].includes(walletType)) {
         return res.status(400).json({ message: "walletType must be trc20 or bep20." });
       }
-      // Enforce 3 top-up limit server-side
-      const depositLimitRow = await db.execute(sql`SELECT COUNT(*) AS cnt FROM trade_transactions WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'`);
+      // Enforce 3 top-up limit per cycle (since cycle_started_at, not lifetime)
+      const depositLimitRow = await db.execute(sql`
+        SELECT COUNT(*) AS cnt FROM trade_transactions
+        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
+        AND created_at >= COALESCE(
+          (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
+          '1970-01-01'::timestamptz
+        )
+      `);
       if (parseInt((depositLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
         return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots. Re-invest your earnings after your cycle completes to continue." });
       }
@@ -2784,6 +2806,8 @@ export async function registerRoutes(
       const perAffiliate   = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
       await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
 
+      // Stamp cycle_started_at so per-cycle deposit count & earnings are accurate
+      await db.execute(sql`UPDATE trade_wallets SET cycle_started_at = NOW() WHERE user_id = ${userId}`);
       const wallet = await storage.getOrCreateTradeWallet(userId);
       res.json({
         transaction: tx,
@@ -2815,8 +2839,15 @@ export async function registerRoutes(
       if (isNaN(amount) || amount < minDeposit) {
         return res.status(400).json({ message: `Minimum funding amount for ${broker ? broker.name : "this exchange"} is $${minDeposit}.` });
       }
-      // Enforce 3 top-up limit server-side
-      const fwDepositLimitRow = await db.execute(sql`SELECT COUNT(*) AS cnt FROM trade_transactions WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'`);
+      // Enforce 3 top-up limit per cycle (since cycle_started_at)
+      const fwDepositLimitRow = await db.execute(sql`
+        SELECT COUNT(*) AS cnt FROM trade_transactions
+        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
+        AND created_at >= COALESCE(
+          (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
+          '1970-01-01'::timestamptz
+        )
+      `);
       if (parseInt((fwDepositLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
         return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots. Re-invest your earnings after your cycle completes to continue." });
       }
@@ -2884,6 +2915,8 @@ export async function registerRoutes(
         paymentMethod: "wallet",
         description: `Trade Wallet funding — $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
       });
+      // Stamp cycle_started_at so per-cycle deposit count & earnings are accurate
+      await db.execute(sql`UPDATE trade_wallets SET cycle_started_at = NOW() WHERE user_id = ${userId}`);
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
       res.json({
         message: `$${userCredit.toFixed(2)} credited to your Trade Wallet (95% of $${amount.toFixed(2)} — 5% affiliate pool)`,
@@ -2972,6 +3005,8 @@ export async function registerRoutes(
     const perAff   = affCount > 0 ? affiliateCut / affCount : 0;
     await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affCount, perAff.toFixed(6));
     if (pending) await storage.updateWalletDeposit(pending.id, { status: "completed" });
+    // Stamp cycle_started_at so per-cycle deposit count & earnings are accurate
+    await db.execute(sql`UPDATE trade_wallets SET cycle_started_at = NOW() WHERE user_id = ${userId}`);
     const notif = await storage.createNotification({
       userId, type: "deposit", title: "Trade Wallet Funded ✓",
       message: `$${userCredit.toFixed(2)} credited to your Trade Wallet (95%) · $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
@@ -2987,7 +3022,14 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       if (await isTradeSessionActive(userId)) return res.status(403).json({ message: "Deposits are disabled during an active trade session." });
-      const tdLimitRow = await db.execute(sql`SELECT COUNT(*) AS cnt FROM trade_transactions WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'`);
+      const tdLimitRow = await db.execute(sql`
+        SELECT COUNT(*) AS cnt FROM trade_transactions
+        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
+        AND created_at >= COALESCE(
+          (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
+          '1970-01-01'::timestamptz
+        )
+      `);
       if (parseInt((tdLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots." });
       const { amountUsd, brokerId: sqBrokerId, tradingPlanDays: rawSqPlan } = req.body;
       const amount = parseFloat(amountUsd);
@@ -3045,7 +3087,14 @@ export async function registerRoutes(
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       if (await isTradeSessionActive(userId)) return res.status(403).json({ message: "Deposits are disabled during an active trade session." });
-      const tkLimitRow = await db.execute(sql`SELECT COUNT(*) AS cnt FROM trade_transactions WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'`);
+      const tkLimitRow = await db.execute(sql`
+        SELECT COUNT(*) AS cnt FROM trade_transactions
+        WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed'
+        AND created_at >= COALESCE(
+          (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
+          '1970-01-01'::timestamptz
+        )
+      `);
       if (parseInt((tkLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots." });
       const { amountUsd, brokerId: krBrokerId, tradingPlanDays: rawKrPlan } = req.body;
       const amount = parseFloat(amountUsd);
@@ -3130,6 +3179,16 @@ export async function registerRoutes(
       await storage.addToLockedPrincipal(userId, withdrawable.toFixed(6));
       const currentPlanDays: number = [60, 90, 120].includes(Number(wallet.tradingPlanDays)) ? Number(wallet.tradingPlanDays) : 120;
       await storage.resetTradingDayForTopUp(userId, generateLossDays(currentPlanDays));
+      // Stamp cycle_started_at so per-cycle deposit count resets to 0 for the new cycle
+      await db.execute(sql`UPDATE trade_wallets SET cycle_started_at = NOW() WHERE user_id = ${userId}`);
+      // Record the reinvest so transaction history reflects cycle boundaries
+      await storage.createTradeTransaction({
+        userId, type: "withdraw_exchange", walletType: null,
+        amountUsd: withdrawable.toFixed(6), feeUsd: "0.000000",
+        reserveFundDeduction: "0.000000", affiliateShareDeduction: "0.000000",
+        netAmount: withdrawable.toFixed(6), txHash: null, status: "completed",
+        note: `Re-invested $${withdrawable.toFixed(2)} as new locked principal — fresh ${currentPlanDays}-day cycle started`,
+      });
       const updated = await storage.getOrCreateTradeWallet(userId);
       res.json({ success: true, reinvestedAmount: withdrawable.toFixed(2), newLockedPrincipal: updated.lockedPrincipal, message: `$${withdrawable.toFixed(2)} re-invested! Your cycle has been reset with a fresh earning period.` });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -6053,12 +6112,11 @@ export async function registerRoutes(
       if (isNaN(targetId)) return res.status(400).json({ message: "Invalid user ID" });
 
       // Reset bot session state, clear bot activated timestamp, and lock the bot.
-      // Also reset total_bot_earnings so the cap check starts clean if the user
-      // is ever re-enabled — prevents premature 100% bar on the next deposit.
+      // Do NOT touch total_bot_earnings — resetting it was causing the progress bar to
+      // falsely show 0% after an admin stop; earnings history is preserved in transactions.
       await db.execute(sql`
         UPDATE trade_wallets
         SET locked_principal = '0.000000',
-            total_bot_earnings = '0.000000',
             trading_day_number = 0,
             bot_activated_at = NULL,
             bot_locked = TRUE,

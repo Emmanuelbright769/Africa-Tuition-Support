@@ -914,7 +914,7 @@ export class DatabaseStorage implements IStorage {
 
   async resetRoiForNewCycle(userId: number): Promise<void> {
     await db.update(tradeWallets)
-      .set({ roiComplete: false, totalBotEarnings: "0.000000", totalInvested: "0.000000", lockedPrincipal: "0.000000", tradingDayNumber: 0, lossDayNumbers: [], updatedAt: new Date() })
+      .set({ roiComplete: false, totalBotEarnings: "0.000000", totalInvested: "0.000000", lockedPrincipal: "0.000000", tradingDayNumber: 0, lossDayNumbers: [], cycleStartedAt: null, updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId));
   }
 

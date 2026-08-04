@@ -706,12 +706,15 @@ export default function AffiliateDashboard() {
   const [fundTradeOpen, setFundTradeOpen] = useState(false);
   const [fundTradeAmt, setFundTradeAmt]   = useState("");
   const [reinvestOpen, setReinvestOpen]   = useState(false);
-  // Trade Market — Bank/Card Deposit via Paystack state
+  // Trade Market — Bank/Card Deposit via Squad / KoraPay
   const [tradePSDepositOpen, setTradePSDepositOpen] = useState(false);
-  const [tradePSStep, setTradePSStep] = useState<"broker"|"plan"|"amount"|"verify">("broker");
+  const [tradePSStep, setTradePSStep] = useState<"broker"|"plan"|"amount">("broker");
   const [tradePSAmt, setTradePSAmt]   = useState("");
-  const [tradePSPayUrl, setTradePSPayUrl] = useState("");
-  const [tradePSRef, setTradePSRef]   = useState("");
+  const [tradePSSquadLoading, setTradePSSquadLoading] = useState(false);
+  const [tradePSKoraLoading, setTradePSKoraLoading]   = useState(false);
+  const [tradePSKoraRef, setTradePSKoraRef]           = useState("");
+  const [tradePSKoraUrl, setTradePSKoraUrl]           = useState("");
+  const tradePSKoraPollRef = useRef<ReturnType<typeof setInterval>|null>(null);
 
   // Trade balance visibility (persisted)
   const [tradeBalanceHidden, setTradeBalanceHidden] = useState<boolean>(() => {
@@ -1075,42 +1078,111 @@ export default function AffiliateDashboard() {
     }
   }, [personalWalletData, user?.id]);
 
-  // Trade Paystack Deposit — initialize
-  const tradePSInitMutation = useMutation({
-    mutationFn: async () => {
-      const amt = parseFloat(tradePSAmt);
-      const minAmt = selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT;
-      if (!amt || amt < minAmt) throw new Error(`Minimum for ${selectedBroker?.name ?? "this exchange"} is $${minAmt}`);
-      const res = await apiRequest("POST", "/api/trade/paystack/initialize", { amountUsd: amt, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message);
-      return d;
-    },
-    onSuccess: (data) => {
-      setTradePSPayUrl(data.authorization_url);
-      setTradePSRef(data.reference);
-      setTradePSStep("verify");
-      window.open(data.authorization_url, "_blank", "noopener,noreferrer");
-    },
-    onError: (err: any) => toast({ title: "Payment Init Failed", description: err.message, variant: "destructive" }),
+  // Trade Bank Deposit — Squad script loader (reuse if already loaded)
+  const loadTradeSquadScript = (): Promise<void> => new Promise((resolve, reject) => {
+    if ((window as any).squad) return resolve();
+    const existing = document.getElementById("squad-widget-js");
+    if (existing) { existing.addEventListener("load", () => resolve()); return; }
+    const s = document.createElement("script");
+    s.id = "squad-widget-js"; s.src = "https://checkout.squadco.com/widget/squad.min.js"; s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Could not load payment widget. Check your connection."));
+    document.head.appendChild(s);
   });
 
-  // Trade Paystack Deposit — verify
-  const tradePSVerifyMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/trade/paystack/verify", { reference: tradePSRef });
+  // Trade Bank Deposit — stop KoraPay poll
+  const stopTradePSKoraPoll = () => {
+    if (tradePSKoraPollRef.current) { clearInterval(tradePSKoraPollRef.current); tradePSKoraPollRef.current = null; }
+    setTradePSKoraLoading(false);
+    setTradePSKoraRef("");
+  };
+
+  // Trade Bank Deposit — verify KoraPay payment (also used by poll)
+  const verifyTradePSKora = async (reference: string) => {
+    try {
+      const vRes = await apiRequest("POST", "/api/trade/korapay/verify", { reference });
+      const vd = await vRes.json();
+      if (vRes.ok) {
+        if (tradePSKoraPollRef.current) { clearInterval(tradePSKoraPollRef.current); tradePSKoraPollRef.current = null; }
+        toast({ title: "Trade Wallet Funded! ✓", description: vd.message, className: "border-tsia-green" });
+        setTradePSDepositOpen(false);
+        setTradePSStep("broker"); setTradePSAmt(""); setTradePSKoraRef(""); setTradePSKoraLoading(false); setTradePSKoraUrl("");
+        refetchTradeWallet(); refetchTradeTxs();
+        return true;
+      }
+    } catch { /* keep polling */ }
+    return false;
+  };
+
+  // Trade Bank Deposit — open KoraPay checkout + auto-poll
+  const openTradePSKora = async () => {
+    const amt = parseFloat(tradePSAmt);
+    const minAmt = selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT;
+    if (!amt || amt < minAmt) { toast({ title: "Enter a valid amount", description: `Minimum is $${minAmt}`, variant: "destructive" }); return; }
+    setTradePSKoraLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/trade/korapay/initiate", { amountUsd: amt, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.message);
-      return d;
-    },
-    onSuccess: (data) => {
-      toast({ title: "Trade Wallet Funded! ✓", description: data.message, className: "border-tsia-green" });
-      setTradePSDepositOpen(false);
-      setTradePSStep("broker"); setTradePSAmt(""); setTradePSRef(""); setTradePSPayUrl("");
-      refetchTradeWallet(); refetchTradeTxs();
-    },
-    onError: (err: any) => toast({ title: "Verification Failed", description: err.message, variant: "destructive" }),
-  });
+      if (!res.ok) throw new Error(d.message ?? "Could not start payment");
+      const { checkoutUrl, reference } = d as { checkoutUrl: string; reference: string };
+      setTradePSKoraRef(reference);
+      setTradePSKoraUrl(checkoutUrl);
+      const win = window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+      if (!win) { window.location.href = checkoutUrl; return; }
+      toast({ title: "Korapay checkout opened", description: "Complete payment in the new tab, then return here.", className: "border-tsia-green" });
+      let attempts = 0;
+      tradePSKoraPollRef.current = setInterval(async () => {
+        attempts++;
+        if (attempts > 60) { stopTradePSKoraPoll(); return; }
+        await verifyTradePSKora(reference);
+      }, 5000);
+    } catch (e: any) {
+      setTradePSKoraLoading(false); setTradePSKoraRef("");
+      toast({ title: "Payment error", description: e.message, variant: "destructive" });
+    }
+  };
+
+  // Trade Bank Deposit — open Squad inline modal
+  const openTradePSSquad = async () => {
+    const amt = parseFloat(tradePSAmt);
+    const minAmt = selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT;
+    if (!amt || amt < minAmt) { toast({ title: "Enter a valid amount", description: `Minimum is $${minAmt}`, variant: "destructive" }); return; }
+    setTradePSSquadLoading(true);
+    try {
+      await loadTradeSquadScript();
+      const res = await apiRequest("POST", "/api/trade/squad/initiate", { amountUsd: amt, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message ?? "Could not start payment");
+      const { transactionRef, amountKobo, publicKey, email, firstName, lastName } = d;
+      const instance = new (window as any).squad({
+        key: publicKey, email, amount: amountKobo, currency_code: "NGN",
+        transaction_ref: transactionRef,
+        payment_channels: ["card", "bank", "ussd", "transfer"],
+        metadata: { customer_name: `${firstName} ${lastName}`, platform: "TSIA-Trade" },
+        onLoad: () => setTradePSSquadLoading(false),
+        onClose: () => setTradePSSquadLoading(false),
+        onSuccess: async (data: any) => {
+          const ref = data?.transaction_ref ?? transactionRef;
+          try {
+            const vRes = await apiRequest("POST", "/api/trade/squad/verify", { transactionRef: ref });
+            const vd = await vRes.json();
+            if (!vRes.ok) throw new Error(vd.message);
+            toast({ title: "Trade Wallet Funded! ✓", description: vd.message, className: "border-tsia-green" });
+            setTradePSDepositOpen(false);
+            setTradePSStep("broker"); setTradePSAmt("");
+            refetchTradeWallet(); refetchTradeTxs();
+          } catch {
+            toast({ title: "Payment received — verifying", description: "Your trade wallet will be credited within 2 minutes." });
+          } finally { setTradePSSquadLoading(false); }
+        },
+      });
+      instance.setup();
+      instance.open();
+    } catch (e: any) {
+      setTradePSSquadLoading(false);
+      toast({ title: "Payment error", description: e.message, variant: "destructive" });
+    }
+  };
 
   const reinvestMutation = useMutation({
     mutationFn: async () => {
@@ -1642,7 +1714,7 @@ export default function AffiliateDashboard() {
                   onFund={() => setFundTradeOpen(true)}
                   onConnect={() => setConnectOpen(true)}
                   onReinvest={() => setReinvestOpen(true)}
-                  onBankDeposit={() => { setTradePSStep("broker"); setTradePSAmt(""); setTradePSRef(""); setTradePSPayUrl(""); setTradePSDepositOpen(true); }}
+                  onBankDeposit={() => { stopTradePSKoraPoll(); setTradePSStep("broker"); setTradePSAmt(""); setTradePSKoraRef(""); setTradePSKoraUrl(""); setTradePSDepositOpen(true); }}
                 >
                 <motion.div variants={itemVariants} data-trade-anchor="home" style={{ scrollMarginTop: "5rem" }}>
                   <div className="trade-market-hero mb-6 overflow-hidden rounded-[2rem] border border-white/60 p-6 shadow-[0_24px_70px_rgba(26,64,46,.14)] backdrop-blur-xl sm:p-9 dark:border-white/10">
@@ -3444,14 +3516,17 @@ export default function AffiliateDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Trade Market — Bank/Card Deposit via Paystack */}
-      <Dialog open={tradePSDepositOpen} onOpenChange={o => { setTradePSDepositOpen(o); if (!o) { setTradePSStep("broker"); setTradePSAmt(""); setTradePSRef(""); setTradePSPayUrl(""); } }}>
+      {/* Trade Market — Bank/Card Deposit via Squad / KoraPay */}
+      <Dialog open={tradePSDepositOpen} onOpenChange={o => {
+        setTradePSDepositOpen(o);
+        if (!o) { stopTradePSKoraPoll(); setTradePSStep("broker"); setTradePSAmt(""); setTradePSKoraRef(""); setTradePSKoraUrl(""); }
+      }}>
         <DialogContent className="max-w-sm">
           {tradePSStep === "broker" ? (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><Globe className="w-5 h-5 text-tsia-green" /> Bank / Card Deposit</DialogTitle>
-                <DialogDescription>Choose your exchange, then pay securely via Paystack (bank transfer, card, USSD).</DialogDescription>
+                <DialogDescription>Choose your exchange, then pay via Squad (inline) or Korapay (new tab).</DialogDescription>
               </DialogHeader>
               <div className="py-2 space-y-2 max-h-[60vh] overflow-y-auto pr-1">
                 {TRADE_BROKERS.map(broker => (
@@ -3462,9 +3537,7 @@ export default function AffiliateDashboard() {
                       <p className="font-bold text-sm group-hover:text-tsia-green transition-colors">{broker.name}</p>
                       <p className="text-[11px] text-muted-foreground truncate">{broker.specialty}</p>
                     </div>
-                    <span className="text-xs font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-full shrink-0">
-                      Min. ${broker.minDeposit}
-                    </span>
+                    <span className="text-xs font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-full shrink-0">Min. ${broker.minDeposit}</span>
                   </button>
                 ))}
               </div>
@@ -3493,64 +3566,81 @@ export default function AffiliateDashboard() {
               </div>
               <DialogFooter><Button variant="outline" onClick={() => setTradePSStep("broker")}>← Back</Button></DialogFooter>
             </>
-          ) : tradePSStep === "amount" ? (
+          ) : (
+            /* ── Amount + gateway ── */
             <>
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2"><CreditCard className="w-5 h-5 text-tsia-green" /> Enter Deposit Amount</DialogTitle>
+                <DialogTitle className="flex items-center gap-2"><CreditCard className="w-5 h-5 text-tsia-green" /> Bank / Card Deposit</DialogTitle>
                 <DialogDescription>{selectedBroker?.name ?? "Exchange"} · {TRADING_PLANS.find(p => p.days === selectedTradingPlan)?.label ?? "120-Day"} · Min. ${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
+                {/* Amount input */}
                 <div>
                   <Label>Amount (USD)</Label>
                   <Input type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} max={TRADE_MARKET.MAX_DEPOSIT}
                     placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}`}
-                    value={tradePSAmt} onChange={e => setTradePSAmt(e.target.value)} className="mt-1" />
+                    value={tradePSAmt} onChange={e => { setTradePSAmt(e.target.value); stopTradePSKoraPoll(); }} className="mt-1" />
                   {tradePSAmt && parseFloat(tradePSAmt) > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">≈ {formatAmount(parseFloat(tradePSAmt))} — 5% affiliate pool, 95% credited to trade wallet</p>
+                    <div className="mt-1.5 text-xs border border-border rounded-xl px-3 py-2 bg-muted/30 space-y-0.5">
+                      <div className="flex justify-between text-muted-foreground"><span>Affiliate pool (5%)</span><span className="text-red-500">-${(parseFloat(tradePSAmt) * 0.05).toFixed(2)}</span></div>
+                      <div className="flex justify-between font-semibold text-tsia-green"><span>You receive (95%)</span><span>${(parseFloat(tradePSAmt) * 0.95).toFixed(2)}</span></div>
+                    </div>
                   )}
                 </div>
-                <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-2.5 text-xs text-emerald-700 dark:text-emerald-300">
-                  ℹ Paystack opens in a new tab. After paying, return here and click <strong>Verify Payment</strong>.
+
+                {/* Quick-select amounts */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[10, 25, 50, 100, 200, 500].map(amt => (
+                    <button key={amt} type="button" onClick={() => { setTradePSAmt(String(amt)); stopTradePSKoraPoll(); }}
+                      className={`py-2 rounded-xl text-sm font-bold border-2 transition-all ${tradePSAmt === String(amt) ? "border-tsia-green bg-tsia-green/10 text-tsia-green" : "border-border hover:border-tsia-green/40"}`}>
+                      ${amt}
+                    </button>
+                  ))}
                 </div>
-              </div>
-              <DialogFooter className="flex gap-2">
-                <Button variant="outline" onClick={() => setTradePSStep("plan")}>← Back</Button>
-                <Button
-                  onClick={() => tradePSInitMutation.mutate()}
-                  disabled={tradePSInitMutation.isPending || !tradePSAmt || parseFloat(tradePSAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT)}
-                  className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold flex-1">
-                  {tradePSInitMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CreditCard className="w-4 h-4 mr-2" />}
-                  Pay ${tradePSAmt || "0"} via Paystack
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-tsia-green" /> Verify Payment</DialogTitle>
-                <DialogDescription>After completing payment in Paystack, click Verify to credit your trade wallet.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="rounded-xl border border-tsia-green/30 bg-tsia-green/10 px-4 py-3 text-sm space-y-1">
-                  <p className="font-semibold text-tsia-green">Payment reference: <span className="font-mono text-xs">{tradePSRef}</span></p>
-                  <p className="text-xs text-muted-foreground">Amount: ${tradePSAmt} · {selectedBroker?.name} · {TRADING_PLANS.find(p => p.days === selectedTradingPlan)?.label}</p>
-                </div>
-                {tradePSPayUrl && (
-                  <Button variant="outline" size="sm" className="w-full" onClick={() => window.open(tradePSPayUrl, "_blank", "noopener,noreferrer")}>
-                    <ExternalLink className="w-4 h-4 mr-2" /> Reopen Payment Page
-                  </Button>
+
+                {/* KoraPay pending state — auto-poll with manual verify option */}
+                {tradePSKoraLoading && tradePSKoraRef && (
+                  <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="w-5 h-5 text-orange-500 animate-spin shrink-0" />
+                      <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">Waiting for Korapay payment…</p>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Completed payment? Tap below to confirm instantly.</p>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="flex-1 h-8 text-xs bg-orange-500 hover:bg-orange-600 text-white rounded-xl" onClick={() => verifyTradePSKora(tradePSKoraRef)}>
+                        ✓ I've Paid — Check Now
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground rounded-xl" onClick={stopTradePSKoraPoll}>Cancel</Button>
+                    </div>
+                    {tradePSKoraUrl && (
+                      <Button size="sm" variant="outline" className="w-full h-8 text-xs" onClick={() => window.open(tradePSKoraUrl, "_blank", "noopener,noreferrer")}>
+                        <ExternalLink className="w-3 h-3 mr-1.5" /> Reopen Korapay
+                      </Button>
+                    )}
+                  </div>
                 )}
+
+                {/* Payment method buttons */}
+                <div className="space-y-2">
+                  {/* Squad — inline modal */}
+                  <Button onClick={openTradePSSquad}
+                    disabled={tradePSSquadLoading || tradePSKoraLoading || !tradePSAmt || parseFloat(tradePSAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT)}
+                    className="w-full h-11 bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl">
+                    {tradePSSquadLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening Squad…</> : <><CreditCard className="w-4 h-4 mr-2" />Pay via Squad (inline modal)</>}
+                  </Button>
+                  {/* KoraPay — new tab */}
+                  <Button onClick={openTradePSKora}
+                    disabled={tradePSKoraLoading || tradePSSquadLoading || !tradePSAmt || parseFloat(tradePSAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT)}
+                    className="w-full h-11 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold rounded-xl">
+                    {tradePSKoraLoading && !tradePSKoraRef ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening Korapay…</> : <><ExternalLink className="w-4 h-4 mr-2" />Pay via Korapay (new tab)</>}
+                  </Button>
+                </div>
+                <div className="flex items-start gap-2 bg-muted/40 rounded-xl px-3 py-2.5 text-[11px] text-muted-foreground">
+                  <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>Squad stays on this page. Korapay opens a new tab — return here after paying to auto-confirm.</span>
+                </div>
               </div>
-              <DialogFooter className="flex gap-2">
-                <Button variant="outline" onClick={() => setTradePSStep("amount")}>← Back</Button>
-                <Button
-                  onClick={() => tradePSVerifyMutation.mutate()}
-                  disabled={tradePSVerifyMutation.isPending}
-                  className="bg-tsia-green hover:bg-tsia-green/90 text-white font-bold flex-1">
-                  {tradePSVerifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                  Verify Payment
-                </Button>
-              </DialogFooter>
+              <DialogFooter><Button variant="outline" onClick={() => { stopTradePSKoraPoll(); setTradePSStep("plan"); }}>← Back</Button></DialogFooter>
             </>
           )}
         </DialogContent>

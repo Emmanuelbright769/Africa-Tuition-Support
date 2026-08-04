@@ -1391,7 +1391,9 @@ export default function AffiliateDashboard() {
   // Earnings (above capital) are always withdrawable once ≥ $2 minimum
   const withdrawableAmt  = Math.max(0, tradeBalance - lockedPrincipal);
   // Progress toward earnings cap (informational — not a withdrawal gate)
-  const profitTarget     = lockedPrincipal > 0 ? lockedPrincipal * (activePlanConfig.profitCapPct ?? 1.00) : 0;
+  // profitCapPct is the profit portion (0.70 / 0.80 / 1.00).
+  // Target = capital × (1 + profitCapPct): earn 100% ON TOP of capital = need $198 back on a $99 deposit.
+  const profitTarget     = lockedPrincipal > 0 ? lockedPrincipal * (1 + (activePlanConfig.profitCapPct ?? 1.00)) : 0;
   const returnPct        = lockedPrincipal > 0 && profitTarget > 0 ? Math.min(100, (totalBotEarned / profitTarget) * 100) : 0;
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);

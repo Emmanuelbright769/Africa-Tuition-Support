@@ -40,7 +40,9 @@ export default function TradeWalletView({
 
   const planDays        = wallet?.tradingPlanDays ?? 120;
   const profitCapPct    = planDays === 60 ? 0.70 : planDays === 90 ? 0.80 : 1.00;
-  const profitTarget    = lockedPrincipal * profitCapPct;
+  // Profit target = capital × (1 + profitCapPct): earn the full profit ON TOP of capital.
+  // e.g. 120-day "100% total return" on $99 → need $198 in cumulative earnings, not just $99.
+  const profitTarget    = lockedPrincipal * (1 + profitCapPct);
 
   // Cycle state — must be declared BEFORE the ROI bar calculations that depend on them
   const roiComplete      = !!(wallet?.roiComplete);

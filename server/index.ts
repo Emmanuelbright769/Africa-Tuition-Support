@@ -166,8 +166,9 @@ async function runMigrations() {
     `);
 
     // ── Fix roi_complete: SET true for users whose bot-session earnings ≥ profit target ─
-    // Only counts actual bot trading sessions — referral commissions are excluded because
-    // they inflate the cap calculation and are not the user's own trading performance.
+    // profitTarget = lockedPrincipal × (1 + profitCapPct):
+    //   60-day → ×1.70, 90-day → ×1.80, 120-day → ×2.00
+    // Referral commissions excluded — they are not the user's own trading performance.
     await db.execute(sql`
       UPDATE trade_wallets tw
       SET roi_complete = TRUE, updated_at = NOW()
@@ -182,15 +183,15 @@ async function runMigrations() {
         WHERE t.user_id = tw.user_id AND t.type = 'bot_earning'
         AND t.created_at >= COALESCE(tw.cycle_started_at, '1970-01-01'::timestamptz)
       ) >= tw.locked_principal::numeric * CASE
-          WHEN tw.trading_plan_days = 60  THEN 0.70
-          WHEN tw.trading_plan_days = 90  THEN 0.80
-          ELSE 1.00
+          WHEN tw.trading_plan_days = 60  THEN 1.70
+          WHEN tw.trading_plan_days = 90  THEN 1.80
+          ELSE 2.00
         END
     `);
 
-    // ── Revert roi_complete for users incorrectly set by a previous migration ────────
-    // The previous migration included referral commissions in the cap sum, which could
-    // push users over the threshold when their actual bot-session earnings were below it.
+    // ── Revert roi_complete for users set by old migrations that used the wrong formula ──
+    // Old formula used profitCapPct directly (0.70/0.80/1.00) instead of (1 + profitCapPct).
+    // Also reverts users where referral commissions (now excluded) inflated them over the old threshold.
     await db.execute(sql`
       UPDATE trade_wallets tw
       SET roi_complete = FALSE, updated_at = NOW()
@@ -205,9 +206,9 @@ async function runMigrations() {
         WHERE t.user_id = tw.user_id AND t.type = 'bot_earning'
         AND t.created_at >= COALESCE(tw.cycle_started_at, '1970-01-01'::timestamptz)
       ) < tw.locked_principal::numeric * CASE
-          WHEN tw.trading_plan_days = 60  THEN 0.70
-          WHEN tw.trading_plan_days = 90  THEN 0.80
-          ELSE 1.00
+          WHEN tw.trading_plan_days = 60  THEN 1.70
+          WHEN tw.trading_plan_days = 90  THEN 1.80
+          ELSE 2.00
         END
     `);
 

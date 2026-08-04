@@ -3574,9 +3574,11 @@ export async function registerRoutes(
       // The bar stays where it is when the user withdraws — withdrawals are separate.
       const lockedCapital     = parseFloat(wallet.lockedPrincipal ?? "0");
       const priorEarnings     = parseFloat(wallet.totalBotEarnings ?? "0");
-      // Cap = plan's profitCapPct × locked capital (70%, 80%, or 100% depending on plan)
+      // Cap = locked capital × (1 + profitCapPct).
+      // profitCapPct is the PROFIT portion (0.70 / 0.80 / 1.00), so the total earnings needed
+      // to double the user's money on a 120-day plan is lockedCapital × 2.00 (= capital + 100% profit).
       const profitCapPct      = planConfig.profitCapPct ?? 1.00;
-      const profitTarget      = lockedCapital * profitCapPct;
+      const profitTarget      = lockedCapital * (1 + profitCapPct);
       const remainingToTarget = Math.max(0, profitTarget - priorEarnings);
       const cappedByTarget    = lockedCapital > 0 && earning > remainingToTarget;
       // If already at cap, just increment the day counter (no earning, no cycle end)

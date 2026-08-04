@@ -40,6 +40,11 @@ export default function TradeWalletView({
   const profitCapPct    = planDays === 60 ? 0.70 : planDays === 90 ? 0.80 : 1.00;
   const profitTarget    = lockedPrincipal * profitCapPct;
 
+  // Cycle state — must be declared BEFORE the ROI bar calculations that depend on them
+  const roiComplete      = !!(wallet?.roiComplete);
+  const tradingDayNumber = wallet?.tradingDayNumber ?? 0;
+  const cycleComplete    = roiComplete || tradingDayNumber >= planDays;
+
   // ── ROI bar ──────────────────────────────────────────────────────────────────
   // Use `roiComplete` (server-set flag) as the ONLY gate for "cap reached".
   // totalBotEarnings can be inflated by data issues (e.g. a deposit being
@@ -56,11 +61,6 @@ export default function TradeWalletView({
   const depositCount    = Math.min(rawDepositCount, MAX_TOPUPS);   // display-only
   const limitReached    = rawDepositCount >= MAX_TOPUPS;            // real gate
   const topupsLeft      = Math.max(0, MAX_TOPUPS - rawDepositCount);
-
-  // Cycle state
-  const roiComplete      = !!(wallet?.roiComplete);
-  const tradingDayNumber = wallet?.tradingDayNumber ?? 0;
-  const cycleComplete    = roiComplete || tradingDayNumber >= planDays;
 
   const fmt = (n: number) => hidden ? "••••••" : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 

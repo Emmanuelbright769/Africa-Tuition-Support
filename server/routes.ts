@@ -2616,6 +2616,8 @@ export async function registerRoutes(
           COALESCE(SUM(amount_usd::numeric) FILTER (
             WHERE type = 'bot_earning' AND amount_usd::numeric > 0
             AND COALESCE(note, '') NOT LIKE 'Referral commission%'
+            AND COALESCE(note, '') NOT LIKE 'Admin balance adjustment%'
+            AND COALESCE(note, '') NOT LIKE 'Bot session stopped and locked by admin%'
           ), 0) AS current_cycle_earnings,
           COUNT(*) FILTER (
             WHERE type = 'topup' AND status = 'completed'
@@ -6234,7 +6236,21 @@ export async function registerRoutes(
       const targetId = parseInt(req.params.userId);
       if (isNaN(targetId)) return res.status(400).json({ message: "Invalid user ID" });
 
-      await storage.setBotLocked(targetId, false);
+      // When reinstating a user, give them a clean slate:
+      // • cycle_started_at = NOW()  → only earnings from today count toward the cap
+      // • locked_principal = current trade_balance → their balance is their new capital
+      // • roi_complete = false      → allow bot activation
+      // • bot_locked = false        → access restored
+      await db.execute(sql`
+        UPDATE trade_wallets
+        SET bot_locked        = FALSE,
+            roi_complete      = FALSE,
+            cycle_started_at  = NOW(),
+            locked_principal  = GREATEST('0.000000'::numeric, trade_balance::numeric),
+            bot_activated_at  = NULL,
+            updated_at        = NOW()
+        WHERE user_id = ${targetId}
+      `);
 
       // Notify user
       try {
@@ -6242,7 +6258,7 @@ export async function registerRoutes(
           userId: targetId,
           type: "trade_warning",
           title: "Bot Access Restored",
-          message: "Your Itera Trading BOT access has been restored by the platform. You may now re-activate your bot during the next trading window.",
+          message: "Your Itera Trading BOT access has been restored by the platform. Your trading cycle has been reset from today — you may now re-activate your bot during the next trading window.",
           read: false,
         });
         pushToUser(targetId, "notification", notif);

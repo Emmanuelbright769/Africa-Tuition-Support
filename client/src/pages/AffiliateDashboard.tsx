@@ -876,8 +876,17 @@ export default function AffiliateDashboard() {
       } catch {}
       queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
       toast({ title: "Itera Trading BOT Activated", description: "The Itera Trading BOT is now live. It runs for up to 12 hours and reflects real market conditions — some sessions may result in a loss.", className: "border-green-500" });
-    } catch {
-      toast({ title: "Activation Failed", description: "Network error — please try again.", variant: "destructive" });
+    } catch (err: any) {
+      // apiRequest throws on non-ok responses; parse the server message out of the error
+      let description = "Network error — please try again.";
+      try {
+        const match = (err?.message ?? "").match(/^\d+:\s*([\s\S]*)/);
+        if (match) {
+          const parsed = JSON.parse(match[1]);
+          if (parsed?.message) description = parsed.message;
+        }
+      } catch {}
+      toast({ title: "Activation Failed", description, variant: "destructive" });
     }
   };
 

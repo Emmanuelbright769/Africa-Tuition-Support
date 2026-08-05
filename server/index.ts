@@ -168,7 +168,8 @@ async function runMigrations() {
     // ── Fix roi_complete: SET true for users whose bot-session earnings ≥ profit target ─
     // profitTarget = lockedPrincipal × (1 + profitCapPct):
     //   60-day → ×1.70, 90-day → ×1.80, 120-day → ×2.00
-    // Referral commissions excluded — they are not the user's own trading performance.
+    // Exclusions: referral commissions and admin balance adjustments are not the user's
+    // own trading performance and must not count toward the profit cap.
     await db.execute(sql`
       UPDATE trade_wallets tw
       SET roi_complete = TRUE, updated_at = NOW()
@@ -178,6 +179,8 @@ async function runMigrations() {
         SELECT COALESCE(SUM(t.amount_usd::numeric) FILTER (
           WHERE t.amount_usd::numeric > 0
           AND COALESCE(t.note, '') NOT LIKE 'Referral commission%'
+          AND COALESCE(t.note, '') NOT LIKE 'Admin balance adjustment%'
+          AND COALESCE(t.note, '') NOT LIKE 'Bot session stopped and locked by admin%'
         ), 0)
         FROM trade_transactions t
         WHERE t.user_id = tw.user_id AND t.type = 'bot_earning'
@@ -189,9 +192,9 @@ async function runMigrations() {
         END
     `);
 
-    // ── Revert roi_complete for users set by old migrations that used the wrong formula ──
-    // Old formula used profitCapPct directly (0.70/0.80/1.00) instead of (1 + profitCapPct).
-    // Also reverts users where referral commissions (now excluded) inflated them over the old threshold.
+    // ── Revert roi_complete for users incorrectly marked (wrong formula or admin-inflated earnings) ──
+    // Covers: old wrong-formula flags, referral commissions, and admin balance adjustments
+    // that inflated cycle earnings past the threshold.
     await db.execute(sql`
       UPDATE trade_wallets tw
       SET roi_complete = FALSE, updated_at = NOW()
@@ -201,6 +204,8 @@ async function runMigrations() {
         SELECT COALESCE(SUM(t.amount_usd::numeric) FILTER (
           WHERE t.amount_usd::numeric > 0
           AND COALESCE(t.note, '') NOT LIKE 'Referral commission%'
+          AND COALESCE(t.note, '') NOT LIKE 'Admin balance adjustment%'
+          AND COALESCE(t.note, '') NOT LIKE 'Bot session stopped and locked by admin%'
         ), 0)
         FROM trade_transactions t
         WHERE t.user_id = tw.user_id AND t.type = 'bot_earning'

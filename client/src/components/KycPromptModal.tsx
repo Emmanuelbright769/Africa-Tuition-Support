@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   ShieldCheck, CheckCircle2, Loader2, AlertCircle, Fingerprint, Lock
@@ -123,17 +122,17 @@ export default function KycPromptModal() {
 
           {/* ID Type */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Identity Document Type</Label>
-            <Select value={idType} onValueChange={v => { setIdType(v); setIdNumber(""); setIdLastName(""); setVerified(false); setIdError(""); }}>
-              <SelectTrigger className="h-11 bg-muted/30">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ID_OPTIONS.map(o => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="kyc-id-type" className="text-sm font-medium">Identity Document Type</Label>
+            <select
+              id="kyc-id-type"
+              value={idType}
+              onChange={e => { setIdType(e.target.value); setIdNumber(""); setIdLastName(""); setVerified(false); setIdError(""); }}
+              className="w-full h-11 rounded-md border border-input bg-muted/30 px-3 py-2 text-sm text-foreground ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              {ID_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </div>
 
           {/* ID Number */}

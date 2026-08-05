@@ -3591,10 +3591,10 @@ export default function FinancialHub() {
                         }}
                       >
                         <div className="w-6 h-6 rounded-full bg-tsia-green/20 flex items-center justify-center shrink-0">
-                          <span className="text-[10px] font-bold text-tsia-green">{b.accountName.charAt(0)}</span>
+                          <span className="text-[10px] font-bold text-tsia-green">{(b.accountName ?? b.nickname ?? "?").charAt(0)}</span>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold leading-tight">{b.nickname || b.accountName.split(" ")[0]}</p>
+                          <p className="text-xs font-semibold leading-tight">{b.nickname || (b.accountName ?? "Unknown").split(" ")[0]}</p>
                           <p className="text-[10px] text-muted-foreground">{b.bankName}</p>
                         </div>
                       </button>

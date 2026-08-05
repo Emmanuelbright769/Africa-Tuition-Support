@@ -1664,6 +1664,53 @@ export async function sendAdminCommissionWithdrawalEmail(data: {
   await sendEmail(ADMIN_EMAIL, subject, html);
 }
 
+// ─── Admin: Trade Market Transaction Notification ────────────────────────────
+
+export async function sendAdminTradeDepositEmail(data: {
+  name: string; email: string; amount: string; credited: string;
+  method: string; txHash?: string; userId: number; type: "deposit" | "topup" | "wallet_fund";
+}): Promise<void> {
+  const typeLabels: Record<string, string> = {
+    deposit: "Initial Deposit",
+    topup: "Mid-Cycle Top-Up",
+    wallet_fund: "Funded from SwiftWallet",
+  };
+  const subject = `📈 Trade Market ${typeLabels[data.type] ?? "Deposit"} — ${data.name} ($${data.amount})`;
+  const html = adminActionTemplate(
+    "📈", `Trade Market ${typeLabels[data.type] ?? "Deposit"}`,
+    "Completed", "#1a6b3c",
+    [
+      ["User",      `${data.name} (ID: ${data.userId})`],
+      ["Email",     data.email],
+      ["Gross",     `$${data.amount} USD`],
+      ["Credited",  `$${data.credited} (95%)`],
+      ["Method",    data.method],
+      ...(data.txHash ? [["Reference", data.txHash] as [string, string]] : []),
+    ],
+    "No action required — this deposit was automatically processed.",
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
+export async function sendAdminTradeWithdrawExchangeEmail(data: {
+  name: string; email: string; amount: string; netPayout: string; userId: number;
+}): Promise<void> {
+  const subject = `💸 Trade Market Exchange Withdrawal — ${data.name} ($${data.amount})`;
+  const html = adminActionTemplate(
+    "💸", "Trade Market Exchange Withdrawal",
+    "Processed", "#e67e22",
+    [
+      ["User",       `${data.name} (ID: ${data.userId})`],
+      ["Email",      data.email],
+      ["Requested",  `$${data.amount} USD`],
+      ["Net Payout", `$${data.netPayout} USD (after fees)`],
+      ["Method",     "Exchange Wallet"],
+    ],
+    "This withdrawal was processed automatically. No admin action required.",
+  );
+  await sendEmail(ADMIN_EMAIL, subject, html);
+}
+
 // ─── Generic transaction receipt email ───────────────────────────────────────
 
 export type ReceiptEmailRow = {

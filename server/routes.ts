@@ -21,6 +21,7 @@ import {
   sendAdminVerificationEmail, sendAdminPortalFeeEmail, sendAdminLoanEmail,
   sendAdminSponsorshipEmail, sendStudentPlanReceiptEmail, sendAdminKycEmail, sendAdminOrderEmail,
   sendAdminCommissionWithdrawalEmail, sendAdminDepositConfirmedEmail,
+  sendAdminTradeDepositEmail, sendAdminTradeWithdrawExchangeEmail,
   sendDisbursementProcessedEmail, sendDisbursementDeclinedEmail, sendDisbursementEditedEmail, sendScholarshipDeclinedEmail,
   sendAdminBankTransferEmail,
   sendAdminWalletTransferEmail,
@@ -2831,6 +2832,15 @@ export async function registerRoutes(
         },
         message: "Deposit confirmed. 95% credited, 5% affiliate pool.",
       });
+      // Notify admin of confirmed crypto deposit (fire-and-forget)
+      storage.getUser(userId).then(u => {
+        if (u) sendAdminTradeDepositEmail({
+          name: `${u.firstName} ${u.lastName}`, email: u.email,
+          amount: amount.toFixed(2), credited: userCredit.toFixed(2),
+          method: walletType, txHash: txHash || undefined, userId,
+          type: isCryptoTopUp ? "topup" : "deposit",
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2940,6 +2950,15 @@ export async function registerRoutes(
         newTradeBalance: tradeWallet.tradeBalance,
         breakdown: { deposited: amount, reserveFund: 0, affiliatePool: affiliateCut, creditedToYou: userCredit },
       });
+      // Notify admin of SwiftWallet → Trade deposit (fire-and-forget)
+      storage.getUser(userId).then(u => {
+        if (u) sendAdminTradeDepositEmail({
+          name: `${u.firstName} ${u.lastName}`, email: u.email,
+          amount: amount.toFixed(2), credited: userCredit.toFixed(2),
+          method: "SwiftWallet (internal transfer)", userId,
+          type: isFwTopUp ? "topup" : "wallet_fund",
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3032,6 +3051,15 @@ export async function registerRoutes(
       data: { reference: txRef }, isRead: false,
     });
     pushToUser(userId, "notification", notif);
+    // Notify admin of every confirmed trade deposit
+    storage.getUser(userId).then(u => {
+      if (u) sendAdminTradeDepositEmail({
+        name: `${u.firstName} ${u.lastName}`, email: u.email,
+        amount: gross.toFixed(2), credited: userCredit.toFixed(2),
+        method: walletType, txHash: txRef, userId,
+        type: isBankTopUp ? "topup" : "deposit",
+      }).catch(() => {});
+    }).catch(() => {});
     return { userCredit, affiliateCut };
   }
 
@@ -3303,6 +3331,16 @@ export async function registerRoutes(
             userId,
           }).catch(() => {});
         }
+      }
+
+      // Notify admin of exchange withdrawals (bank withdrawal email already sent above)
+      if (withdrawalType === "withdraw_exchange") {
+        storage.getUser(userId).then(u => {
+          if (u) sendAdminTradeWithdrawExchangeEmail({
+            name: `${u.firstName} ${u.lastName}`, email: u.email,
+            amount: amount.toFixed(2), netPayout: netPayout.toFixed(2), userId,
+          }).catch(() => {});
+        }).catch(() => {});
       }
 
       const updatedWallet = await storage.getOrCreateTradeWallet(userId);

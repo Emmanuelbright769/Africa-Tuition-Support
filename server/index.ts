@@ -616,11 +616,21 @@ async function startMaintenanceFeeJob() {
   // Run immediately (catches any month whose 1st has already passed)
   await runDeduction();
 
-  // Schedule future runs: fire at 00:05 on the 1st of every subsequent month
+  // Schedule future runs: fire at 00:05 on the 1st of every subsequent month.
+  // Node's setTimeout uses a 32-bit signed integer (max ~24.8 days). When the
+  // delay to the next 1st exceeds that, split it into safe intermediate hops.
+  const MAX_SAFE_TIMEOUT = 2_147_483_647; // ~24.8 days in ms
   const scheduleNext = () => {
     const now = new Date();
     const next1st = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 5, 0));
     const delay = next1st.getTime() - Date.now();
+
+    if (delay > MAX_SAFE_TIMEOUT) {
+      // Sleep for a safe chunk, then re-evaluate (the target date hasn't arrived yet)
+      setTimeout(() => scheduleNext(), MAX_SAFE_TIMEOUT);
+      return;
+    }
+
     setTimeout(async () => {
       await runDeduction();
       scheduleNext();

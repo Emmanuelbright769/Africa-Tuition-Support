@@ -17,6 +17,7 @@ type AuthUser = {
   affiliateCode?: string;
   isNewUser?: boolean;
   walletFundDeadline?: string | null;
+  kycCompleted?: boolean;
 };
 
 type AuthContextType = {

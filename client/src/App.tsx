@@ -4,10 +4,11 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { LocalCurrencyProvider } from "@/contexts/LocalCurrencyContext";
 import NotFound from "@/pages/not-found";
+import KycPromptModal from "@/components/KycPromptModal";
 
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
@@ -141,6 +142,17 @@ function ConditionalAiAssistant() {
   return <AiAssistant />;
 }
 
+// Show the one-time KYC prompt for any logged-in non-admin user who hasn't
+// completed identity verification yet. The modal is fullscreen and cannot be
+// dismissed — it must be completed before accessing the platform.
+function KycGate() {
+  const { user } = useAuth();
+  if (!user) return null;
+  if (user.role === "admin") return null;
+  if ((user as any).kycCompleted !== false) return null;
+  return <KycPromptModal />;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -151,6 +163,7 @@ function App() {
               <TooltipProvider>
                 <SubdomainRedirect />
                 <Toaster />
+                <KycGate />
                 <Router />
                 <ConditionalAiAssistant />
               </TooltipProvider>

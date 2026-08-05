@@ -12,8 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, User, Mail, Phone, Globe, Shield, Lock, Eye, EyeOff,
-  CheckCircle2, KeyRound, Edit3, Save, X, GraduationCap, Briefcase,
-  MapPin, Loader2, History, CreditCard, ArrowUpRight
+  CheckCircle2, KeyRound, GraduationCap, Briefcase,
+  Loader2, History, CreditCard, ArrowUpRight, MessageSquare, ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { queryClient } from "@/lib/queryClient";
@@ -276,79 +276,53 @@ export default function UserProfile() {
         {/* ── Personal Information Card ── */}
         <Card className="shadow-sm">
           <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <User className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Personal Information</CardTitle>
-                  <CardDescription className="text-xs">Your name and contact details</CardDescription>
-                </div>
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                <User className="w-5 h-5 text-primary" />
               </div>
-              {!editMode && (
-                <Button variant="ghost" size="sm" onClick={startEdit} data-testid="button-edit-profile">
-                  <Edit3 className="w-4 h-4 mr-1.5" /> Edit
-                </Button>
-              )}
+              <div>
+                <CardTitle className="text-base">Personal Information</CardTitle>
+                <CardDescription className="text-xs">Your name and contact details</CardDescription>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <AnimatePresence mode="wait">
-              {!editMode ? (
-                <motion.div key="view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                  <InfoRow icon={User} label="Full Name" value={`${user.firstName} ${user.lastName}`} testId="text-full-name" />
+            <div className="space-y-3">
+              <InfoRow icon={User} label="Full Name" value={`${user.firstName} ${user.lastName}`} testId="text-full-name" />
+              <Separator />
+              <InfoRow icon={Mail} label="Email Address" value={user.email} testId="text-email" />
+              <Separator />
+              <InfoRow icon={Phone} label="Phone Number" value={user.phone || "Not set"} testId="text-phone" dimmed={!user.phone} />
+              {user.country && (
+                <>
                   <Separator />
-                  <InfoRow icon={Mail} label="Email Address" value={user.email} testId="text-email" />
-                  <Separator />
-                  <InfoRow icon={Phone} label="Phone Number" value={user.phone || "Not set"} testId="text-phone" dimmed={!user.phone} />
-                  {user.country && (
-                    <>
-                      <Separator />
-                      <InfoRow icon={Globe} label="Country" value={user.country} testId="text-country" />
-                    </>
-                  )}
-                  {user.affiliateCode && (
-                    <>
-                      <Separator />
-                      <InfoRow icon={Briefcase} label="Affiliate Code" value={user.affiliateCode} testId="text-affiliate-code" mono />
-                    </>
-                  )}
-                </motion.div>
-              ) : (
-                <motion.div key="edit" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="edit-first">First Name</Label>
-                      <Input id="edit-first" value={editFirst} onChange={e => setEditFirst(e.target.value)}
-                        placeholder="First name" className="h-10 bg-muted/30" data-testid="input-edit-first" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="edit-last">Last Name</Label>
-                      <Input id="edit-last" value={editLast} onChange={e => setEditLast(e.target.value)}
-                        placeholder="Last name" className="h-10 bg-muted/30" data-testid="input-edit-last" />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="edit-phone">Phone Number</Label>
-                    <Input id="edit-phone" type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)}
-                      placeholder="+234 800 000 0000" className="h-10 bg-muted/30" data-testid="input-edit-phone" />
-                  </div>
-                  <p className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-2.5">
-                    To change your email address, use the <strong>Email Address</strong> card below.
-                  </p>
-                  <div className="flex gap-2 pt-1">
-                    <Button variant="outline" size="sm" onClick={cancelEdit} disabled={savingInfo} data-testid="button-cancel-edit">
-                      <X className="w-4 h-4 mr-1" /> Cancel
-                    </Button>
-                    <Button size="sm" onClick={handleSaveInfo} disabled={savingInfo} data-testid="button-save-profile"
-                      className="bg-primary hover:bg-primary/90">
-                      {savingInfo ? "Saving…" : <><Save className="w-4 h-4 mr-1" /> Save Changes</>}
-                    </Button>
-                  </div>
-                </motion.div>
+                  <InfoRow icon={Globe} label="Country" value={user.country} testId="text-country" />
+                </>
               )}
-            </AnimatePresence>
+              {user.affiliateCode && (
+                <>
+                  <Separator />
+                  <InfoRow icon={Briefcase} label="Affiliate Code" value={user.affiliateCode} testId="text-affiliate-code" mono />
+                </>
+              )}
+            </div>
+            {/* Support-only edit notice */}
+            <div className="flex gap-3 items-start bg-blue-50 dark:bg-blue-950/30 rounded-xl p-3.5 border border-blue-200 dark:border-blue-800/50 mt-2">
+              <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-0.5">Need to update your info?</p>
+                <p className="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
+                  For security, all profile changes are handled by our support team and verified against your KYC credentials.
+                </p>
+                <a
+                  href="mailto:support@tsiforafrica.com?subject=Profile%20Update%20Request&body=Full%20Name%3A%0AKYCId%3A%0AChanges%20requested%3A"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:underline mt-2"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Email support@tsiforafrica.com
+                </a>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -361,7 +335,7 @@ export default function UserProfile() {
               </div>
               <div>
                 <CardTitle className="text-base">Email Address</CardTitle>
-                <CardDescription className="text-xs">Change your sign-in email</CardDescription>
+                <CardDescription className="text-xs">Your sign-in email</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -373,77 +347,23 @@ export default function UserProfile() {
                 <p className="text-xs text-muted-foreground mt-0.5">Current email — used for sign-in and notifications</p>
               </div>
             </div>
-            <AnimatePresence mode="wait">
-              {emailStep === "idle" && (
-                <motion.div key="email-idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <Button variant="outline" onClick={handleRequestEmailOtp} data-testid="button-change-email" className="w-full h-10">
-                    <Mail className="w-4 h-4 mr-2" /> Change Email Address
-                  </Button>
-                </motion.div>
-              )}
-              {emailStep === "sending" && (
-                <motion.div key="email-sending" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-4">
-                  <p className="text-sm text-muted-foreground">Sending verification code…</p>
-                </motion.div>
-              )}
-              {emailStep === "otp" && (
-                <motion.div key="email-otp" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium mb-1">Verify it's you</p>
-                    <p className="text-xs text-muted-foreground">Enter the 6-digit code sent to <strong>{user.email}</strong></p>
-                  </div>
-                  <div className="flex justify-center gap-2">
-                    {emailOtpDigits.map((d, i) => (
-                      <Input key={i} id={`email-otp-${i}`}
-                        className="w-11 h-13 text-center text-lg font-bold bg-muted/30 focus:bg-background"
-                        maxLength={1} value={d}
-                        onChange={e => handleEmailOtpChange(i, e.target.value)}
-                        onKeyDown={e => handleEmailOtpKeyDown(i, e)}
-                        data-testid={`input-email-otp-${i}`} />
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={resetEmailFlow} data-testid="button-cancel-email-otp">Cancel</Button>
-                    <Button size="sm" onClick={handleEmailOtpContinue} disabled={emailOtpDigits.join("").length !== 6}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700" data-testid="button-email-otp-continue">
-                      Continue
-                    </Button>
-                  </div>
-                  <button type="button" className="text-xs text-primary hover:underline w-full text-center"
-                    onClick={handleRequestEmailOtp}>Resend code</button>
-                </motion.div>
-              )}
-              {emailStep === "newemail" && (
-                <motion.div key="email-newemail" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="new-email">New Email Address</Label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <Input id="new-email" type="email" value={newEmail}
-                        onChange={e => setNewEmail(e.target.value)}
-                        placeholder="your@newemail.com"
-                        className="h-10 pl-9 bg-muted/30" data-testid="input-new-email" />
-                    </div>
-                  </div>
-                  {newEmail.trim() && newEmail.trim() === user.email && (
-                    <p className="text-xs text-amber-600">That's already your current email.</p>
-                  )}
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={resetEmailFlow} data-testid="button-cancel-new-email">Cancel</Button>
-                    <Button size="sm" onClick={handleChangeEmail}
-                      disabled={!newEmail.trim() || newEmail.trim() === user.email}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700" data-testid="button-save-new-email">
-                      Update Email
-                    </Button>
-                  </div>
-                </motion.div>
-              )}
-              {emailStep === "saving" && (
-                <motion.div key="email-saving" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-4">
-                  <p className="text-sm text-muted-foreground">Updating your email…</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* Email change goes via support */}
+            <div className="flex gap-3 items-start bg-blue-50 dark:bg-blue-950/30 rounded-xl p-3.5 border border-blue-200 dark:border-blue-800/50">
+              <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-0.5">Need to change your email?</p>
+                <p className="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
+                  Email changes are handled by our support team and must match the name on your KYC document.
+                </p>
+                <a
+                  href={`mailto:support@tsiforafrica.com?subject=Email%20Change%20Request&body=Current%20email%3A%20${encodeURIComponent(user.email)}%0ANew%20email%3A%0AKYC%20ID%20number%3A%0AFull%20Name%3A`}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:underline mt-2"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Email support@tsiforafrica.com
+                </a>
+              </div>
+            </div>
           </CardContent>
         </Card>
 

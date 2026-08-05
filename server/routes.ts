@@ -362,7 +362,16 @@ export async function registerRoutes(
       return res.status(401).json({ message: "SESSION_DISPLACED", reason: "Your account has been signed in on another device. You have been signed out." });
     }
 
-    res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode, walletFundDeadline: user.walletFundDeadline ?? null });
+    // KYC is considered complete once the user has a verification row with an ID number saved.
+    // This covers both students (who submitted NIN/BVN during onboarding) and affiliates
+    // who complete the post-login KYC prompt. Admins are exempt.
+    let kycCompleted = true; // default: admin or already verified
+    if (user.role !== "admin") {
+      const verification = await storage.getVerificationByUser(userId);
+      kycCompleted = !!(verification?.nin);
+    }
+
+    res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode, walletFundDeadline: user.walletFundDeadline ?? null, kycCompleted });
   });
 
   app.post("/api/auth/logout", async (req, res) => {
@@ -534,40 +543,19 @@ export async function registerRoutes(
   });
 
   // ── Request OTP for email change ────────────────────────────────────────────
-  app.post("/api/auth/request-email-change-otp", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      const code = generateOtp();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-      await storage.createOtp({ email: user.email, code, expiresAt, used: false });
-      console.log(`[OTP] Email change code for ${user.email}: ${code}`);
-      sendOtpEmail(user.email, code, false).catch(() => {});
-      res.json({ message: "OTP sent to your current email", otpSent: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  app.post("/api/auth/request-email-change-otp", async (_req, res) => {
+    // Email changes must go through the support team so the new address can be
+    // verified against the user's KYC credentials before being applied.
+    res.status(403).json({
+      message: "Email changes must be requested by emailing support@tsiforafrica.com. Include your full name, current email, new email address, and your KYC ID number. Our team will verify and update it for you.",
+    });
   });
 
-  // ── Change email (requires valid OTP, new email must be free) ───────────────
-  app.post("/api/auth/change-email", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { otpCode, newEmail } = req.body;
-      if (!otpCode || !newEmail) return res.status(400).json({ message: "OTP and new email are required" });
-      const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRx.test(newEmail.trim())) return res.status(400).json({ message: "Invalid email address" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      const otp = await storage.getValidOtp(user.email, otpCode.trim());
-      if (!otp) return res.status(401).json({ message: "Invalid or expired OTP code" });
-      const existing = await storage.getUserByEmail(newEmail.trim().toLowerCase());
-      if (existing && existing.id !== userId) return res.status(409).json({ message: "That email is already in use by another account" });
-      await storage.markOtpUsed(otp.id);
-      await storage.updateUserEmail(userId, newEmail.trim().toLowerCase());
-      res.json({ message: "Email updated successfully" });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  // ── Change email — disabled; must go via support ──────────────────────────
+  app.post("/api/auth/change-email", async (_req, res) => {
+    res.status(403).json({
+      message: "Email changes must be requested by emailing support@tsiforafrica.com.",
+    });
   });
 
   // ── User profile ────────────────────────────────────────────────────────────
@@ -592,20 +580,12 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.patch("/api/user/profile", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { firstName, lastName, phone } = req.body;
-      const updates: Record<string, string> = {};
-      if (firstName?.trim()) updates.firstName = firstName.trim();
-      if (lastName?.trim()) updates.lastName = lastName.trim();
-      if (phone?.trim()) updates.phone = phone.trim();
-      if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Nothing to update" });
-      await storage.updateUserProfile(userId, updates);
-      const updated = await storage.getUser(userId);
-      res.json({ message: "Profile updated", user: updated });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  app.patch("/api/user/profile", async (_req, res) => {
+    // Profile changes (name, phone) must go through the support team so they can be
+    // verified against the user's KYC credentials. Direct API updates are disabled.
+    res.status(403).json({
+      message: "Profile updates are managed by our support team. Please email support@tsiforafrica.com with your full name, the changes you need, and your KYC ID number for verification.",
+    });
   });
 
   app.post("/api/upload", upload.single("file"), async (req, res) => {

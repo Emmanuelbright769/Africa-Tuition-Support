@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, User, Mail, Phone, Globe, Shield, Lock, Eye, EyeOff,
   CheckCircle2, KeyRound, GraduationCap, Briefcase,
-  Loader2, History, CreditCard, ArrowUpRight, MessageSquare, ExternalLink
+  Loader2, History, CreditCard, ArrowUpRight, MessageSquare, ExternalLink, MapPin
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { queryClient } from "@/lib/queryClient";

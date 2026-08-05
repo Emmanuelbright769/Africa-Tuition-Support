@@ -335,6 +335,13 @@ export async function registerRoutes(
         isNewUser = parseFloat(wallet.balance) === 0;
       } catch { /* non-critical */ }
 
+      // Compute kycCompleted so the client can show the one-time KYC gate immediately after login
+      let kycCompleted = true;
+      if (user.role !== "admin") {
+        const verification = await storage.getVerificationByUser(user.id);
+        kycCompleted = !!(verification?.nin);
+      }
+
       req.session.save(async (err) => {
         if (err) return res.status(500).json({ message: "Session save failed" });
         // Single-session enforcement: record this session as the only valid one
@@ -342,7 +349,7 @@ export async function registerRoutes(
         res.json({
           id: user.id, firstName: user.firstName, lastName: user.lastName,
           email: user.email, role: user.role, phone: user.phone, country: user.country,
-          affiliateCode: user.affiliateCode, isNewUser,
+          affiliateCode: user.affiliateCode, isNewUser, kycCompleted,
         });
       });
     } catch (e: any) {
@@ -500,10 +507,17 @@ export async function registerRoutes(
       if (!hasPasswordSet(user.password)) return res.status(401).json({ message: "This account uses OTP login. Please sign in with a one-time code." });
       if (!verifyPassword(password, user.password)) return res.status(401).json({ message: "Incorrect password. Try again or use OTP login." });
       (req.session as any).userId = user.id;
+
+      let kycCompletedPw = true;
+      if (user.role !== "admin") {
+        const verification = await storage.getVerificationByUser(user.id);
+        kycCompletedPw = !!(verification?.nin);
+      }
+
       req.session.save(async (err) => {
         if (err) return res.status(500).json({ message: "Session error" });
         await storage.updateUserActiveSession(user.id, req.session.id).catch(() => {});
-        res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode });
+        res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode, kycCompleted: kycCompletedPw });
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

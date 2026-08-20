@@ -1260,7 +1260,12 @@ export default function AffiliateDashboard() {
         amountUsd: parseFloat(withdrawAmt),
         withdrawalType: withdrawType,
         walletType: withdrawType === "withdraw_exchange" ? withdrawWalletType : undefined,
-        ...(withdrawType === "withdraw_bank" ? { bankCode: tradeBankCode, accountNumber: tradeAcctNumber, accountName: tradeAcctName } : {}),
+        ...(withdrawType === "withdraw_bank" ? {
+          bankCode: tradeBankCode,
+          bankName: tradeSelectedBank?.name,
+          accountNumber: tradeAcctNumber,
+          accountName: tradeAcctName,
+        } : {}),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
@@ -3910,7 +3915,7 @@ export default function AffiliateDashboard() {
             ) : (
               <>
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs text-blue-800 dark:text-blue-200 font-medium">
-                  A <strong>5% fee</strong> applies on bank withdrawals. Funds are processed within 1–2 business days.
+                  An <strong>8% service fee</strong> and co-affiliate pool contribution apply on bank withdrawals. Funds are processed within 1–2 business days.
                 </div>
                 {tradeBankStep === "bank" ? (
                   <div className="space-y-3">
@@ -4014,11 +4019,12 @@ export default function AffiliateDashboard() {
                       <Label>Amount (USD)</Label>
                       <Input type="number" min={2} max={withdrawableAmt} placeholder="Min $2.00" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-bank-withdraw-amount" />
                     </div>
-                    {withdrawAmt && parseFloat(withdrawAmt) >= 10 && (
+                    {withdrawAmt && parseFloat(withdrawAmt) >= 2 && (
                       <div className="border border-border rounded-xl px-3 py-2 bg-muted/30 text-xs space-y-1">
                         <p className="font-semibold mb-1">Withdrawal Breakdown</p>
-                        <div className="flex justify-between text-muted-foreground"><span>Platform fee (5%)</span><span>-${(parseFloat(withdrawAmt) * 0.05).toFixed(2)}</span></div>
-                        <div className="flex justify-between font-bold text-blue-600"><span>Net to bank</span><span>${(parseFloat(withdrawAmt) * 0.95).toFixed(2)}</span></div>
+                        <div className="flex justify-between text-muted-foreground"><span>Service fee (8%)</span><span>-${(parseFloat(withdrawAmt) * 0.08).toFixed(2)}</span></div>
+                        <div className="flex justify-between font-bold text-blue-600"><span>Net before co-affiliate contribution</span><span>${(parseFloat(withdrawAmt) * 0.92).toFixed(2)}</span></div>
+                        <p className="text-[10px] text-muted-foreground">The co-affiliate contribution is calculated at submission and included in the final payout.</p>
                       </div>
                     )}
                     <TermsCheckbox checked={withdrawTradeTermsAccepted} onCheckedChange={setWithdrawTradeTermsAccepted} context="withdrawal" />

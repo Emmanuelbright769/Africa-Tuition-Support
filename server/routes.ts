@@ -34,7 +34,7 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanMonthly, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests } from "@shared/schema";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
 import { eq, desc, ne, and, sql, or } from "drizzle-orm";
@@ -3254,7 +3254,7 @@ export async function registerRoutes(
       if (await isTradeSessionActive(userId)) {
         return res.status(403).json({ message: "Withdrawals are disabled during an active trade session. Please wait until your current trading session ends." });
       }
-      const { amountUsd, withdrawalType, walletType, bankCode, accountNumber, accountName } = req.body;
+      const { amountUsd, withdrawalType, walletType, bankCode, bankName, accountNumber, accountName } = req.body;
       const amount = parseFloat(amountUsd);
       if (isNaN(amount) || amount < TRADE_MARKET.MIN_WITHDRAW) {
         return res.status(400).json({ message: `Minimum withdrawal is $${TRADE_MARKET.MIN_WITHDRAW}.` });
@@ -3264,6 +3264,9 @@ export async function registerRoutes(
       }
       if (withdrawalType === "withdraw_bank" && (!bankCode || !accountNumber || !accountName)) {
         return res.status(400).json({ message: "Bank details required for bank withdrawal: bankCode, accountNumber, accountName." });
+      }
+      if (withdrawalType === "withdraw_bank" && !/^\d{10}$/.test(String(accountNumber))) {
+        return res.status(400).json({ message: "Bank account number must be exactly 10 digits." });
       }
       const feeRate = withdrawalType === "withdraw_bank" ? TRADE_MARKET.FEE_BANK_WITHDRAW : TRADE_MARKET.FEE_EXCHANGE_WITHDRAW;
       const fee = amount * feeRate;
@@ -3286,34 +3289,60 @@ export async function registerRoutes(
 
       const txType = withdrawalType === "withdraw_bank" ? "withdraw_bank" : "withdraw_exchange";
       const txStatus = withdrawalType === "withdraw_bank" ? "pending" : "completed";
-      const tx = await storage.createTradeTransaction({
-        userId, type: txType, walletType: walletType || null,
-        amountUsd: amount.toFixed(6), feeUsd: fee.toFixed(6),
-        reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
-        netAmount: netPayout.toFixed(6), txHash: null, status: txStatus,
-        note: withdrawalType === "withdraw_bank"
-          ? `Bank withdrawal ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} → ${accountName} (${accountNumber}) — 8% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool | Pending admin approval`
-          : `Exchange withdrawal — 5% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool`,
+      const tradeBankName = `[TRADE MARKET] ${String(bankName || "Bank").trim()}`;
+
+      // The trade debit and its corresponding bank request must succeed together.
+      // Older databases only permit bank/crypto request types, so trade-originated
+      // bank withdrawals are stored as "bank" with a source marker in bankName.
+      const { tx, updatedWallet } = await db.transaction(async (dbTx) => {
+        const [createdTx] = await dbTx.insert(tradeTransactions).values({
+          userId, type: txType, walletType: walletType || null,
+          amountUsd: amount.toFixed(6), feeUsd: fee.toFixed(6),
+          reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
+          netAmount: netPayout.toFixed(6), txHash: null, status: txStatus,
+          note: withdrawalType === "withdraw_bank"
+            ? `Bank withdrawal ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} → ${accountName} (${accountNumber}) — 8% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool | Pending admin approval`
+            : `Exchange withdrawal — 5% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool`,
+        }).returning();
+
+        if (withdrawalType === "withdraw_bank") {
+          await dbTx.insert(withdrawalRequests).values({
+            userId,
+            type: "bank",
+            amount: amount.toFixed(2),
+            fee: fee.toFixed(2),
+            netAmount: netPayout.toFixed(2),
+            bankName: tradeBankName,
+            bankCode: String(bankCode),
+            accountNumber: String(accountNumber),
+            accountName: String(accountName),
+            status: "pending",
+          });
+        }
+
+        const [updated] = await dbTx.update(tradeWallets)
+          .set({ tradeBalance: sql`trade_balance - ${amount.toFixed(6)}::decimal`, updatedAt: new Date() })
+          .where(and(
+            eq(tradeWallets.userId, userId),
+            sql`${tradeWallets.tradeBalance} >= ${amount.toFixed(6)}::decimal`,
+          ))
+          .returning();
+        if (!updated) throw new Error("Your trade balance changed before this withdrawal could be submitted. Please refresh and try again.");
+        return { tx: createdTx, updatedWallet: updated };
       });
 
-      await storage.updateTradeBalance(userId, (-amount).toFixed(6));
-      const affiliateCount = await storage.getAffiliateCount();
-      const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
-      await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+      // The financial withdrawal is already committed above. Affiliate reporting
+      // must never turn a completed withdrawal into a client-facing failure.
+      try {
+        const affiliateCount = await storage.getAffiliateCount();
+        const perAffiliate = affiliateCount > 0 ? (affiliateCut / affiliateCount) : 0;
+        await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
+      } catch (error) {
+        console.error("[TRADE WITHDRAW] Affiliate-share record failed after withdrawal:", error);
+      }
 
-      // ── For bank withdrawals: create a pending withdrawal request for admin approval ──
+      // ── For bank withdrawals: notify admin for the pending bank transfer ──────
       if (withdrawalType === "withdraw_bank") {
-        await storage.createWithdrawalRequest({
-          userId,
-          type: "trade_bank" as any,
-          amount: amount.toFixed(2),
-          fee: fee.toFixed(2),
-          netAmount: netPayout.toFixed(2),
-          bankName: `[TRADE MARKET]`,
-          bankCode: bankCode ?? "",
-          accountNumber,
-          accountName,
-        });
         const tradeUser = await storage.getUser(userId);
         if (tradeUser) {
           sendAdminWithdrawalEmail({
@@ -3321,7 +3350,7 @@ export async function registerRoutes(
             email: tradeUser.email,
             amount: amount.toFixed(2),
             method: "bank",
-            bankName: `[TRADE MARKET] (accountName: ${accountName})`,
+            bankName: `${tradeBankName} (accountName: ${accountName})`,
             accountNumber,
             accountName,
             userId,
@@ -3339,7 +3368,6 @@ export async function registerRoutes(
         }).catch(() => {});
       }
 
-      const updatedWallet = await storage.getOrCreateTradeWallet(userId);
       const wdNotif = await storage.createNotification({
         userId, type: "wallet_credit",
         title: withdrawalType === "withdraw_bank" ? "Trade Withdrawal Submitted ✓" : "Trade Withdrawal Initiated ✓",
@@ -5556,8 +5584,12 @@ export async function registerRoutes(
         processedAt: new Date(),
       });
       const refundAmt = parseFloat(wd.amount);
-      // Credit the correct wallet — trade_bank refunds go back to trade balance
-      if ((wd.type as string) === "trade_bank") {
+      // Credit the correct wallet. Trade withdrawals use a bank request with a
+      // source marker for compatibility with existing database constraints.
+      const isTradeBankWithdrawal =
+        (wd.type as string) === "trade_bank" ||
+        (wd.bankName ?? "").startsWith("[TRADE MARKET]");
+      if (isTradeBankWithdrawal) {
         await storage.updateTradeBalance(wd.userId, refundAmt.toFixed(6));
       } else {
         const wallet = await storage.getOrCreateWallet(wd.userId);
@@ -5575,7 +5607,7 @@ export async function registerRoutes(
       const notif = await storage.createNotification({
         userId: wd.userId, type: "wallet_credit",
         title: "Withdrawal Refunded ✓",
-        message: (wd.type as string) === "trade_bank"
+        message: isTradeBankWithdrawal
           ? `$${refundAmt.toFixed(2)} has been refunded to your Trade Market balance.`
           : `$${refundAmt.toFixed(2)} has been refunded to your TSIA wallet.`,
         data: { withdrawalId: wdId }, isRead: false,

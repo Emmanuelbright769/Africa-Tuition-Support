@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ShieldCheck, Loader2, Fingerprint, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, parseApiError, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 
@@ -48,7 +48,7 @@ export default function KycPromptModal() {
       await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "Identity verified", description: "Your one-time identity verification is complete." });
     } catch (err: any) {
-      setError(err.message || "Identity verification failed. Please try again.");
+      setError(parseApiError(err));
     } finally {
       setSaving(false);
     }

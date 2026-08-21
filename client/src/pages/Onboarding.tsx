@@ -11,7 +11,7 @@ import {
   Gift, Tag, ChevronDown, ChevronUp, AlertTriangle, BadgeCheck, Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, parseApiError, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
@@ -115,7 +115,7 @@ export default function Onboarding() {
       setIdVerified(true);
       toast({ title: "Identity verified", description: "Prembly confirmed your ID number." });
     } catch (err: any) {
-      setIdError(err.message || "Verification failed. Please check your details.");
+      setIdError(parseApiError(err));
     } finally {
       setIdVerifying(false);
     }

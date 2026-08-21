@@ -780,7 +780,12 @@ export async function registerRoutes(
   // ── Helper: verify any Nigerian ID via Prembly (api.prembly.com) ─────────
   // Prembly (formerly Identitypass) supports NIN, BVN, VIN, Driver's Licence, Passport.
   // Set PREMBLY_API_KEY and PREMBLY_APP_ID in secrets to enable live lookups.
-  async function ninverifyLookup(idType: string, idBody: Record<string, string>): Promise<{ ok: boolean; data: any; message: string }> {
+  async function ninverifyLookup(idType: string, idBody: Record<string, string>): Promise<{
+    ok: boolean;
+    data: any;
+    message: string;
+    temporarilyUnavailable?: boolean;
+  }> {
     const apiKey = process.env.PREMBLY_API_KEY;
     const appId  = process.env.PREMBLY_APP_ID;
 
@@ -842,6 +847,16 @@ export async function registerRoutes(
     // accept a format-only response: this result is used to unlock a real
     // account and must originate from Prembly.
     if (!resp.ok || json.status === false) {
+      const providerMessage = String(json?.detail || json?.message || "");
+      if (/insufficient\s+wallet\s+balance/i.test(providerMessage)) {
+        console.warn("[KYC Prembly] Verification credits are unavailable; rejecting verification without a fallback.");
+        return {
+          ok: false,
+          data: null,
+          temporarilyUnavailable: true,
+          message: "Identity verification is temporarily unavailable. Please try again later.",
+        };
+      }
       const errMsg = json?.detail || json?.message || "ID could not be verified. Please check your details and try again.";
       return { ok: false, data: null, message: errMsg };
     }
@@ -956,7 +971,7 @@ export async function registerRoutes(
       return res.status(400).json({ message: `Enter a valid ${ID_LABELS[documentType]} number.` });
     }
     const lookup = await ninverifyLookup(documentType, getIdLookupBody(documentType, documentNumber, lastName, firstName));
-    if (!lookup.ok) return res.status(422).json({ message: lookup.message });
+    if (!lookup.ok) return res.status(lookup.temporarilyUnavailable ? 503 : 422).json({ message: lookup.message });
     const evidence = verificationEvidence({ status: "VERIFIED", data: lookup.data });
     if (!evidence.verifiedNameHash) {
       return res.status(422).json({ message: "The verification service did not return a confirmed name for this ID. Please choose another supported ID." });
@@ -994,7 +1009,7 @@ export async function registerRoutes(
       return res.status(400).json({ message: `Enter a valid ${ID_LABELS[documentType]} number.` });
     }
     const lookup = await ninverifyLookup(documentType, getIdLookupBody(documentType, documentNumber, user.lastName, user.firstName));
-    if (!lookup.ok) return res.status(422).json({ message: lookup.message });
+    if (!lookup.ok) return res.status(lookup.temporarilyUnavailable ? 503 : 422).json({ message: lookup.message });
     const evidence = verificationEvidence({ status: "VERIFIED", data: lookup.data });
     if (!doesVerifiedNameMatch(evidence, user.firstName, user.lastName)) {
       return res.status(422).json({ message: "The name on this ID does not match your TSIA account." });
@@ -1023,7 +1038,7 @@ export async function registerRoutes(
       }
 
       const result = await ninverifyLookup(idType, getIdLookupBody(idType, idNumber.trim(), String(lastName || "").trim()));
-      if (!result.ok) return res.status(400).json({ message: result.message });
+      if (!result.ok) return res.status(result.temporarilyUnavailable ? 503 : 400).json({ message: result.message });
       return res.json({
         valid: true,
         idType,

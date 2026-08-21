@@ -610,9 +610,16 @@ async function startCryptoDepositVerifierJob() {
 async function startMaintenanceFeeJob() {
   const MAINTENANCE_FEE = 0.50;
   const SETTING_KEY = "maintenance_fee_last_run";
+  // The product launch date is deliberate: no user may be charged before
+  // September 1, 2026 in West Africa Time.
+  const FIRST_COLLECTION_AT = new Date("2026-09-01T00:00:00+01:00");
 
   const runDeduction = async () => {
     const now = new Date();
+    if (now < FIRST_COLLECTION_AT) {
+      console.log(`[MAINTENANCE-FEE] Not started — first collection is ${FIRST_COLLECTION_AT.toUTCString()}.`);
+      return;
+    }
     const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
     const monthLabel = now.toLocaleString("en-US", { month: "long", year: "numeric" });
 
@@ -667,7 +674,8 @@ async function startMaintenanceFeeJob() {
     console.log(`[MAINTENANCE-FEE] ${monthLabel} — deducted $${MAINTENANCE_FEE} from ${deducted}/${targets.length} users.`);
   };
 
-  // Run immediately (catches any month whose 1st has already passed)
+  // Run immediately only after the September 1, 2026 launch date; otherwise
+  // the start-date guard above leaves all balances untouched.
   await runDeduction();
 
   // Schedule future runs: fire at 00:05 on the 1st of every subsequent month.

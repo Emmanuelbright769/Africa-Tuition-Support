@@ -44,6 +44,7 @@ import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
 import TradeMarketSection from "@/components/TradeMarketSection";
+import BackToSchoolSection from "@/components/BackToSchoolSection";
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
@@ -57,12 +58,13 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "trade" | "mmmf" | "exchange_market" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "forum" | "qce" | "emergency_response" | "movies" | "auto_care" | "sponsorship_cohort";
+type Section = "overview" | "trade" | "mmmf" | "exchange_market" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "forum" | "qce" | "emergency_response" | "movies" | "auto_care" | "sponsorship_cohort" | "back_to_school";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",        label: "Overview",               icon: LayoutDashboard },
   { id: "fintech",         label: "Swift Hub",              icon: CreditCard },
   { id: "qce",             label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
+  { id: "back_to_school",  label: "Back to School",          icon: Sparkles },
   { id: "trade",           label: "Trade Market",           icon: Globe },
   { id: "sponsorship_cohort", label: "Sponsorship Cohort", icon: HeartHandshake, badge: "New" },
   { id: "mmmf",            label: "Money Market Mutual Funds (MMMF)", icon: () => <span className="text-xl leading-none">💠</span>, badge: "Soon" },
@@ -1006,19 +1008,29 @@ export default function AffiliateDashboard() {
   const { data: programData }     = useQuery({ queryKey: ["/api/co-affiliate/program"] });
   const { data: myCoAff, refetch: refetchMyCoAff } = useQuery({ queryKey: ["/api/co-affiliate/my-info"], refetchInterval: 30_000, staleTime: 15_000 });
   const { data: notifData }       = useQuery<any>({ queryKey: ["/api/notifications"], refetchInterval: 60000 });
+  const { data: backToSchoolData } = useQuery<any>({ queryKey: ["/api/back-to-school"], staleTime: 60_000, enabled: !!user });
 
   const tsmartNewCount = useMemo(() =>
     (notifData?.notifications ?? []).filter((n: any) => n.type === "new_arrival" && !n.isRead).length,
     [notifData]
   );
 
+  const backToSchoolNew = useMemo(() => {
+    const launchAt = backToSchoolData?.launchAt ? new Date(backToSchoolData.launchAt).getTime() : 0;
+    return launchAt > 0 && Date.now() >= launchAt && Date.now() < launchAt + 3 * 24 * 60 * 60 * 1000;
+  }, [backToSchoolData?.launchAt]);
+
   const NAV_ITEMS = useMemo(() =>
-    BASE_NAV_ITEMS.map(item =>
-      item.id === "ecommerce" && tsmartNewCount > 0
-        ? { ...item, badge: tsmartNewCount > 9 ? "9+" : String(tsmartNewCount), _badgeRed: true }
-        : item
-    ),
-    [tsmartNewCount]
+    BASE_NAV_ITEMS.map(item => {
+      if (item.id === "ecommerce" && tsmartNewCount > 0) {
+        return { ...item, badge: tsmartNewCount > 9 ? "9+" : String(tsmartNewCount), _badgeRed: true };
+      }
+      if (item.id === "back_to_school" && backToSchoolNew) {
+        return { ...item, badge: "New 🆕" };
+      }
+      return item;
+    }),
+    [tsmartNewCount, backToSchoolNew]
   );
   const { data: tradeWallet, refetch: refetchTradeWallet } = useQuery({ queryKey: ["/api/trade/wallet"] });
   const { data: tradeTxs = [], refetch: refetchTradeTxs } = useQuery({ queryKey: ["/api/trade/transactions"] });
@@ -2434,6 +2446,9 @@ export default function AffiliateDashboard() {
             {/* ── QCE ── */}
             {activeSection === "qce" && <QCESection />}
 
+            {/* ── BACK TO SCHOOL ── */}
+            {activeSection === "back_to_school" && <BackToSchoolSection />}
+
             {/* ── TRUST FUND ── */}
             {activeSection === "trust_fund" && (
               <>
@@ -3328,6 +3343,31 @@ export default function AffiliateDashboard() {
         </AnimatePresence>
         </div>
       </main>
+
+      {/* Mobile affiliate navigation keeps Back to School one tap away. */}
+      <nav className="fixed inset-x-3 bottom-3 z-[60] grid grid-cols-5 rounded-2xl border border-border/70 bg-card/95 p-1 shadow-xl backdrop-blur sm:hidden" aria-label="Affiliate navigation">
+        {[
+          { id: "overview" as Section, label: "Home", icon: Home },
+          { id: "fintech" as Section, label: "Wallet", icon: CreditCard },
+          { id: "back_to_school" as Section, label: "School", icon: Sparkles },
+          { id: "trade" as Section, label: "Trade", icon: Globe },
+          { id: "ecommerce" as Section, label: "Store", icon: ShoppingCart },
+        ].map(item => {
+          const active = activeSection === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => navigate(item.id)}
+              className={`relative flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-semibold transition-colors ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              data-testid={`bottom-nav-${item.id}`}
+            >
+              <item.icon className="h-4 w-4" />
+              <span>{item.label}</span>
+              {item.id === "back_to_school" && backToSchoolNew && <span className="absolute -top-2 right-0 rounded-full bg-amber-400 px-1 py-0.5 text-[8px] font-bold text-slate-900">New</span>}
+            </button>
+          );
+        })}
+      </nav>
 
       {/* ── DIALOGS ── */}
 

@@ -17,6 +17,8 @@ import {
   virtualCards, type VirtualCard, type InsertVirtualCard,
   movieSubscriptions, type MovieSubscription,
   savingsGoals, savingsTransactions,
+  backToSchoolChildren, backToSchoolVests, backToSchoolVestTransactions,
+  backToSchoolAttempts, backToSchoolAwards,
   scholarships, type Scholarship, type InsertScholarship,
   researchGrants, type ResearchGrant, type InsertResearchGrant,
   platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
@@ -50,6 +52,7 @@ import {
   tourBookings,
   type TourBooking, type InsertTourBooking,
   type QceSavings, type QceTransaction,
+  type BackToSchoolChild, type BackToSchoolAttempt,
   type PriceAlert, type CategorySubscription,
   type SponsorCohort, type InsertSponsorCohort,
   type CohortCode,
@@ -310,6 +313,18 @@ export interface IStorage {
   getSavingsTransactions(goalId: number, userId: number): Promise<any[]>;
   deleteSavingsGoal(id: number, userId: number): Promise<void>;
 
+  // Affiliate Back to School
+  createBackToSchoolChild(data: { guardianUserId: number; fullName: string; dateOfBirth: string; schoolName?: string; gradeLevel?: string }): Promise<BackToSchoolChild>;
+  getBackToSchoolProgramme(guardianUserId: number): Promise<any[]>;
+  settleMaturedBackToSchoolVests(guardianUserId: number): Promise<number>;
+  settleAllMaturedBackToSchoolVests(): Promise<number>;
+  getBackToSchoolChild(childId: number, guardianUserId: number): Promise<BackToSchoolChild | undefined>;
+  updateBackToSchoolChild(childId: number, guardianUserId: number, data: { fullName?: string; schoolName?: string; gradeLevel?: string }): Promise<BackToSchoolChild>;
+  contributeToBackToSchoolVest(guardianUserId: number, childId: number, amountUsd: number): Promise<any>;
+  getBackToSchoolAttempt(childId: number, guardianUserId: number): Promise<BackToSchoolAttempt | undefined>;
+  createBackToSchoolAttempt(data: { childId: number; guardianUserId: number; questionIds: string[] }): Promise<BackToSchoolAttempt>;
+  completeBackToSchoolAttempt(data: { childId: number; guardianUserId: number; score: number; percentage: number; awardAmount: number; expired?: boolean }): Promise<any>;
+
   // Cashback
   getCashbackBalance(userId: number): Promise<string>;
   addCashback(userId: number, amountUsd: number): Promise<void>;
@@ -467,6 +482,12 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(movieSubscriptions).where(eq(movieSubscriptions.userId, id));
       // 32e. virtual cards
       await tx.delete(virtualCards).where(eq(virtualCards.userId, id));
+      // 32f. Back to School award and CBT records (depend on child profiles)
+      await tx.delete(backToSchoolAwards).where(eq(backToSchoolAwards.guardianUserId, id));
+      await tx.delete(backToSchoolAttempts).where(eq(backToSchoolAttempts.guardianUserId, id));
+      await tx.delete(backToSchoolVestTransactions).where(eq(backToSchoolVestTransactions.guardianUserId, id));
+      await tx.delete(backToSchoolVests).where(eq(backToSchoolVests.guardianUserId, id));
+      await tx.delete(backToSchoolChildren).where(eq(backToSchoolChildren.guardianUserId, id));
       // 33. finally delete the user
       await tx.delete(users).where(eq(users.id, id));
     });
@@ -2442,6 +2463,221 @@ export class DatabaseStorage implements IStorage {
     await db.update(savingsGoals)
       .set({ status: "deleted", updatedAt: new Date() })
       .where(and(eq(savingsGoals.id, id), eq(savingsGoals.userId, userId)));
+  }
+
+  // ── Affiliate Back to School ────────────────────────────────────────────────
+  async createBackToSchoolChild(data: { guardianUserId: number; fullName: string; dateOfBirth: string; schoolName?: string; gradeLevel?: string }): Promise<BackToSchoolChild> {
+    const now = new Date();
+    const maturesAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    return db.transaction(async (tx) => {
+      const [child] = await tx.insert(backToSchoolChildren).values({
+        guardianUserId: data.guardianUserId,
+        fullName: data.fullName,
+        dateOfBirth: data.dateOfBirth,
+        schoolName: data.schoolName || null,
+        gradeLevel: data.gradeLevel || null,
+      }).returning();
+      await tx.insert(backToSchoolVests).values({
+        childId: child.id,
+        guardianUserId: data.guardianUserId,
+        balance: "0.00",
+        targetAmount: "30.00",
+        startedAt: now,
+        maturesAt,
+        status: "active",
+      });
+      return child;
+    });
+  }
+
+  async getBackToSchoolProgramme(guardianUserId: number): Promise<any[]> {
+    await this.settleMaturedBackToSchoolVests(guardianUserId);
+
+    const children = await db.select().from(backToSchoolChildren)
+      .where(eq(backToSchoolChildren.guardianUserId, guardianUserId))
+      .orderBy(desc(backToSchoolChildren.createdAt));
+    if (!children.length) return [];
+    const childIds = children.map(c => c.id);
+    const [vests, attempts, awards] = await Promise.all([
+      db.select().from(backToSchoolVests).where(inArray(backToSchoolVests.childId, childIds)),
+      db.select().from(backToSchoolAttempts).where(inArray(backToSchoolAttempts.childId, childIds)),
+      db.select().from(backToSchoolAwards).where(inArray(backToSchoolAwards.childId, childIds)),
+    ]);
+    const vestByChild = new Map(vests.map(v => [v.childId, v]));
+    const attemptByChild = new Map(attempts.map(a => [a.childId, a]));
+    const awardByChild = new Map(awards.map(a => [a.childId, a]));
+    return children.map(child => ({
+      ...child,
+      vest: vestByChild.get(child.id) ?? null,
+      attempt: attemptByChild.get(child.id) ?? null,
+      award: awardByChild.get(child.id) ?? null,
+    }));
+  }
+
+  async settleMaturedBackToSchoolVests(guardianUserId: number): Promise<number> {
+    return db.transaction(async (tx) => {
+      const now = new Date();
+      const maturedVests = await tx.select().from(backToSchoolVests)
+        .where(and(
+          eq(backToSchoolVests.guardianUserId, guardianUserId),
+          eq(backToSchoolVests.status, "active"),
+          lte(backToSchoolVests.maturesAt, now),
+        ))
+        .for("update");
+      if (!maturedVests.length) return 0;
+
+      const [wallet] = await tx.select().from(wallets)
+        .where(eq(wallets.userId, guardianUserId))
+        .for("update");
+      if (!wallet) throw new Error("SwiftWallet not found for Piggy Vest settlement");
+
+      let walletBalance = Number(wallet.balance);
+      for (const vest of maturedVests) {
+        const returnAmount = Number(vest.balance);
+        const qualified = returnAmount >= Number(vest.targetAmount) && !!vest.fundedAt;
+        const settlementStatus = qualified ? "qualified" : "expired";
+        walletBalance += returnAmount;
+
+        await tx.update(backToSchoolVests).set({
+          balance: "0.00",
+          returnedAmount: returnAmount.toFixed(2),
+          settledAt: now,
+          status: settlementStatus,
+          ...(qualified ? { qualifiedAt: now } : {}),
+          updatedAt: now,
+        }).where(eq(backToSchoolVests.id, vest.id));
+
+        if (returnAmount > 0) {
+          await tx.insert(backToSchoolVestTransactions).values({
+            vestId: vest.id,
+            guardianUserId,
+            type: "maturity_return",
+            amountUsd: returnAmount.toFixed(2),
+            balanceAfter: "0.00",
+          });
+          await tx.insert(transactions).values({
+            userId: guardianUserId,
+            type: "transfer",
+            amount: returnAmount.toFixed(2),
+            fee: "0.00",
+            description: `Back to School Piggy Vest maturity return${qualified ? " after successful qualification" : ""}`,
+          });
+        }
+      }
+      await tx.update(wallets).set({ balance: walletBalance.toFixed(2) })
+        .where(eq(wallets.userId, guardianUserId));
+      return maturedVests.length;
+    });
+  }
+
+  async settleAllMaturedBackToSchoolVests(): Promise<number> {
+    const now = new Date();
+    const dueVests = await db.select({ guardianUserId: backToSchoolVests.guardianUserId })
+      .from(backToSchoolVests)
+      .where(and(eq(backToSchoolVests.status, "active"), lte(backToSchoolVests.maturesAt, now)));
+    const guardianIds = Array.from(new Set(dueVests.map(vest => vest.guardianUserId)));
+    let settledCount = 0;
+    for (const guardianUserId of guardianIds) {
+      settledCount += await this.settleMaturedBackToSchoolVests(guardianUserId);
+    }
+    return settledCount;
+  }
+
+  async getBackToSchoolChild(childId: number, guardianUserId: number): Promise<BackToSchoolChild | undefined> {
+    const [child] = await db.select().from(backToSchoolChildren)
+      .where(and(eq(backToSchoolChildren.id, childId), eq(backToSchoolChildren.guardianUserId, guardianUserId)));
+    return child;
+  }
+
+  async updateBackToSchoolChild(childId: number, guardianUserId: number, data: { fullName?: string; schoolName?: string; gradeLevel?: string }): Promise<BackToSchoolChild> {
+    const [updated] = await db.update(backToSchoolChildren).set({
+      ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
+      ...(data.schoolName !== undefined ? { schoolName: data.schoolName || null } : {}),
+      ...(data.gradeLevel !== undefined ? { gradeLevel: data.gradeLevel || null } : {}),
+    }).where(and(eq(backToSchoolChildren.id, childId), eq(backToSchoolChildren.guardianUserId, guardianUserId))).returning();
+    if (!updated) throw new Error("Child profile not found");
+    return updated;
+  }
+
+  async contributeToBackToSchoolVest(guardianUserId: number, childId: number, amountUsd: number): Promise<any> {
+    return db.transaction(async (tx) => {
+      const [child] = await tx.select().from(backToSchoolChildren)
+        .where(and(eq(backToSchoolChildren.id, childId), eq(backToSchoolChildren.guardianUserId, guardianUserId)))
+        .for("update");
+      if (!child) throw new Error("Child profile not found");
+      const [vest] = await tx.select().from(backToSchoolVests)
+        .where(and(eq(backToSchoolVests.childId, childId), eq(backToSchoolVests.guardianUserId, guardianUserId)))
+        .for("update");
+      if (!vest) throw new Error("Piggy Vest not found");
+      if (vest.status !== "active" || vest.maturesAt <= new Date()) throw new Error("This 30-day Piggy Vest is no longer accepting contributions");
+
+      const currentBalance = Number(vest.balance);
+      const nextVestBalance = currentBalance + amountUsd;
+      if (nextVestBalance > Number(vest.targetAmount) + 0.00001) {
+        throw new Error(`Piggy Vest contributions cannot exceed $${Number(vest.targetAmount).toFixed(2)}`);
+      }
+      const [wallet] = await tx.select().from(wallets).where(eq(wallets.userId, guardianUserId)).for("update");
+      if (!wallet || Number(wallet.balance) < amountUsd) throw new Error("Insufficient SwiftWallet balance");
+
+      const walletBalance = Number(wallet.balance) - amountUsd;
+      const now = new Date();
+      const becameFullyFunded = currentBalance < Number(vest.targetAmount) && nextVestBalance >= Number(vest.targetAmount);
+      const [updatedVest] = await tx.update(backToSchoolVests)
+        .set({
+          balance: nextVestBalance.toFixed(2),
+          ...(becameFullyFunded ? {
+            fundedAt: now,
+            // The vest’s 30-day holding period begins only when it is fully
+            // funded, preventing a last-minute contribution from unlocking CBT.
+            maturesAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+          } : {}),
+          updatedAt: now,
+        })
+        .where(eq(backToSchoolVests.id, vest.id))
+        .returning();
+      await tx.update(wallets).set({ balance: walletBalance.toFixed(2) }).where(eq(wallets.userId, guardianUserId));
+      await tx.insert(backToSchoolVestTransactions).values({
+        vestId: vest.id, guardianUserId, type: "contribution", amountUsd: amountUsd.toFixed(2), balanceAfter: nextVestBalance.toFixed(2),
+      });
+      await tx.insert(transactions).values({
+        userId: guardianUserId, type: "transfer", amount: (-amountUsd).toFixed(2), fee: "0.00",
+        description: `Back to School Piggy Vest contribution for ${child.fullName}`,
+      });
+      return { vest: updatedVest, walletBalance: walletBalance.toFixed(2) };
+    });
+  }
+
+  async getBackToSchoolAttempt(childId: number, guardianUserId: number): Promise<BackToSchoolAttempt | undefined> {
+    const [attempt] = await db.select().from(backToSchoolAttempts)
+      .where(and(eq(backToSchoolAttempts.childId, childId), eq(backToSchoolAttempts.guardianUserId, guardianUserId)));
+    return attempt;
+  }
+
+  async createBackToSchoolAttempt(data: { childId: number; guardianUserId: number; questionIds: string[] }): Promise<BackToSchoolAttempt> {
+    const [attempt] = await db.insert(backToSchoolAttempts).values({
+      childId: data.childId, guardianUserId: data.guardianUserId, questionIds: data.questionIds, status: "started",
+    }).returning();
+    return attempt;
+  }
+
+  async completeBackToSchoolAttempt(data: { childId: number; guardianUserId: number; score: number; percentage: number; awardAmount: number; expired?: boolean }): Promise<any> {
+    return db.transaction(async (tx) => {
+      const [attempt] = await tx.select().from(backToSchoolAttempts)
+        .where(and(eq(backToSchoolAttempts.childId, data.childId), eq(backToSchoolAttempts.guardianUserId, data.guardianUserId)))
+        .for("update");
+      if (!attempt || attempt.status !== "started") throw new Error("There is no active spelling-bee attempt for this child");
+      const now = new Date();
+      const [completedAttempt] = await tx.update(backToSchoolAttempts)
+        .set({ status: data.expired ? "expired" : "completed", score: data.score, percentage: data.percentage.toFixed(2), completedAt: now })
+        .where(eq(backToSchoolAttempts.id, attempt.id))
+        .returning();
+      const status = data.awardAmount > 0 ? "recommended" : "not_eligible";
+      const [award] = await tx.insert(backToSchoolAwards).values({
+        childId: data.childId, guardianUserId: data.guardianUserId,
+        scorePercentage: data.percentage.toFixed(2), awardAmount: data.awardAmount.toFixed(2), status,
+      }).returning();
+      return { attempt: completedAttempt, award };
+    });
   }
 
   // ── Cashback ────────────────────────────────────────────────────────────────

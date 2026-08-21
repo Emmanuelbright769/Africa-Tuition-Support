@@ -13,6 +13,9 @@ export const disbursementStatusEnum = pgEnum("disbursement_status", ["pending", 
 export const tradeWalletTypeEnum = pgEnum("trade_wallet_type", ["trc20", "bep20"]);
 export const tradeTransactionTypeEnum = pgEnum("trade_transaction_type", ["deposit", "topup", "withdraw_exchange", "withdraw_bank", "bot_earning"]);
 export const tradeTransactionStatusEnum = pgEnum("trade_transaction_status", ["pending", "completed", "failed"]);
+export const backToSchoolVestStatusEnum = pgEnum("back_to_school_vest_status", ["active", "qualified", "expired"]);
+export const backToSchoolAttemptStatusEnum = pgEnum("back_to_school_attempt_status", ["started", "completed", "expired"]);
+export const backToSchoolAwardStatusEnum = pgEnum("back_to_school_award_status", ["recommended", "approved", "paid", "not_eligible"]);
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -89,6 +92,68 @@ export const identityVerifications = pgTable("identity_verifications", {
   reviewedAt: timestamp("reviewed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Back to School is guardian-managed. Child records are separate from account
+// users and retain only the information required for this programme.
+export const backToSchoolChildren = pgTable("back_to_school_children", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  guardianUserId: integer("guardian_user_id").notNull().references(() => users.id),
+  fullName: text("full_name").notNull(),
+  dateOfBirth: date("date_of_birth").notNull(),
+  schoolName: text("school_name"),
+  gradeLevel: text("grade_level"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const backToSchoolVests = pgTable("back_to_school_vests", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  childId: integer("child_id").notNull().references(() => backToSchoolChildren.id).unique(),
+  guardianUserId: integer("guardian_user_id").notNull().references(() => users.id),
+  balance: decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  targetAmount: decimal("target_amount", { precision: 10, scale: 2 }).notNull().default("30.00"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  fundedAt: timestamp("funded_at"),
+  maturesAt: timestamp("matures_at").notNull(),
+  status: backToSchoolVestStatusEnum("status").notNull().default("active"),
+  qualifiedAt: timestamp("qualified_at"),
+  returnedAmount: decimal("returned_amount", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  settledAt: timestamp("settled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const backToSchoolVestTransactions = pgTable("back_to_school_vest_transactions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  vestId: integer("vest_id").notNull().references(() => backToSchoolVests.id),
+  guardianUserId: integer("guardian_user_id").notNull().references(() => users.id),
+  type: varchar("type", { length: 30 }).notNull().default("contribution"),
+  amountUsd: decimal("amount_usd", { precision: 10, scale: 2 }).notNull(),
+  balanceAfter: decimal("balance_after", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const backToSchoolAttempts = pgTable("back_to_school_attempts", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  childId: integer("child_id").notNull().references(() => backToSchoolChildren.id).unique(),
+  guardianUserId: integer("guardian_user_id").notNull().references(() => users.id),
+  questionIds: jsonb("question_ids").notNull(),
+  status: backToSchoolAttemptStatusEnum("status").notNull().default("started"),
+  score: integer("score"),
+  percentage: decimal("percentage", { precision: 5, scale: 2 }),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const backToSchoolAwards = pgTable("back_to_school_awards", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  childId: integer("child_id").notNull().references(() => backToSchoolChildren.id).unique(),
+  guardianUserId: integer("guardian_user_id").notNull().references(() => users.id),
+  scorePercentage: decimal("score_percentage", { precision: 5, scale: 2 }).notNull(),
+  awardAmount: decimal("award_amount", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  status: backToSchoolAwardStatusEnum("status").notNull().default("not_eligible"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewed_at"),
 });
 
 export const fileUploads = pgTable("file_uploads", {
@@ -256,6 +321,10 @@ export type Verification = typeof verifications.$inferSelect;
 export const insertIdentityVerificationSchema = createInsertSchema(identityVerifications).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertIdentityVerification = z.infer<typeof insertIdentityVerificationSchema>;
 export type IdentityVerification = typeof identityVerifications.$inferSelect;
+export type BackToSchoolChild = typeof backToSchoolChildren.$inferSelect;
+export type BackToSchoolVest = typeof backToSchoolVests.$inferSelect;
+export type BackToSchoolAttempt = typeof backToSchoolAttempts.$inferSelect;
+export type BackToSchoolAward = typeof backToSchoolAwards.$inferSelect;
 
 export const insertFileUploadSchema = createInsertSchema(fileUploads).omit({ id: true, createdAt: true });
 export type InsertFileUpload = z.infer<typeof insertFileUploadSchema>;

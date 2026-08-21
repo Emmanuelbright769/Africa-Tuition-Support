@@ -146,6 +146,80 @@ const upload = multer({
   },
 });
 
+const BACK_TO_SCHOOL_LAUNCH_AT = new Date("2026-08-21T00:00:00.000Z");
+const BACK_TO_SCHOOL_CBT_MINUTES = 15;
+const BACK_TO_SCHOOL_TARGET_USD = 30;
+const SPELLING_BEE_QUESTIONS = [
+  { id: "junior-1", ages: "junior", prompt: "Choose the correct spelling.", choices: ["becos", "because", "becouse", "beacause"], answer: 1 },
+  { id: "junior-2", ages: "junior", prompt: "Choose the correct spelling.", choices: ["butterfly", "buterfly", "butterflie", "butterflye"], answer: 0 },
+  { id: "junior-3", ages: "junior", prompt: "Choose the correct spelling.", choices: ["elefant", "ellaphant", "elephant", "elephent"], answer: 2 },
+  { id: "junior-4", ages: "junior", prompt: "Choose the correct spelling.", choices: ["beautiful", "beutiful", "beautifull", "beautyful"], answer: 0 },
+  { id: "junior-5", ages: "junior", prompt: "Choose the correct spelling.", choices: ["tomorrow", "tommorow", "tomorow", "tommorrow"], answer: 0 },
+  { id: "junior-6", ages: "junior", prompt: "Choose the correct spelling.", choices: ["library", "libary", "librery", "liberary"], answer: 0 },
+  { id: "junior-7", ages: "junior", prompt: "Choose the correct spelling.", choices: ["different", "diffrent", "diferent", "differant"], answer: 0 },
+  { id: "junior-8", ages: "junior", prompt: "Choose the correct spelling.", choices: ["friend", "freind", "frend", "friand"], answer: 0 },
+  { id: "junior-9", ages: "junior", prompt: "Choose the correct spelling.", choices: ["favourite", "favorrite", "faverite", "favouritee"], answer: 0 },
+  { id: "junior-10", ages: "junior", prompt: "Choose the correct spelling.", choices: ["holiday", "hollyday", "holidy", "holliday"], answer: 0 },
+  { id: "junior-11", ages: "junior", prompt: "Choose the correct spelling.", choices: ["school", "shool", "schol", "schoole"], answer: 0 },
+  { id: "junior-12", ages: "junior", prompt: "Choose the correct spelling.", choices: ["pencil", "pensil", "pencill", "pencil"], answer: 0 },
+  { id: "junior-13", ages: "junior", prompt: "Choose the correct spelling.", choices: ["calendar", "calender", "callendar", "calandar"], answer: 0 },
+  { id: "junior-14", ages: "junior", prompt: "Choose the correct spelling.", choices: ["chocolate", "choclate", "chocollate", "chocolat"], answer: 0 },
+  { id: "junior-15", ages: "junior", prompt: "Choose the correct spelling.", choices: ["vegetable", "vegitable", "vegeteble", "vegtable"], answer: 0 },
+  { id: "junior-16", ages: "junior", prompt: "Choose the correct spelling.", choices: ["adventure", "adveture", "adventur", "adventcher"], answer: 0 },
+  { id: "junior-17", ages: "junior", prompt: "Choose the correct spelling.", choices: ["important", "importent", "impoortant", "imprtant"], answer: 0 },
+  { id: "junior-18", ages: "junior", prompt: "Choose the correct spelling.", choices: ["answer", "anwser", "anser", "answar"], answer: 0 },
+  { id: "junior-19", ages: "junior", prompt: "Choose the correct spelling.", choices: ["surprise", "suprise", "surprize", "surprisse"], answer: 0 },
+  { id: "junior-20", ages: "junior", prompt: "Choose the correct spelling.", choices: ["knowledge", "knowlege", "knowlage", "knowlegde"], answer: 0 },
+  { id: "senior-1", ages: "senior", prompt: "Choose the correct spelling.", choices: ["accomodation", "accommodation", "acommodation", "accommadation"], answer: 1 },
+  { id: "senior-2", ages: "senior", prompt: "Choose the correct spelling.", choices: ["necessary", "neccessary", "necessery", "necesary"], answer: 0 },
+  { id: "senior-3", ages: "senior", prompt: "Choose the correct spelling.", choices: ["privilege", "priviledge", "privelege", "privillage"], answer: 0 },
+  { id: "senior-4", ages: "senior", prompt: "Choose the correct spelling.", choices: ["conscience", "concience", "consience", "consciense"], answer: 0 },
+  { id: "senior-5", ages: "senior", prompt: "Choose the correct spelling.", choices: ["rhythm", "rythm", "rhythym", "rithm"], answer: 0 },
+  { id: "senior-6", ages: "senior", prompt: "Choose the correct spelling.", choices: ["embarrass", "embarass", "embarras", "embarrase"], answer: 0 },
+  { id: "senior-7", ages: "senior", prompt: "Choose the correct spelling.", choices: ["maintenance", "maintainance", "maintenence", "maintainence"], answer: 0 },
+  { id: "senior-8", ages: "senior", prompt: "Choose the correct spelling.", choices: ["definitely", "definately", "definetely", "definitly"], answer: 0 },
+  { id: "senior-9", ages: "senior", prompt: "Choose the correct spelling.", choices: ["independent", "independant", "indipendent", "independant"], answer: 0 },
+  { id: "senior-10", ages: "senior", prompt: "Choose the correct spelling.", choices: ["pronunciation", "pronounciation", "pronuncation", "pronunciaton"], answer: 0 },
+  { id: "senior-11", ages: "senior", prompt: "Choose the correct spelling.", choices: ["questionnaire", "questionaire", "questionnair", "questioneer"], answer: 0 },
+  { id: "senior-12", ages: "senior", prompt: "Choose the correct spelling.", choices: ["liaison", "liason", "liasion", "liaisson"], answer: 0 },
+  { id: "senior-13", ages: "senior", prompt: "Choose the correct spelling.", choices: ["supersede", "supercede", "supersceed", "superseed"], answer: 0 },
+  { id: "senior-14", ages: "senior", prompt: "Choose the correct spelling.", choices: ["millennium", "millenium", "millenniam", "milennium"], answer: 0 },
+  { id: "senior-15", ages: "senior", prompt: "Choose the correct spelling.", choices: ["entrepreneur", "entreprenuer", "enterpreneur", "entrepreneaur"], answer: 0 },
+  { id: "senior-16", ages: "senior", prompt: "Choose the correct spelling.", choices: ["occurrence", "occurence", "occurrance", "ocurrence"], answer: 0 },
+  { id: "senior-17", ages: "senior", prompt: "Choose the correct spelling.", choices: ["perseverance", "perseverence", "perseverence", "perserverance"], answer: 0 },
+  { id: "senior-18", ages: "senior", prompt: "Choose the correct spelling.", choices: ["bureaucracy", "bureacracy", "bureaucrasy", "burocracy"], answer: 0 },
+  { id: "senior-19", ages: "senior", prompt: "Choose the correct spelling.", choices: ["miscellaneous", "miscellanious", "mischievous", "miscelleneous"], answer: 0 },
+  { id: "senior-20", ages: "senior", prompt: "Choose the correct spelling.", choices: ["unnecessary", "unneccessary", "unecessary", "unncessary"], answer: 0 },
+] as const;
+
+function getChildAge(dateOfBirth: string): number {
+  const dob = new Date(`${dateOfBirth}T00:00:00.000Z`);
+  if (Number.isNaN(dob.getTime())) return -1;
+  const today = new Date();
+  let age = today.getUTCFullYear() - dob.getUTCFullYear();
+  const beforeBirthday = today.getUTCMonth() < dob.getUTCMonth()
+    || (today.getUTCMonth() === dob.getUTCMonth() && today.getUTCDate() < dob.getUTCDate());
+  if (beforeBirthday) age--;
+  return age;
+}
+
+function getBackToSchoolAward(percentage: number): number {
+  if (percentage >= 70) return 100;
+  if (percentage >= 65) return 50;
+  if (percentage >= 50) return 30;
+  return 0;
+}
+
+function requireBackToSchoolLaunch(res: Response): boolean {
+  if (Date.now() < BACK_TO_SCHOOL_LAUNCH_AT.getTime()) {
+    res.status(403).json({
+      message: `Back to School opens on ${BACK_TO_SCHOOL_LAUNCH_AT.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`,
+    });
+    return false;
+  }
+  return true;
+}
+
 function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -2432,6 +2506,175 @@ export async function registerRoutes(
         }),
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── Affiliate Back to School ───────────────────────────────────────────────
+  const requireBackToSchoolGuardian = async (req: Request, res: Response) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) {
+      res.status(401).json({ message: "Not authenticated" });
+      return null;
+    }
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "affiliate") {
+      res.status(403).json({ message: "Back to School is available from an affiliate account." });
+      return null;
+    }
+    if (user.activeSessionId && user.activeSessionId !== req.session.id) {
+      req.session.destroy(() => {});
+      res.status(401).json({ message: "SESSION_DISPLACED", reason: "Your account has been signed in on another device. You have been signed out." });
+      return null;
+    }
+    return { userId, user };
+  };
+
+  app.get("/api/back-to-school", async (req, res) => {
+    try {
+      const guardian = await requireBackToSchoolGuardian(req, res);
+      if (!guardian) return;
+      const children = await storage.getBackToSchoolProgramme(guardian.userId);
+      res.json({
+        children,
+        launchAt: BACK_TO_SCHOOL_LAUNCH_AT.toISOString(),
+        rules: {
+          targetAmount: BACK_TO_SCHOOL_TARGET_USD,
+          durationDays: 30,
+          ageMin: 5,
+          ageMax: 15,
+          cbtMinutes: BACK_TO_SCHOOL_CBT_MINUTES,
+          awardBands: [{ min: 50, max: 64, amount: 30 }, { min: 65, max: 69, amount: 50 }, { min: 70, max: 100, amount: 100 }],
+        },
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message || "Unable to load Back to School" }); }
+  });
+
+  app.post("/api/back-to-school/children", async (req, res) => {
+    try {
+      const guardian = await requireBackToSchoolGuardian(req, res);
+      if (!guardian) return;
+      if (!requireBackToSchoolLaunch(res)) return;
+      const { fullName, dateOfBirth, schoolName, gradeLevel } = req.body ?? {};
+      if (typeof fullName !== "string" || fullName.trim().length < 2 || fullName.trim().length > 120) {
+        return res.status(400).json({ message: "Enter the child’s full name." });
+      }
+      if (typeof dateOfBirth !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
+        return res.status(400).json({ message: "Enter a valid date of birth." });
+      }
+      const age = getChildAge(dateOfBirth);
+      if (age < 5 || age > 15) return res.status(400).json({ message: "This programme is for children aged 5 to 15." });
+      const child = await storage.createBackToSchoolChild({
+        guardianUserId: guardian.userId, fullName: fullName.trim(), dateOfBirth,
+        schoolName: typeof schoolName === "string" ? schoolName.trim().slice(0, 160) : undefined,
+        gradeLevel: typeof gradeLevel === "string" ? gradeLevel.trim().slice(0, 80) : undefined,
+      });
+      res.status(201).json(child);
+    } catch (e: any) { res.status(500).json({ message: e.message || "Unable to add child profile" }); }
+  });
+
+  app.patch("/api/back-to-school/children/:childId", async (req, res) => {
+    try {
+      const guardian = await requireBackToSchoolGuardian(req, res);
+      if (!guardian) return;
+      if (!requireBackToSchoolLaunch(res)) return;
+      const childId = Number(req.params.childId);
+      if (!Number.isInteger(childId) || childId < 1) return res.status(400).json({ message: "Invalid child profile." });
+      const { fullName, schoolName, gradeLevel } = req.body ?? {};
+      if (fullName !== undefined && (typeof fullName !== "string" || fullName.trim().length < 2 || fullName.trim().length > 120)) {
+        return res.status(400).json({ message: "Enter a valid child name." });
+      }
+      const child = await storage.updateBackToSchoolChild(childId, guardian.userId, {
+        fullName: typeof fullName === "string" ? fullName.trim() : undefined,
+        schoolName: typeof schoolName === "string" ? schoolName.trim().slice(0, 160) : undefined,
+        gradeLevel: typeof gradeLevel === "string" ? gradeLevel.trim().slice(0, 80) : undefined,
+      });
+      res.json(child);
+    } catch (e: any) {
+      const status = e.message === "Child profile not found" ? 404 : 500;
+      res.status(status).json({ message: e.message || "Unable to update child profile" });
+    }
+  });
+
+  app.post("/api/back-to-school/children/:childId/contributions", async (req, res) => {
+    try {
+      const guardian = await requireBackToSchoolGuardian(req, res);
+      if (!guardian) return;
+      if (!requireBackToSchoolLaunch(res)) return;
+      // The contribution moves money out of a wallet, so it requires the same
+      // strict provider-backed identity verification as wallet funding.
+      if (!await storage.hasCompletedIdentityVerification(guardian.userId)) {
+        return res.status(403).json({ message: "Complete identity verification before funding a Piggy Vest." });
+      }
+      const childId = Number(req.params.childId);
+      const amount = Number(req.body?.amount);
+      if (!Number.isInteger(childId) || childId < 1 || !Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) !== amount * 100) {
+        return res.status(400).json({ message: "Enter a valid contribution amount with up to two decimal places." });
+      }
+      const result = await storage.contributeToBackToSchoolVest(guardian.userId, childId, amount);
+      res.json(result);
+    } catch (e: any) { res.status(400).json({ message: e.message || "Contribution could not be completed" }); }
+  });
+
+  app.post("/api/back-to-school/children/:childId/cbt/start", async (req, res) => {
+    try {
+      const guardian = await requireBackToSchoolGuardian(req, res);
+      if (!guardian) return;
+      if (!requireBackToSchoolLaunch(res)) return;
+      const childId = Number(req.params.childId);
+      if (!Number.isInteger(childId) || childId < 1) return res.status(400).json({ message: "Invalid child profile." });
+      const programme = await storage.getBackToSchoolProgramme(guardian.userId);
+      const entry = programme.find(p => p.id === childId);
+      if (!entry) return res.status(404).json({ message: "Child profile not found." });
+      if (entry.vest?.status !== "qualified") {
+        return res.status(403).json({ message: "The spelling bee unlocks after a fully funded $30 Piggy Vest completes its 30-day term." });
+      }
+      let attempt = entry.attempt;
+      if (attempt?.status === "completed" || attempt?.status === "expired") {
+        return res.status(409).json({ message: "This child has already used their spelling-bee attempt." });
+      }
+      const age = getChildAge(entry.dateOfBirth);
+      const level = age <= 9 ? "junior" : "senior";
+      if (!attempt) {
+        const questionIds = SPELLING_BEE_QUESTIONS.filter(q => q.ages === level).map(q => q.id);
+        attempt = await storage.createBackToSchoolAttempt({ childId, guardianUserId: guardian.userId, questionIds });
+      }
+      const questionIds: string[] = Array.isArray(attempt.questionIds)
+        ? attempt.questionIds.map((id: unknown) => String(id))
+        : [];
+      const questions = questionIds.reduce<Array<{ id: string; prompt: string; choices: readonly string[] }>>((items, id) => {
+        const question = SPELLING_BEE_QUESTIONS.find((entry) => entry.id === id);
+        if (question) items.push({ id: question.id, prompt: question.prompt, choices: question.choices });
+        return items;
+      }, []);
+      res.json({ attemptId: attempt.id, startedAt: attempt.startedAt, durationMinutes: BACK_TO_SCHOOL_CBT_MINUTES, questions });
+    } catch (e: any) { res.status(500).json({ message: e.message || "Unable to start spelling bee" }); }
+  });
+
+  app.post("/api/back-to-school/children/:childId/cbt/submit", async (req, res) => {
+    try {
+      const guardian = await requireBackToSchoolGuardian(req, res);
+      if (!guardian) return;
+      if (!requireBackToSchoolLaunch(res)) return;
+      const childId = Number(req.params.childId);
+      const attempt = await storage.getBackToSchoolAttempt(childId, guardian.userId);
+      if (!attempt || attempt.status !== "started") return res.status(409).json({ message: "There is no active spelling-bee attempt to submit." });
+      if (Date.now() > new Date(attempt.startedAt).getTime() + BACK_TO_SCHOOL_CBT_MINUTES * 60_000) {
+        const expired = await storage.completeBackToSchoolAttempt({
+          childId, guardianUserId: guardian.userId, score: 0, percentage: 0, awardAmount: 0, expired: true,
+        });
+        return res.json({ ...expired, score: 0, totalQuestions: 0, percentage: 0, awardAmount: 0, awardStatus: "not_eligible", expired: true });
+      }
+      const questionIds = Array.isArray(attempt.questionIds) ? attempt.questionIds.map(String) : [];
+      const answers = req.body?.answers;
+      if (!answers || typeof answers !== "object" || Array.isArray(answers)) return res.status(400).json({ message: "Submit the selected answers to finish the CBT." });
+      const score = questionIds.reduce((total, id) => {
+        const question = SPELLING_BEE_QUESTIONS.find(item => item.id === id);
+        return total + (question && Number(answers[id]) === question.answer ? 1 : 0);
+      }, 0);
+      const percentage = questionIds.length ? Math.round((score / questionIds.length) * 10000) / 100 : 0;
+      const awardAmount = getBackToSchoolAward(percentage);
+      const result = await storage.completeBackToSchoolAttempt({ childId, guardianUserId: guardian.userId, score, percentage, awardAmount });
+      res.json({ ...result, score, totalQuestions: questionIds.length, percentage, awardAmount, awardStatus: awardAmount > 0 ? "recommended" : "not_eligible" });
+    } catch (e: any) { res.status(500).json({ message: e.message || "Unable to submit spelling bee" }); }
   });
 
   // Withdraw referral commission earnings from Trade Wallet to SwiftWallet
@@ -10592,6 +10835,21 @@ export async function registerRoutes(
   setTimeout(() => runCommitmentExpiry(), 30_000); // 30 s after startup
   setInterval(runCommitmentExpiry, 60 * 60 * 1000); // every hour
   console.log("[COMMITMENT-EXPIRY] Masters commitment expiry job started — checks every hour.");
+
+  // ── Back to School Piggy Vest maturity returns ────────────────────────────
+  // No guardian action is needed to recover savings once a vest reaches its
+  // maturity date. Settlement credits the SwiftWallet and preserves CBT eligibility.
+  async function runBackToSchoolVestSettlement() {
+    try {
+      const settled = await storage.settleAllMaturedBackToSchoolVests();
+      if (settled > 0) console.log(`[BACK-TO-SCHOOL] Settled and returned ${settled} matured Piggy Vest(s).`);
+    } catch (e: any) {
+      console.error("[BACK-TO-SCHOOL] Piggy Vest settlement job failed:", e.message);
+    }
+  }
+  setTimeout(() => runBackToSchoolVestSettlement(), 20_000);
+  setInterval(runBackToSchoolVestSettlement, 60 * 60 * 1000);
+  console.log("[BACK-TO-SCHOOL] Piggy Vest settlement job started — checks every hour.");
 
   // ── Weekly TS-Mart digest — every Monday at 08:00 WAT (UTC+1) ───────────────
   async function sendWeeklyMartDigest() {

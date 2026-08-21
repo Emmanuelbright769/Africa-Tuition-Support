@@ -90,6 +90,7 @@ export interface IStorage {
   getAllVerifications(): Promise<(Verification & { user: User })[]>;
   createIdentityVerification(v: InsertIdentityVerification): Promise<IdentityVerification>;
   getIdentityVerificationBySignupTokenHash(tokenHash: string): Promise<IdentityVerification | undefined>;
+  consumeIdentityVerificationSignupToken(tokenHash: string): Promise<IdentityVerification | undefined>;
   getVerifiedIdentityVerificationByUser(userId: number): Promise<IdentityVerification | undefined>;
   bindIdentityVerificationToUser(id: number, userId: number): Promise<IdentityVerification>;
   getIdentityVerificationsDueForReview(asOf: Date): Promise<IdentityVerification[]>;
@@ -672,6 +673,21 @@ export class DatabaseStorage implements IStorage {
     return record;
   }
 
+  async consumeIdentityVerificationSignupToken(tokenHash: string): Promise<IdentityVerification | undefined> {
+    const now = new Date();
+    const [claimed] = await db.update(identityVerifications)
+      .set({ signupTokenHash: null, updatedAt: now })
+      .where(and(
+        eq(identityVerifications.signupTokenHash, tokenHash),
+        isNull(identityVerifications.userId),
+        eq(identityVerifications.status, "verified"),
+        eq(identityVerifications.livenessStatus, "verified"),
+        gt(identityVerifications.expiresAt, now),
+      ))
+      .returning();
+    return claimed;
+  }
+
   async getVerifiedIdentityVerificationByUser(userId: number): Promise<IdentityVerification | undefined> {
     const now = new Date();
     const [record] = await db.select().from(identityVerifications).where(and(
@@ -685,9 +701,14 @@ export class DatabaseStorage implements IStorage {
 
   async bindIdentityVerificationToUser(id: number, userId: number): Promise<IdentityVerification> {
     const [updated] = await db.update(identityVerifications)
-      .set({ userId, signupTokenHash: null, updatedAt: new Date() })
-      .where(eq(identityVerifications.id, id))
+      .set({ userId, updatedAt: new Date() })
+      .where(and(
+        eq(identityVerifications.id, id),
+        isNull(identityVerifications.userId),
+        isNull(identityVerifications.signupTokenHash),
+      ))
       .returning();
+    if (!updated) throw new Error("Identity verification token has already been used.");
     return updated;
   }
 
@@ -709,11 +730,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async hasCompletedIdentityVerification(userId: number): Promise<boolean> {
-    if (await this.getVerifiedIdentityVerificationByUser(userId)) return true;
-    // A legacy record is accepted only when it was explicitly approved and its
-    // biometric step was already marked complete; a bare saved NIN is not proof.
-    const legacy = await this.getVerificationByUser(userId);
-    return legacy?.status === "verified" && legacy.biometricVerified === true;
+    return !!await this.getVerifiedIdentityVerificationByUser(userId);
   }
 
   async createFileUpload(file: InsertFileUpload): Promise<FileUpload> {

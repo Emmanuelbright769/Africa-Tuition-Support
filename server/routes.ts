@@ -242,12 +242,10 @@ export async function registerRoutes(
       if (typeof preVerificationToken !== "string" || preVerificationToken.length < 32) {
         return res.status(403).json({ message: "Complete identity verification before creating an account." });
       }
-      const preVerification = await storage.getIdentityVerificationBySignupTokenHash(hashVerificationToken(preVerificationToken));
-      if (!preVerification ||
-          preVerification.status !== "verified" ||
-          preVerification.livenessStatus !== "verified" ||
-          !preVerification.expiresAt ||
-          preVerification.expiresAt <= new Date()) {
+      // Claim the handoff before accounts are created. This conditional update
+      // makes the bearer token single-use even under concurrent requests.
+      const preVerification = await storage.consumeIdentityVerificationSignupToken(hashVerificationToken(preVerificationToken));
+      if (!preVerification) {
         return res.status(403).json({ message: "Your identity verification has expired or could not be confirmed. Please verify again." });
       }
 
@@ -848,7 +846,9 @@ export async function registerRoutes(
       const payload = await response.json().catch(() => null);
       const evidence = verificationEvidence(payload);
       const providerStatus = String(evidence.status || "").toUpperCase();
-      const livenessStatus = String(evidence.liveness || providerStatus).toUpperCase();
+      // A document status alone is not a liveness result. Prembly must return
+      // an explicit live/verified signal for the face check.
+      const livenessStatus = String(evidence.liveness || "").toUpperCase();
       const confirmed = response.ok &&
         payload?.status === true &&
         ["VERIFIED", "SUCCESS"].includes(providerStatus) &&
@@ -1182,6 +1182,7 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Complete the provider-backed document and selfie verification first." });
     }
     return res.status(410).json({ message: "Legacy wallet KYC has been retired. Your provider-backed identity verification is now used instead." });
+    /*
     try {
 
       const { bvn, gpsCoords, selfieBase64 } = req.body;
@@ -1224,7 +1225,7 @@ export async function registerRoutes(
             return res.status(400).json({ message: "Facial liveness check failed. Please retake your selfie in good lighting and look directly at the camera." });
           }
         }
-      } catch { /* face API optional — fall through */ }
+      } catch { // face API optional — fall through
 
       const alreadyDone = verification.biometricVerified;
 
@@ -1256,7 +1257,7 @@ export async function registerRoutes(
             pushToUser(kycReferrer.id, "notification", refN);
           }
         }
-      } catch { /* non-critical */ }
+      } catch { // non-critical
 
       // Fire notification
       try {
@@ -1271,25 +1272,26 @@ export async function registerRoutes(
           isRead: false,
         });
         pushToUser(userId, "notification", kycNotif);
-      } catch { /* non-critical */ }
+      } catch { // non-critical
 
       // Notify admin — KYC submitted
       try {
         const kycUser = await storage.getUser(userId);
         if (kycUser) {
-          sendAdminKycEmail({
+        sendAdminKycEmail({
             name: `${kycUser.firstName} ${kycUser.lastName}`,
             email: kycUser.email,
             kycType: "BVN + GPS + Facial Biometric",
             userId,
           }).catch(() => {});
         }
-      } catch { /* non-critical */ }
+      } catch { // non-critical
 
       res.json({ success: true, verification, message: "Wallet KYC completed. Your wallet is now fully unlocked." });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+    */
   });
 
   app.post("/api/verification/biometric", async (req, res) => {
@@ -1299,6 +1301,7 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Complete the provider-backed document and selfie verification first." });
     }
     return res.status(410).json({ message: "Legacy biometric completion has been retired. Your provider-backed identity verification is now used instead." });
+    /*
     try {
 
       const { selfieBase64 } = req.body;
@@ -1330,7 +1333,7 @@ export async function registerRoutes(
             premblyFaceResult = pfJson;
           }
         }
-      } catch { /* face check optional — fall through */ }
+      } catch { // face check optional — fall through
 
       // Mark biometric done regardless (selfie captured = liveness proven)
       verification = await storage.updateVerification(verification.id, { biometricVerified: true });
@@ -1343,6 +1346,7 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
+    */
   });
 
   // ── Face Liveness Check (called by BiometricVerification.tsx during onboarding) ──

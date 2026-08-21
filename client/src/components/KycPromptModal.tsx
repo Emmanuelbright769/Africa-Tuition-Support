@@ -3,78 +3,69 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  ShieldCheck, CheckCircle2, Loader2, AlertCircle, Fingerprint, Lock
-} from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { ShieldCheck, Loader2, Fingerprint, AlertCircle } from "lucide-react";
+import { motion } from "framer-motion";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Logo } from "@/components/ui/Logo";
 
-const ID_OPTIONS = [
-  { value: "nin",             label: "National Identity Number (NIN)",       hint: "11-digit NIN",                       numeric: true,  len: [11, 11] },
-  { value: "bvn",             label: "Bank Verification Number (BVN)",       hint: "11-digit BVN",                       numeric: true,  len: [11, 11] },
-  { value: "passport",        label: "International Passport",               hint: "Passport number (e.g. A12345678)",   numeric: false, len: [6,  15] },
-  { value: "voters_card",     label: "Voter's Card / PVC (VIN)",             hint: "Voter Identification Number",        numeric: false, len: [10, 25] },
-  { value: "drivers_license", label: "Driver's License",                     hint: "e.g. ABC00000AA00",                  numeric: false, len: [8,  20] },
-  { value: "national_id",     label: "National ID / Residence Permit",       hint: "National ID or residence card",      numeric: false, len: [5,  30] },
+const DOCUMENT_TYPES = [
+  { value: "passport", label: "Passport" },
+  { value: "drivers_license", label: "Driver's Licence" },
+  { value: "national_id", label: "National ID or residence card" },
 ];
+
+function toBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (file.size > 5 * 1024 * 1024) return reject(new Error("Each image must be smaller than 5MB."));
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read image."));
+    reader.onerror = () => reject(new Error("Could not read image."));
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function KycPromptModal() {
   const { toast } = useToast();
+  const [documentType, setDocumentType] = useState("passport");
+  const [documentCountry, setDocumentCountry] = useState("NG");
+  const [documentImage, setDocumentImage] = useState("");
+  const [selfieImage, setSelfieImage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const [idType,       setIdType]       = useState("nin");
-  const [idNumber,     setIdNumber]     = useState("");
-  const [idLastName,   setIdLastName]   = useState("");  // required for passport
-  const [verifying,    setVerifying]    = useState(false);
-  const [verified,     setVerified]     = useState(false);
-  const [verifiedData, setVerifiedData] = useState<any>(null);
-  const [idError,      setIdError]      = useState("");
-  const [saving,       setSaving]       = useState(false);
-
-  const opt = ID_OPTIONS.find(o => o.value === idType) || ID_OPTIONS[0];
-  const isReady =
-    idNumber.length >= opt.len[0] &&
-    idNumber.length <= opt.len[1] &&
-    (!opt.numeric || /^\d+$/.test(idNumber)) &&
-    (idType !== "passport" || idLastName.trim().length >= 2);
-
-  const handleVerify = async () => {
-    if (!isReady) { setIdError(`Please enter a valid ${opt.label}.`); return; }
-    setIdError("");
-    setVerifying(true);
-    setVerified(false);
+  const chooseImage = async (file: File | undefined, destination: (value: string) => void) => {
+    if (!file) return;
     try {
-      const res = await apiRequest("POST", "/api/verification/validate-id", {
-        idType, idNumber: idNumber.trim(), lastName: idLastName.trim(),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Verification failed");
-      setVerifiedData(data);
-      setVerified(true);
-      toast({ title: `${opt.label} Verified ✓`, description: "Identity confirmed successfully." });
+      destination(await toBase64(file));
+      setError("");
     } catch (err: any) {
-      setIdError(err.message || "Verification failed. Please check your details.");
-    } finally {
-      setVerifying(false);
+      setError(err.message || "Could not prepare that image.");
     }
   };
 
-  const handleComplete = async () => {
-    if (!verified) return;
+  const handleComplete = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!/^[A-Z]{2}$/.test(documentCountry) || !documentImage || !selfieImage) {
+      setError("Choose the issuing country and upload both a document image and a current selfie.");
+      return;
+    }
     setSaving(true);
+    setError("");
     try {
-      const res = await apiRequest("POST", "/api/verification/identity", {
-        idType, idNumber: idNumber.trim(),
+      const response = await apiRequest("POST", "/api/identity-verifications/verify", {
+        documentType,
+        documentCountry,
+        documentImage,
+        selfieImage,
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to save"); }
-      // Refresh auth so kycCompleted flips to true and this modal closes
+      const data = await response.json();
+      if (!response.ok || data.verified !== true) throw new Error(data.message || "Identity verification could not be completed.");
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      // Wait a tick for React Query to refetch
       await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
-      toast({ title: "Identity Verified ✓", description: "Your KYC is complete. Welcome to Tsifor Africa!" });
+      toast({ title: "Identity verified", description: "Your one-time identity verification is complete." });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      setError(err.message || "Identity verification failed. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -82,175 +73,43 @@ export default function KycPromptModal() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-        className="w-full max-w-md bg-card rounded-2xl shadow-2xl border overflow-hidden"
-      >
-        {/* Header */}
-        <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border-b px-6 py-5">
-          <div className="flex items-center gap-3 mb-3">
-            <Logo size={28} />
-            <Badge variant="outline" className="text-xs font-medium border-primary/40 text-primary">
-              One-Time Verification
-            </Badge>
-          </div>
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }} className="w-full max-w-md overflow-hidden rounded-2xl border bg-card shadow-2xl">
+        <div className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-transparent px-6 py-5">
+          <div className="mb-3 flex items-center gap-3"><Logo /><Badge variant="outline" className="border-primary/40 text-xs font-medium text-primary">One-time verification</Badge></div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
-              <Fingerprint className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h2 className="font-bold text-base leading-tight">Identity Verification Required</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Tsifor Africa is required to verify the identity of all users.
-              </p>
-            </div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15"><Fingerprint className="h-5 w-5 text-primary" /></div>
+            <div><h2 className="text-base font-bold leading-tight">Identity verification required</h2><p className="mt-0.5 text-xs text-muted-foreground">Verify with a government-issued document and a current selfie.</p></div>
           </div>
         </div>
-
-        {/* Body */}
-        <div className="px-6 py-5 space-y-5">
-          {/* Why */}
-          <div className="flex gap-2.5 bg-amber-50 dark:bg-amber-950/30 rounded-xl p-3 border border-amber-200 dark:border-amber-800/50">
-            <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-              This one-time check protects your account and ensures the security of all platform
-              transactions. You won't be asked again after completing this.
-            </p>
+        <form onSubmit={handleComplete} className="space-y-4 px-6 py-5">
+          <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-950/30">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-300">Prembly confirms the document and face match. Images are sent for verification and are not stored in your TSIA account.</p>
           </div>
-
-          {/* ID Type */}
           <div className="space-y-1.5">
-            <Label htmlFor="kyc-id-type" className="text-sm font-medium">Identity Document Type</Label>
-            <select
-              id="kyc-id-type"
-              value={idType}
-              onChange={e => { setIdType(e.target.value); setIdNumber(""); setIdLastName(""); setVerified(false); setIdError(""); }}
-              className="w-full h-11 rounded-md border border-input bg-muted/30 px-3 py-2 text-sm text-foreground ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            >
-              {ID_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
+            <Label htmlFor="kyc-document-type">Identity document</Label>
+            <select id="kyc-document-type" value={documentType} onChange={e => setDocumentType(e.target.value)} className="h-11 w-full rounded-md border border-input bg-muted/30 px-3 text-sm">
+              {DOCUMENT_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
             </select>
           </div>
-
-          {/* ID Number */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">{opt.label}</Label>
-            <Input
-              value={idNumber}
-              onChange={e => { setIdNumber(e.target.value); setVerified(false); setIdError(""); }}
-              placeholder={opt.hint}
-              inputMode={opt.numeric ? "numeric" : "text"}
-              className="h-11 bg-muted/30 font-mono text-sm"
-            />
+            <Label htmlFor="kyc-document-country">Country issuing the document</Label>
+            <Input id="kyc-document-country" value={documentCountry} maxLength={2} onChange={e => setDocumentCountry(e.target.value.toUpperCase())} placeholder="e.g. NG, GB, US" className="h-11 uppercase" />
           </div>
-
-          {/* Last name — passport only */}
-          <AnimatePresence>
-            {idType === "passport" && (
-              <motion.div
-                key="lastname"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="space-y-1.5 overflow-hidden"
-              >
-                <Label className="text-sm font-medium">Surname (as on passport)</Label>
-                <Input
-                  value={idLastName}
-                  onChange={e => { setIdLastName(e.target.value); setVerified(false); }}
-                  placeholder="Last name"
-                  className="h-11 bg-muted/30"
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Error */}
-          <AnimatePresence>
-            {idError && (
-              <motion.div
-                key="error"
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="flex gap-2 items-start bg-destructive/10 border border-destructive/30 rounded-xl p-3"
-              >
-                <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                <p className="text-xs text-destructive leading-relaxed">{idError}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Verified badge */}
-          <AnimatePresence>
-            {verified && (
-              <motion.div
-                key="verified"
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="flex gap-2 items-center bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-3"
-              >
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                    {opt.label} verified ✓
-                  </p>
-                  {verifiedData?.firstName && (
-                    <p className="text-xs text-emerald-700 dark:text-emerald-400 truncate">
-                      {verifiedData.firstName} {verifiedData.lastName || verifiedData.middleName || ""}
-                    </p>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Actions */}
-          <div className="space-y-2.5 pt-1">
-            {!verified ? (
-              <Button
-                className="w-full h-11 font-semibold"
-                onClick={handleVerify}
-                disabled={!isReady || verifying}
-              >
-                {verifying ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verifying…</>
-                ) : (
-                  <><ShieldCheck className="w-4 h-4 mr-2" /> Verify Identity</>
-                )}
-              </Button>
-            ) : (
-              <Button
-                className="w-full h-11 font-semibold bg-emerald-600 hover:bg-emerald-700"
-                onClick={handleComplete}
-                disabled={saving}
-              >
-                {saving ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</>
-                ) : (
-                  <><CheckCircle2 className="w-4 h-4 mr-2" /> Complete Verification</>
-                )}
-              </Button>
-            )}
+          <div className="space-y-1.5">
+            <Label htmlFor="kyc-document-image">Clear document image</Label>
+            <Input id="kyc-document-image" type="file" accept="image/jpeg,image/png,image/webp" onChange={e => chooseImage(e.target.files?.[0], setDocumentImage)} className="h-11" />
           </div>
-
-          {/* Footer note */}
-          <div className="flex gap-2 items-start pt-1">
-            <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Your data is encrypted and stored securely. It will only be used to verify your identity
-              and protect your account. See our{" "}
-              <a href="/terms" className="underline hover:text-primary" target="_blank" rel="noopener noreferrer">
-                privacy policy
-              </a>
-              .
-            </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="kyc-selfie-image">Current selfie</Label>
+            <Input id="kyc-selfie-image" type="file" accept="image/jpeg,image/png,image/webp" capture="user" onChange={e => chooseImage(e.target.files?.[0], setSelfieImage)} className="h-11" />
           </div>
-        </div>
+          {error && <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs text-destructive"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
+          <Button type="submit" disabled={saving} className="h-12 w-full font-semibold" data-testid="button-complete-kyc">
+            {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Verifying securely…</> : <><ShieldCheck className="mr-2 h-4 w-4" />Verify identity</>}
+          </Button>
+        </form>
       </motion.div>
     </div>
   );

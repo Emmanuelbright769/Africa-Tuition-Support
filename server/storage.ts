@@ -1,7 +1,7 @@
-import { eq, desc, and, gt, gte, lte, count, sql, ne, like, ilike, or, not, isNull, inArray } from "drizzle-orm";
+import { eq, desc, and, gt, gte, lte, lt, count, sql, ne, like, ilike, or, not, isNull, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, verifications, sponsorshipPlans, wallets, transactions, disbursements,
+  users, verifications, identityVerifications, sponsorshipPlans, wallets, transactions, disbursements,
   leadershipInquiries, otpCodes, fileUploads, coAffiliates,
   tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
   landlordProperties, tenancyLeases, tenancyPayments, loans,
@@ -21,7 +21,7 @@ import {
   researchGrants, type ResearchGrant, type InsertResearchGrant,
   platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
   type User, type InsertUser,
-  type Verification, type InsertVerification,
+  type Verification, type InsertVerification, type IdentityVerification, type InsertIdentityVerification,
   type SponsorshipPlan, type InsertSponsorshipPlan,
   type Transaction, type InsertTransaction,
   type Disbursement, type InsertDisbursement,
@@ -88,6 +88,13 @@ export interface IStorage {
   updateVerification(id: number, data: Partial<Verification>): Promise<Verification>;
   getPendingVerifications(): Promise<(Verification & { user: User })[]>;
   getAllVerifications(): Promise<(Verification & { user: User })[]>;
+  createIdentityVerification(v: InsertIdentityVerification): Promise<IdentityVerification>;
+  getIdentityVerificationBySignupTokenHash(tokenHash: string): Promise<IdentityVerification | undefined>;
+  getVerifiedIdentityVerificationByUser(userId: number): Promise<IdentityVerification | undefined>;
+  bindIdentityVerificationToUser(id: number, userId: number): Promise<IdentityVerification>;
+  getIdentityVerificationsDueForReview(asOf: Date): Promise<IdentityVerification[]>;
+  markIdentityVerificationReviewed(id: number, reviewedAt: Date): Promise<void>;
+  hasCompletedIdentityVerification(userId: number): Promise<boolean>;
 
   createFileUpload(file: InsertFileUpload): Promise<FileUpload>;
   getFilesByUser(userId: number): Promise<FileUpload[]>;
@@ -652,6 +659,61 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(verifications.userId, users.id))
       .orderBy(desc(verifications.id));
     return results.map(r => ({ ...r.verifications, user: r.users }));
+  }
+
+  async createIdentityVerification(v: InsertIdentityVerification): Promise<IdentityVerification> {
+    const [created] = await db.insert(identityVerifications).values(v).returning();
+    return created;
+  }
+
+  async getIdentityVerificationBySignupTokenHash(tokenHash: string): Promise<IdentityVerification | undefined> {
+    const [record] = await db.select().from(identityVerifications)
+      .where(eq(identityVerifications.signupTokenHash, tokenHash));
+    return record;
+  }
+
+  async getVerifiedIdentityVerificationByUser(userId: number): Promise<IdentityVerification | undefined> {
+    const now = new Date();
+    const [record] = await db.select().from(identityVerifications).where(and(
+      eq(identityVerifications.userId, userId),
+      eq(identityVerifications.status, "verified"),
+      eq(identityVerifications.livenessStatus, "verified"),
+      or(isNull(identityVerifications.documentExpiresAt), gt(identityVerifications.documentExpiresAt, now)),
+    ));
+    return record;
+  }
+
+  async bindIdentityVerificationToUser(id: number, userId: number): Promise<IdentityVerification> {
+    const [updated] = await db.update(identityVerifications)
+      .set({ userId, signupTokenHash: null, updatedAt: new Date() })
+      .where(eq(identityVerifications.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getIdentityVerificationsDueForReview(asOf: Date): Promise<IdentityVerification[]> {
+    const expiryWindow = new Date(asOf.getTime() + 45 * 24 * 60 * 60 * 1000);
+    return db.select().from(identityVerifications).where(and(
+      or(
+        ne(identityVerifications.status, "verified"),
+        lte(identityVerifications.documentExpiresAt, expiryWindow),
+      ),
+      or(isNull(identityVerifications.reviewedAt), lt(identityVerifications.reviewedAt, new Date(asOf.getFullYear(), asOf.getMonth(), 1))),
+    ));
+  }
+
+  async markIdentityVerificationReviewed(id: number, reviewedAt: Date): Promise<void> {
+    await db.update(identityVerifications)
+      .set({ reviewedAt, updatedAt: new Date() })
+      .where(eq(identityVerifications.id, id));
+  }
+
+  async hasCompletedIdentityVerification(userId: number): Promise<boolean> {
+    if (await this.getVerifiedIdentityVerificationByUser(userId)) return true;
+    // A legacy record is accepted only when it was explicitly approved and its
+    // biometric step was already marked complete; a bare saved NIN is not proof.
+    const legacy = await this.getVerificationByUser(userId);
+    return legacy?.status === "verified" && legacy.biometricVerified === true;
   }
 
   async createFileUpload(file: InsertFileUpload): Promise<FileUpload> {

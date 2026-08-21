@@ -297,6 +297,51 @@ async function startWalletFundPurgeJob() {
   console.log("[PURGE] Wallet fund purge job started — checking every 30 minutes");
 }
 
+// Reviews only unresolved, failed, and expiring identity records. Successful
+// unexpired records are deliberately not re-verified every month.
+async function startIdentityVerificationReviewJob() {
+  const runReview = async () => {
+    const now = new Date();
+    try {
+      const due = await storage.getIdentityVerificationsDueForReview(now);
+      for (const record of due) {
+        if (record.userId) {
+          const user = await storage.getUser(record.userId);
+          if (user) {
+            const expiring = record.documentExpiresAt && record.documentExpiresAt <= new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000);
+            const title = expiring ? "Identity document review needed" : "Identity verification review needed";
+            const message = expiring
+              ? "Your identity document is expired or nearing expiry. Please contact support to update your verification."
+              : "Your identity verification needs attention. Please contact support so we can help you complete it.";
+            const notification = await storage.createNotification({
+              userId: user.id, type: "system", title, message,
+              data: { identityVerificationId: record.id, reason: expiring ? "document_expiry" : record.status },
+              isRead: false,
+            });
+            try { pushToUser(user.id, "notification", notification); } catch {}
+          }
+        }
+        await storage.markIdentityVerificationReviewed(record.id, now);
+      }
+      console.log(`[IDENTITY-REVIEW] Reviewed ${due.length} unresolved or expiring identity records.`);
+    } catch (error: any) {
+      console.error("[IDENTITY-REVIEW] Monthly review failed:", error?.message ?? error);
+    }
+  };
+
+  await runReview(); // catches a review missed while the app was offline
+  const scheduleNext = () => {
+    const now = new Date();
+    const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 10, 0));
+    setTimeout(async () => {
+      await runReview();
+      scheduleNext();
+    }, nextFirst.getTime() - Date.now());
+    console.log(`[IDENTITY-REVIEW] Next review scheduled: ${nextFirst.toUTCString()}`);
+  };
+  scheduleNext();
+}
+
 async function startAutoRefundJob() {
   const INTERVAL_MS = 60 * 60 * 1000; // check every 60 minutes (reduced from 15 min to cut compute costs)
   setInterval(async () => {
@@ -653,6 +698,7 @@ async function startMaintenanceFeeJob() {
   startWalletFundPurgeJob();
   startTradeWindowBroadcastJob();
   startCryptoDepositVerifierJob();
+  startIdentityVerificationReviewJob();
   startMaintenanceFeeJob();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

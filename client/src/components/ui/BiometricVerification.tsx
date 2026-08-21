@@ -384,9 +384,9 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
     setStepError(null);
     try {
       await startCamera();
-      advanceTo("positioning");
-      startAnalysisLoop();
-      startCountdown(POSITION_MS);
+      // Prembly is the liveness authority. Avoid blocking users on local
+      // motion heuristics before submitting the camera frame to the provider.
+      advanceTo("processing");
     } catch (err: any) {
       setPhase("intro");
       if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
@@ -397,13 +397,6 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
         setCameraError("Could not start the camera. Please check your browser settings and try again.");
       }
     }
-  };
-
-  // ── Skip camera — proceed without liveness (fallback) ────────────────────
-  const handleSkip = () => {
-    clearTimers();
-    stopCamera();
-    setPhase("processing");
   };
 
   // ── Capture frame as base64 JPEG for server liveness check ───────────────
@@ -431,9 +424,9 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
           credentials: "include",
           body: JSON.stringify({ image: imageData }),
         })
-          .then(r => r.json())
-          .then(d => {
-            if (d.live === false) { stopCamera(); setPhase("failed"); }
+          .then(async r => ({ ok: r.ok, data: await r.json() }))
+          .then(({ ok, data: d }) => {
+            if (!ok || d.live !== true || d.providerVerified !== true) { stopCamera(); setPhase("failed"); }
             else setTimeout(() => setPhase("complete"), 1600);
           })
           .catch(() => { stopCamera(); setPhase("failed"); });
@@ -537,9 +530,6 @@ export default function BiometricVerification({ onComplete, onCancel }: Props) {
                     <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-red-700 leading-relaxed">{cameraError}</p>
                   </div>
-                  <button onClick={handleSkip} className="w-full text-xs text-indigo-600 font-semibold underline underline-offset-2 text-left pl-6" data-testid="button-biometric-skip">
-                    Continue without camera check →
-                  </button>
                 </div>
               )}
               <div className="flex gap-3 w-full">

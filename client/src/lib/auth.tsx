@@ -23,7 +23,7 @@ type AuthUser = {
 type AuthContextType = {
   user: AuthUser | null | undefined;
   isLoading: boolean;
-  requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string; loginRole?: string; password?: string }) => Promise<{ otpSent?: boolean; hint?: string; isNewUser?: boolean; multipleRoles?: boolean; roles?: string[] }>;
+  requestOtp: (data: { email: string; firstName?: string; lastName?: string; phone?: string; country?: string; role?: string; referralCode?: string; loginRole?: string; password?: string; preVerificationToken?: string }) => Promise<{ otpSent?: boolean; hint?: string; isNewUser?: boolean; multipleRoles?: boolean; roles?: string[] }>;
   verifyOtp: (email: string, code: string, loginRole?: string) => Promise<AuthUser>;
   adminLogin: (email: string, password: string) => Promise<AuthUser>;
   loginWithPassword: (email: string, password: string, loginRole?: string) => Promise<AuthUser>;

@@ -6,6 +6,7 @@ import { z } from "zod";
 export const roleEnum = pgEnum("role", ["student", "admin", "affiliate"]);
 export const coAffiliateStatusEnum = pgEnum("co_affiliate_status", ["active", "pending", "cancelled"]);
 export const verificationStatusEnum = pgEnum("verification_status", ["pending", "verified", "rejected"]);
+export const identityVerificationStatusEnum = pgEnum("identity_verification_status", ["pending", "verified", "failed", "expired", "manual_review"]);
 export const tierEnum = pgEnum("tier", ["platinum", "gold", "silver", "none"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["verification_fee", "plan_payment", "sponsorship_credit", "withdrawal", "vat_deduction", "deposit", "transfer", "bill", "trade_transfer", "loan", "admin_credit", "admin_adjustment", "crypto_withdrawal", "refund", "maintenance_fee"]);
 export const disbursementStatusEnum = pgEnum("disbursement_status", ["pending", "approved", "rejected", "completed"]);
@@ -63,6 +64,31 @@ export const verifications = pgTable("verifications", {
   payoutMax: decimal("payout_max", { precision: 10, scale: 2 }),
   paidBatchId: integer("paid_batch_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Provider-backed identity records are intentionally separate from academic
+// verification. They never retain the document or selfie image itself.
+export const identityVerifications = pgTable("identity_verifications", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").references(() => users.id),
+  signupTokenHash: text("signup_token_hash").unique(),
+  documentCountry: varchar("document_country", { length: 2 }).notNull(),
+  documentType: text("document_type").notNull(),
+  documentNumberHash: text("document_number_hash"),
+  provider: text("provider").notNull().default("prembly"),
+  providerReference: text("provider_reference"),
+  providerStatus: text("provider_status"),
+  providerEvidence: jsonb("provider_evidence"),
+  status: identityVerificationStatusEnum("status").notNull().default("pending"),
+  livenessStatus: text("liveness_status").notNull().default("pending"),
+  faceMatchScore: decimal("face_match_score", { precision: 6, scale: 3 }),
+  failureReason: text("failure_reason"),
+  documentExpiresAt: timestamp("document_expires_at"),
+  expiresAt: timestamp("expires_at"),
+  verifiedAt: timestamp("verified_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const fileUploads = pgTable("file_uploads", {
@@ -227,6 +253,9 @@ export type OtpCode = typeof otpCodes.$inferSelect;
 export const insertVerificationSchema = createInsertSchema(verifications).omit({ id: true, createdAt: true });
 export type InsertVerification = z.infer<typeof insertVerificationSchema>;
 export type Verification = typeof verifications.$inferSelect;
+export const insertIdentityVerificationSchema = createInsertSchema(identityVerifications).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertIdentityVerification = z.infer<typeof insertIdentityVerificationSchema>;
+export type IdentityVerification = typeof identityVerifications.$inferSelect;
 
 export const insertFileUploadSchema = createInsertSchema(fileUploads).omit({ id: true, createdAt: true });
 export type InsertFileUpload = z.infer<typeof insertFileUploadSchema>;

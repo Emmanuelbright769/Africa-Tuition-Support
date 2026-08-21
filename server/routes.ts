@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { type Server } from "http";
-import { scryptSync, randomBytes, timingSafeEqual } from "crypto";
+import { scryptSync, randomBytes, timingSafeEqual, createHash } from "crypto";
 import { storage } from "./storage";
 import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import { getCached, setCached, invalidateCacheKey, invalidateCachePrefix } from "./cache";
@@ -34,7 +34,7 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests } from "@shared/schema";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
 import { eq, desc, ne, and, sql, or } from "drizzle-orm";
@@ -171,6 +171,10 @@ function hasPasswordSet(storedPassword: string | null | undefined): boolean {
   return !!storedPassword && storedPassword.startsWith("scrypt:");
 }
 
+function hashVerificationToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 
 export async function registerRoutes(
   httpServer: Server,
@@ -190,7 +194,7 @@ export async function registerRoutes(
 
   app.post("/api/auth/request-otp", async (req, res) => {
     try {
-      const { email, firstName, lastName, phone, country, referralCode, role, loginRole, password: plainPassword } = req.body;
+      const { email, firstName, lastName, phone, country, referralCode, role, loginRole, password: plainPassword, preVerificationToken } = req.body;
       if (!email) return res.status(400).json({ message: "Email is required" });
       const normalizedReferralCode = typeof referralCode === "string" ? referralCode.trim().toUpperCase() : "";
 
@@ -232,6 +236,21 @@ export async function registerRoutes(
       }
 
       // ── Signup flow ────────────────────────────────────────────────────
+      // Identity is confirmed before personal details are collected. The opaque
+      // handoff is server-stored and single-use; the browser never provides its
+      // own "verified" flag or provider response.
+      if (typeof preVerificationToken !== "string" || preVerificationToken.length < 32) {
+        return res.status(403).json({ message: "Complete identity verification before creating an account." });
+      }
+      const preVerification = await storage.getIdentityVerificationBySignupTokenHash(hashVerificationToken(preVerificationToken));
+      if (!preVerification ||
+          preVerification.status !== "verified" ||
+          preVerification.livenessStatus !== "verified" ||
+          !preVerification.expiresAt ||
+          preVerification.expiresAt <= new Date()) {
+        return res.status(403).json({ message: "Your identity verification has expired or could not be confirmed. Please verify again." });
+      }
+
       // Helper: create a user for a specific role if they don't exist yet
       const createRoleAccount = async (targetRole: "student" | "affiliate") => {
         let u = await storage.getUserByEmailAndRole(email, targetRole);
@@ -279,10 +298,35 @@ export async function registerRoutes(
         return u;
       };
 
+      const attachVerifiedIdentity = async (targetUser: any, isPrimary: boolean) => {
+        if (await storage.getVerifiedIdentityVerificationByUser(targetUser.id)) return;
+        if (isPrimary) {
+          await storage.bindIdentityVerificationToUser(preVerification.id, targetUser.id);
+          return;
+        }
+        await storage.createIdentityVerification({
+          userId: targetUser.id,
+          documentCountry: preVerification.documentCountry,
+          documentType: preVerification.documentType,
+          documentNumberHash: preVerification.documentNumberHash,
+          provider: preVerification.provider,
+          providerReference: preVerification.providerReference,
+          providerStatus: preVerification.providerStatus,
+          providerEvidence: preVerification.providerEvidence,
+          status: "verified",
+          livenessStatus: "verified",
+          faceMatchScore: preVerification.faceMatchScore,
+          documentExpiresAt: preVerification.documentExpiresAt,
+          verifiedAt: preVerification.verifiedAt,
+        });
+      };
+
       // "both" — create student + affiliate accounts with one OTP
       if (role === "both") {
         const studentUser  = await createRoleAccount("student");
         const affiliateUser = await createRoleAccount("affiliate");
+        await attachVerifiedIdentity(studentUser, true);
+        await attachVerifiedIdentity(affiliateUser, false);
         const code = generateOtp();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
         await storage.createOtp({ email, code, expiresAt, used: false });
@@ -294,6 +338,7 @@ export async function registerRoutes(
       // Single-role signup
       const targetRole = role === "affiliate" ? "affiliate" : "student";
       const user = await createRoleAccount(targetRole);
+      await attachVerifiedIdentity(user, true);
 
       const code = generateOtp();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -304,7 +349,7 @@ export async function registerRoutes(
       res.json({
         message: "OTP sent to your email",
         otpSent: true,
-        isNewUser: !await storage.getVerificationByUser(user!.id),
+        isNewUser: !await storage.hasCompletedIdentityVerification(user!.id),
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -335,11 +380,12 @@ export async function registerRoutes(
         isNewUser = parseFloat(wallet.balance) === 0;
       } catch { /* non-critical */ }
 
-      // Compute kycCompleted so the client can show the one-time KYC gate immediately after login
+      // KYC is complete only after a strict provider-backed identity record (or
+      // a formally approved legacy record) is present; a saved ID number alone
+      // is never sufficient.
       let kycCompleted = true;
       if (user.role !== "admin") {
-        const verification = await storage.getVerificationByUser(user.id);
-        kycCompleted = !!(verification?.nin);
+        kycCompleted = await storage.hasCompletedIdentityVerification(user.id);
       }
 
       req.session.save(async (err) => {
@@ -369,13 +415,10 @@ export async function registerRoutes(
       return res.status(401).json({ message: "SESSION_DISPLACED", reason: "Your account has been signed in on another device. You have been signed out." });
     }
 
-    // KYC is considered complete once the user has a verification row with an ID number saved.
-    // This covers both students (who submitted NIN/BVN during onboarding) and affiliates
-    // who complete the post-login KYC prompt. Admins are exempt.
+    // KYC requires a confirmed provider-backed identity record. Admins are exempt.
     let kycCompleted = true; // default: admin or already verified
     if (user.role !== "admin") {
-      const verification = await storage.getVerificationByUser(userId);
-      kycCompleted = !!(verification?.nin);
+      kycCompleted = await storage.hasCompletedIdentityVerification(userId);
     }
 
     res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode, walletFundDeadline: user.walletFundDeadline ?? null, kycCompleted });
@@ -510,8 +553,7 @@ export async function registerRoutes(
 
       let kycCompletedPw = true;
       if (user.role !== "admin") {
-        const verification = await storage.getVerificationByUser(user.id);
-        kycCompletedPw = !!(verification?.nin);
+        kycCompletedPw = await storage.hasCompletedIdentityVerification(user.id);
       }
 
       req.session.save(async (err) => {
@@ -750,6 +792,171 @@ export async function registerRoutes(
     passport: "International Passport", national_id: "National ID / Residence Permit",
   };
 
+  const DOCUMENT_TYPES: Record<string, string> = {
+    passport: "PP",
+    drivers_license: "DL",
+    national_id: "ID",
+  };
+
+  const stripBase64Image = (value: unknown): string | null => {
+    if (typeof value !== "string") return null;
+    const image = value.replace(/^data:image\/(?:jpeg|jpg|png|webp);base64,/i, "").trim();
+    // 5MB image once base64-decoded, with a small allowance for base64 encoding.
+    if (!image || image.length > 7_000_000 || !/^[A-Za-z0-9+/=\r\n]+$/.test(image)) return null;
+    return image;
+  };
+
+  const verificationEvidence = (payload: any) => {
+    const v = payload?.verification || payload?.data?.verification || payload?.data || {};
+    return {
+      status: v?.status ?? payload?.status ?? null,
+      detail: payload?.detail ?? payload?.message ?? null,
+      reference: v?.reference ?? v?.id ?? payload?.reference ?? payload?.id ?? null,
+      documentCountry: v?.doc_country ?? v?.document_country ?? null,
+      documentType: v?.doc_type ?? v?.document_type ?? null,
+      documentExpiry: v?.expiry_date ?? v?.document_expiry ?? null,
+      faceMatchScore: v?.face_match_score ?? v?.face_match?.score ?? null,
+      liveness: v?.liveness?.status ?? v?.liveness_status ?? null,
+    };
+  };
+
+  const performDocumentWithFaceVerification = async ({
+    documentCountry, documentType, documentImage, selfieImage,
+  }: { documentCountry: string; documentType: string; documentImage: string; selfieImage: string }) => {
+    const apiKey = process.env.PREMBLY_API_KEY;
+    const appId = process.env.PREMBLY_APP_ID;
+    if (!apiKey || !appId) {
+      return { ok: false as const, serviceUnavailable: true, message: "Identity verification is temporarily unavailable. Please try again later." };
+    }
+    try {
+      const response = await fetch("https://api.prembly.com/identitypass/verification/document_with_face", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "app-id": appId,
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({
+          doc_country: documentCountry,
+          doc_type: DOCUMENT_TYPES[documentType],
+          document_image: documentImage,
+          face_image: selfieImage,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const payload = await response.json().catch(() => null);
+      const evidence = verificationEvidence(payload);
+      const providerStatus = String(evidence.status || "").toUpperCase();
+      const livenessStatus = String(evidence.liveness || providerStatus).toUpperCase();
+      const confirmed = response.ok &&
+        payload?.status === true &&
+        ["VERIFIED", "SUCCESS"].includes(providerStatus) &&
+        ["VERIFIED", "SUCCESS", "LIVE"].includes(livenessStatus);
+      if (!confirmed) {
+        console.warn(`[IdentityVerification] Prembly rejected document-with-face: HTTP ${response.status}; status=${providerStatus || "unknown"}`);
+        return {
+          ok: false as const,
+          serviceUnavailable: response.status >= 500,
+          message: response.status >= 500
+            ? "Identity verification is temporarily unavailable. Please try again later."
+            : "We could not confirm that document and selfie. Check the images and try again.",
+          evidence,
+          providerStatus,
+        };
+      }
+      return { ok: true as const, evidence, providerStatus, payload };
+    } catch (error: any) {
+      console.error("[IdentityVerification] Prembly document-with-face error:", error?.message);
+      return { ok: false as const, serviceUnavailable: true, message: "Identity verification is temporarily unavailable. Please try again later." };
+    }
+  };
+
+  const parseProviderDate = (value: unknown): Date | null => {
+    if (typeof value !== "string" || !value.trim()) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const storeConfirmedIdentity = async ({
+    userId, documentCountry, documentType, documentNumber, result, signupToken,
+  }: {
+    userId?: number;
+    documentCountry: string;
+    documentType: string;
+    documentNumber?: string;
+    result: { evidence: ReturnType<typeof verificationEvidence>; providerStatus: string };
+    signupToken?: string;
+  }) => {
+    const verifiedAt = new Date();
+    return storage.createIdentityVerification({
+      userId,
+      signupTokenHash: signupToken ? hashVerificationToken(signupToken) : undefined,
+      documentCountry,
+      documentType,
+      documentNumberHash: documentNumber ? createHash("sha256").update(documentNumber.trim()).digest("hex") : undefined,
+      provider: "prembly",
+      providerReference: typeof result.evidence.reference === "string" ? result.evidence.reference : undefined,
+      providerStatus: result.providerStatus,
+      providerEvidence: result.evidence,
+      status: "verified",
+      livenessStatus: "verified",
+      faceMatchScore: result.evidence.faceMatchScore == null ? undefined : String(result.evidence.faceMatchScore),
+      documentExpiresAt: parseProviderDate(result.evidence.documentExpiry) ?? undefined,
+      expiresAt: signupToken ? new Date(Date.now() + 30 * 60 * 1000) : undefined,
+      verifiedAt,
+    });
+  };
+
+  // Public by design: it runs before an account exists. It creates a short-lived
+  // opaque server-side handoff only after Prembly confirms both the document and
+  // its facial liveness; raw images are forwarded but never persisted.
+  app.post("/api/identity-verifications/signup", async (req, res) => {
+    const documentCountry = String(req.body?.documentCountry || "").trim().toUpperCase();
+    const documentType = String(req.body?.documentType || "").trim();
+    const documentImage = stripBase64Image(req.body?.documentImage);
+    const selfieImage = stripBase64Image(req.body?.selfieImage);
+    if (!/^[A-Z]{2}$/.test(documentCountry) || !DOCUMENT_TYPES[documentType]) {
+      return res.status(400).json({ message: "Choose the issuing country and a supported identity document." });
+    }
+    if (!documentImage || !selfieImage) {
+      return res.status(400).json({ message: "Upload a clear document image and a current selfie to continue." });
+    }
+    const result = await performDocumentWithFaceVerification({ documentCountry, documentType, documentImage, selfieImage });
+    if (!result.ok) return res.status(result.serviceUnavailable ? 503 : 422).json({ message: result.message });
+    const signupToken = randomBytes(32).toString("base64url");
+    const record = await storeConfirmedIdentity({ documentCountry, documentType, result, signupToken });
+    res.json({
+      verified: true,
+      signupVerificationToken: signupToken,
+      expiresAt: record.expiresAt,
+    });
+  });
+
+  // Authenticated recovery path for previously created accounts. It carries the
+  // same strict provider check as signup and cannot accept an ID number alone.
+  app.post("/api/identity-verifications/verify", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (await storage.hasCompletedIdentityVerification(userId)) {
+      return res.json({ verified: true, alreadyVerified: true });
+    }
+    const documentCountry = String(req.body?.documentCountry || "").trim().toUpperCase();
+    const documentType = String(req.body?.documentType || "").trim();
+    const documentImage = stripBase64Image(req.body?.documentImage);
+    const selfieImage = stripBase64Image(req.body?.selfieImage);
+    if (!/^[A-Z]{2}$/.test(documentCountry) || !DOCUMENT_TYPES[documentType]) {
+      return res.status(400).json({ message: "Choose the issuing country and a supported identity document." });
+    }
+    if (!documentImage || !selfieImage) {
+      return res.status(400).json({ message: "Upload a clear document image and a current selfie to continue." });
+    }
+    const result = await performDocumentWithFaceVerification({ documentCountry, documentType, documentImage, selfieImage });
+    if (!result.ok) return res.status(result.serviceUnavailable ? 503 : 422).json({ message: result.message });
+    const record = await storeConfirmedIdentity({ userId, documentCountry, documentType, result });
+    res.json({ verified: true, verificationId: record.id, verifiedAt: record.verifiedAt });
+  });
+
   // ── Unified ID validation endpoint ──────────────────────────────────────
   // Intentionally public (no session required): this is called during signup
   // Step 2 before the user's account exists. It is a pure Prembly lookup —
@@ -757,6 +964,10 @@ export async function registerRoutes(
   // route (which persists the result) still requires authentication.
   app.post("/api/verification/validate-id", async (req, res) => {
     try {
+      return res.status(410).json({
+        message: "ID-number-only verification has been retired. Use the document and selfie verification flow instead.",
+      });
+      /*
       const { idType = "nin", idNumber, lastName } = req.body;
       if (!idNumber || !idType) return res.status(400).json({ message: "ID type and number are required." });
 
@@ -790,6 +1001,7 @@ export async function registerRoutes(
           : `${ID_LABELS[idType] || idType} verified successfully.`,
         data: result.data,
       });
+      */
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -797,39 +1009,11 @@ export async function registerRoutes(
 
   // Backward-compat alias for old NIN-only endpoint
   app.post("/api/verification/validate-nin", async (req, res) => {
-    const userId = (req.session as any)?.userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const wallet = await storage.getOrCreateWallet(userId);
-    const nin = req.body.nin || req.body.idNumber;
-    if (!nin || nin.length !== 11 || !/^\d{11}$/.test(nin)) return res.status(400).json({ message: "NIN must be exactly 11 digits." });
-    const result = await ninverifyLookup("nin", { nin });
-    if (!result.ok) return res.status(400).json({ message: result.message });
-    const demo = result.message === "demo";
-    return res.json({ valid: true, nin, demo, data: result.data });
+    return res.status(410).json({ message: "ID-number-only verification has been retired. Use document and selfie verification." });
   });
 
   app.post("/api/verification/identity", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const wallet = await storage.getOrCreateWallet(userId);
-
-      // Support both old { nin } and new { idType, idNumber } shapes
-      const idType   = req.body.idType || "nin";
-      const idNumber = req.body.idNumber || req.body.nin;
-      if (!idNumber) return res.status(400).json({ message: "ID number is required." });
-
-      let verification = await storage.getVerificationByUser(userId);
-      const update = { nin: idNumber, idType } as any;
-      if (verification) {
-        verification = await storage.updateVerification(verification.id, update);
-      } else {
-        verification = await storage.createVerification({ userId, nin: idNumber, idType, status: "pending", portalFeePaid: false, tier: "none" });
-      }
-      res.json(verification);
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
-    }
+    return res.status(410).json({ message: "ID-number-only verification has been retired. Use document and selfie verification." });
   });
 
   app.post("/api/verification/waec-validate", async (req, res) => {
@@ -944,8 +1128,7 @@ export async function registerRoutes(
       const apiKey = process.env.PREMBLY_API_KEY;
       const appId  = process.env.PREMBLY_APP_ID;
       if (!apiKey || !appId) {
-        console.warn("[BVN] PREMBLY_API_KEY/PREMBLY_APP_ID not set — running format-only check");
-        return res.json({ valid: true, bvn, message: "BVN format validated (live lookup pending key).", demo: true });
+        return res.status(503).json({ message: "Identity verification is temporarily unavailable. Please try again later." });
       }
 
       // Prembly BVN lookup
@@ -964,14 +1147,14 @@ export async function registerRoutes(
         });
         const raw = await verifyRes.text();
         try { verifyData = JSON.parse(raw); } catch { /* non-JSON response */ }
-        if (verifyData && (!verifyRes.ok || verifyData.status === false)) {
+        if (!verifyData || !verifyRes.ok || verifyData.status !== true) {
           return res.status(400).json({
             message: verifyData?.detail || verifyData?.message || "BVN could not be verified. Please check the number and try again.",
           });
         }
       } catch (fetchErr: any) {
-        console.warn("[BVN] Prembly unreachable — falling back to format-only validation:", fetchErr?.message);
-        return res.json({ valid: true, bvn, message: "BVN accepted (format validated). Proceeding.", demo: true });
+        console.warn("[BVN] Prembly unreachable:", fetchErr?.message);
+        return res.status(503).json({ message: "Identity verification is temporarily unavailable. Please try again later." });
       }
 
       const bvnData = (verifyData?.data) || verifyData;
@@ -993,9 +1176,13 @@ export async function registerRoutes(
 
   // ── Wallet KYC Completion (BVN + GPS + Selfie → marks biometricVerified) ────
   app.post("/api/verification/wallet-kyc", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!await storage.hasCompletedIdentityVerification(userId)) {
+      return res.status(403).json({ message: "Complete the provider-backed document and selfie verification first." });
+    }
+    return res.status(410).json({ message: "Legacy wallet KYC has been retired. Your provider-backed identity verification is now used instead." });
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const { bvn, gpsCoords, selfieBase64 } = req.body;
       if (!gpsCoords)     return res.status(400).json({ message: "GPS coordinates are required." });
@@ -1106,9 +1293,13 @@ export async function registerRoutes(
   });
 
   app.post("/api/verification/biometric", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!await storage.hasCompletedIdentityVerification(userId)) {
+      return res.status(403).json({ message: "Complete the provider-backed document and selfie verification first." });
+    }
+    return res.status(410).json({ message: "Legacy biometric completion has been retired. Your provider-backed identity verification is now used instead." });
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const { selfieBase64 } = req.body;
       if (!selfieBase64) return res.status(400).json({ message: "Selfie image is required." });
@@ -1207,7 +1398,10 @@ export async function registerRoutes(
         return res.json({ live: false, confidence, reason: pfJson.detail || "Liveness not detected. Ensure your face is clearly visible and well-lit." });
       }
 
-      return res.json({ live: true, confidence });
+      if (!isLive) {
+        return res.json({ live: false, confidence: 0, reason: "Prembly did not confirm liveness. Please try again." });
+      }
+      return res.json({ live: true, providerVerified: true, confidence });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

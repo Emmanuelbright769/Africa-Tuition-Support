@@ -35,7 +35,7 @@ const AFRICAN_COUNTRIES = [
 
 type RoleChoice = "student" | "affiliate" | "both";
 type Step = 0 | 1 | 2 | 3;
-type KycIdType = "nin" | "bvn" | "passport" | "voters_card";
+type KycIdType = "passport" | "drivers_license" | "national_id";
 
 const ROLE_CARDS: { id: RoleChoice; icon: any; label: string; sub: string; highlight?: boolean;
   card: string; pill: string; iconBg: string; badge?: string }[] = [
@@ -88,8 +88,11 @@ export default function Signup() {
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
-  const [kycIdType, setKycIdType] = useState<KycIdType>("nin");
-  const [kycIdNumber, setKycIdNumber] = useState("");
+  const [kycIdType, setKycIdType] = useState<KycIdType>("passport");
+  const [documentCountry, setDocumentCountry] = useState("NG");
+  const [documentImage, setDocumentImage] = useState("");
+  const [selfieImage, setSelfieImage] = useState("");
+  const [preVerificationToken, setPreVerificationToken] = useState("");
   const [kycVerifying, setKycVerifying] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { requestOtp, verifyOtp } = useAuth();
@@ -116,7 +119,10 @@ export default function Signup() {
   const handleResendOtp = async () => {
     setLoading(true);
     try {
-      await requestOtp({ ...formData, country: getCountry(), role: roleChoice });
+      await requestOtp({
+        email: formData.email,
+        loginRole: roleChoice === "both" ? "student" : roleChoice,
+      });
       toast({ title: "Code Resent", description: "A new 6-digit code has been sent to your email. Check spam/junk if not in inbox." });
     } catch {
       toast({ title: "Resend failed", description: "Could not resend code. Please try again.", variant: "destructive" });
@@ -141,52 +147,18 @@ export default function Signup() {
         return;
       }
     }
-    setStep(2);
-  };
-
-  const handleKycSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!kycIdNumber.trim()) {
-      toast({ title: "ID number required", description: "Please enter your identification number.", variant: "destructive" });
+    if (!preVerificationToken) {
+      toast({ title: "Identity verification required", description: "Complete identity verification before entering your account details.", variant: "destructive" });
+      setStep(1);
       return;
     }
-    setKycVerifying(true);
-    try {
-      const res = await fetch("/api/verification/validate-id", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idType: kycIdType, idNumber: kycIdNumber.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.ok === false) {
-        toast({
-          title: "Identity verification failed",
-          description: data.message || "We could not verify the ID number you entered. Please double-check and try again.",
-          variant: "destructive",
-        });
-        setKycVerifying(false);
-        setLoading(false);
-        return;
-      }
-    } catch {
-      toast({
-        title: "Verification error",
-        description: "Could not reach the verification service. Please check your connection and try again.",
-        variant: "destructive",
-      });
-      setKycVerifying(false);
-      setLoading(false);
-      return;
-    } finally {
-      setKycVerifying(false);
-    }
-    // Request OTP and move to step 3
     setLoading(true);
     try {
       const result = await requestOtp({
         ...formData,
         country: getCountry(),
         role: roleChoice,
+        preVerificationToken,
         ...(wantsPassword && signupPassword ? { password: signupPassword } : {}),
       });
       if (!result.otpSent) throw new Error(result as any);
@@ -196,6 +168,51 @@ export default function Signup() {
       toast({ title: "Signup failed", description: parseApiError(err), variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    if (file.size > 5 * 1024 * 1024) return reject(new Error("Each image must be smaller than 5MB."));
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read image."));
+    reader.onerror = () => reject(new Error("Could not read image."));
+    reader.readAsDataURL(file);
+  });
+
+  const handleKycSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!documentImage || !selfieImage) {
+      toast({ title: "Images required", description: "Upload a clear image of your ID and a current selfie.", variant: "destructive" });
+      return;
+    }
+    setKycVerifying(true);
+    try {
+      const res = await fetch("/api/identity-verifications/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentCountry, documentType: kycIdType, documentImage, selfieImage }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.verified !== true || !data.signupVerificationToken) {
+        toast({
+          title: "Identity verification failed",
+          description: data.message || "We could not confirm the document and selfie you provided. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setPreVerificationToken(data.signupVerificationToken);
+      setStep(2);
+      toast({ title: "Identity verified", description: "Your identity is confirmed. Now enter your account details." });
+    } catch {
+      toast({
+        title: "Verification error",
+        description: "Could not reach the verification service. Please check your connection and try again.",
+        variant: "destructive",
+      });
+      return;
+    } finally {
+      setKycVerifying(false);
     }
   };
 
@@ -297,8 +314,8 @@ export default function Signup() {
                 </>
               )}
 
-              {/* ── Step 1: Details form ── */}
-              {step === 1 && (
+              {/* ── Step 2: Details form ── */}
+              {step === 2 && (
                 <>
                   <CardHeader className="space-y-1 pt-8 pb-4">
                     <div className="flex justify-center mb-2">
@@ -446,8 +463,8 @@ export default function Signup() {
                 </>
               )}
 
-              {/* ── Step 2: Identity Verification ── */}
-              {step === 2 && (
+              {/* ── Step 1: Identity Verification ── */}
+              {step === 1 && (
                 <>
                   <CardHeader className="space-y-1 pt-8 pb-4">
                     <div className="flex justify-center mb-3">
@@ -466,15 +483,14 @@ export default function Signup() {
                         <Label>ID Type</Label>
                         <div className="grid grid-cols-2 gap-2">
                           {([
-                            { id: "nin" as KycIdType, label: "NIN", desc: "National ID" },
-                            { id: "bvn" as KycIdType, label: "BVN", desc: "Bank Verification" },
                             { id: "passport" as KycIdType, label: "Passport", desc: "International" },
-                            { id: "voters_card" as KycIdType, label: "Voter's Card", desc: "INEC voter ID" },
+                            { id: "drivers_license" as KycIdType, label: "Driver's Licence", desc: "Government issued" },
+                            { id: "national_id" as KycIdType, label: "National ID", desc: "Identity or residence card" },
                           ]).map(opt => (
                             <button
                               key={opt.id}
                               type="button"
-                              onClick={() => { setKycIdType(opt.id); setKycIdNumber(""); }}
+                              onClick={() => setKycIdType(opt.id)}
                               className={`flex flex-col items-start p-3 rounded-xl border-2 transition-all text-left ${kycIdType === opt.id ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-border bg-muted/20 hover:border-border/80"}`}
                               data-testid={`btn-kyc-type-${opt.id}`}
                             >
@@ -486,19 +502,26 @@ export default function Signup() {
                       </div>
 
                       <div className="space-y-1.5">
-                        <Label htmlFor="kycIdNumber">
-                          {kycIdType === "nin" ? "11-digit NIN" : kycIdType === "bvn" ? "11-digit BVN" : kycIdType === "passport" ? "Passport Number" : "Voter's Card Number"}
-                        </Label>
-                        <Input
-                          id="kycIdNumber"
-                          placeholder={kycIdType === "nin" ? "Enter your NIN" : kycIdType === "bvn" ? "Enter your BVN" : kycIdType === "passport" ? "e.g. A00000000" : "Enter voter's card number"}
-                          value={kycIdNumber}
-                          onChange={e => setKycIdNumber(e.target.value)}
-                          className="h-11 bg-muted/30"
-                          required
-                          data-testid="input-kyc-id-number"
-                        />
-                        <p className="text-xs text-muted-foreground">Used only for identity verification. Your data is kept secure and never shared.</p>
+                        <Label htmlFor="documentCountry">Country that issued your ID</Label>
+                        <Input id="documentCountry" value={documentCountry} maxLength={2}
+                          onChange={e => setDocumentCountry(e.target.value.toUpperCase())}
+                          placeholder="e.g. NG, GB, US" className="h-11 bg-muted/30 uppercase"
+                          data-testid="input-document-country" />
+                        <p className="text-xs text-muted-foreground">Use the two-letter ISO country code on the document. This supports foreign documents.</p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="documentImage">Identity document image</Label>
+                          <Input id="documentImage" type="file" accept="image/jpeg,image/png,image/webp" className="h-11 bg-muted/30"
+                            onChange={async e => { const file = e.target.files?.[0]; if (!file) return; try { setDocumentImage(await fileToBase64(file)); } catch (err: any) { toast({ title: "Image error", description: err.message, variant: "destructive" }); } }}
+                            data-testid="input-document-image" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="selfieImage">Current selfie</Label>
+                          <Input id="selfieImage" type="file" accept="image/jpeg,image/png,image/webp" capture="user" className="h-11 bg-muted/30"
+                            onChange={async e => { const file = e.target.files?.[0]; if (!file) return; try { setSelfieImage(await fileToBase64(file)); } catch (err: any) { toast({ title: "Image error", description: err.message, variant: "destructive" }); } }}
+                            data-testid="input-selfie-image" />
+                        </div>
                       </div>
 
                       <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl px-3 py-2.5">
@@ -511,16 +534,16 @@ export default function Signup() {
                       <Button
                         type="submit"
                         className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-md"
-                        disabled={loading || kycVerifying || !kycIdNumber.trim()}
+                        disabled={loading || kycVerifying || !documentImage || !selfieImage || !/^[A-Z]{2}$/.test(documentCountry)}
                         data-testid="button-kyc-submit"
                       >
                         {kycVerifying || loading ? (
                           <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {kycVerifying ? "Verifying…" : "Setting up…"}</>
                         ) : (
-                          <><ShieldCheck className="w-4 h-4 mr-2" /> Verify & Continue</>
+                          <><ShieldCheck className="w-4 h-4 mr-2" /> Verify identity & Continue</>
                         )}
                       </Button>
-                      <button type="button" onClick={() => setStep(1)} className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <button type="button" onClick={() => setStep(0)} className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
                         <ArrowLeft className="w-4 h-4" /> Go back
                       </button>
                     </form>

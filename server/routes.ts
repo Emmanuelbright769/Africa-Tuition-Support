@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { type Server } from "http";
 import { scryptSync, randomBytes, timingSafeEqual, createHash } from "crypto";
 import { storage } from "./storage";
@@ -39,6 +39,7 @@ import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
 import { eq, desc, ne, and, sql, or } from "drizzle-orm";
 import YahooFinance from "yahoo-finance2";
+import { doesVerifiedNameMatch, hashVerifiedName, isExplicitlyLive } from "./identityVerificationSecurity";
 
 const PgSession = pgSession(session);
 
@@ -192,6 +193,19 @@ export async function registerRoutes(
     })
   );
 
+  const requireWalletFundingIdentity = async (req: Request, res: Response): Promise<number | null> => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) {
+      res.status(401).json({ message: "Not authenticated" });
+      return null;
+    }
+    if (!await storage.hasCompletedIdentityVerification(userId)) {
+      res.status(403).json({ message: "Complete provider-backed identity verification before funding a wallet." });
+      return null;
+    }
+    return userId;
+  };
+
   app.post("/api/auth/request-otp", async (req, res) => {
     try {
       const { email, firstName, lastName, phone, country, referralCode, role, loginRole, password: plainPassword, preVerificationToken } = req.body;
@@ -242,9 +256,14 @@ export async function registerRoutes(
       if (typeof preVerificationToken !== "string" || preVerificationToken.length < 32) {
         return res.status(403).json({ message: "Complete identity verification before creating an account." });
       }
+      const tokenHash = hashVerificationToken(preVerificationToken);
+      const identityPreview = await storage.getIdentityVerificationBySignupTokenHash(tokenHash);
+      if (!doesVerifiedNameMatch(identityPreview?.providerEvidence, firstName, lastName)) {
+        return res.status(403).json({ message: "Your account name must match the name confirmed on your identity document." });
+      }
       // Claim the handoff before accounts are created. This conditional update
       // makes the bearer token single-use even under concurrent requests.
-      const preVerification = await storage.consumeIdentityVerificationSignupToken(hashVerificationToken(preVerificationToken));
+      const preVerification = await storage.consumeIdentityVerificationSignupToken(tokenHash);
       if (!preVerification) {
         return res.status(403).json({ message: "Your identity verification has expired or could not be confirmed. Please verify again." });
       }
@@ -806,6 +825,8 @@ export async function registerRoutes(
 
   const verificationEvidence = (payload: any) => {
     const v = payload?.verification || payload?.data?.verification || payload?.data || {};
+    const firstName = v?.first_name ?? v?.firstname ?? v?.firstName ?? null;
+    const lastName = v?.last_name ?? v?.surname ?? v?.lastname ?? v?.lastName ?? null;
     return {
       status: v?.status ?? payload?.status ?? null,
       detail: payload?.detail ?? payload?.message ?? null,
@@ -815,6 +836,8 @@ export async function registerRoutes(
       documentExpiry: v?.expiry_date ?? v?.document_expiry ?? null,
       faceMatchScore: v?.face_match_score ?? v?.face_match?.score ?? null,
       liveness: v?.liveness?.status ?? v?.liveness_status ?? null,
+      // Store only a derived comparison value, not the provider's name fields.
+      verifiedNameHash: hashVerifiedName(firstName, lastName),
     };
   };
 
@@ -852,7 +875,8 @@ export async function registerRoutes(
       const confirmed = response.ok &&
         payload?.status === true &&
         ["VERIFIED", "SUCCESS"].includes(providerStatus) &&
-        ["VERIFIED", "SUCCESS", "LIVE"].includes(livenessStatus);
+        isExplicitlyLive(livenessStatus) &&
+        typeof evidence.verifiedNameHash === "string";
       if (!confirmed) {
         console.warn(`[IdentityVerification] Prembly rejected document-with-face: HTTP ${response.status}; status=${providerStatus || "unknown"}`);
         return {
@@ -7142,8 +7166,8 @@ export async function registerRoutes(
 
   // ── Squad by GTco: initiate inline payment ────────────────────────────────
   app.post("/api/wallet/squad/initiate", async (req, res) => {
-    const userId = (req.session as any)?.userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const userId = await requireWalletFundingIdentity(req, res);
+    if (!userId) return;
     const { amountUsd } = req.body;
     const amount = parseFloat(amountUsd);
     if (!amount || amount <= 2) return res.status(400).json({ message: "Minimum deposit is above $2" });
@@ -7173,8 +7197,8 @@ export async function registerRoutes(
 
   // ── Squad by GTco: verify & credit wallet ─────────────────────────────────
   app.post("/api/wallet/squad/verify", async (req, res) => {
-    const userId = (req.session as any)?.userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const userId = await requireWalletFundingIdentity(req, res);
+    if (!userId) return;
     const { transactionRef } = req.body;
     if (!transactionRef) return res.status(400).json({ message: "Transaction reference is required" });
     const secretKey = process.env.SQUAD_SECRET_KEY;
@@ -7299,8 +7323,8 @@ export async function registerRoutes(
 
   // ── Korapay: initiate checkout (redirect-based) ───────────────────────────
   app.post("/api/wallet/korapay/initiate", async (req, res) => {
-    const userId = (req.session as any)?.userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const userId = await requireWalletFundingIdentity(req, res);
+    if (!userId) return;
     const { amountUsd } = req.body;
     const amount = parseFloat(amountUsd);
     if (!amount || amount <= 2) return res.status(400).json({ message: "Minimum deposit is above $2" });
@@ -7341,8 +7365,8 @@ export async function registerRoutes(
 
   // ── Korapay: verify & credit after redirect back ──────────────────────────
   app.post("/api/wallet/korapay/verify", async (req, res) => {
-    const userId = (req.session as any)?.userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const userId = await requireWalletFundingIdentity(req, res);
+    if (!userId) return;
     const { reference } = req.body;
     if (!reference) return res.status(400).json({ message: "reference is required" });
     const secretKey = process.env.KORAPAY_SECRET_KEY;
@@ -7558,6 +7582,13 @@ export async function registerRoutes(
 
   // ── Shared helper: credit deposit to wallet (95% to user, 5% affiliate pool) ──
   async function creditWalletWithSplit(userId: number, gross: number, method: string, ref: string, existingDeposit?: any) {
+    // Payment webhooks are allowed to finalize only deposits belonging to a
+    // current provider-verified identity. Unverified legacy deposits remain
+    // pending for remediation instead of activating a wallet.
+    if (!await storage.hasCompletedIdentityVerification(userId)) {
+      console.warn(`[CREDIT] Deferred ${method} deposit for unverified user ${userId}; identity verification is required.`);
+      return false;
+    }
     // 5% affiliate pool charged on every deposit; 95% credited to user
     const affiliateCut = parseFloat((gross * 0.05).toFixed(2));
     const userCredit   = parseFloat((gross - affiliateCut).toFixed(2));
@@ -7585,12 +7616,13 @@ export async function registerRoutes(
     const u = await storage.getUser(userId);
     if (u) sendAdminDepositConfirmedEmail({ name: `${u.firstName} ${u.lastName}`, email: u.email, gross: gross.toFixed(2), credited: userCredit.toFixed(2), reserveCut: "0.00", affiliateCut: affiliateCut.toFixed(2), newBalance: newBal, walletType: method, txHash: ref, userId })
       .catch((err: any) => console.error(`[EMAIL] ${method} deposit email failed:`, err?.message ?? err));
+    return true;
   }
 
   // ── Paystack: initialize payment (legacy – kept for backward compat) ───────
   app.post("/api/wallet/paystack/initialize", async (req, res) => {
-    const userId = (req.session as any)?.userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const userId = await requireWalletFundingIdentity(req, res);
+    if (!userId) return;
     const { amountUsd } = req.body;
     const amount = parseFloat(amountUsd);
     if (!amount || amount <= 2) return res.status(400).json({ message: "Minimum deposit is above $2" });
@@ -7633,8 +7665,8 @@ export async function registerRoutes(
 
   // ── Paystack: verify & credit wallet ─────────────────────────────────────
   app.post("/api/wallet/paystack/verify", async (req, res) => {
-    const userId = (req.session as any)?.userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const userId = await requireWalletFundingIdentity(req, res);
+    if (!userId) return;
     const { reference } = req.body;
     if (!reference) return res.status(400).json({ message: "Reference is required" });
     const key = process.env.PAYSTACK_SECRET_KEY;
@@ -7707,8 +7739,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/wallet/deposit", async (req, res) => {
-    const userId = (req.session as any)?.userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const userId = await requireWalletFundingIdentity(req, res);
+    if (!userId) return;
     const { amountUsd, txHash, walletType } = req.body;
     const amount = parseFloat(amountUsd);
     if (!amount || amount < ECOMMERCE.MIN_DEPOSIT) return res.status(400).json({ message: `Minimum deposit is above $${ECOMMERCE.MIN_DEPOSIT}` });

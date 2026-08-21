@@ -27,7 +27,7 @@ import {
   Wallet, Eye, EyeOff, ArrowDownLeft, ArrowUpRight, Loader2,
   CheckCircle2, AlertCircle, Shield, CreditCard, Building2,
   Smartphone, Banknote, Receipt, ExternalLink, RefreshCw, Copy, Coins,
-  MapPin, AlertTriangle, Lock, ArrowLeft, ArrowRight, X, Camera, ScanFace, RotateCcw
+  MapPin, AlertTriangle, Lock, ArrowLeft, ArrowRight, X, Camera, ScanFace, RotateCcw, ShieldCheck
 } from "lucide-react";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
 import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
@@ -138,11 +138,10 @@ export default function WalletPage() {
   const lienAmount = parseFloat(wallet?.lienAmount ?? "0");
   const hasLien    = lienAmount > 0;
   const available  = Math.max(0, balance - lienAmount);
-  const walletKycDone = verification?.biometricVerified === true;
-  const portalFeePaid = verification?.portalFeePaid === true;
-  const needsKyc = portalFeePaid && !walletKycDone;
+  const walletKycDone = user?.kycCompleted === true;
+  const needsKyc = !walletKycDone;
 
-  // Age-based BVN requirement: optional for users ≤ 19 (estimated from WAEC year)
+  // Retained only for historic verification data shown elsewhere in the page.
   const currentYear = new Date().getFullYear();
   const waecYr = verification?.waecYear ? parseInt(verification.waecYear, 10) : null;
   const estimatedAge = waecYr ? currentYear - waecYr + 16 : null;
@@ -151,7 +150,7 @@ export default function WalletPage() {
   // ── Open fund section ────────────────────────────────────────────────────
   const openFund = (method: FundMethod = "squad") => {
     if (!walletKycDone && needsKyc) {
-      toast({ title: "Wallet KYC Required", description: "Complete BVN and GPS verification to unlock funding.", variant: "destructive" });
+      toast({ title: "Identity verification required", description: "Complete the secure document and selfie verification to unlock wallet funding.", variant: "destructive" });
       return;
     }
     setFundMethod(method);
@@ -353,28 +352,7 @@ export default function WalletPage() {
   };
 
   const handleKycSubmit = async () => {
-    if (!kycSelfie) {
-      toast({ title: "Selfie required", description: "Please capture your selfie in Step 3 before continuing.", variant: "destructive" });
-      return;
-    }
-    if (!bvnOptional && !kycBvnVerified) {
-      toast({ title: "BVN required", description: "Please verify your BVN before continuing.", variant: "destructive" });
-      return;
-    }
-    setKycSubmitting(true);
-    try {
-      const res = await apiRequest("POST", "/api/verification/wallet-kyc", {
-        ...(kycBvn.length === 11 ? { bvn: kycBvn } : {}),
-        gpsCoords: kycLocationCoords,
-        selfieBase64: kycSelfie,
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message);
-      await refetchVerification();
-      toast({ title: "Wallet Activated ✓", description: "Your wallet is now fully unlocked!", className: "border-tsia-green" });
-    } catch (e: any) {
-      toast({ title: "Activation failed", description: e.message, variant: "destructive" });
-    } finally { setKycSubmitting(false); }
+    toast({ title: "Use secure identity verification", description: "Wallet KYC is now completed through the document and selfie verification flow.", variant: "destructive" });
   };
 
   // ── Back navigation ───────────────────────────────────────────────────────
@@ -416,6 +394,18 @@ export default function WalletPage() {
 
           {/* ── KYC Panel ──────────────────────────────────────────────────── */}
           {needsKyc && (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-700 dark:bg-amber-950/30" data-testid="wallet-identity-required">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" />
+                <div>
+                  <h2 className="font-bold text-amber-900 dark:text-amber-100">Secure identity verification required</h2>
+                  <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">Complete the document and selfie verification prompt to unlock wallet funding. BVN, GPS, and local camera checks are no longer used for wallet KYC.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {false && needsKyc && (
             <motion.div initial="hidden" animate="visible" variants={fade} className="rounded-2xl border-2 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 overflow-hidden">
               <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4 flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">

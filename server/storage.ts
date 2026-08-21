@@ -1,5 +1,6 @@
 import { eq, desc, and, gt, gte, lte, lt, count, sql, ne, like, ilike, or, not, isNull, inArray } from "drizzle-orm";
 import { db } from "./db";
+import { calculateBackToSchoolDeposit, calculateBackToSchoolWithdrawal } from "./backToSchoolRules";
 import {
   users, verifications, identityVerifications, sponsorshipPlans, wallets, transactions, disbursements,
   leadershipInquiries, otpCodes, fileUploads, coAffiliates,
@@ -18,7 +19,7 @@ import {
   movieSubscriptions, type MovieSubscription,
   savingsGoals, savingsTransactions,
   backToSchoolChildren, backToSchoolVests, backToSchoolVestTransactions,
-  backToSchoolAttempts, backToSchoolAwards,
+  backToSchoolOperations, backToSchoolAttempts, backToSchoolAwards,
   scholarships, type Scholarship, type InsertScholarship,
   researchGrants, type ResearchGrant, type InsertResearchGrant,
   platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
@@ -314,16 +315,23 @@ export interface IStorage {
   deleteSavingsGoal(id: number, userId: number): Promise<void>;
 
   // Affiliate Back to School
-  createBackToSchoolChild(data: { guardianUserId: number; fullName: string; dateOfBirth: string; schoolName?: string; gradeLevel?: string }): Promise<BackToSchoolChild>;
+  createBackToSchoolChild(data: { guardianUserId: number; fullName: string; dateOfBirth: string; schoolName?: string; gradeLevel?: string; birthCertificateUploadId: number }): Promise<BackToSchoolChild>;
   getBackToSchoolProgramme(guardianUserId: number): Promise<any[]>;
   settleMaturedBackToSchoolVests(guardianUserId: number): Promise<number>;
   settleAllMaturedBackToSchoolVests(): Promise<number>;
   getBackToSchoolChild(childId: number, guardianUserId: number): Promise<BackToSchoolChild | undefined>;
-  updateBackToSchoolChild(childId: number, guardianUserId: number, data: { fullName?: string; schoolName?: string; gradeLevel?: string }): Promise<BackToSchoolChild>;
-  contributeToBackToSchoolVest(guardianUserId: number, childId: number, amountUsd: number): Promise<any>;
+  updateBackToSchoolChild(childId: number, guardianUserId: number, data: { fullName?: string; schoolName?: string; gradeLevel?: string; birthCertificateUploadId?: number }): Promise<BackToSchoolChild>;
+  contributeToBackToSchoolVest(guardianUserId: number, childId: number, amountUsd: number, idempotencyKey: string): Promise<any>;
+  withdrawFromBackToSchoolVest(guardianUserId: number, childId: number, amountUsd: number, idempotencyKey: string): Promise<any>;
   getBackToSchoolAttempt(childId: number, guardianUserId: number): Promise<BackToSchoolAttempt | undefined>;
   createBackToSchoolAttempt(data: { childId: number; guardianUserId: number; questionIds: string[] }): Promise<BackToSchoolAttempt>;
+  recordBackToSchoolCheatingEvent(data: { childId: number; guardianUserId: number; eventType: string; description: string }): Promise<{ eventCount: number; shouldAutoSubmit: boolean; terminalResult?: any }>;
   completeBackToSchoolAttempt(data: { childId: number; guardianUserId: number; score: number; percentage: number; awardAmount: number; expired?: boolean }): Promise<any>;
+  getBackToSchoolAdminProgramme(): Promise<any[]>;
+  getBackToSchoolCertificate(childId: number): Promise<{ child: BackToSchoolChild; file: FileUpload } | undefined>;
+  reviewBackToSchoolCertificate(data: { childId: number; adminUserId: number; approved: boolean; reason?: string }): Promise<BackToSchoolChild>;
+  reviewBackToSchoolAward(data: { awardId: number; adminUserId: number; approved: boolean; reason?: string }): Promise<any>;
+  payBackToSchoolAward(data: { awardId: number; adminUserId: number; reference: string }): Promise<any>;
 
   // Cashback
   getCashbackBalance(userId: number): Promise<string>;
@@ -2472,16 +2480,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Affiliate Back to School ────────────────────────────────────────────────
-  async createBackToSchoolChild(data: { guardianUserId: number; fullName: string; dateOfBirth: string; schoolName?: string; gradeLevel?: string }): Promise<BackToSchoolChild> {
+  async createBackToSchoolChild(data: { guardianUserId: number; fullName: string; dateOfBirth: string; schoolName?: string; gradeLevel?: string; birthCertificateUploadId: number }): Promise<BackToSchoolChild> {
     const now = new Date();
-    const maturesAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     return db.transaction(async (tx) => {
+      const [certificate] = await tx.select().from(fileUploads)
+        .where(and(
+          eq(fileUploads.id, data.birthCertificateUploadId),
+          eq(fileUploads.userId, data.guardianUserId),
+          eq(fileUploads.category, "back_to_school_birth_certificate"),
+        ))
+        .for("update");
+      if (!certificate) throw new Error("Upload a valid birth certificate before creating this kiddies account");
       const [child] = await tx.insert(backToSchoolChildren).values({
         guardianUserId: data.guardianUserId,
         fullName: data.fullName,
         dateOfBirth: data.dateOfBirth,
         schoolName: data.schoolName || null,
         gradeLevel: data.gradeLevel || null,
+        birthCertificateUploadId: certificate.id,
+        certificateStatus: "pending",
       }).returning();
       await tx.insert(backToSchoolVests).values({
         childId: child.id,
@@ -2489,7 +2506,9 @@ export class DatabaseStorage implements IStorage {
         balance: "0.00",
         targetAmount: "30.00",
         startedAt: now,
-        maturesAt,
+        // Retained for backwards-compatible records only; there is no longer a
+        // programme maturity timer. The $30 funding milestone is the unlock.
+        maturesAt: now,
         status: "active",
       });
       return child;
@@ -2497,8 +2516,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBackToSchoolProgramme(guardianUserId: number): Promise<any[]> {
-    await this.settleMaturedBackToSchoolVests(guardianUserId);
-
+    // Vests that reached $30 under the earlier 30-day rule must keep their new
+    // eligibility rather than waiting for a no-longer-used settlement job.
+    const now = new Date();
+    await db.update(backToSchoolVests).set({
+      status: "qualified",
+      qualifiedAt: now,
+      cbtUnlockedAt: now,
+      updatedAt: now,
+    }).where(and(
+      eq(backToSchoolVests.guardianUserId, guardianUserId),
+      eq(backToSchoolVests.status, "active"),
+      gte(backToSchoolVests.balance, backToSchoolVests.targetAmount),
+    ));
     const children = await db.select().from(backToSchoolChildren)
       .where(eq(backToSchoolChildren.guardianUserId, guardianUserId))
       .orderBy(desc(backToSchoolChildren.createdAt));
@@ -2595,18 +2625,46 @@ export class DatabaseStorage implements IStorage {
     return child;
   }
 
-  async updateBackToSchoolChild(childId: number, guardianUserId: number, data: { fullName?: string; schoolName?: string; gradeLevel?: string }): Promise<BackToSchoolChild> {
+  async updateBackToSchoolChild(childId: number, guardianUserId: number, data: { fullName?: string; schoolName?: string; gradeLevel?: string; birthCertificateUploadId?: number }): Promise<BackToSchoolChild> {
+    if (data.birthCertificateUploadId !== undefined) {
+      const [certificate] = await db.select().from(fileUploads).where(and(
+        eq(fileUploads.id, data.birthCertificateUploadId),
+        eq(fileUploads.userId, guardianUserId),
+        eq(fileUploads.category, "back_to_school_birth_certificate"),
+      ));
+      if (!certificate) throw new Error("Upload a valid birth certificate before updating this kiddies account");
+    }
     const [updated] = await db.update(backToSchoolChildren).set({
       ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
       ...(data.schoolName !== undefined ? { schoolName: data.schoolName || null } : {}),
       ...(data.gradeLevel !== undefined ? { gradeLevel: data.gradeLevel || null } : {}),
+      ...(data.birthCertificateUploadId !== undefined ? {
+        birthCertificateUploadId: data.birthCertificateUploadId,
+        certificateStatus: "pending",
+        certificateReviewReason: null,
+        certificateReviewedAt: null,
+        certificateReviewedBy: null,
+      } : {}),
     }).where(and(eq(backToSchoolChildren.id, childId), eq(backToSchoolChildren.guardianUserId, guardianUserId))).returning();
     if (!updated) throw new Error("Child profile not found");
     return updated;
   }
 
-  async contributeToBackToSchoolVest(guardianUserId: number, childId: number, amountUsd: number): Promise<any> {
+  async contributeToBackToSchoolVest(guardianUserId: number, childId: number, amountUsd: number, idempotencyKey: string): Promise<any> {
     return db.transaction(async (tx) => {
+      const [createdOperation] = await tx.insert(backToSchoolOperations).values({
+        guardianUserId, childId, operation: "deposit", idempotencyKey,
+      }).onConflictDoNothing().returning();
+      if (!createdOperation) {
+        const [priorOperation] = await tx.select().from(backToSchoolOperations).where(and(
+          eq(backToSchoolOperations.guardianUserId, guardianUserId),
+          eq(backToSchoolOperations.childId, childId),
+          eq(backToSchoolOperations.operation, "deposit"),
+          eq(backToSchoolOperations.idempotencyKey, idempotencyKey),
+        ));
+        if (priorOperation?.response) return priorOperation.response;
+        throw new Error("A matching contribution is already being processed");
+      }
       const [child] = await tx.select().from(backToSchoolChildren)
         .where(and(eq(backToSchoolChildren.id, childId), eq(backToSchoolChildren.guardianUserId, guardianUserId)))
         .for("update");
@@ -2615,17 +2673,18 @@ export class DatabaseStorage implements IStorage {
         .where(and(eq(backToSchoolVests.childId, childId), eq(backToSchoolVests.guardianUserId, guardianUserId)))
         .for("update");
       if (!vest) throw new Error("Piggy Vest not found");
-      if (vest.status !== "active" || vest.maturesAt <= new Date()) throw new Error("This 30-day Piggy Vest is no longer accepting contributions");
+      if (vest.status === "expired") throw new Error("This kiddies account is no longer accepting contributions");
 
       const currentBalance = Number(vest.balance);
       const nextVestBalance = currentBalance + amountUsd;
       if (nextVestBalance > Number(vest.targetAmount) + 0.00001) {
-        throw new Error(`Piggy Vest contributions cannot exceed $${Number(vest.targetAmount).toFixed(2)}`);
+        throw new Error(`Kiddies wallet deposits cannot exceed $${Number(vest.targetAmount).toFixed(2)}`);
       }
       const [wallet] = await tx.select().from(wallets).where(eq(wallets.userId, guardianUserId)).for("update");
-      if (!wallet || Number(wallet.balance) < amountUsd) throw new Error("Insufficient SwiftWallet balance");
+      const { feeAmount: depositFee, totalDebited: walletDebit } = calculateBackToSchoolDeposit(amountUsd);
+      if (!wallet || Number(wallet.balance) + 0.00001 < walletDebit) throw new Error("Insufficient SwiftWallet balance including the 5% deposit fee");
 
-      const walletBalance = Number(wallet.balance) - amountUsd;
+      const walletBalance = Number(wallet.balance) - walletDebit;
       const now = new Date();
       const becameFullyFunded = currentBalance < Number(vest.targetAmount) && nextVestBalance >= Number(vest.targetAmount);
       const [updatedVest] = await tx.update(backToSchoolVests)
@@ -2633,9 +2692,9 @@ export class DatabaseStorage implements IStorage {
           balance: nextVestBalance.toFixed(2),
           ...(becameFullyFunded ? {
             fundedAt: now,
-            // The vest’s 30-day holding period begins only when it is fully
-            // funded, preventing a last-minute contribution from unlocking CBT.
-            maturesAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+            cbtUnlockedAt: now,
+            qualifiedAt: now,
+            status: "qualified",
           } : {}),
           updatedAt: now,
         })
@@ -2643,13 +2702,101 @@ export class DatabaseStorage implements IStorage {
         .returning();
       await tx.update(wallets).set({ balance: walletBalance.toFixed(2) }).where(eq(wallets.userId, guardianUserId));
       await tx.insert(backToSchoolVestTransactions).values({
-        vestId: vest.id, guardianUserId, type: "contribution", amountUsd: amountUsd.toFixed(2), balanceAfter: nextVestBalance.toFixed(2),
+        vestId: vest.id,
+        guardianUserId,
+        type: "deposit",
+        amountUsd: amountUsd.toFixed(2),
+        grossAmountUsd: walletDebit.toFixed(2),
+        feeAmountUsd: depositFee.toFixed(2),
+        netAmountUsd: amountUsd.toFixed(2),
+        balanceAfter: nextVestBalance.toFixed(2),
       });
       await tx.insert(transactions).values({
-        userId: guardianUserId, type: "transfer", amount: (-amountUsd).toFixed(2), fee: "0.00",
-        description: `Back to School Piggy Vest contribution for ${child.fullName}`,
+        userId: guardianUserId,
+        type: "transfer",
+        amount: (-walletDebit).toFixed(2),
+        fee: depositFee.toFixed(2),
+        description: `Back to school kiddies deposit for ${child.fullName} (5% fee: $${depositFee.toFixed(2)})`,
       });
-      return { vest: updatedVest, walletBalance: walletBalance.toFixed(2) };
+      const result = {
+        vest: updatedVest,
+        walletBalance: walletBalance.toFixed(2),
+        depositAmount: amountUsd.toFixed(2),
+        feeAmount: depositFee.toFixed(2),
+        totalDebited: walletDebit.toFixed(2),
+      };
+      await tx.update(backToSchoolOperations).set({ response: result }).where(eq(backToSchoolOperations.id, createdOperation.id));
+      return result;
+    });
+  }
+
+  async withdrawFromBackToSchoolVest(guardianUserId: number, childId: number, amountUsd: number, idempotencyKey: string): Promise<any> {
+    return db.transaction(async (tx) => {
+      const [createdOperation] = await tx.insert(backToSchoolOperations).values({
+        guardianUserId, childId, operation: "withdrawal", idempotencyKey,
+      }).onConflictDoNothing().returning();
+      if (!createdOperation) {
+        const [priorOperation] = await tx.select().from(backToSchoolOperations).where(and(
+          eq(backToSchoolOperations.guardianUserId, guardianUserId),
+          eq(backToSchoolOperations.childId, childId),
+          eq(backToSchoolOperations.operation, "withdrawal"),
+          eq(backToSchoolOperations.idempotencyKey, idempotencyKey),
+        ));
+        if (priorOperation?.response) return priorOperation.response;
+        throw new Error("A matching withdrawal is already being processed");
+      }
+      const [child] = await tx.select().from(backToSchoolChildren)
+        .where(and(eq(backToSchoolChildren.id, childId), eq(backToSchoolChildren.guardianUserId, guardianUserId)))
+        .for("update");
+      if (!child) throw new Error("Child profile not found");
+      if (child.certificateStatus !== "approved") throw new Error("Birth certificate approval is required before a withdrawal");
+
+      const [vest] = await tx.select().from(backToSchoolVests)
+        .where(and(eq(backToSchoolVests.childId, childId), eq(backToSchoolVests.guardianUserId, guardianUserId)))
+        .for("update");
+      if (!vest) throw new Error("Kiddies wallet not found");
+      if (!vest.cbtUnlockedAt && !vest.qualifiedAt) throw new Error("Withdrawals unlock after the kiddies wallet has first reached $30.00");
+      if (Number(vest.balance) + 0.00001 < amountUsd) throw new Error("Insufficient kiddies wallet balance");
+
+      const [wallet] = await tx.select().from(wallets).where(eq(wallets.userId, guardianUserId)).for("update");
+      if (!wallet) throw new Error("SwiftWallet not found");
+      const { feeAmount: withdrawalFee, netReceived: netCredit } = calculateBackToSchoolWithdrawal(amountUsd);
+      if (netCredit <= 0) throw new Error("Withdrawal amount is too small after the 7.5% withdrawal fee");
+      const nextVestBalance = Number(vest.balance) - amountUsd;
+      const walletBalance = Number(wallet.balance) + netCredit;
+      const now = new Date();
+
+      const [updatedVest] = await tx.update(backToSchoolVests).set({
+        balance: nextVestBalance.toFixed(2),
+        updatedAt: now,
+      }).where(eq(backToSchoolVests.id, vest.id)).returning();
+      await tx.update(wallets).set({ balance: walletBalance.toFixed(2) }).where(eq(wallets.userId, guardianUserId));
+      await tx.insert(backToSchoolVestTransactions).values({
+        vestId: vest.id,
+        guardianUserId,
+        type: "withdrawal",
+        amountUsd: (-amountUsd).toFixed(2),
+        grossAmountUsd: amountUsd.toFixed(2),
+        feeAmountUsd: withdrawalFee.toFixed(2),
+        netAmountUsd: netCredit.toFixed(2),
+        balanceAfter: nextVestBalance.toFixed(2),
+      });
+      await tx.insert(transactions).values({
+        userId: guardianUserId,
+        type: "transfer",
+        amount: netCredit.toFixed(2),
+        fee: withdrawalFee.toFixed(2),
+        description: `Back to school kiddies withdrawal for ${child.fullName} (7.5% fee: $${withdrawalFee.toFixed(2)})`,
+      });
+      const result = {
+        vest: updatedVest,
+        walletBalance: walletBalance.toFixed(2),
+        withdrawalAmount: amountUsd.toFixed(2),
+        feeAmount: withdrawalFee.toFixed(2),
+        netReceived: netCredit.toFixed(2),
+      };
+      await tx.update(backToSchoolOperations).set({ response: result }).where(eq(backToSchoolOperations.id, createdOperation.id));
+      return result;
     });
   }
 
@@ -2666,12 +2813,60 @@ export class DatabaseStorage implements IStorage {
     return attempt;
   }
 
+  async recordBackToSchoolCheatingEvent(data: { childId: number; guardianUserId: number; eventType: string; description: string }): Promise<{ eventCount: number; shouldAutoSubmit: boolean; terminalResult?: any }> {
+    return db.transaction(async (tx) => {
+      const [attempt] = await tx.select().from(backToSchoolAttempts)
+        .where(and(eq(backToSchoolAttempts.childId, data.childId), eq(backToSchoolAttempts.guardianUserId, data.guardianUserId)))
+        .for("update");
+      if (!attempt || attempt.status !== "started") throw new Error("There is no active spelling-bee attempt for this child");
+      const existing = Array.isArray(attempt.cheatingEvents) ? attempt.cheatingEvents : [];
+      const events = [...existing, { type: data.eventType, description: data.description, at: new Date().toISOString() }];
+      const highSeverity = ["copy_attempt", "paste_attempt", "cut_attempt"].includes(data.eventType);
+      const shouldAutoSubmit = highSeverity || events.length >= 5;
+      const now = new Date();
+      if (shouldAutoSubmit) {
+        const [terminalAttempt] = await tx.update(backToSchoolAttempts).set({
+          cheatingEvents: events,
+          autoSubmitted: true,
+          status: "expired",
+          score: 0,
+          percentage: "0.00",
+          completedAt: now,
+        }).where(eq(backToSchoolAttempts.id, attempt.id)).returning();
+        const [award] = await tx.insert(backToSchoolAwards).values({
+          childId: data.childId,
+          guardianUserId: data.guardianUserId,
+          scorePercentage: "0.00",
+          awardAmount: "0.00",
+          status: "not_eligible",
+        }).onConflictDoNothing().returning();
+        return {
+          eventCount: events.length,
+          shouldAutoSubmit: true,
+          terminalResult: {
+            attempt: terminalAttempt,
+            award: award ?? null,
+            score: 0,
+            totalQuestions: Array.isArray(attempt.questionIds) ? attempt.questionIds.length : 25,
+            percentage: 0,
+            awardAmount: 0,
+            awardStatus: "not_eligible",
+            expired: true,
+          },
+        };
+      }
+      await tx.update(backToSchoolAttempts).set({ cheatingEvents: events }).where(eq(backToSchoolAttempts.id, attempt.id));
+      return { eventCount: events.length, shouldAutoSubmit: false };
+    });
+  }
+
   async completeBackToSchoolAttempt(data: { childId: number; guardianUserId: number; score: number; percentage: number; awardAmount: number; expired?: boolean }): Promise<any> {
     return db.transaction(async (tx) => {
       const [attempt] = await tx.select().from(backToSchoolAttempts)
         .where(and(eq(backToSchoolAttempts.childId, data.childId), eq(backToSchoolAttempts.guardianUserId, data.guardianUserId)))
         .for("update");
       if (!attempt || attempt.status !== "started") throw new Error("There is no active spelling-bee attempt for this child");
+      if (attempt.autoSubmitted) throw new Error("This spelling-bee attempt was ended by the assessment integrity controls");
       const now = new Date();
       const [completedAttempt] = await tx.update(backToSchoolAttempts)
         .set({ status: data.expired ? "expired" : "completed", score: data.score, percentage: data.percentage.toFixed(2), completedAt: now })
@@ -2683,6 +2878,108 @@ export class DatabaseStorage implements IStorage {
         scorePercentage: data.percentage.toFixed(2), awardAmount: data.awardAmount.toFixed(2), status,
       }).returning();
       return { attempt: completedAttempt, award };
+    });
+  }
+
+  async getBackToSchoolAdminProgramme(): Promise<any[]> {
+    const children = await db.select().from(backToSchoolChildren).orderBy(desc(backToSchoolChildren.createdAt));
+    if (!children.length) return [];
+    const childIds = children.map(child => child.id);
+    const guardianIds = Array.from(new Set(children.map(child => child.guardianUserId)));
+    const certificateIds = children.map(child => child.birthCertificateUploadId).filter((id): id is number => typeof id === "number");
+    const [vests, attempts, awards, guardians, certificates] = await Promise.all([
+      db.select().from(backToSchoolVests).where(inArray(backToSchoolVests.childId, childIds)),
+      db.select().from(backToSchoolAttempts).where(inArray(backToSchoolAttempts.childId, childIds)),
+      db.select().from(backToSchoolAwards).where(inArray(backToSchoolAwards.childId, childIds)),
+      db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email }).from(users).where(inArray(users.id, guardianIds)),
+      certificateIds.length ? db.select({ id: fileUploads.id, fileName: fileUploads.fileName, fileType: fileUploads.fileType }).from(fileUploads).where(inArray(fileUploads.id, certificateIds)) : Promise.resolve([]),
+    ]);
+    const vestByChild = new Map(vests.map(record => [record.childId, record]));
+    const attemptByChild = new Map(attempts.map(record => [record.childId, record]));
+    const awardByChild = new Map(awards.map(record => [record.childId, record]));
+    const guardianById = new Map(guardians.map(record => [record.id, record]));
+    const certificateById = new Map(certificates.map(record => [record.id, record]));
+    return children.map(child => ({
+      ...child,
+      guardian: guardianById.get(child.guardianUserId) ?? null,
+      vest: vestByChild.get(child.id) ?? null,
+      attempt: attemptByChild.get(child.id) ?? null,
+      award: awardByChild.get(child.id) ?? null,
+      certificate: child.birthCertificateUploadId ? certificateById.get(child.birthCertificateUploadId) ?? null : null,
+    }));
+  }
+
+  async getBackToSchoolCertificate(childId: number): Promise<{ child: BackToSchoolChild; file: FileUpload } | undefined> {
+    const [child] = await db.select().from(backToSchoolChildren).where(eq(backToSchoolChildren.id, childId));
+    if (!child?.birthCertificateUploadId) return undefined;
+    const [file] = await db.select().from(fileUploads).where(eq(fileUploads.id, child.birthCertificateUploadId));
+    return file ? { child, file } : undefined;
+  }
+
+  async reviewBackToSchoolCertificate(data: { childId: number; adminUserId: number; approved: boolean; reason?: string }): Promise<BackToSchoolChild> {
+    return db.transaction(async (tx) => {
+      const [existingChild] = await tx.select().from(backToSchoolChildren)
+        .where(eq(backToSchoolChildren.id, data.childId)).for("update");
+      if (!existingChild) throw new Error("Kiddies account not found");
+      if (data.approved) {
+        if (!existingChild.birthCertificateUploadId) throw new Error("A birth certificate is required before approval");
+        const [certificate] = await tx.select().from(fileUploads).where(and(
+          eq(fileUploads.id, existingChild.birthCertificateUploadId),
+          eq(fileUploads.userId, existingChild.guardianUserId),
+          eq(fileUploads.category, "back_to_school_birth_certificate"),
+        )).for("update");
+        if (!certificate) throw new Error("The linked birth certificate is missing or does not belong to this guardian");
+      }
+      const [child] = await tx.update(backToSchoolChildren).set({
+        certificateStatus: data.approved ? "approved" : "declined",
+        certificateReviewReason: data.reason?.trim() || null,
+        certificateReviewedBy: data.adminUserId,
+        certificateReviewedAt: new Date(),
+      }).where(eq(backToSchoolChildren.id, data.childId)).returning();
+      return child;
+    });
+  }
+
+  async reviewBackToSchoolAward(data: { awardId: number; adminUserId: number; approved: boolean; reason?: string }): Promise<any> {
+    return db.transaction(async (tx) => {
+      const [award] = await tx.select().from(backToSchoolAwards).where(eq(backToSchoolAwards.id, data.awardId)).for("update");
+      if (!award) throw new Error("Award recommendation not found");
+      if (award.status !== "recommended") throw new Error("Only pending award recommendations can be reviewed");
+      const [updated] = await tx.update(backToSchoolAwards).set({
+        status: data.approved ? "approved" : "declined",
+        reviewedBy: data.adminUserId,
+        reviewReason: data.reason?.trim() || null,
+        reviewedAt: new Date(),
+      }).where(eq(backToSchoolAwards.id, award.id)).returning();
+      return updated;
+    });
+  }
+
+  async payBackToSchoolAward(data: { awardId: number; adminUserId: number; reference: string }): Promise<any> {
+    return db.transaction(async (tx) => {
+      const [award] = await tx.select().from(backToSchoolAwards).where(eq(backToSchoolAwards.id, data.awardId)).for("update");
+      if (!award) throw new Error("Award recommendation not found");
+      if (award.status !== "approved") throw new Error("Only approved awards can be credited");
+      const [wallet] = await tx.select().from(wallets).where(eq(wallets.userId, award.guardianUserId)).for("update");
+      if (!wallet) throw new Error("Guardian SwiftWallet not found");
+      const amount = Number(award.awardAmount);
+      const now = new Date();
+      const walletBalance = Number(wallet.balance) + amount;
+      const [paidAward] = await tx.update(backToSchoolAwards).set({
+        status: "paid",
+        reviewedBy: data.adminUserId,
+        paidAt: now,
+        paymentReference: data.reference,
+      }).where(eq(backToSchoolAwards.id, award.id)).returning();
+      await tx.update(wallets).set({ balance: walletBalance.toFixed(2) }).where(eq(wallets.userId, award.guardianUserId));
+      await tx.insert(transactions).values({
+        userId: award.guardianUserId,
+        type: "sponsorship_credit",
+        amount: amount.toFixed(2),
+        fee: "0.00",
+        description: `Back to school kiddies grant paid (${data.reference})`,
+      });
+      return { award: paidAward, walletBalance: walletBalance.toFixed(2) };
     });
   }
 

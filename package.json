@@ -10,6 +10,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test:identity": "tsx --test server/identityVerificationSecurity.test.ts",
+    "test:kiddies": "tsx --test server/backToSchoolSpellingBank.test.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

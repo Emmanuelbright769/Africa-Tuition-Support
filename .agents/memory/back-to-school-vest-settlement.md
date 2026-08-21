@@ -1,10 +1,12 @@
 ---
-name: Back to School Piggy Vest settlement
-description: Maturity must never leave a guardian’s programme savings locked or silently consumed.
+name: Back to School Kiddies wallet rules
+description: Permanent $30 eligibility, certificate gating, and guardian wallet fee treatment for the kiddies programme.
 ---
 
-Piggy Vest contributions are temporarily non-withdrawable, but every matured vest must automatically return its recorded balance to the guardian’s SwiftWallet in the same transaction that records its final status. A fully funded vest remains qualified for the child’s one spelling-bee attempt after the return; an underfunded vest closes as expired after returning any saved amount.
+The Kiddies programme has no holding-period settlement. Once a child wallet first reaches $30, the CBT entitlement remains permanently unlocked even if the guardian later withdraws money. An approved birth certificate is required before either the CBT or withdrawal can be used.
 
-**Why:** A savings programme cannot leave funds inaccessible when a child does not meet the target, nor consume the child’s savings merely because the programme has reached its assessment stage.
+Deposits charge 5% on top of the amount credited to the child wallet. Withdrawals deduct 7.5% from the requested child-wallet amount before crediting the guardian wallet. Record gross amount, fee, net amount, and both wallet movements atomically; money-moving requests must be idempotent.
 
-**How to apply:** Preserve the automatic settlement job and its audit entries whenever changing vest states, wallet accounting, eligibility, or award settlement. Never add a maturity path that closes a vest without an atomic wallet-credit or an explicitly approved equivalent payout.
+**Why:** Guardians must retain access to their savings without losing a child’s earned assessment entitlement, while fees and retry behavior must never create unexplained or duplicate wallet movements.
+
+**How to apply:** Keep certificate verification, wallet balance checks, permanent unlock state, transaction records, and replay protection server-side whenever changing contribution, withdrawal, CBT eligibility, or staff-award flows.

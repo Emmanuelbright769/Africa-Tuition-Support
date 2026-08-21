@@ -15,7 +15,8 @@ export const tradeTransactionTypeEnum = pgEnum("trade_transaction_type", ["depos
 export const tradeTransactionStatusEnum = pgEnum("trade_transaction_status", ["pending", "completed", "failed"]);
 export const backToSchoolVestStatusEnum = pgEnum("back_to_school_vest_status", ["active", "qualified", "expired"]);
 export const backToSchoolAttemptStatusEnum = pgEnum("back_to_school_attempt_status", ["started", "completed", "expired"]);
-export const backToSchoolAwardStatusEnum = pgEnum("back_to_school_award_status", ["recommended", "approved", "paid", "not_eligible"]);
+export const backToSchoolAwardStatusEnum = pgEnum("back_to_school_award_status", ["recommended", "approved", "paid", "declined", "not_eligible"]);
+export const backToSchoolCertificateStatusEnum = pgEnum("back_to_school_certificate_status", ["pending", "approved", "declined"]);
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -103,6 +104,11 @@ export const backToSchoolChildren = pgTable("back_to_school_children", {
   dateOfBirth: date("date_of_birth").notNull(),
   schoolName: text("school_name"),
   gradeLevel: text("grade_level"),
+  birthCertificateUploadId: integer("birth_certificate_upload_id").references(() => fileUploads.id),
+  certificateStatus: backToSchoolCertificateStatusEnum("certificate_status").notNull().default("pending"),
+  certificateReviewReason: text("certificate_review_reason"),
+  certificateReviewedBy: integer("certificate_reviewed_by").references(() => users.id),
+  certificateReviewedAt: timestamp("certificate_reviewed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -114,6 +120,7 @@ export const backToSchoolVests = pgTable("back_to_school_vests", {
   targetAmount: decimal("target_amount", { precision: 10, scale: 2 }).notNull().default("30.00"),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   fundedAt: timestamp("funded_at"),
+  cbtUnlockedAt: timestamp("cbt_unlocked_at"),
   maturesAt: timestamp("matures_at").notNull(),
   status: backToSchoolVestStatusEnum("status").notNull().default("active"),
   qualifiedAt: timestamp("qualified_at"),
@@ -129,9 +136,29 @@ export const backToSchoolVestTransactions = pgTable("back_to_school_vest_transac
   guardianUserId: integer("guardian_user_id").notNull().references(() => users.id),
   type: varchar("type", { length: 30 }).notNull().default("contribution"),
   amountUsd: decimal("amount_usd", { precision: 10, scale: 2 }).notNull(),
+  grossAmountUsd: decimal("gross_amount_usd", { precision: 10, scale: 2 }),
+  feeAmountUsd: decimal("fee_amount_usd", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  netAmountUsd: decimal("net_amount_usd", { precision: 10, scale: 2 }),
   balanceAfter: decimal("balance_after", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// A persisted replay guard for money-moving kiddies requests. The response is
+// retained with the request key so retrying a lost client response cannot debit
+// or credit a wallet a second time.
+export const backToSchoolOperations = pgTable("back_to_school_operations", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  guardianUserId: integer("guardian_user_id").notNull().references(() => users.id),
+  childId: integer("child_id").notNull().references(() => backToSchoolChildren.id),
+  operation: varchar("operation", { length: 24 }).notNull(),
+  idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+  response: jsonb("response"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  guardianChildOperationKey: uniqueIndex("back_to_school_operations_replay_guard").on(
+    table.guardianUserId, table.childId, table.operation, table.idempotencyKey,
+  ),
+}));
 
 export const backToSchoolAttempts = pgTable("back_to_school_attempts", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -141,6 +168,8 @@ export const backToSchoolAttempts = pgTable("back_to_school_attempts", {
   status: backToSchoolAttemptStatusEnum("status").notNull().default("started"),
   score: integer("score"),
   percentage: decimal("percentage", { precision: 5, scale: 2 }),
+  cheatingEvents: jsonb("cheating_events").notNull().default([]),
+  autoSubmitted: boolean("auto_submitted").notNull().default(false),
   startedAt: timestamp("started_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 });
@@ -152,8 +181,12 @@ export const backToSchoolAwards = pgTable("back_to_school_awards", {
   scorePercentage: decimal("score_percentage", { precision: 5, scale: 2 }).notNull(),
   awardAmount: decimal("award_amount", { precision: 10, scale: 2 }).notNull().default("0.00"),
   status: backToSchoolAwardStatusEnum("status").notNull().default("not_eligible"),
+  reviewReason: text("review_reason"),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   reviewedAt: timestamp("reviewed_at"),
+  paidAt: timestamp("paid_at"),
+  paymentReference: text("payment_reference"),
 });
 
 export const fileUploads = pgTable("file_uploads", {

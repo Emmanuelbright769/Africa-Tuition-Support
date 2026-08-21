@@ -40,6 +40,7 @@ import { db } from "./db";
 import { eq, desc, ne, and, sql, or } from "drizzle-orm";
 import YahooFinance from "yahoo-finance2";
 import { doesVerifiedNameMatch, hashVerifiedName } from "./identityVerificationSecurity";
+import { selectSpellingQuestions, spellingQuestionFor } from "./backToSchoolSpellingBank";
 
 const PgSession = pgSession(session);
 
@@ -149,6 +150,8 @@ const upload = multer({
 const BACK_TO_SCHOOL_LAUNCH_AT = new Date("2026-08-21T00:00:00.000Z");
 const BACK_TO_SCHOOL_CBT_MINUTES = 15;
 const BACK_TO_SCHOOL_TARGET_USD = 30;
+const BACK_TO_SCHOOL_DEPOSIT_FEE_RATE = 0.05;
+const BACK_TO_SCHOOL_WITHDRAWAL_FEE_RATE = 0.075;
 const SPELLING_BEE_QUESTIONS = [
   { id: "junior-1", ages: "junior", prompt: "Choose the correct spelling.", choices: ["becos", "because", "becouse", "beacause"], answer: 1 },
   { id: "junior-2", ages: "junior", prompt: "Choose the correct spelling.", choices: ["butterfly", "buterfly", "butterflie", "butterflye"], answer: 0 },
@@ -218,6 +221,15 @@ function requireBackToSchoolLaunch(res: Response): boolean {
     return false;
   }
   return true;
+}
+
+function requireBackToSchoolIdempotencyKey(req: Request, res: Response): string | null {
+  const key = req.get("Idempotency-Key")?.trim() ?? "";
+  if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key)) {
+    res.status(400).json({ message: "A valid Idempotency-Key is required to safely process this wallet request." });
+    return null;
+  }
+  return key;
 }
 
 function generateOtp(): string {
@@ -2471,6 +2483,19 @@ export async function registerRoutes(
     }
     return { userId, user };
   };
+  const requireBackToSchoolAdmin = async (req: Request, res: Response) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) {
+      res.status(401).json({ message: "Not authenticated" });
+      return null;
+    }
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "admin") {
+      res.status(403).json({ message: "Administrator access is required." });
+      return null;
+    }
+    return { userId, user };
+  };
 
   app.get("/api/back-to-school", async (req, res) => {
     try {
@@ -2482,7 +2507,8 @@ export async function registerRoutes(
         launchAt: BACK_TO_SCHOOL_LAUNCH_AT.toISOString(),
         rules: {
           targetAmount: BACK_TO_SCHOOL_TARGET_USD,
-          durationDays: 30,
+          depositFeeRate: BACK_TO_SCHOOL_DEPOSIT_FEE_RATE,
+          withdrawalFeeRate: BACK_TO_SCHOOL_WITHDRAWAL_FEE_RATE,
           ageMin: 5,
           ageMax: 15,
           cbtMinutes: BACK_TO_SCHOOL_CBT_MINUTES,
@@ -2497,7 +2523,7 @@ export async function registerRoutes(
       const guardian = await requireBackToSchoolGuardian(req, res);
       if (!guardian) return;
       if (!requireBackToSchoolLaunch(res)) return;
-      const { fullName, dateOfBirth, schoolName, gradeLevel } = req.body ?? {};
+      const { fullName, dateOfBirth, schoolName, gradeLevel, birthCertificateUploadId } = req.body ?? {};
       if (typeof fullName !== "string" || fullName.trim().length < 2 || fullName.trim().length > 120) {
         return res.status(400).json({ message: "Enter the child’s full name." });
       }
@@ -2506,10 +2532,14 @@ export async function registerRoutes(
       }
       const age = getChildAge(dateOfBirth);
       if (age < 5 || age > 15) return res.status(400).json({ message: "This programme is for children aged 5 to 15." });
+      if (!Number.isInteger(Number(birthCertificateUploadId)) || Number(birthCertificateUploadId) < 1) {
+        return res.status(400).json({ message: "Upload the child's birth certificate for staff verification." });
+      }
       const child = await storage.createBackToSchoolChild({
         guardianUserId: guardian.userId, fullName: fullName.trim(), dateOfBirth,
         schoolName: typeof schoolName === "string" ? schoolName.trim().slice(0, 160) : undefined,
         gradeLevel: typeof gradeLevel === "string" ? gradeLevel.trim().slice(0, 80) : undefined,
+        birthCertificateUploadId: Number(birthCertificateUploadId),
       });
       res.status(201).json(child);
     } catch (e: any) { res.status(500).json({ message: e.message || "Unable to add child profile" }); }
@@ -2522,7 +2552,7 @@ export async function registerRoutes(
       if (!requireBackToSchoolLaunch(res)) return;
       const childId = Number(req.params.childId);
       if (!Number.isInteger(childId) || childId < 1) return res.status(400).json({ message: "Invalid child profile." });
-      const { fullName, schoolName, gradeLevel } = req.body ?? {};
+      const { fullName, schoolName, gradeLevel, birthCertificateUploadId } = req.body ?? {};
       if (fullName !== undefined && (typeof fullName !== "string" || fullName.trim().length < 2 || fullName.trim().length > 120)) {
         return res.status(400).json({ message: "Enter a valid child name." });
       }
@@ -2530,6 +2560,7 @@ export async function registerRoutes(
         fullName: typeof fullName === "string" ? fullName.trim() : undefined,
         schoolName: typeof schoolName === "string" ? schoolName.trim().slice(0, 160) : undefined,
         gradeLevel: typeof gradeLevel === "string" ? gradeLevel.trim().slice(0, 80) : undefined,
+        birthCertificateUploadId: birthCertificateUploadId !== undefined ? Number(birthCertificateUploadId) : undefined,
       });
       res.json(child);
     } catch (e: any) {
@@ -2553,9 +2584,31 @@ export async function registerRoutes(
       if (!Number.isInteger(childId) || childId < 1 || !Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) !== amount * 100) {
         return res.status(400).json({ message: "Enter a valid contribution amount with up to two decimal places." });
       }
-      const result = await storage.contributeToBackToSchoolVest(guardian.userId, childId, amount);
+      const idempotencyKey = requireBackToSchoolIdempotencyKey(req, res);
+      if (!idempotencyKey) return;
+      const result = await storage.contributeToBackToSchoolVest(guardian.userId, childId, amount, idempotencyKey);
       res.json(result);
     } catch (e: any) { res.status(400).json({ message: e.message || "Contribution could not be completed" }); }
+  });
+
+  app.post("/api/back-to-school/children/:childId/withdrawals", async (req, res) => {
+    try {
+      const guardian = await requireBackToSchoolGuardian(req, res);
+      if (!guardian) return;
+      if (!requireBackToSchoolLaunch(res)) return;
+      if (!await storage.hasCompletedIdentityVerification(guardian.userId)) {
+        return res.status(403).json({ message: "Complete identity verification before withdrawing from a kiddies wallet." });
+      }
+      const childId = Number(req.params.childId);
+      const amount = Number(req.body?.amount);
+      if (!Number.isInteger(childId) || childId < 1 || !Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) !== amount * 100) {
+        return res.status(400).json({ message: "Enter a valid withdrawal amount with up to two decimal places." });
+      }
+      const idempotencyKey = requireBackToSchoolIdempotencyKey(req, res);
+      if (!idempotencyKey) return;
+      const result = await storage.withdrawFromBackToSchoolVest(guardian.userId, childId, amount, idempotencyKey);
+      res.json(result);
+    } catch (e: any) { res.status(400).json({ message: e.message || "Withdrawal could not be completed" }); }
   });
 
   app.post("/api/back-to-school/children/:childId/cbt/start", async (req, res) => {
@@ -2568,8 +2621,11 @@ export async function registerRoutes(
       const programme = await storage.getBackToSchoolProgramme(guardian.userId);
       const entry = programme.find(p => p.id === childId);
       if (!entry) return res.status(404).json({ message: "Child profile not found." });
-      if (entry.vest?.status !== "qualified") {
-        return res.status(403).json({ message: "The spelling bee unlocks after a fully funded $30 Piggy Vest completes its 30-day term." });
+      if (entry.certificateStatus !== "approved") {
+        return res.status(403).json({ message: "The child's birth certificate must be approved before starting the spelling bee." });
+      }
+      if (!entry.vest?.cbtUnlockedAt && !entry.vest?.qualifiedAt) {
+        return res.status(403).json({ message: "The spelling bee unlocks when the kiddies wallet first reaches $30.00." });
       }
       let attempt = entry.attempt;
       if (attempt?.status === "completed" || attempt?.status === "expired") {
@@ -2578,17 +2634,19 @@ export async function registerRoutes(
       const age = getChildAge(entry.dateOfBirth);
       const level = age <= 9 ? "junior" : "senior";
       if (!attempt) {
-        const questionIds = SPELLING_BEE_QUESTIONS.filter(q => q.ages === level).map(q => q.id);
+        const questionIds = selectSpellingQuestions(level, 25).map(question => question.id);
         attempt = await storage.createBackToSchoolAttempt({ childId, guardianUserId: guardian.userId, questionIds });
       }
       const questionIds: string[] = Array.isArray(attempt.questionIds)
         ? attempt.questionIds.map((id: unknown) => String(id))
         : [];
-      const questions = questionIds.reduce<Array<{ id: string; prompt: string; choices: readonly string[] }>>((items, id) => {
-        const question = SPELLING_BEE_QUESTIONS.find((entry) => entry.id === id);
-        if (question) items.push({ id: question.id, prompt: question.prompt, choices: question.choices });
-        return items;
-      }, []);
+       const questions = questionIds
+         .filter(id => id.startsWith("spell-"))
+         .map(id => spellingQuestionFor(id.slice("spell-".length)))
+         .map(({ id, prompt, choices }) => ({ id, prompt, choices }));
+       if (questions.length !== 25 || new Set(questionIds).size !== 25) {
+         return res.status(500).json({ message: "The spelling session could not be prepared safely. Please try again." });
+       }
       res.json({ attemptId: attempt.id, startedAt: attempt.startedAt, durationMinutes: BACK_TO_SCHOOL_CBT_MINUTES, questions });
     } catch (e: any) { res.status(500).json({ message: e.message || "Unable to start spelling bee" }); }
   });
@@ -2611,7 +2669,7 @@ export async function registerRoutes(
       const answers = req.body?.answers;
       if (!answers || typeof answers !== "object" || Array.isArray(answers)) return res.status(400).json({ message: "Submit the selected answers to finish the CBT." });
       const score = questionIds.reduce((total, id) => {
-        const question = SPELLING_BEE_QUESTIONS.find(item => item.id === id);
+        const question = id.startsWith("spell-") ? spellingQuestionFor(id.slice("spell-".length)) : null;
         return total + (question && Number(answers[id]) === question.answer ? 1 : 0);
       }, 0);
       const percentage = questionIds.length ? Math.round((score / questionIds.length) * 10000) / 100 : 0;
@@ -2619,6 +2677,82 @@ export async function registerRoutes(
       const result = await storage.completeBackToSchoolAttempt({ childId, guardianUserId: guardian.userId, score, percentage, awardAmount });
       res.json({ ...result, score, totalQuestions: questionIds.length, percentage, awardAmount, awardStatus: awardAmount > 0 ? "recommended" : "not_eligible" });
     } catch (e: any) { res.status(500).json({ message: e.message || "Unable to submit spelling bee" }); }
+  });
+
+  app.post("/api/back-to-school/children/:childId/cbt/report-cheat", async (req, res) => {
+    try {
+      const guardian = await requireBackToSchoolGuardian(req, res);
+      if (!guardian) return;
+      const childId = Number(req.params.childId);
+      const eventType = typeof req.body?.eventType === "string" ? req.body.eventType.slice(0, 48) : "";
+      const description = typeof req.body?.description === "string" ? req.body.description.slice(0, 250) : "";
+      const allowedEvents = ["tab_switch", "window_blur", "copy_attempt", "paste_attempt", "cut_attempt", "right_click", "keyboard_shortcut"];
+      if (!Number.isInteger(childId) || childId < 1 || !allowedEvents.includes(eventType) || !description) {
+        return res.status(400).json({ message: "Invalid assessment integrity event." });
+      }
+      res.json(await storage.recordBackToSchoolCheatingEvent({ childId, guardianUserId: guardian.userId, eventType, description }));
+    } catch (e: any) { res.status(409).json({ message: e.message || "Unable to record assessment activity" }); }
+  });
+
+  app.get("/api/admin/back-to-school", async (req, res) => {
+    try {
+      if (!await requireBackToSchoolAdmin(req, res)) return;
+      res.json(await storage.getBackToSchoolAdminProgramme());
+    } catch (e: any) { res.status(500).json({ message: e.message || "Unable to load kiddies programme records" }); }
+  });
+
+  app.get("/api/admin/back-to-school/children/:childId/birth-certificate", async (req, res) => {
+    try {
+      if (!await requireBackToSchoolAdmin(req, res)) return;
+      const childId = Number(req.params.childId);
+      if (!Number.isInteger(childId) || childId < 1) return res.status(400).json({ message: "Invalid kiddies account." });
+      const record = await storage.getBackToSchoolCertificate(childId);
+      if (!record) return res.status(404).json({ message: "Birth certificate not found." });
+      res.setHeader("Content-Disposition", `inline; filename="${record.file.fileName.replace(/"/g, "")}"`);
+      res.type(record.file.fileType).send(Buffer.from(record.file.fileData, "base64"));
+    } catch (e: any) { res.status(500).json({ message: e.message || "Unable to open birth certificate" }); }
+  });
+
+  app.post("/api/admin/back-to-school/children/:childId/certificate-review", async (req, res) => {
+    try {
+      const admin = await requireBackToSchoolAdmin(req, res);
+      if (!admin) return;
+      const childId = Number(req.params.childId);
+      const approved = req.body?.approved;
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 600) : undefined;
+      if (!Number.isInteger(childId) || childId < 1 || typeof approved !== "boolean") {
+        return res.status(400).json({ message: "Provide a valid certificate decision." });
+      }
+      const child = await storage.reviewBackToSchoolCertificate({ childId, adminUserId: admin.userId, approved, reason });
+      res.json(child);
+    } catch (e: any) { res.status(400).json({ message: e.message || "Unable to review birth certificate" }); }
+  });
+
+  app.post("/api/admin/back-to-school/awards/:awardId/review", async (req, res) => {
+    try {
+      const admin = await requireBackToSchoolAdmin(req, res);
+      if (!admin) return;
+      const awardId = Number(req.params.awardId);
+      const approved = req.body?.approved;
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 600) : undefined;
+      if (!Number.isInteger(awardId) || awardId < 1 || typeof approved !== "boolean") {
+        return res.status(400).json({ message: "Provide a valid award decision." });
+      }
+      res.json(await storage.reviewBackToSchoolAward({ awardId, adminUserId: admin.userId, approved, reason }));
+    } catch (e: any) { res.status(400).json({ message: e.message || "Unable to review award" }); }
+  });
+
+  app.post("/api/admin/back-to-school/awards/:awardId/pay", async (req, res) => {
+    try {
+      const admin = await requireBackToSchoolAdmin(req, res);
+      if (!admin) return;
+      const awardId = Number(req.params.awardId);
+      const reference = typeof req.body?.reference === "string" ? req.body.reference.trim().slice(0, 120) : "";
+      if (!Number.isInteger(awardId) || awardId < 1 || !reference) {
+        return res.status(400).json({ message: "Enter an award payment reference." });
+      }
+      res.json(await storage.payBackToSchoolAward({ awardId, adminUserId: admin.userId, reference }));
+    } catch (e: any) { res.status(400).json({ message: e.message || "Unable to credit award" }); }
   });
 
   // Withdraw referral commission earnings from Trade Wallet to SwiftWallet
@@ -10779,21 +10913,6 @@ export async function registerRoutes(
   setTimeout(() => runCommitmentExpiry(), 30_000); // 30 s after startup
   setInterval(runCommitmentExpiry, 60 * 60 * 1000); // every hour
   console.log("[COMMITMENT-EXPIRY] Masters commitment expiry job started — checks every hour.");
-
-  // ── Back to School Piggy Vest maturity returns ────────────────────────────
-  // No guardian action is needed to recover savings once a vest reaches its
-  // maturity date. Settlement credits the SwiftWallet and preserves CBT eligibility.
-  async function runBackToSchoolVestSettlement() {
-    try {
-      const settled = await storage.settleAllMaturedBackToSchoolVests();
-      if (settled > 0) console.log(`[BACK-TO-SCHOOL] Settled and returned ${settled} matured Piggy Vest(s).`);
-    } catch (e: any) {
-      console.error("[BACK-TO-SCHOOL] Piggy Vest settlement job failed:", e.message);
-    }
-  }
-  setTimeout(() => runBackToSchoolVestSettlement(), 20_000);
-  setInterval(runBackToSchoolVestSettlement, 60 * 60 * 1000);
-  console.log("[BACK-TO-SCHOOL] Piggy Vest settlement job started — checks every hour.");
 
   // ── Weekly TS-Mart digest — every Monday at 08:00 WAT (UTC+1) ───────────────
   async function sendWeeklyMartDigest() {

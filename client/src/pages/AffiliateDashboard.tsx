@@ -64,7 +64,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "overview",        label: "Overview",               icon: LayoutDashboard },
   { id: "fintech",         label: "Swift Hub",              icon: CreditCard },
   { id: "qce",             label: "QCE SwiftVault",         icon: PiggyBank, badge: "New" },
-  { id: "back_to_school",  label: "Back to School",          icon: Sparkles },
+  { id: "back_to_school",  label: "Back to school kiddies",  icon: Sparkles },
   { id: "trade",           label: "Trade Market",           icon: Globe },
   { id: "sponsorship_cohort", label: "Sponsorship Cohort", icon: HeartHandshake, badge: "New" },
   { id: "mmmf",            label: "Money Market Mutual Funds (MMMF)", icon: () => <span className="text-xl leading-none">💠</span>, badge: "Soon" },
@@ -3349,7 +3349,7 @@ export default function AffiliateDashboard() {
         {[
           { id: "overview" as Section, label: "Home", icon: Home },
           { id: "fintech" as Section, label: "Wallet", icon: CreditCard },
-          { id: "back_to_school" as Section, label: "School", icon: Sparkles },
+          { id: "back_to_school" as Section, label: "Kiddies", icon: Sparkles },
           { id: "trade" as Section, label: "Trade", icon: Globe },
           { id: "ecommerce" as Section, label: "Store", icon: ShoppingCart },
         ].map(item => {

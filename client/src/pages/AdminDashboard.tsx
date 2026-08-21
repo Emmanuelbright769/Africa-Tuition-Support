@@ -24,6 +24,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import BackToSchoolAdminSection from "@/components/BackToSchoolAdminSection";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmtUSD = (v: any) => `$${parseFloat(v || "0").toFixed(2)}`;
@@ -95,6 +96,7 @@ const NAV = [
   { id: "users",         icon: Users,          label: "All Users" },
   { id: "affiliates",    icon: Share2,         label: "Affiliates" },
   { id: "referrals",     icon: GitBranch,      label: "Referrals" },
+  { id: "kiddies",       icon: GraduationCap,  label: "School Kiddies" },
   { id: "transactions",  icon: ArrowLeftRight, label: "Transactions" },
   { id: "ecommerce",     icon: ShoppingBag,    label: "TS-Mart Online Stores" },
   { id: "trade",         icon: BarChart2,      label: "Trade Market" },
@@ -1183,6 +1185,12 @@ export default function AdminDashboard() {
                     </CardContent>
                   </Card>
                 </div>
+              </motion.div>
+            )}
+
+            {activeTab === "kiddies" && (
+              <motion.div key="kiddies" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <BackToSchoolAdminSection />
               </motion.div>
             )}
 

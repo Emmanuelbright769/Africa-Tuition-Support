@@ -31,10 +31,11 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
+  additionalHeaders?: HeadersInit,
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: { ...(data ? { "Content-Type": "application/json" } : {}), ...additionalHeaders },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });

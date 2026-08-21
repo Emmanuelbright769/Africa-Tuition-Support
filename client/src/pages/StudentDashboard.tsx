@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import BackToSchoolSection from "@/components/BackToSchoolSection";
 import FinancialHub from "./FinancialHub";
 import MoviesSection from "@/components/MoviesSection";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
@@ -18,7 +19,7 @@ import {
   LayoutDashboard, Star, History, ChevronRight, ChevronDown, Car, Globe, Loader2,
   AlertTriangle, DollarSign, Shield, Zap, TrendingDown, ArrowDownLeft, Copy, QrCode,
   ShoppingCart, MessageSquareText, PiggyBank, HeartPulse, Ambulance, Stethoscope, HeartHandshake, LayoutGrid, Info, KeyRound,
-  Film, GraduationCap, BookOpen, Send
+  Film, GraduationCap, BookOpen, Send, Sparkles
 } from "lucide-react";
 import { calculateLoanMonthly } from "@shared/schema";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
@@ -34,7 +35,7 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 
 
-type Section = "overview" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies" | "msc_plans" | "scholarship" | "research_grant";
+type Section = "overview" | "plans" | "activity" | "loan" | "tour_africa" | "fintech" | "reserve_fund" | "ecommerce" | "forum" | "qce" | "emergency_response" | "movies" | "msc_plans" | "scholarship" | "research_grant" | "back_to_school";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",     label: "Overview",               icon: LayoutDashboard },
@@ -50,6 +51,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "loan",               label: "Student loan",      icon: Banknote },
   { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
   { id: "forum",              label: "Community Forum",   icon: MessageSquareText },
+  { id: "back_to_school",    label: "Back to school kiddies", icon: Sparkles, badge: "New" },
 ];
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
@@ -1597,6 +1599,13 @@ export default function StudentDashboard() {
                   </LearnMore>
                 </motion.div>
               </>
+            )}
+
+            {/* ── BACK TO SCHOOL KIDDIES ── */}
+            {activeSection === "back_to_school" && (
+              <motion.div variants={itemVariants}>
+                <BackToSchoolSection />
+              </motion.div>
             )}
 
           </motion.div>

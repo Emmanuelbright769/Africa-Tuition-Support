@@ -3344,31 +3344,6 @@ export default function AffiliateDashboard() {
         </div>
       </main>
 
-      {/* Mobile affiliate navigation keeps Back to School one tap away. */}
-      <nav className="fixed inset-x-3 bottom-3 z-[60] grid grid-cols-5 rounded-2xl border border-border/70 bg-card/95 p-1 shadow-xl backdrop-blur sm:hidden" aria-label="Affiliate navigation">
-        {[
-          { id: "overview" as Section, label: "Home", icon: Home },
-          { id: "fintech" as Section, label: "Wallet", icon: CreditCard },
-          { id: "back_to_school" as Section, label: "Kiddies", icon: Sparkles },
-          { id: "trade" as Section, label: "Trade", icon: Globe },
-          { id: "ecommerce" as Section, label: "Store", icon: ShoppingCart },
-        ].map(item => {
-          const active = activeSection === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => navigate(item.id)}
-              className={`relative flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-semibold transition-colors ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              data-testid={`bottom-nav-${item.id}`}
-            >
-              <item.icon className="h-4 w-4" />
-              <span>{item.label}</span>
-              {item.id === "back_to_school" && backToSchoolNew && <span className="absolute -top-2 right-0 rounded-full bg-amber-400 px-1 py-0.5 text-[8px] font-bold text-slate-900">New</span>}
-            </button>
-          );
-        })}
-      </nav>
-
       {/* ── DIALOGS ── */}
 
       {/* Trust Fund Earnings Withdrawal */}

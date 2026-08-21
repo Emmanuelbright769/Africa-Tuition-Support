@@ -35,7 +35,16 @@ const AFRICAN_COUNTRIES = [
 
 type RoleChoice = "student" | "affiliate" | "both";
 type Step = 0 | 1 | 2 | 3;
-type KycIdType = "passport" | "drivers_license" | "national_id";
+type KycIdType = "nin" | "bvn" | "voters_card" | "drivers_license" | "passport" | "national_id";
+
+const KYC_ID_OPTIONS: { id: KycIdType; label: string; desc: string; placeholder: string; needsSurname?: boolean; needsFirstName?: boolean }[] = [
+  { id: "nin", label: "NIN", desc: "11-digit National ID", placeholder: "e.g. 12345678901" },
+  { id: "bvn", label: "BVN", desc: "11-digit bank ID", placeholder: "e.g. 12345678901" },
+  { id: "voters_card", label: "Voter's Card", desc: "VIN", placeholder: "Enter VIN", needsSurname: true },
+  { id: "drivers_license", label: "Driver's Licence", desc: "Government issued", placeholder: "Enter licence number", needsSurname: true, needsFirstName: true },
+  { id: "passport", label: "International Passport", desc: "Passport number", placeholder: "Enter passport number", needsSurname: true },
+  { id: "national_id", label: "National ID", desc: "ID or residence permit", placeholder: "Enter ID number" },
+];
 
 const ROLE_CARDS: { id: RoleChoice; icon: any; label: string; sub: string; highlight?: boolean;
   card: string; pill: string; iconBg: string; badge?: string }[] = [
@@ -88,10 +97,11 @@ export default function Signup() {
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
-  const [kycIdType, setKycIdType] = useState<KycIdType>("passport");
+  const [kycIdType, setKycIdType] = useState<KycIdType>("nin");
   const [documentCountry, setDocumentCountry] = useState("NG");
-  const [documentImage, setDocumentImage] = useState("");
-  const [selfieImage, setSelfieImage] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
+  const [kycFirstName, setKycFirstName] = useState("");
+  const [kycLastName, setKycLastName] = useState("");
   const [preVerificationToken, setPreVerificationToken] = useState("");
   const [kycVerifying, setKycVerifying] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -171,18 +181,19 @@ export default function Signup() {
     }
   };
 
-  const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
-    if (file.size > 5 * 1024 * 1024) return reject(new Error("Each image must be smaller than 5MB."));
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read image."));
-    reader.onerror = () => reject(new Error("Could not read image."));
-    reader.readAsDataURL(file);
-  });
-
   const handleKycSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!documentImage || !selfieImage) {
-      toast({ title: "Images required", description: "Upload a clear image of your ID and a current selfie.", variant: "destructive" });
+    const selectedId = KYC_ID_OPTIONS.find(option => option.id === kycIdType)!;
+    if (!documentNumber.trim()) {
+      toast({ title: "ID number required", description: `Enter your ${selectedId.label} number.`, variant: "destructive" });
+      return;
+    }
+    if (selectedId.needsSurname && !kycLastName.trim()) {
+      toast({ title: "Surname required", description: "Enter your surname exactly as it appears on the ID.", variant: "destructive" });
+      return;
+    }
+    if (selectedId.needsFirstName && !kycFirstName.trim()) {
+      toast({ title: "First name required", description: "Enter your first name exactly as it appears on the ID.", variant: "destructive" });
       return;
     }
     setKycVerifying(true);
@@ -190,13 +201,13 @@ export default function Signup() {
       const res = await fetch("/api/identity-verifications/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentCountry, documentType: kycIdType, documentImage, selfieImage }),
+        body: JSON.stringify({ documentCountry, documentType: kycIdType, documentNumber: documentNumber.trim(), firstName: kycFirstName.trim(), lastName: kycLastName.trim() }),
       });
       const data = await res.json();
       if (!res.ok || data.verified !== true || !data.signupVerificationToken) {
         toast({
           title: "Identity verification failed",
-          description: data.message || "We could not confirm the document and selfie you provided. Please try again.",
+          description: data.message || "We could not confirm that ID number. Please check it and try again.",
           variant: "destructive",
         });
         return;
@@ -473,24 +484,18 @@ export default function Signup() {
                       </div>
                     </div>
                     <CardTitle className="text-2xl text-center font-bold">Verify Your Identity</CardTitle>
-                    <CardDescription className="text-center text-sm">
-                      A quick identity check — required for all TSIA accounts
-                    </CardDescription>
+                      <CardDescription className="text-center text-sm">A quick identity check—enter your government-issued ID number. No image upload is needed.</CardDescription>
                   </CardHeader>
                   <CardContent className="pb-6">
                     <form onSubmit={handleKycSubmit} className="space-y-4">
                       <div className="space-y-1.5">
                         <Label>ID Type</Label>
                         <div className="grid grid-cols-2 gap-2">
-                          {([
-                            { id: "passport" as KycIdType, label: "Passport", desc: "International" },
-                            { id: "drivers_license" as KycIdType, label: "Driver's Licence", desc: "Government issued" },
-                            { id: "national_id" as KycIdType, label: "National ID", desc: "Identity or residence card" },
-                          ]).map(opt => (
+                          {KYC_ID_OPTIONS.map(opt => (
                             <button
                               key={opt.id}
                               type="button"
-                              onClick={() => setKycIdType(opt.id)}
+                              onClick={() => { setKycIdType(opt.id); setDocumentNumber(""); setKycFirstName(""); setKycLastName(""); }}
                               className={`flex flex-col items-start p-3 rounded-xl border-2 transition-all text-left ${kycIdType === opt.id ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-border bg-muted/20 hover:border-border/80"}`}
                               data-testid={`btn-kyc-type-${opt.id}`}
                             >
@@ -507,34 +512,36 @@ export default function Signup() {
                           onChange={e => setDocumentCountry(e.target.value.toUpperCase())}
                           placeholder="e.g. NG, GB, US" className="h-11 bg-muted/30 uppercase"
                           data-testid="input-document-country" />
-                        <p className="text-xs text-muted-foreground">Use the two-letter ISO country code on the document. This supports foreign documents.</p>
+                        <p className="text-xs text-muted-foreground">Use the two-letter ISO country code on the document.</p>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="documentImage">Identity document image</Label>
-                          <Input id="documentImage" type="file" accept="image/jpeg,image/png,image/webp" className="h-11 bg-muted/30"
-                            onChange={async e => { const file = e.target.files?.[0]; if (!file) return; try { setDocumentImage(await fileToBase64(file)); } catch (err: any) { toast({ title: "Image error", description: err.message, variant: "destructive" }); } }}
-                            data-testid="input-document-image" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="selfieImage">Current selfie</Label>
-                          <Input id="selfieImage" type="file" accept="image/jpeg,image/png,image/webp" capture="user" className="h-11 bg-muted/30"
-                            onChange={async e => { const file = e.target.files?.[0]; if (!file) return; try { setSelfieImage(await fileToBase64(file)); } catch (err: any) { toast({ title: "Image error", description: err.message, variant: "destructive" }); } }}
-                            data-testid="input-selfie-image" />
-                        </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="documentNumber">{KYC_ID_OPTIONS.find(option => option.id === kycIdType)?.label} number</Label>
+                        <Input id="documentNumber" value={documentNumber} onChange={e => setDocumentNumber(e.target.value.toUpperCase())} placeholder={KYC_ID_OPTIONS.find(option => option.id === kycIdType)?.placeholder} className="h-11 bg-muted/30 uppercase" autoComplete="off" data-testid="input-document-number" />
                       </div>
+                      {KYC_ID_OPTIONS.find(option => option.id === kycIdType)?.needsFirstName && (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="kycFirstName">First name as it appears on the ID</Label>
+                          <Input id="kycFirstName" value={kycFirstName} onChange={e => setKycFirstName(e.target.value)} placeholder="e.g. Amara" className="h-11 bg-muted/30" autoComplete="given-name" data-testid="input-kyc-first-name" />
+                        </div>
+                      )}
+                      {KYC_ID_OPTIONS.find(option => option.id === kycIdType)?.needsSurname && (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="kycLastName">Surname as it appears on the ID</Label>
+                          <Input id="kycLastName" value={kycLastName} onChange={e => setKycLastName(e.target.value)} placeholder="e.g. Okafor" className="h-11 bg-muted/30" autoComplete="family-name" data-testid="input-kyc-last-name" />
+                        </div>
+                      )}
 
                       <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl px-3 py-2.5">
                         <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
                         <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
-                          TSIA uses Prembly to verify identities. This is a one-time check and does not affect your credit score.
+                          TSIA uses Prembly to verify this ID number directly. This is a one-time check and does not affect your credit score.
                         </p>
                       </div>
 
                       <Button
                         type="submit"
                         className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-md"
-                        disabled={loading || kycVerifying || !documentImage || !selfieImage || !/^[A-Z]{2}$/.test(documentCountry)}
+                        disabled={loading || kycVerifying || !documentNumber.trim() || !/^[A-Z]{2}$/.test(documentCountry)}
                         data-testid="button-kyc-submit"
                       >
                         {kycVerifying || loading ? (

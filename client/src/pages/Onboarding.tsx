@@ -30,11 +30,10 @@ export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Step 1 — provider-backed document and selfie verification
-  const [idType, setIdType] = useState("passport");
+  // Step 1 — provider-backed ID-number verification
+  const [idType, setIdType] = useState("nin");
   const [documentCountry, setDocumentCountry] = useState("NG");
-  const [documentImage, setDocumentImage] = useState("");
-  const [selfieImage, setSelfieImage] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
   const [idVerifying, setIdVerifying] = useState(false);
   const [idVerified, setIdVerified] = useState(false);
   const [idError, setIdError] = useState("");
@@ -91,44 +90,30 @@ export default function Onboarding() {
   const allElectivesSelected = electives.filter(Boolean).length === 3;
 
   const DOCUMENT_OPTIONS = [
-    { value: "passport", label: "Passport" },
-    { value: "drivers_license", label: "Driver's Licence" },
-    { value: "national_id", label: "National ID or residence card" },
+    { value: "nin", label: "National Identification Number (NIN)", placeholder: "11-digit NIN" },
+    { value: "bvn", label: "Bank Verification Number (BVN)", placeholder: "11-digit BVN" },
+    { value: "voters_card", label: "Voter's Card (VIN)", placeholder: "Voter identification number" },
+    { value: "drivers_license", label: "Driver's Licence", placeholder: "Licence number" },
+    { value: "passport", label: "International Passport", placeholder: "Passport number" },
+    { value: "national_id", label: "National ID / Residence Permit", placeholder: "ID number" },
   ];
   const currentDocument = DOCUMENT_OPTIONS.find(option => option.value === idType) || DOCUMENT_OPTIONS[0];
-  const isIdReady = /^[A-Z]{2}$/.test(documentCountry) && !!documentImage && !!selfieImage;
-  const readImage = async (file: File | undefined, setter: (value: string) => void) => {
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { setIdError("Each image must be smaller than 5MB."); return; }
-    try {
-      const image = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read image."));
-        reader.onerror = () => reject(new Error("Could not read image."));
-        reader.readAsDataURL(file);
-      });
-      setter(image);
-      setIdVerified(false);
-      setIdError("");
-    } catch (error: any) {
-      setIdError(error.message || "Could not read that image.");
-    }
-  };
+  const isIdReady = /^[A-Z]{2}$/.test(documentCountry) && !!documentNumber.trim();
 
   // ── Verify identity document ────────────────────────────────────────────
   const handleVerifyId = async () => {
     if (!requireWalletActivation()) return;
-    if (!isIdReady) { setIdError("Choose the issuing country and upload both a document image and a current selfie."); return; }
+    if (!isIdReady) { setIdError("Choose the issuing country and enter your ID number."); return; }
     setIdError("");
     setIdVerifying(true);
     try {
       const res = await apiRequest("POST", "/api/identity-verifications/verify", {
-        documentCountry, documentType: idType, documentImage, selfieImage,
+        documentCountry, documentType: idType, documentNumber: documentNumber.trim(),
       });
       const data = await res.json();
       if (!res.ok || data.verified !== true) throw new Error(data.message || "Verification failed");
       setIdVerified(true);
-      toast({ title: "Identity verified", description: "Prembly confirmed your document and live selfie." });
+      toast({ title: "Identity verified", description: "Prembly confirmed your ID number." });
     } catch (err: any) {
       setIdError(err.message || "Verification failed. Please check your details.");
     } finally {
@@ -315,13 +300,13 @@ export default function Onboarding() {
                     <ShieldAlert className="w-8 h-8" />
                   </div>
                   <h2 className="text-3xl font-bold mb-2">Identity Verification</h2>
-                  <p className="text-muted-foreground text-lg mb-8">Upload a government-issued document and a current selfie. Prembly confirms both before you continue.</p>
+                  <p className="text-muted-foreground text-lg mb-8">Enter your government-issued ID number. Prembly verifies it before you continue—no image upload is needed.</p>
                 </div>
                 <div className="p-8 pt-6 space-y-5">
 
                   <div className="space-y-2">
                     <Label className="text-base font-semibold">Document Type</Label>
-                    <Select value={idType} onValueChange={v => { setIdType(v); setIdVerified(false); setIdError(""); }} disabled={idVerified} data-testid="select-id-type">
+                    <Select value={idType} onValueChange={v => { setIdType(v); setDocumentNumber(""); setIdVerified(false); setIdError(""); }} disabled={idVerified} data-testid="select-id-type">
                       <SelectTrigger className="h-12 bg-muted/30 text-base" data-testid="trigger-id-type">
                         <SelectValue placeholder="Select document type" />
                       </SelectTrigger>
@@ -340,16 +325,16 @@ export default function Onboarding() {
                       placeholder="e.g. NG, GB, US" className="h-12 bg-muted/30 uppercase" data-testid="input-document-country" />
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2"><Label>Document image</Label><Input type="file" accept="image/jpeg,image/png,image/webp" disabled={idVerified} onChange={e => readImage(e.target.files?.[0], setDocumentImage)} data-testid="input-document-image" /></div>
-                    <div className="space-y-2"><Label>Current selfie</Label><Input type="file" accept="image/jpeg,image/png,image/webp" capture="user" disabled={idVerified} onChange={e => readImage(e.target.files?.[0], setSelfieImage)} data-testid="input-selfie-image" /></div>
+                  <div className="space-y-2">
+                    <Label className="text-base font-semibold">{currentDocument.label} number</Label>
+                    <Input value={documentNumber} disabled={idVerified} onChange={e => { setDocumentNumber(e.target.value.toUpperCase()); setIdVerified(false); setIdError(""); }} placeholder={currentDocument.placeholder || "Enter ID number"} className="h-12 bg-muted/30 uppercase" autoComplete="off" data-testid="input-document-number" />
                   </div>
                   {idError && <p className="text-sm text-destructive flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {idError}</p>}
                   <Button onClick={handleVerifyId} disabled={idVerifying || idVerified || !isIdReady} className="w-full h-12 font-semibold" data-testid="button-verify-id">
                     {idVerifying ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" /> Confirming with Prembly…</> : idVerified ? <><CheckCircle2 className="mr-2 w-4 h-4" /> Identity verified</> : `Verify ${currentDocument.label}`}
                   </Button>
-                  {idVerified && <div className="flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-200"><BadgeCheck className="h-6 w-6 shrink-0" /><p className="text-sm font-medium">Prembly confirmed your document and live selfie.</p></div>}
-                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium"><Lock className="w-3.5 h-3.5 text-green-600" /> Images are sent to Prembly for this check and are not stored by TSIA.</p>
+                  {idVerified && <div className="flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-200"><BadgeCheck className="h-6 w-6 shrink-0" /><p className="text-sm font-medium">Prembly confirmed your ID number.</p></div>}
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium"><Lock className="w-3.5 h-3.5 text-green-600" /> Your ID number is checked securely with Prembly. TSIA does not store the raw number.</p>
 
                   <Button onClick={handleProceedToWaec} className="w-full h-14 text-lg font-semibold shadow-md" disabled={!idVerified} data-testid="button-identity-next">
                     Continue to WAEC Validation <ArrowRight className="w-5 h-5 ml-2" />

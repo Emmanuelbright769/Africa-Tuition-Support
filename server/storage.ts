@@ -702,7 +702,10 @@ export class DatabaseStorage implements IStorage {
         eq(identityVerifications.signupTokenHash, tokenHash),
         isNull(identityVerifications.userId),
         eq(identityVerifications.status, "verified"),
-        eq(identityVerifications.livenessStatus, "verified"),
+        or(
+          eq(identityVerifications.livenessStatus, "verified"),
+          eq(identityVerifications.livenessStatus, "not_required"),
+        ),
         gt(identityVerifications.expiresAt, now),
       ))
       .returning();
@@ -714,7 +717,10 @@ export class DatabaseStorage implements IStorage {
     const [record] = await db.select().from(identityVerifications).where(and(
       eq(identityVerifications.userId, userId),
       eq(identityVerifications.status, "verified"),
-      eq(identityVerifications.livenessStatus, "verified"),
+      or(
+        eq(identityVerifications.livenessStatus, "verified"),
+        eq(identityVerifications.livenessStatus, "not_required"),
+      ),
       or(isNull(identityVerifications.documentExpiresAt), gt(identityVerifications.documentExpiresAt, now)),
     ));
     return record;

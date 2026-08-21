@@ -39,7 +39,7 @@ import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
 import { eq, desc, ne, and, sql, or } from "drizzle-orm";
 import YahooFinance from "yahoo-finance2";
-import { doesVerifiedNameMatch, hashVerifiedName, isExplicitlyLive } from "./identityVerificationSecurity";
+import { doesVerifiedNameMatch, hashVerifiedName } from "./identityVerificationSecurity";
 
 const PgSession = pgSession(session);
 
@@ -405,7 +405,7 @@ export async function registerRoutes(
           providerStatus: preVerification.providerStatus,
           providerEvidence: preVerification.providerEvidence,
           status: "verified",
-          livenessStatus: "verified",
+          livenessStatus: preVerification.livenessStatus,
           faceMatchScore: preVerification.faceMatchScore,
           documentExpiresAt: preVerification.documentExpiresAt,
           verifiedAt: preVerification.verifiedAt,
@@ -838,17 +838,10 @@ export async function registerRoutes(
 
     console.log(`[KYC Prembly] ${idType} → HTTP ${resp.status} | status=${json.status} | detail=${json.detail || json.message || ""} | errors=${JSON.stringify(json.errors || {})}`);
 
-    // Prembly returns status:true on success, status:false on failure
+    // Prembly returns status:true on success, status:false on failure. Never
+    // accept a format-only response: this result is used to unlock a real
+    // account and must originate from Prembly.
     if (!resp.ok || json.status === false) {
-      // Wallet balance insufficient → treat as format-only pass so users aren't blocked
-      // while the Prembly account is being funded
-      const isLowBalance = json?.message?.toLowerCase().includes("insufficient") ||
-                           json?.detail?.toLowerCase().includes("insufficient") ||
-                           json?.response_code === "04";
-      if (isLowBalance) {
-        console.warn("[KYC Prembly] Insufficient wallet balance — falling back to format-only validation");
-        return { ok: true, data: null, message: "format_only" };
-      }
       const errMsg = json?.detail || json?.message || "ID could not be verified. Please check your details and try again.";
       return { ok: false, data: null, message: errMsg };
     }
@@ -883,19 +876,14 @@ export async function registerRoutes(
     passport: "International Passport", national_id: "National ID / Residence Permit",
   };
 
-  const DOCUMENT_TYPES: Record<string, string> = {
-    passport: "PP",
-    drivers_license: "DL",
-    national_id: "ID",
-  };
-
-  const stripBase64Image = (value: unknown): string | null => {
-    if (typeof value !== "string") return null;
-    const image = value.replace(/^data:image\/(?:jpeg|jpg|png|webp);base64,/i, "").trim();
-    // 5MB image once base64-decoded, with a small allowance for base64 encoding.
-    if (!image || image.length > 7_000_000 || !/^[A-Za-z0-9+/=\r\n]+$/.test(image)) return null;
-    return image;
-  };
+  const getIdLookupBody = (idType: string, idNumber: string, lastName: string, firstName = ""): Record<string, string> => ({
+    nin: { nin: idNumber },
+    national_id: { nin: idNumber },
+    bvn: { bvn: idNumber },
+    voters_card: { vin: idNumber, last_name: lastName },
+    drivers_license: { license_no: idNumber, first_name: firstName, last_name: lastName },
+    passport: { passport_no: idNumber, last_name: lastName },
+  }[idType] || { nin: idNumber });
 
   const verificationEvidence = (payload: any) => {
     const v = payload?.verification || payload?.data?.verification || payload?.data || {};
@@ -915,61 +903,6 @@ export async function registerRoutes(
     };
   };
 
-  const performDocumentWithFaceVerification = async ({
-    documentCountry, documentType, documentImage, selfieImage,
-  }: { documentCountry: string; documentType: string; documentImage: string; selfieImage: string }) => {
-    const apiKey = process.env.PREMBLY_API_KEY;
-    const appId = process.env.PREMBLY_APP_ID;
-    if (!apiKey || !appId) {
-      return { ok: false as const, serviceUnavailable: true, message: "Identity verification is temporarily unavailable. Please try again later." };
-    }
-    try {
-      const response = await fetch("https://api.prembly.com/identitypass/verification/document_with_face", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "app-id": appId,
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          doc_country: documentCountry,
-          doc_type: DOCUMENT_TYPES[documentType],
-          document_image: documentImage,
-          face_image: selfieImage,
-        }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      const payload = await response.json().catch(() => null);
-      const evidence = verificationEvidence(payload);
-      const providerStatus = String(evidence.status || "").toUpperCase();
-      // A document status alone is not a liveness result. Prembly must return
-      // an explicit live/verified signal for the face check.
-      const livenessStatus = String(evidence.liveness || "").toUpperCase();
-      const confirmed = response.ok &&
-        payload?.status === true &&
-        ["VERIFIED", "SUCCESS"].includes(providerStatus) &&
-        isExplicitlyLive(livenessStatus) &&
-        typeof evidence.verifiedNameHash === "string";
-      if (!confirmed) {
-        console.warn(`[IdentityVerification] Prembly rejected document-with-face: HTTP ${response.status}; status=${providerStatus || "unknown"}`);
-        return {
-          ok: false as const,
-          serviceUnavailable: response.status >= 500,
-          message: response.status >= 500
-            ? "Identity verification is temporarily unavailable. Please try again later."
-            : "We could not confirm that document and selfie. Check the images and try again.",
-          evidence,
-          providerStatus,
-        };
-      }
-      return { ok: true as const, evidence, providerStatus, payload };
-    } catch (error: any) {
-      console.error("[IdentityVerification] Prembly document-with-face error:", error?.message);
-      return { ok: false as const, serviceUnavailable: true, message: "Identity verification is temporarily unavailable. Please try again later." };
-    }
-  };
-
   const parseProviderDate = (value: unknown): Date | null => {
     if (typeof value !== "string" || !value.trim()) return null;
     const parsed = new Date(value);
@@ -977,7 +910,7 @@ export async function registerRoutes(
   };
 
   const storeConfirmedIdentity = async ({
-    userId, documentCountry, documentType, documentNumber, result, signupToken,
+    userId, documentCountry, documentType, documentNumber, result, signupToken, livenessStatus = "verified",
   }: {
     userId?: number;
     documentCountry: string;
@@ -985,6 +918,7 @@ export async function registerRoutes(
     documentNumber?: string;
     result: { evidence: ReturnType<typeof verificationEvidence>; providerStatus: string };
     signupToken?: string;
+    livenessStatus?: "verified" | "not_required";
   }) => {
     const verifiedAt = new Date();
     return storage.createIdentityVerification({
@@ -998,7 +932,7 @@ export async function registerRoutes(
       providerStatus: result.providerStatus,
       providerEvidence: result.evidence,
       status: "verified",
-      livenessStatus: "verified",
+      livenessStatus,
       faceMatchScore: result.evidence.faceMatchScore == null ? undefined : String(result.evidence.faceMatchScore),
       documentExpiresAt: parseProviderDate(result.evidence.documentExpiry) ?? undefined,
       expiresAt: signupToken ? new Date(Date.now() + 30 * 60 * 1000) : undefined,
@@ -1007,23 +941,32 @@ export async function registerRoutes(
   };
 
   // Public by design: it runs before an account exists. It creates a short-lived
-  // opaque server-side handoff only after Prembly confirms both the document and
-  // its facial liveness; raw images are forwarded but never persisted.
+  // opaque server-side handoff only after Prembly confirms the entered ID number.
+  // Images are intentionally not accepted or retained in this flow.
   app.post("/api/identity-verifications/signup", async (req, res) => {
     const documentCountry = String(req.body?.documentCountry || "").trim().toUpperCase();
     const documentType = String(req.body?.documentType || "").trim();
-    const documentImage = stripBase64Image(req.body?.documentImage);
-    const selfieImage = stripBase64Image(req.body?.selfieImage);
-    if (!/^[A-Z]{2}$/.test(documentCountry) || !DOCUMENT_TYPES[documentType]) {
+    const documentNumber = String(req.body?.documentNumber || "").trim().toUpperCase();
+    const firstName = String(req.body?.firstName || "").trim();
+    const lastName = String(req.body?.lastName || "").trim();
+    if (!/^[A-Z]{2}$/.test(documentCountry) || !ID_VALIDATORS[documentType]) {
       return res.status(400).json({ message: "Choose the issuing country and a supported identity document." });
     }
-    if (!documentImage || !selfieImage) {
-      return res.status(400).json({ message: "Upload a clear document image and a current selfie to continue." });
+    if (!ID_VALIDATORS[documentType](documentNumber)) {
+      return res.status(400).json({ message: `Enter a valid ${ID_LABELS[documentType]} number.` });
     }
-    const result = await performDocumentWithFaceVerification({ documentCountry, documentType, documentImage, selfieImage });
-    if (!result.ok) return res.status(result.serviceUnavailable ? 503 : 422).json({ message: result.message });
+    const lookup = await ninverifyLookup(documentType, getIdLookupBody(documentType, documentNumber, lastName, firstName));
+    if (!lookup.ok) return res.status(422).json({ message: lookup.message });
+    const evidence = verificationEvidence({ status: "VERIFIED", data: lookup.data });
+    if (!evidence.verifiedNameHash) {
+      return res.status(422).json({ message: "The verification service did not return a confirmed name for this ID. Please choose another supported ID." });
+    }
     const signupToken = randomBytes(32).toString("base64url");
-    const record = await storeConfirmedIdentity({ documentCountry, documentType, result, signupToken });
+    const record = await storeConfirmedIdentity({
+      documentCountry, documentType, documentNumber, signupToken,
+      result: { evidence, providerStatus: "VERIFIED" },
+      livenessStatus: "not_required",
+    });
     res.json({
       verified: true,
       signupVerificationToken: signupToken,
@@ -1031,27 +974,36 @@ export async function registerRoutes(
     });
   });
 
-  // Authenticated recovery path for previously created accounts. It carries the
-  // same strict provider check as signup and cannot accept an ID number alone.
+  // Authenticated recovery path. The provider-confirmed name must match the
+  // account holder; the browser never supplies its own verification result.
   app.post("/api/identity-verifications/verify", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     if (await storage.hasCompletedIdentityVerification(userId)) {
       return res.json({ verified: true, alreadyVerified: true });
     }
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
     const documentCountry = String(req.body?.documentCountry || "").trim().toUpperCase();
     const documentType = String(req.body?.documentType || "").trim();
-    const documentImage = stripBase64Image(req.body?.documentImage);
-    const selfieImage = stripBase64Image(req.body?.selfieImage);
-    if (!/^[A-Z]{2}$/.test(documentCountry) || !DOCUMENT_TYPES[documentType]) {
+    const documentNumber = String(req.body?.documentNumber || "").trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(documentCountry) || !ID_VALIDATORS[documentType]) {
       return res.status(400).json({ message: "Choose the issuing country and a supported identity document." });
     }
-    if (!documentImage || !selfieImage) {
-      return res.status(400).json({ message: "Upload a clear document image and a current selfie to continue." });
+    if (!ID_VALIDATORS[documentType](documentNumber)) {
+      return res.status(400).json({ message: `Enter a valid ${ID_LABELS[documentType]} number.` });
     }
-    const result = await performDocumentWithFaceVerification({ documentCountry, documentType, documentImage, selfieImage });
-    if (!result.ok) return res.status(result.serviceUnavailable ? 503 : 422).json({ message: result.message });
-    const record = await storeConfirmedIdentity({ userId, documentCountry, documentType, result });
+    const lookup = await ninverifyLookup(documentType, getIdLookupBody(documentType, documentNumber, user.lastName, user.firstName));
+    if (!lookup.ok) return res.status(422).json({ message: lookup.message });
+    const evidence = verificationEvidence({ status: "VERIFIED", data: lookup.data });
+    if (!doesVerifiedNameMatch(evidence, user.firstName, user.lastName)) {
+      return res.status(422).json({ message: "The name on this ID does not match your TSIA account." });
+    }
+    const record = await storeConfirmedIdentity({
+      userId, documentCountry, documentType, documentNumber,
+      result: { evidence, providerStatus: "VERIFIED" },
+      livenessStatus: "not_required",
+    });
     res.json({ verified: true, verificationId: record.id, verifiedAt: record.verifiedAt });
   });
 
@@ -1062,10 +1014,6 @@ export async function registerRoutes(
   // route (which persists the result) still requires authentication.
   app.post("/api/verification/validate-id", async (req, res) => {
     try {
-      return res.status(410).json({
-        message: "ID-number-only verification has been retired. Use the document and selfie verification flow instead.",
-      });
-      /*
       const { idType = "nin", idNumber, lastName } = req.body;
       if (!idNumber || !idType) return res.status(400).json({ message: "ID type and number are required." });
 
@@ -1074,32 +1022,13 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Invalid ${ID_LABELS[idType] || idType} format. Please check and try again.` });
       }
 
-      // Build the request body for ninverify based on ID type
-      const bodyMap: Record<string, Record<string, string>> = {
-        nin:             { nin: idNumber.trim() },
-        bvn:             { bvn: idNumber.trim() },
-        voters_card:     { vin: idNumber.trim() },
-        drivers_license: { license_no: idNumber.trim() },
-        passport:        { passport_no: idNumber.trim(), last_name: (lastName || "").trim() },
-        national_id:     { nin: idNumber.trim() },
-      };
-      const idBody = bodyMap[idType] || { nin: idNumber.trim() };
-
-      const result = await ninverifyLookup(idType, idBody);
+      const result = await ninverifyLookup(idType, getIdLookupBody(idType, idNumber.trim(), String(lastName || "").trim()));
       if (!result.ok) return res.status(400).json({ message: result.message });
-
-      const isFormatOnly = result.message === "format_only" || result.message === "demo" || !result.data;
       return res.json({
         valid: true,
         idType,
-        idNumber,
-        demo: isFormatOnly,
-        message: isFormatOnly
-          ? `${ID_LABELS[idType] || idType} accepted — live verification will be confirmed by the team.`
-          : `${ID_LABELS[idType] || idType} verified successfully.`,
-        data: result.data,
+        message: `${ID_LABELS[idType] || idType} verified successfully.`,
       });
-      */
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

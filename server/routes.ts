@@ -109,8 +109,8 @@ async function getUsdNgnRates(): Promise<{ buying: number; selling: number }> {
   }
   const buyingStr  = await storage.getPlatformSetting("usd_ngn_buying_rate");
   const sellingStr = await storage.getPlatformSetting("usd_ngn_selling_rate");
-  const buying  = parseFloat(buyingStr  ?? "1480");
-  const selling = parseFloat(sellingStr ?? "1280");
+  const buying  = parseFloat(buyingStr  ?? "1600");
+  const selling = parseFloat(sellingStr ?? "1550");
   _usdNgnRatesCache = { buying, selling, cachedAt: Date.now() };
   return _usdNgnRatesCache;
 }
@@ -1568,7 +1568,7 @@ export async function registerRoutes(
       const portalFee = 3.00;
       const serviceCharge = 0.30;
       const totalCharged = portalFee + serviceCharge;
-      const ngnEquivalent = Math.round(totalCharged * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const ngnEquivalent = Math.round(totalCharged * (await getUsdNgnRates()).buying);
 
       // ── Debit wallet — must have sufficient balance ──────────────────────────
       const feeWalletBalance = parseFloat(feeWallet.balance);
@@ -1723,7 +1723,7 @@ export async function registerRoutes(
       wallet = await storage.activateWallet(userId);
     }
     const balanceUsd = parseFloat(wallet.balance);
-    const balanceNgn = balanceUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT;
+    const balanceNgn = balanceUsd * (await getUsdNgnRates()).selling;
     const result = { ...wallet, balanceNgn: balanceNgn.toFixed(2) };
     setCached(cacheKey, result, 60_000);
     res.json(result);
@@ -1869,7 +1869,7 @@ export async function registerRoutes(
 
       const vatAmount    = parseFloat((withdrawAmount * 0.075).toFixed(2));
       const netAmountUsd = parseFloat((withdrawAmount - vatAmount).toFixed(2));
-      const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
+      const netAmountNgn = Math.round(netAmountUsd * (await getUsdNgnRates()).selling);
       const txRef        = `TSIA-WD-${userId}-${Date.now()}`;
 
       // ── Try Squad first, then Korapay — gateway must confirm BEFORE wallet is touched ──
@@ -2074,7 +2074,7 @@ export async function registerRoutes(
         userId, type: "crypto_withdrawal",
         amount: (-withdrawAmt).toFixed(2), fee: feeAmt.toFixed(2),
         paymentMethod: "crypto",
-        description: `USDT Withdrawal (${networkLabel}) to ${truncated} — 1% fee: $${feeAmt.toFixed(2)} | Net: $${netAmt.toFixed(2)} | Full address: ${String(address).trim()} | Processing within 24h`,
+        description: `USDT Withdrawal (${networkLabel}) to ${truncated} — 8% fee: $${feeAmt.toFixed(2)} | Net: $${netAmt.toFixed(2)} | Full address: ${String(address).trim()} | Processing within 24h`,
       });
       await storage.createWithdrawalRequest({
         userId, type: "crypto",
@@ -2086,7 +2086,7 @@ export async function registerRoutes(
         const notif = await storage.createNotification({
           userId, type: "wallet_credit",
           title: "Crypto Withdrawal Submitted ✓",
-          message: `Your USDT withdrawal of $${netAmt.toFixed(2)} (after 1% fee) via ${networkLabel} has been processed successfully.`,
+          message: `Your USDT withdrawal of $${netAmt.toFixed(2)} (after 8% fee) via ${networkLabel} has been processed successfully.`,
           data: { network, address: String(address).trim(), amount: netAmt, fee: feeAmt }, isRead: false,
         });
         pushToUser(userId, "notification", notif);
@@ -2099,7 +2099,7 @@ export async function registerRoutes(
       invalidateCacheKey(`wallet:${userId}`);
       invalidateCacheKey(`transactions:${userId}`);
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ message: `Withdrawal successful. You'll receive $${netAmt.toFixed(2)} USDT after the 1% fee.`, wallet: updated, amount: withdrawAmt, netAmount: netAmt, fee: feeAmt, network, address: String(address).trim() });
+      res.json({ message: `Withdrawal successful. You'll receive $${netAmt.toFixed(2)} USDT after the 8% fee.`, wallet: updated, amount: withdrawAmt, netAmount: netAmt, fee: feeAmt, feeRate: CURRENCY_RATES.CRYPTO_WITHDRAW_FEE, network, address: String(address).trim() });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2143,7 +2143,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: `A minimum of $${MIN_BALANCE} must remain in your wallet` });
       }
 
-      // ── Fee calculation: 1% network handling charge (no VAT on crypto) ────
+      // ── Fee calculation: authoritative 8% crypto withdrawal charge ───────
       const feeAmt    = parseFloat((withdrawAmt * CURRENCY_RATES.CRYPTO_WITHDRAW_FEE).toFixed(2));
       const netAmt    = parseFloat((withdrawAmt - feeAmt).toFixed(2));
 
@@ -2181,7 +2181,7 @@ export async function registerRoutes(
         userId,
         type: "wallet_credit",
         title: "Crypto Withdrawal Received ✓",
-        message: `Your USDT withdrawal of $${netAmt.toFixed(2)} (after 1% fee) via ${networkLabel} has been received and will be processed within 24 hours.`,
+        message: `Your USDT withdrawal of $${netAmt.toFixed(2)} (after 8% fee) via ${networkLabel} has been received and will be processed within 24 hours.`,
         data: { network, address: address.trim(), amount: netAmt, fee: feeAmt },
         isRead: false,
       });
@@ -2198,7 +2198,7 @@ export async function registerRoutes(
           reference: cryptoTxRef,
           rows: [
             { label: "Amount Requested", value: `$${withdrawAmt.toFixed(2)} USDT` },
-            { label: "Handling Fee (1%)", value: `-$${feeAmt.toFixed(2)}`, color: "red" },
+            { label: "Handling Fee (8%)", value: `-$${feeAmt.toFixed(2)}`, color: "red" },
             { label: "You Receive", value: `$${netAmt.toFixed(2)} USDT`, color: "green" },
             { label: "Network", value: networkLabel },
             { label: "Address", value: truncated, mono: true },
@@ -2293,7 +2293,7 @@ export async function registerRoutes(
       const SERVICE_CHARGE_RATE = planPrices.serviceChargeRate;
       const serviceCharge = parseFloat((baseCost * SERVICE_CHARGE_RATE).toFixed(2));
       const totalCost = parseFloat((baseCost + serviceCharge).toFixed(2));
-      const ngnEquivalent = Math.round(totalCost * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const ngnEquivalent = Math.round(totalCost * (await getUsdNgnRates()).buying);
 
       // ── 5. Check wallet balance and debit ─────────────────────────────────
       const planWallet = await storage.getOrCreateWallet(userId);
@@ -3892,8 +3892,8 @@ export async function registerRoutes(
           reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
           netAmount: netPayout.toFixed(6), txHash: null, status: txStatus,
           note: withdrawalType === "withdraw_bank"
-            ? `Bank withdrawal ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} → ${accountName} (${accountNumber}) — 8% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool | Pending admin approval`
-            : `Exchange withdrawal — 5% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool`,
+            ? `Bank withdrawal ₦${Math.round(netPayout * (await getUsdNgnRates()).selling).toLocaleString()} → ${accountName} (${accountNumber}) — 8% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool | Pending admin approval`
+            : `Exchange withdrawal — 8% fee + ${(affiliateCutRate * 100).toFixed(0)}% co-affiliate pool`,
         }).returning();
 
         if (withdrawalType === "withdraw_bank") {
@@ -3963,7 +3963,7 @@ export async function registerRoutes(
         userId, type: "wallet_credit",
         title: withdrawalType === "withdraw_bank" ? "Trade Withdrawal Submitted ✓" : "Trade Withdrawal Initiated ✓",
         message: withdrawalType === "withdraw_bank"
-          ? `Your trade bank withdrawal of ₦${Math.round(netPayout * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} to ${accountName} is pending admin approval. You will receive funds within 24 hours.`
+          ? `Your trade bank withdrawal of ₦${Math.round(netPayout * (await getUsdNgnRates()).selling).toLocaleString()} to ${accountName} is pending admin approval. You will receive funds within 24 hours.`
           : `$${netPayout.toFixed(2)} withdrawal to exchange wallet initiated.`,
         data: {}, isRead: false,
       });
@@ -4494,7 +4494,7 @@ export async function registerRoutes(
         ORDER BY month_key
       `);
 
-      // Wallet withdrawal fees (bank VAT 7.5% + crypto 1%) from personal wallet
+      // Wallet withdrawal fees (bank VAT 7.5% + crypto 8%) from personal wallet
       const walletFeeResult = await db.execute(sql`
         SELECT
           TO_CHAR(created_at, 'Mon YY') AS month,
@@ -5146,7 +5146,7 @@ export async function registerRoutes(
         amount: disbursement.amount,
         fee: "0.00",
         paymentMethod: "wallet",
-        description: `Sponsorship payout $${disbursement.amount} (₦${(parseFloat(disbursement.amount) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()})`,
+        description: `Sponsorship payout $${disbursement.amount} (₦${(parseFloat(disbursement.amount) * (await getUsdNgnRates()).selling).toLocaleString()})`,
       });
 
       // Auto-place lien on the student's wallet for the disbursed amount
@@ -5392,15 +5392,39 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
-      const rates = req.body as Record<string, { buying: string; selling: string }>;
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      if (reason.length < 5) return res.status(400).json({ message: "A reason of at least 5 characters is required" });
+      const rates = (req.body?.rates ?? req.body) as Record<string, { buying: string; selling: string }>;
+      const rateUpdates: { key: string; value: string }[] = [];
       for (const code of RATE_CURRENCIES) {
         const pair = rates[code];
         if (!pair) continue;
         const br = parseFloat(pair.buying);
         const sr = parseFloat(pair.selling);
-        if (!isNaN(br) && br > 0) await storage.setPlatformSetting(`${code}_ngn_buying_rate`, br.toString());
-        if (!isNaN(sr) && sr > 0) await storage.setPlatformSetting(`${code}_ngn_selling_rate`, sr.toString());
+        if (!Number.isFinite(br) || br <= 0 || !Number.isFinite(sr) || sr <= 0) {
+          return res.status(400).json({ message: `Invalid buying or selling rate for ${code.toUpperCase()}` });
+        }
+        rateUpdates.push(
+          { key: `${code}_ngn_buying_rate`, value: br.toString() },
+          { key: `${code}_ngn_selling_rate`, value: sr.toString() },
+        );
       }
+      if (rateUpdates.length === 0) return res.status(400).json({ message: "At least one complete currency rate pair is required" });
+      await db.transaction(async (tx) => {
+        const before = await tx.select().from(platformSettings);
+        for (const update of rateUpdates) {
+          await tx.insert(platformSettings).values(update)
+            .onConflictDoUpdate({
+              target: platformSettings.key,
+              set: { value: update.value, updatedAt: new Date() },
+            });
+        }
+        const after = await tx.select().from(platformSettings);
+        await tx.insert(adminAuditLogs).values({
+          actorUserId: userId, action: "financial.exchange_rates.updated", reason,
+          beforeState: before, afterState: after,
+        });
+      });
       invalidateAllRatesCache();
       const currencies = await getAllRates();
       const usd = currencies.usd;
@@ -5433,6 +5457,8 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
     try {
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      if (reason.length < 5) return res.status(400).json({ message: "A reason of at least 5 characters is required" });
       const { plan1yr, plan2yr, plan3yr, serviceChargeRate,
               silverMin, silverMax, goldMin, goldMax, platinumMin, platinumMax,
               buyingRate, sellingRate } = req.body;
@@ -5452,25 +5478,39 @@ export async function registerRoutes(
         if (isNaN(u.val) || u.val < u.min || u.val > u.max) {
           return res.status(400).json({ message: `Invalid value for ${u.label}` });
         }
-        await storage.setPlatformSetting(u.key, u.val.toString());
       }
-      // Exchange rates (optional — only update if provided)
+      const optionalRateUpdates: { key: string; val: number }[] = [];
       if (buyingRate !== undefined) {
         const br = parseFloat(buyingRate);
         if (isNaN(br) || br < 1 || br > 99999) return res.status(400).json({ message: "Invalid buying rate" });
-        await storage.setPlatformSetting("usd_ngn_buying_rate", br.toString());
+        optionalRateUpdates.push({ key: "usd_ngn_buying_rate", val: br });
       }
       if (sellingRate !== undefined) {
         const sr = parseFloat(sellingRate);
         if (isNaN(sr) || sr < 1 || sr > 99999) return res.status(400).json({ message: "Invalid selling rate" });
-        await storage.setPlatformSetting("usd_ngn_selling_rate", sr.toString());
+        optionalRateUpdates.push({ key: "usd_ngn_selling_rate", val: sr });
       }
-      invalidateUsdNgnRatesCache();
+      await db.transaction(async (tx) => {
+        const beforeSettings = await tx.select().from(platformSettings);
+        for (const update of [...updates, ...optionalRateUpdates]) {
+          await tx.insert(platformSettings).values({ key: update.key, value: update.val.toString() })
+            .onConflictDoUpdate({
+              target: platformSettings.key,
+              set: { value: update.val.toString(), updatedAt: new Date() },
+            });
+        }
+        const afterSettings = await tx.select().from(platformSettings);
+        await tx.insert(adminAuditLogs).values({
+          actorUserId: userId, action: "financial.platform_settings.updated", reason,
+          beforeState: beforeSettings, afterState: afterSettings,
+        });
+      });
+      invalidateAllRatesCache();
       const prices = await storage.getPlanPrices();
       const tiers = await storage.getTierPayouts();
       const buyingStr  = await storage.getPlatformSetting("usd_ngn_buying_rate");
       const sellingStr = await storage.getPlatformSetting("usd_ngn_selling_rate");
-      const exchangeRates = { buying: parseFloat(buyingStr ?? "1480"), selling: parseFloat(sellingStr ?? "1280") };
+      const exchangeRates = { buying: parseFloat(buyingStr ?? "1600"), selling: parseFloat(sellingStr ?? "1550") };
       res.json({ message: "Settings updated successfully", prices, tiers, exchangeRates });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -5970,7 +6010,7 @@ export async function registerRoutes(
         wallet, verification, identity, files, transactionsForUser, disbursementsForUser,
         loansForUser, tradeWallet, tradeTransactionsForUser, deposits, withdrawals,
         ordersForUser, productsForUser, transfers, notificationsForUser, sponsorshipPlan,
-        referrals, referrer, kiddies, auditHistory,
+        referrals, referrer, kiddies, auditHistory, billsForUser,
       ] = await Promise.all([
         db.select().from(wallets).where(eq(wallets.userId, targetId)).limit(1),
         storage.getVerificationByUser(targetId),
@@ -5998,6 +6038,7 @@ export async function registerRoutes(
         target.referredBy ? storage.getUserByAffiliateCode(target.referredBy) : Promise.resolve(undefined),
         storage.getBackToSchoolProgramme(targetId),
         db.select().from(adminAuditLogs).where(or(eq(adminAuditLogs.targetUserId, targetId), eq(adminAuditLogs.actorUserId, targetId))).orderBy(desc(adminAuditLogs.createdAt)).limit(100),
+        storage.getBillPaymentsByUser(targetId),
       ]);
       const safeUser = { ...target, password: undefined };
       res.json({
@@ -6009,7 +6050,7 @@ export async function registerRoutes(
         orders: ordersForUser.map((row: any) => ({ ...row.order, productTitle: row.productTitle, buyerName: row.buyerName })),
         products: productsForUser, transfers, notifications: notificationsForUser,
         sponsorshipPlan, referrals, referrer: referrer ? { id: referrer.id, firstName: referrer.firstName, lastName: referrer.lastName, email: referrer.email, affiliateCode: referrer.affiliateCode } : null,
-        kiddies, auditHistory,
+        kiddies, auditHistory, billPayments: billsForUser,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -6356,7 +6397,7 @@ export async function registerRoutes(
         userId: wd.userId, type: "wallet_credit",
         title: "Withdrawal Approved ✓",
         message: wd.type === "bank"
-          ? `Your withdrawal of ₦${Math.round(parseFloat(wd.netAmount) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} has been approved and sent to your bank account.`
+          ? `Your withdrawal of ₦${Math.round(parseFloat(wd.netAmount) * (await getUsdNgnRates()).selling).toLocaleString()} has been approved and sent to your bank account.`
           : `Your USDT withdrawal of $${parseFloat(wd.netAmount).toFixed(2)} has been approved and sent to your wallet.`,
         data: { withdrawalId: wdId }, isRead: false,
       });
@@ -6370,7 +6411,7 @@ export async function registerRoutes(
             <p style="color:#6b7280">Hi ${user!.firstName}, your withdrawal has been processed and sent.</p>
             <div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#166534">
               ${wd.type === "bank"
-                ? `<strong>Amount Sent:</strong> ₦${Math.round(parseFloat(wd.netAmount as string) * CURRENCY_RATES.USD_TO_NGN_PAYOUT).toLocaleString()} to ${wd.accountName} (${wd.accountNumber}) at ${wd.bankName}`
+                ? `<strong>Amount Sent:</strong> ₦${Math.round(parseFloat(wd.netAmount as string) * (await getUsdNgnRates()).selling).toLocaleString()} to ${wd.accountName} (${wd.accountNumber}) at ${wd.bankName}`
                 : `<strong>Amount Sent:</strong> $${parseFloat(wd.netAmount as string).toFixed(2)} USDT via ${wd.network} to ${wd.address}`
               }
             </div>
@@ -6706,19 +6747,76 @@ export async function registerRoutes(
   // ─── ADMIN: All transactions ─────────────────────────────────────────────────
   app.get("/api/admin/transactions-all", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-
-      const txns = await db.select().from(transactions).orderBy(desc(transactions.createdAt)).limit(200);
-      const enriched = await Promise.all(
-        txns.map(async (t) => {
-          const txUser = await storage.getUser(t.userId);
-          return { ...t, user: txUser ? { firstName: txUser.firstName, lastName: txUser.lastName, email: txUser.email, role: txUser.role } : null };
-        })
-      );
-      res.json(enriched);
+      if (!await requireAdminUser(req, res)) return;
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize) || 25));
+      const q = String(req.query.q ?? "").trim();
+      const source = String(req.query.source ?? "all");
+      const status = String(req.query.status ?? "all");
+      const from = String(req.query.from ?? "");
+      const to = String(req.query.to ?? "");
+      const rows = await db.execute(sql`
+        WITH ledger AS (
+          SELECT 'wallet'::text source,
+            ('wallet:' || t.id)::text ledger_id, t.id source_id,
+            t.user_id, t.type::text type, 'completed'::text status, t.amount::numeric amount,
+            t.fee::numeric fee, t.payment_method, t.description, NULL::text reference, t.created_at
+          FROM transactions t
+          WHERE t.type NOT IN ('bill', 'withdrawal', 'crypto_withdrawal')
+            AND (t.type <> 'deposit' OR t.payment_method = 'internal')
+          UNION ALL
+          SELECT 'bill'::text, ('bill:' || bp.id)::text, bp.id, bp.user_id, bp.service::text,
+            bp.status::text, (-bp.amount)::numeric, 0::numeric, 'wallet'::text,
+            (bp.service || ' payment')::text, bp.reference, bp.created_at
+          FROM bill_payments bp
+          UNION ALL
+          SELECT 'deposit'::text, ('deposit:' || d.id)::text, d.id, d.user_id, 'deposit'::text,
+            d.status::text, d.amount_usd::numeric, 0::numeric, d.wallet_type::text,
+            'Wallet deposit'::text, d.tx_hash, d.created_at
+          FROM wallet_deposits d
+          UNION ALL
+          SELECT 'withdrawal'::text, ('withdrawal:' || w.id)::text, w.id, w.user_id, w.type::text,
+            w.status::text, (-w.amount)::numeric, w.fee::numeric, w.type::text,
+            ('Withdrawal to ' || COALESCE(w.bank_name, w.network, 'wallet'))::text,
+            COALESCE(w.address, w.account_number), w.created_at
+          FROM withdrawal_requests w
+          WHERE w.type <> 'bank' OR w.bank_name IS NULL OR w.bank_name NOT LIKE '[TRADE MARKET] %'
+          UNION ALL
+          SELECT 'trade'::text, ('trade:' || t.id)::text, t.id, t.user_id, t.type::text,
+            t.status::text,
+            CASE WHEN t.type IN ('withdraw_exchange', 'withdraw_bank') THEN -ABS(t.amount_usd) ELSE t.amount_usd END::numeric,
+            t.fee_usd::numeric, t.wallet_type::text,
+            COALESCE(t.note, t.type::text), t.tx_hash, t.created_at
+          FROM trade_transactions t
+          UNION ALL
+          SELECT 'ts_mart'::text, ('order:' || o.id)::text, o.id, o.buyer_id, 'order'::text,
+            o.status::text, (-o.total_amount)::numeric, o.commission_amount::numeric, 'marketplace'::text,
+            ('TS-Mart order #' || o.id)::text, NULL::text, o.created_at
+          FROM orders o
+        ), filtered AS (
+          SELECT l.*, u.first_name, u.last_name, u.email, u.role
+          FROM ledger l JOIN users u ON u.id = l.user_id
+          WHERE (${source} = 'all' OR l.source = ${source})
+            AND (${status} = 'all' OR l.status = ${status})
+            AND (${q} = '' OR u.first_name ILIKE ${`%${q}%`} OR u.last_name ILIKE ${`%${q}%`}
+              OR u.email ILIKE ${`%${q}%`} OR l.description ILIKE ${`%${q}%`}
+              OR COALESCE(l.reference, '') ILIKE ${`%${q}%`} OR CAST(l.user_id AS text) = ${q})
+            AND (${from} = '' OR l.created_at >= ${from || "1970-01-01"}::date)
+            AND (${to} = '' OR l.created_at < (${to || "2999-12-31"}::date + interval '1 day'))
+        )
+        SELECT *, COUNT(*) OVER() AS total_count
+        FROM filtered ORDER BY created_at DESC, ledger_id DESC
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+      `);
+      const items = (rows.rows ?? rows).map((row: any) => ({
+        id: row.ledger_id, sourceId: row.source_id, source: row.source, userId: row.user_id,
+        type: row.type, status: row.status, amount: row.amount, fee: row.fee,
+        paymentMethod: row.payment_method, description: row.description, reference: row.reference,
+        createdAt: row.created_at,
+        user: { firstName: row.first_name, lastName: row.last_name, email: row.email, role: row.role },
+      }));
+      const total = Number((rows.rows ?? rows)[0]?.total_count ?? 0);
+      res.json({ items, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -8895,7 +8993,8 @@ export async function registerRoutes(
 
       // 80% payout (20% fee)
       const cashNgn = Math.floor(ngn * 0.80);
-      const cashUsd = parseFloat((cashNgn / 1600).toFixed(2));
+      const { buying } = await getUsdNgnRates();
+      const cashUsd = parseFloat((cashNgn / buying).toFixed(2));
 
       // TSIA receiving numbers per network
       const tsiaNumbers: Record<string, string> = {
@@ -9023,7 +9122,7 @@ export async function registerRoutes(
 
       const vatAmount   = parseFloat((transferAmount * 0.075).toFixed(2));
       const netAmountUsd = parseFloat((transferAmount - vatAmount).toFixed(2));
-      const netAmountNgn = Math.round(netAmountUsd * CURRENCY_RATES.USD_TO_NGN_PAYOUT);
+      const netAmountNgn = Math.round(netAmountUsd * (await getUsdNgnRates()).selling);
       const txRef = `TSIA-FT-${userId}-${Date.now()}`;
 
       // ── Queue as pending — admin manually makes the bank transfer then approves ─
@@ -9105,7 +9204,7 @@ export async function registerRoutes(
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
-      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
       // VTU.ng service_id must be lowercase: mtn, airtel, glo, 9mobile
       const serviceId = network.toLowerCase() === "etisalat" ? "9mobile" : network.toLowerCase();
 
@@ -9154,7 +9253,7 @@ export async function registerRoutes(
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
-      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
       const serviceId = network.toLowerCase() === "etisalat" ? "9mobile" : network.toLowerCase();
 
       const result = await vtuBuyData(phone, serviceId, variationId);
@@ -9207,7 +9306,7 @@ export async function registerRoutes(
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
-      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
 
       const result = await vtuBuyElectricity(meterNumber, discoCode, meterType as "prepaid" | "postpaid", amountNgn);
       if (!result.ok) {
@@ -9263,7 +9362,7 @@ export async function registerRoutes(
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
-      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
       const result = await vtuBuyTv(smartcardNumber, serviceId, variationId, subscriptionType, amount ? amountNgn : undefined);
       if (!result.ok) {
         console.log(`[VTUNG TV] FAILED: ${result.msg}`);
@@ -9310,7 +9409,7 @@ export async function registerRoutes(
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
 
-      const amountNgn = Math.round(amountUsd * CURRENCY_RATES.USD_TO_NGN_PAYMENT);
+      const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
       // VTU.ng service_id must match exactly: Bet9ja, 1xBet, BetKing, etc.
       const result = await vtuFundBetting(bettingUserId, platform, amountNgn);
       if (!result.ok) {

@@ -426,7 +426,7 @@ export type WaecGrade = typeof WAEC_GRADE_KEYS[number];
 export const CURRENCY_RATES = {
   USD_TO_NGN_PAYMENT: 1480,
   USD_TO_NGN_PAYOUT: 1280,
-  CRYPTO_WITHDRAW_FEE: 0.01, // 1% network handling fee — no VAT, applied to USDT withdrawals
+  CRYPTO_WITHDRAW_FEE: 0.08,
 };
 
 export const WAEC_COMPULSORY_SUBJECTS = ["Mathematics", "English Language"];
@@ -485,7 +485,7 @@ export type CoAffiliateBaseCategory = 100 | 300;
 export type CoAffiliateCategory = 100 | 300 | number; // 500–10000 for elite
 
 export const TRADE_MARKET = {
-  FEE_EXCHANGE_WITHDRAW: 0.05,
+  FEE_EXCHANGE_WITHDRAW: 0.08,
   FEE_BANK_WITHDRAW: 0.08,
   RESERVE_FUND_RATE: 0.20,
   AFFILIATE_SHARE_RATE: 0.05,

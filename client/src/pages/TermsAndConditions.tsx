@@ -254,7 +254,7 @@ export default function TermsAndConditions() {
                 <p>A mandatory <strong>7.5% Value Added Tax (VAT)</strong> is applied to all bank withdrawals in compliance with applicable UK tax regulations. This tax is deducted from the withdrawal amount before disbursement. By requesting a withdrawal, you acknowledge and consent to this deduction. For example: a $100 withdrawal results in $92.50 received after 7.5% VAT.</p>
               </Clause>
               <Clause num="7.3" title="Trade Exchange Withdrawals">
-                <p>Withdrawals from the trade wallet to an exchange account attract a 5% fee plus 5% of the amount contributed to the Affiliate Pool. Bank withdrawals from the trade wallet attract an 8% fee plus 5% Affiliate Pool contribution.</p>
+                <p>Withdrawals from the trade wallet to an exchange account attract an 8% fee plus 5% of the amount contributed to the Affiliate Pool. Bank withdrawals from the trade wallet attract an 8% fee plus 5% Affiliate Pool contribution.</p>
               </Clause>
               <Clause num="7.4" title="Funding Methods">
                 <p>You may fund your wallet via Squad by GTco using a debit/credit card (Visa/Mastercard), bank transfer, USSD/mobile, or alternatively via Korapay. TSIA does not store your card details; all payment data is handled by the respective payment processor under their own terms and privacy policy.</p>

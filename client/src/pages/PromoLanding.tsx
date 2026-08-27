@@ -81,7 +81,7 @@ const KB: KBEntry[] = [
   },
   {
     patterns: [/fee|cost|price|charge|all.*fee|fee.*list|total.*cost|how much.*total|what.*charge/i],
-    response: `**Complete TSIA Fee Breakdown — No Hidden Charges**\n\n✅ **Account Registration:** FREE\n💳 **Wallet Activation:** $5.50 minimum deposit\n🔐 **Portal Verification Fee:** $3 one-time\n\n**Withdrawal Fees:**\n• Bank withdrawal: 7.5% VAT (Nigerian law)\n• Trade market exchange: 5% + 5% affiliate pool\n• Trade market bank: 8% + 5% affiliate pool\n\n**Service Fees:**\n• Peer-to-peer transfers: 8% platform fee\n• TS-Mart Online Stores (sellers): 8% commission per sale\n• Glide Africa bookings: 10% commission\n\n**Loan Interest:**\n• Student loans: 10% p.a. (flat)\n• Business loans: 30% p.a. (flat)\n\n**Savings:**\n• Savings goals: up to 20% p.a. interest\n• Cashback: 10% back on all transactions`,
+    response: `**Complete TSIA Fee Breakdown — No Hidden Charges**\n\n✅ **Account Registration:** FREE\n💳 **Wallet Activation:** $5.50 minimum deposit\n🔐 **Portal Verification Fee:** $3 one-time\n\n**Withdrawal Fees:**\n• Bank withdrawal: 7.5% VAT (Nigerian law)\n• Trade market exchange: 8% + 5% affiliate pool\n• Trade market bank: 8% + 5% affiliate pool\n\n**Service Fees:**\n• Peer-to-peer transfers: 8% platform fee\n• TS-Mart Online Stores (sellers): 8% commission per sale\n• Glide Africa bookings: 10% commission\n\n**Loan Interest:**\n• Student loans: 10% p.a. (flat)\n• Business loans: 30% p.a. (flat)\n\n**Savings:**\n• Savings goals: up to 20% p.a. interest\n• Cashback: 10% back on all transactions`,
   },
   {
     patterns: [/contact|support|help.*team|human|agent|speak|whatsapp|call|email.*team|reach.*team|talk.*to|get.*help/i],
@@ -982,7 +982,7 @@ export default function PromoLanding() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               { category: "Getting Started", items: ["Account registration: FREE", "Wallet activation: $5.50 minimum deposit", "NIN verification: Included free", "Portal fee: $3 one-time"] },
-              { category: "Withdrawals", items: ["Bank withdrawal VAT: 7.5% (Nigerian law)", "Trade exchange withdrawal: 5% fee", "Trade bank withdrawal: 8% fee", "Cashback withdrawal: FREE"] },
+              { category: "Withdrawals", items: ["Bank withdrawal VAT: 7.5% (Nigerian law)", "Trade exchange withdrawal: 8% fee", "Trade bank withdrawal: 8% fee", "Cashback withdrawal: FREE"] },
               { category: "Services", items: ["Peer-to-peer transfers: 8% platform fee", "TS-Mart sales commission: 8% per sale", "Glide Africa bookings: 10% commission", "Savings interest earned: up to 20% p.a."] },
               { category: "Loans", items: ["Student loan interest: 10% p.a. (flat)", "Business loan interest: 30% p.a. (flat)", "Student loan max term: 18 months", "Business loan max term: 24 months"] },
             ].map(({ category, items }) => (

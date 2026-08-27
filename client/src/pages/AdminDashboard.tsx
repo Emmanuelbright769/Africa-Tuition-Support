@@ -162,6 +162,11 @@ export default function AdminDashboard() {
   const [movieBcTitle, setMovieBcTitle] = useState("");
   const [movieBcDesc, setMovieBcDesc] = useState("");
   const [txFilter, setTxFilter] = useState("all");
+  const [txStatus, setTxStatus] = useState("all");
+  const [txPage, setTxPage] = useState(1);
+  const [txFrom, setTxFrom] = useState("");
+  const [txTo, setTxTo] = useState("");
+  const [financialChangeReason, setFinancialChangeReason] = useState("");
   const [editBalanceDialog, setEditBalanceDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [editBalanceAmount, setEditBalanceAmount] = useState("");
   const [editBalanceNote, setEditBalanceNote] = useState("");
@@ -262,7 +267,20 @@ export default function AdminDashboard() {
   const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: false });
   const { data: allAffiliates = [] }       = useQuery({ queryKey: ["/api/admin/affiliates-all"], enabled: activeTab === "affiliates" });
   const { data: allLoans = [] }            = useQuery({ queryKey: ["/api/admin/loans-all"], enabled: activeTab === "loans" });
-  const { data: allTransactions = [] }     = useQuery({ queryKey: ["/api/admin/transactions-all"], enabled: activeTab === "transactions" });
+  const { data: transactionLedger } = useQuery<any>({
+    queryKey: ["/api/admin/transactions-all", txPage, txFilter, txStatus, txFrom, txTo, search],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(txPage), pageSize: "25", source: txFilter, status: txStatus });
+      if (search.trim()) params.set("q", search.trim());
+      if (txFrom) params.set("from", txFrom);
+      if (txTo) params.set("to", txTo);
+      const response = await fetch(`/api/admin/transactions-all?${params}`, { credentials: "include" });
+      if (!response.ok) throw new Error((await response.json()).message || "Unable to load transactions");
+      return response.json();
+    },
+    enabled: activeTab === "transactions",
+    placeholderData: (previous: any) => previous,
+  });
   const { data: ecommerceStats }           = useQuery({ queryKey: ["/api/admin/ecommerce-stats"], enabled: activeTab === "ecommerce" });
   const { data: tradeStats }               = useQuery({ queryKey: ["/api/admin/trade-stats"], enabled: activeTab === "trade", refetchInterval: 30_000, staleTime: 15_000 });
   const { data: tradeUsers = [] }          = useQuery<any[]>({ queryKey: ["/api/admin/trade-users"], enabled: activeTab === "trade", refetchInterval: 30_000 });
@@ -541,7 +559,7 @@ export default function AdminDashboard() {
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (form: { plan1yr: string; plan2yr: string; plan3yr: string; serviceChargeRate: string }) => {
-      const res = await apiRequest("PUT", "/api/admin/platform-settings", form);
+      const res = await apiRequest("PUT", "/api/admin/platform-settings", { ...form, reason: financialChangeReason });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
       return d;
@@ -552,6 +570,7 @@ export default function AdminDashboard() {
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
       toast({ title: "Plan Prices Updated ✓", description: "New prices are live for all students immediately." });
+      setFinancialChangeReason("");
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
@@ -570,7 +589,7 @@ export default function AdminDashboard() {
         platinumMin: settingsForm.platinumMin || "225",
         platinumMax: settingsForm.platinumMax || "230",
         buyingRate: form.buying,
-        sellingRate: form.selling,
+        sellingRate: form.selling, reason: financialChangeReason,
       };
       const res = await apiRequest("PUT", "/api/admin/platform-settings", currentSettings);
       const d = await res.json();
@@ -583,13 +602,14 @@ export default function AdminDashboard() {
       setRateSaved(true);
       setTimeout(() => setRateSaved(false), 3000);
       toast({ title: "Exchange Rates Updated ✓", description: "New rates are live across the platform immediately." });
+      setFinancialChangeReason("");
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   const saveMultiRatesMutation = useMutation({
     mutationFn: async (rates: Record<string, { buying: string; selling: string }>) => {
-      const res = await apiRequest("PUT", "/api/admin/exchange-rates", rates);
+      const res = await apiRequest("PUT", "/api/admin/exchange-rates", { rates, reason: financialChangeReason });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
       return d;
@@ -600,6 +620,7 @@ export default function AdminDashboard() {
       setMultiRatesSaved(true);
       setTimeout(() => setMultiRatesSaved(false), 3000);
       toast({ title: "Exchange Rates Updated ✓", description: "All currency rates are now live in the Swift Hub." });
+      setFinancialChangeReason("");
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
@@ -1015,10 +1036,7 @@ export default function AdminDashboard() {
   const filteredLoans = (allLoans as any[]).filter(l =>
     !q || `${l.user?.firstName} ${l.user?.lastName} ${l.user?.email} ${l.status}`.toLowerCase().includes(q)
   );
-  const filteredTxns = (allTransactions as any[]).filter(t =>
-    (txFilter === "all" || t.type === txFilter) &&
-    (!q || `${t.user?.firstName} ${t.user?.lastName} ${t.description}`.toLowerCase().includes(q))
-  );
+  const filteredTxns = transactionLedger?.items ?? [];
   const filteredVerifications = (allVerifications as any[]).filter(v =>
     (vFilter === "all" || v.status === vFilter) &&
     (!q || `${v.user?.firstName} ${v.user?.lastName} ${v.user?.email} ${v.nin}`.toLowerCase().includes(q))
@@ -1991,20 +2009,28 @@ export default function AdminDashboard() {
             {/* ═══════════════════════════════ TRANSACTIONS ═══════════════════════════════ */}
             {activeTab === "transactions" && (
               <motion.div key="transactions" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Select value={txFilter} onValueChange={setTxFilter}>
+                <div className="grid gap-3 md:grid-cols-5">
+                  <Select value={txFilter} onValueChange={(value) => { setTxFilter(value); setTxPage(1); }}>
                     <SelectTrigger className="w-52 h-9 bg-white dark:bg-slate-800 border text-sm">
-                      <SelectValue placeholder="Filter by type" />
+                      <SelectValue placeholder="Source" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Types</SelectItem>
-                      <SelectItem value="verification_fee">Portal Fees</SelectItem>
-                      <SelectItem value="sponsorship_credit">Sponsorship Credits</SelectItem>
+                      <SelectItem value="all">All sources</SelectItem>
+                      <SelectItem value="wallet">Wallet ledger</SelectItem>
+                      <SelectItem value="bill">Airtime, data & bills</SelectItem>
+                      <SelectItem value="trade">Trade Market</SelectItem>
+                      <SelectItem value="ts_mart">TS-Mart</SelectItem>
+                      <SelectItem value="deposit">Deposits</SelectItem>
                       <SelectItem value="withdrawal">Withdrawals</SelectItem>
-                      <SelectItem value="vat_deduction">VAT Deductions</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-sm text-slate-500">{filteredTxns.length} transactions</p>
+                  <Select value={txStatus} onValueChange={(value) => { setTxStatus(value); setTxPage(1); }}>
+                    <SelectTrigger className="h-9 bg-white dark:bg-slate-800"><SelectValue placeholder="Status" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="completed">Completed</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="failed">Failed</SelectItem><SelectItem value="approved">Approved</SelectItem><SelectItem value="refunded">Refunded</SelectItem></SelectContent>
+                  </Select>
+                  <Input type="date" value={txFrom} onChange={(e) => { setTxFrom(e.target.value); setTxPage(1); }} className="h-9 bg-white" aria-label="Transactions from date" />
+                  <Input type="date" value={txTo} onChange={(e) => { setTxTo(e.target.value); setTxPage(1); }} className="h-9 bg-white" aria-label="Transactions to date" />
+                  <p className="self-center text-sm text-slate-500">{transactionLedger?.total ?? 0} records</p>
                 </div>
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
@@ -2014,7 +2040,7 @@ export default function AdminDashboard() {
                           <TableHead className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">ID</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">User</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Role</TableHead>
-                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Type</TableHead>
+                          <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Source / Type</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Amount</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Description</TableHead>
                           <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Date</TableHead>
@@ -2025,7 +2051,7 @@ export default function AdminDashboard() {
                           <TableRow><TableCell colSpan={7} className="text-center py-10 text-slate-500">No transactions found.</TableCell></TableRow>
                         ) : filteredTxns.slice(0, 100).map((t: any) => (
                           <TableRow key={t.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                            <TableCell className="px-6 font-mono text-xs text-slate-400">#{t.id}</TableCell>
+                             <TableCell className="px-6 font-mono text-xs text-slate-400">{t.id}</TableCell>
                             <TableCell>
                               <div className="text-sm font-medium text-slate-900">{t.user?.firstName} {t.user?.lastName}</div>
                               <div className="text-xs text-slate-500">{t.user?.email}</div>
@@ -2033,13 +2059,13 @@ export default function AdminDashboard() {
                             <TableCell><Badge variant="outline" className="text-xs capitalize">{t.user?.role || "—"}</Badge></TableCell>
                             <TableCell>
                               <Badge variant="outline" className={`text-xs ${t.type === "sponsorship_credit" ? "bg-green-50 text-green-700 border-green-200" : t.type === "verification_fee" ? "bg-blue-50 text-blue-700 border-blue-200" : t.type === "withdrawal" ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-50 text-slate-600"}`}>
-                                {t.type?.replace(/_/g, " ")}
+                                {t.source?.replace(/_/g, " ")} · {t.type?.replace(/_/g, " ")}
                               </Badge>
                             </TableCell>
                             <TableCell className={`font-bold text-sm ${parseFloat(t.amount) >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {parseFloat(t.amount) >= 0 ? "+" : ""}{fmtUSD(t.amount)}
                             </TableCell>
-                            <TableCell className="text-xs text-slate-500 max-w-xs truncate">{t.description}</TableCell>
+                            <TableCell className="text-xs text-slate-500 max-w-xs"><p className="truncate">{t.description}</p>{t.reference && <p className="truncate font-mono text-[10px]">{t.reference}</p>}<StatusBadge status={t.status} /></TableCell>
                             <TableCell className="text-xs text-slate-500">{fmtDate(t.createdAt)}</TableCell>
                           </TableRow>
                         ))}
@@ -2047,6 +2073,10 @@ export default function AdminDashboard() {
                     </Table>
                   </div>
                 </Card>
+                <div className="flex items-center justify-between text-sm text-slate-500">
+                  <span>Page {transactionLedger?.page ?? 1} of {transactionLedger?.totalPages ?? 1}</span>
+                  <div className="flex gap-2"><Button variant="outline" size="sm" disabled={txPage <= 1} onClick={() => setTxPage((p) => p - 1)}>Previous</Button><Button variant="outline" size="sm" disabled={txPage >= (transactionLedger?.totalPages ?? 1)} onClick={() => setTxPage((p) => p + 1)}>Next</Button></div>
+                </div>
               </motion.div>
             )}
 
@@ -2936,7 +2966,7 @@ export default function AdminDashboard() {
                                     <span className="font-black text-amber-600 text-sm">${parseFloat(wd.netAmount).toFixed(2)} USDT</span>
                                   </div>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground text-xs">Fee (1%)</span>
+                                    <span className="text-muted-foreground text-xs">Fee (8%)</span>
                                     <span className="text-red-500 text-xs">−${parseFloat(wd.fee).toFixed(2)}</span>
                                   </div>
                                 </div>
@@ -3116,7 +3146,7 @@ export default function AdminDashboard() {
                                 </div>
                               </div>
                               <div className="flex items-center justify-between">
-                                <span className="text-muted-foreground text-xs">Fee (1%)</span>
+                                <span className="text-muted-foreground text-xs">Fee (8%)</span>
                                 <span className="text-red-500 text-xs">−${parseFloat(wd.fee).toFixed(2)}</span>
                               </div>
                             </div>
@@ -4328,6 +4358,13 @@ export default function AdminDashboard() {
               const sc = parseFloat(currentForm.serviceChargeRate) || 10;
               return (
                 <motion.div key="settings" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-6 max-w-2xl">
+                  <Card className="border-amber-200 bg-amber-50/60 shadow-sm">
+                    <CardContent className="pt-5">
+                      <Label htmlFor="financial-change-reason">Reason for financial change <span className="text-red-500">*</span></Label>
+                      <Input id="financial-change-reason" className="mt-2 bg-white" value={financialChangeReason} onChange={(e) => setFinancialChangeReason(e.target.value)} placeholder="Explain why these prices or rates are changing" />
+                      <p className="mt-2 text-xs text-slate-500">Required for pricing and exchange-rate updates. Before and after values are recorded in the audit log.</p>
+                    </CardContent>
+                  </Card>
                   <Card className="border-0 shadow-sm">
                     <CardHeader className="border-b pb-4">
                       <div className="flex items-center gap-2">
@@ -4399,7 +4436,7 @@ export default function AdminDashboard() {
 
                       <Button
                         className="w-full h-11 font-semibold bg-tsia-green hover:bg-tsia-green/90"
-                        disabled={saveSettingsMutation.isPending}
+                        disabled={saveSettingsMutation.isPending || financialChangeReason.trim().length < 5}
                         onClick={() => saveSettingsMutation.mutate(settingsForm.plan1yr ? settingsForm : currentForm)}
                         data-testid="button-save-settings"
                       >
@@ -4653,7 +4690,7 @@ export default function AdminDashboard() {
                       </p>
                       <Button
                         className="w-full h-11 font-semibold bg-blue-600 hover:bg-blue-700 text-white"
-                        disabled={saveMultiRatesMutation.isPending}
+                        disabled={saveMultiRatesMutation.isPending || financialChangeReason.trim().length < 5}
                         onClick={() => saveMultiRatesMutation.mutate(multiRates)}
                         data-testid="button-save-multi-rates"
                       >

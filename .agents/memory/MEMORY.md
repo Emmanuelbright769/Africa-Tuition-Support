@@ -4,3 +4,4 @@
 - [Back to School Kiddies wallet rules](back-to-school-vest-settlement.md) — $30 unlock is permanent; certificate approval gates use, with clear gross/net fee accounting.
 - [Prembly server authentication](prembly-auth.md) — current server API calls use the secret API key only; do not require or send the obsolete App ID.
 - [Admin control integrity](admin-control-integrity.md) — suspension is global across APIs; destructive/funds controls require durable audit and database-backed replay protection.
+- [Authoritative financial settings](authoritative-financial-settings.md) — transaction-time conversions use live persisted rates; pricing changes require reasons and before/after audits.

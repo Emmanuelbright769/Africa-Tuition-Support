@@ -5262,7 +5262,7 @@ export default function FinancialHub() {
   // CRYPTO WITHDRAWAL
   // ═══════════════════════════════════════════════════════════════════════════
   if (view === "crypto-withdraw") {
-    const CRYPTO_FEE = 0.01;
+    const CRYPTO_FEE = 0.08;
     const wdAmt = parseFloat(cryptoWdAmount) || 0;
     const feeAmt = parseFloat((wdAmt * CRYPTO_FEE).toFixed(2));
     const netAmt = parseFloat((wdAmt - feeAmt).toFixed(2));
@@ -5312,7 +5312,7 @@ export default function FinancialHub() {
               { label: "Wallet Address",   value: savedAddr,                                                      mono: true },
               { label: "Network",          value: savedNet === "trc20" ? "TRC20 / TRON" : "BEP20 / BSC" },
               { label: "Amount Requested", value: `$${savedReqAmt.toFixed(2)}` },
-              { label: "Handling Fee (1%)", value: `-$${savedFee.toFixed(2)}`,                                    red: true },
+               { label: "Handling Fee (8%)", value: `-$${savedFee.toFixed(2)}`,                                    red: true },
               { label: "You Receive",      value: `$${savedNetAmt.toFixed(2)} USDT`,                              green: true, bold: true },
               { label: "Status",           value: "Processed Successfully ✓",                                     green: true, bold: true },
             ] as ReceiptRow[],
@@ -5365,7 +5365,7 @@ export default function FinancialHub() {
               </div>
               <div className="rounded-2xl border bg-card p-4 space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold">${wdAmt.toFixed(2)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Fee (1%)</span><span className="font-bold text-red-500">-${feeAmt.toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Fee (8%)</span><span className="font-bold text-red-500">-${feeAmt.toFixed(2)}</span></div>
                 <div className="flex justify-between border-t pt-2"><span className="text-muted-foreground">You receive</span><span className="font-black text-tsia-green">${netAmt.toFixed(2)} USDT</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Network</span><span className="font-bold">{cryptoWdNetwork.toUpperCase()}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Address</span><span className="font-mono text-xs font-bold">{cryptoWdAddress.slice(0,8)}…{cryptoWdAddress.slice(-6)}</span></div>

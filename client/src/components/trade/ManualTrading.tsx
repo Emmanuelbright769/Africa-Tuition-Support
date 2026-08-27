@@ -4,7 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp, TrendingDown, CandlestickChart, X,
-  ChevronDown, Search,
+  ChevronDown, Search, WalletCards,
 } from "lucide-react";
 
 /* ─────────────────── Symbols catalogue ─────────────────── */
@@ -277,12 +277,22 @@ export default function ManualTrading({ tradeBalance }: { tradeBalance: number }
 
   return (
     <div className="space-y-5">
-      <header>
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.2em] text-tsia-gold">
-          <CandlestickChart className="h-4 w-4" /> Manual Desk
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.2em] text-tsia-gold">
+            <CandlestickChart className="h-4 w-4" /> Manual Desk
+          </div>
+          <h2 className="mt-2 text-2xl font-black">Make your own market.</h2>
+          <p className="text-sm text-muted-foreground">Trade real instruments. Win or lose — it's your call.</p>
         </div>
-        <h2 className="mt-2 text-2xl font-black">Make your own market.</h2>
-        <p className="text-sm text-muted-foreground">Trade real instruments. Win or lose — it's your call.</p>
+        <button
+          onClick={() => window.dispatchEvent(new Event("tsia:open-trade-wallet"))}
+          className="shrink-0 rounded-2xl border border-tsia-gold/30 bg-tsia-gold/10 px-3 py-2 text-right text-tsia-gold"
+          data-testid="manual-trading-wallet"
+        >
+          <span className="flex items-center gap-1 text-[10px] font-bold uppercase"><WalletCards className="h-3.5 w-3.5" /> Wallet</span>
+          <strong className="text-base">${tradeBalance.toFixed(2)}</strong>
+        </button>
       </header>
 
       {/* Order Entry */}

@@ -1038,7 +1038,7 @@ export class DatabaseStorage implements IStorage {
 
   async resetRoiForNewCycle(userId: number): Promise<void> {
     await db.update(tradeWallets)
-      .set({ roiComplete: false, totalBotEarnings: "0.000000", totalInvested: "0.000000", lockedPrincipal: "0.000000", tradingDayNumber: 0, lossDayNumbers: [], cycleStartedAt: null, updatedAt: new Date() })
+      .set({ roiComplete: false, earlyExitCompleted: false, totalBotEarnings: "0.000000", totalInvested: "0.000000", lockedPrincipal: "0.000000", tradingDayNumber: 0, lossDayNumbers: [], cycleStartedAt: null, updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId));
   }
 
@@ -1047,7 +1047,7 @@ export class DatabaseStorage implements IStorage {
       // Also reset totalBotEarnings so the new cycle's cap is calculated cleanly
       // from zero against the updated lockedPrincipal (which addToLockedPrincipal
       // will set right after this call).
-      .set({ tradingDayNumber: 0, lossDayNumbers: newLossDays, totalBotEarnings: "0.000000", updatedAt: new Date() })
+      .set({ tradingDayNumber: 0, lossDayNumbers: newLossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false, updatedAt: new Date() })
       .where(eq(tradeWallets.userId, userId));
   }
 

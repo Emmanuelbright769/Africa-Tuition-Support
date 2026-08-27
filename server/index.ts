@@ -207,6 +207,10 @@ async function runMigrations() {
       ALTER TABLE trade_wallets
         ADD COLUMN IF NOT EXISTS cycle_started_at TIMESTAMP
     `);
+    await db.execute(sql`
+      ALTER TABLE trade_wallets
+        ADD COLUMN IF NOT EXISTS early_exit_completed BOOLEAN NOT NULL DEFAULT FALSE
+    `);
 
     // ── Backfill cycle_started_at: set it to the user's most recent deposit ─────
     // This ensures per-cycle deposit counts and earnings computations are correct

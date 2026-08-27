@@ -295,6 +295,7 @@ export const tradeWallets = pgTable("trade_wallets", {
   lossDayNumbers: integer("loss_day_numbers").array().notNull().default(sql`ARRAY[]::integer[]`),
   tradingPlanDays: integer("trading_plan_days").notNull().default(120),
   cycleStartedAt: timestamp("cycle_started_at"),   // set on every deposit / reinvest; null = never deposited
+  earlyExitCompleted: boolean("early_exit_completed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -17,7 +17,7 @@ import {
   Grid3X3, List, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, MessageCircle,
   Mail, HandCoins, AlertCircle, ArrowLeftRight, User, Expand,
   Lock, PackageOpen, Clock, ChevronUp, Send, ShieldCheck, RotateCcw, Home,
-  Layers, Bookmark, Settings
+  Layers, Bookmark, Settings, WalletCards
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ECOMMERCE } from "@shared/schema";
@@ -1573,6 +1573,7 @@ export default function EcommerceSection({ initialOpenChatId, onBack }: { initia
     try { return new Set(JSON.parse(localStorage.getItem("tsia_cart") || "[]")); } catch { return new Set(); }
   });
   const [cartOpen, setCartOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
 
   // ── Deliver-to ──
   const [deliverTo, setDeliverTo] = useState<string>(() => {
@@ -1807,6 +1808,11 @@ export default function EcommerceSection({ initialOpenChatId, onBack }: { initia
             </div>
           </div>
           <div className="flex items-center gap-2">
+             <button onClick={() => setWalletOpen(true)} data-testid="btn-tsmart-wallet"
+               className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center hover:bg-white/25 transition-colors"
+               aria-label="Open TS-Mart wallet">
+               <WalletCards className="w-5 h-5 text-white" />
+             </button>
             <button onClick={() => setChatDrawerOpen(true)} data-testid="btn-messages"
               className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center hover:bg-white/25 transition-colors">
               <MessageCircle className="w-5 h-5 text-white" />
@@ -2595,6 +2601,34 @@ export default function EcommerceSection({ initialOpenChatId, onBack }: { initia
         onBuy={p => { setCartOpen(false); handleBuy(p); }}
         onRemove={id => { setCart(prev => { const next = new Set(prev); next.delete(id); try { localStorage.setItem("tsia_cart", JSON.stringify(Array.from(next))); } catch {} return next; }); }}
         onClearAll={() => { setCart(new Set()); try { localStorage.removeItem("tsia_cart"); } catch {}; }} />
+
+      <AnimatePresence>
+        {walletOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] bg-white" data-testid="tsmart-wallet-screen">
+            <div className="min-h-screen" style={{ background: S.bg }}>
+              <div className="px-4 pb-8 pt-5 text-white" style={{ background: `linear-gradient(135deg, ${S.blue}, ${S.blueLight})` }}>
+                <button onClick={() => setWalletOpen(false)} className="mb-6 flex items-center gap-2 text-sm font-bold">
+                  <ChevronLeft className="h-5 w-5" /> Back to TS-Mart
+                </button>
+                <p className="text-xs font-bold uppercase tracking-[.2em] text-white/65">TS-Mart Wallet</p>
+                <p className="mt-2 text-4xl font-black">${walletBalance.toFixed(2)}</p>
+                <p className="mt-1 text-sm text-white/70">Available for purchases and refunds</p>
+              </div>
+              <div className="mx-auto max-w-2xl space-y-3 p-4">
+                <h2 className="font-black text-gray-900">Recent TS-Mart activity</h2>
+                {(purchases as Order[]).slice(0, 10).map(order => (
+                  <div key={order.id} className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm">
+                    <div><p className="font-bold text-gray-900">{order.productTitle || `Order #${order.id}`}</p><p className="text-xs text-gray-500">{order.status}</p></div>
+                    <strong style={{ color: S.blue }}>-${Number(order.totalAmount).toFixed(2)}</strong>
+                  </div>
+                ))}
+                {!purchases.length && <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-500">No TS-Mart wallet activity yet.</div>}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {chatProduct && (
         <ProductChatModal productId={chatProduct.id} productTitle={chatProduct.title} sellerName={chatProduct.sellerName}

@@ -1734,7 +1734,6 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const MIN_BALANCE = 2;
 
       // Main wallet
       const wallet = await storage.getOrCreateWallet(userId);
@@ -1749,8 +1748,7 @@ export async function registerRoutes(
       // Book balance = confirmed + all pending credits still in flight
       const bookBalance = confirmedBalance + pendingAmount;
 
-      // Available balance = confirmed balance − minimum reserve (cannot go negative)
-      const availableBalance = Math.max(0, confirmedBalance - MIN_BALANCE);
+      const availableBalance = confirmedBalance;
 
       // Trade / Affiliate wallet
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
@@ -1762,8 +1760,8 @@ export async function registerRoutes(
         bookBalance: bookBalance.toFixed(2),
         availableBalance: availableBalance.toFixed(2),
         confirmedBalance: confirmedBalance.toFixed(2),
-        minimumBalance: MIN_BALANCE.toFixed(2),
-        lockedBalance: (confirmedBalance >= MIN_BALANCE ? MIN_BALANCE : confirmedBalance).toFixed(2),
+        minimumBalance: "0.00",
+        lockedBalance: "0.00",
         pendingAmount: pendingAmount.toFixed(2),
         pendingCount: pendingDeposits.length,
         failedCount: failedDeposits.length,
@@ -1859,12 +1857,8 @@ export async function registerRoutes(
 
       const wallet = await storage.getOrCreateWallet(userId);
       const withdrawAmount = parseFloat(amount);
-      const MIN_BALANCE = 2;
       if (!withdrawAmount || withdrawAmount <= 0 || withdrawAmount > parseFloat(wallet.balance)) {
         return res.status(400).json({ message: "Insufficient balance" });
-      }
-      if (parseFloat(wallet.balance) - withdrawAmount < MIN_BALANCE) {
-        return res.status(400).json({ message: `A minimum of $${MIN_BALANCE} must remain in your wallet` });
       }
 
       const vatAmount    = parseFloat((withdrawAmount * 0.075).toFixed(2));
@@ -2060,10 +2054,7 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(userId);
       const withdrawAmt = parseFloat(amount);
       const currentBalance = parseFloat(wallet.balance);
-      const MIN_BALANCE = 2;
       if (withdrawAmt > currentBalance) return res.status(400).json({ message: "Insufficient balance" });
-      if (currentBalance - withdrawAmt < MIN_BALANCE)
-        return res.status(400).json({ message: `A minimum of $${MIN_BALANCE} must remain in your wallet` });
       const feeAmt = parseFloat((withdrawAmt * CURRENCY_RATES.CRYPTO_WITHDRAW_FEE).toFixed(2));
       const netAmt = parseFloat((withdrawAmt - feeAmt).toFixed(2));
       const newBalance = (currentBalance - withdrawAmt).toFixed(2);
@@ -2135,12 +2126,8 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateWallet(userId);
       const withdrawAmt = parseFloat(amount);
       const currentBalance = parseFloat(wallet.balance);
-      const MIN_BALANCE = 2;
       if (withdrawAmt <= 0 || withdrawAmt > currentBalance) {
         return res.status(400).json({ message: "Insufficient balance" });
-      }
-      if (currentBalance - withdrawAmt < MIN_BALANCE) {
-        return res.status(400).json({ message: `A minimum of $${MIN_BALANCE} must remain in your wallet` });
       }
 
       // ── Fee calculation: authoritative 8% crypto withdrawal charge ───────
@@ -2975,13 +2962,12 @@ export async function registerRoutes(
       }
 
       // ── Wallet balance check ──
-      const MIN_WALLET_BALANCE = 2;
       const wallet = await storage.getOrCreateWallet(userId);
       const walletBalance = parseFloat(wallet.balance);
-      if (walletBalance - amountPaid < MIN_WALLET_BALANCE) {
-        const needed = (amountPaid + MIN_WALLET_BALANCE - walletBalance).toFixed(2);
+      if (walletBalance < amountPaid) {
+        const needed = (amountPaid - walletBalance).toFixed(2);
         return res.status(400).json({
-          message: `Insufficient wallet balance. You need $${amountPaid} but only have $${walletBalance.toFixed(2)} (a $2 minimum must remain). Please fund your wallet with at least $${needed} more.`,
+          message: `Insufficient wallet balance. You need $${amountPaid} but only have $${walletBalance.toFixed(2)}. Please fund your wallet with at least $${needed} more.`,
           code: "INSUFFICIENT_BALANCE",
           walletBalance: walletBalance.toFixed(2),
           required: amountPaid,
@@ -3081,13 +3067,12 @@ export async function registerRoutes(
       }
 
       // ── Wallet balance check ──
-      const MIN_WALLET_BALANCE = 2;
       const upgradeWallet = await storage.getOrCreateWallet(userId);
       const upgradeWalletBalance = parseFloat(upgradeWallet.balance);
-      if (upgradeWalletBalance - newAmountPaid < MIN_WALLET_BALANCE) {
-        const needed = (newAmountPaid + MIN_WALLET_BALANCE - upgradeWalletBalance).toFixed(2);
+      if (upgradeWalletBalance < newAmountPaid) {
+        const needed = (newAmountPaid - upgradeWalletBalance).toFixed(2);
         return res.status(400).json({
-          message: `Insufficient wallet balance. You need $${newAmountPaid} but only have $${upgradeWalletBalance.toFixed(2)} (a $2 minimum must remain). Please fund your wallet with at least $${needed} more.`,
+          message: `Insufficient wallet balance. You need $${newAmountPaid} but only have $${upgradeWalletBalance.toFixed(2)}. Please fund your wallet with at least $${needed} more.`,
           code: "INSUFFICIENT_BALANCE",
           walletBalance: upgradeWalletBalance.toFixed(2),
           required: newAmountPaid,
@@ -3472,9 +3457,8 @@ export async function registerRoutes(
       // Check personal wallet balance
       const personalWallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(personalWallet.balance);
-      const minBalance = 2; // keep $2 minimum in personal wallet
-      if (balance - amount < minBalance) {
-        return res.status(400).json({ message: `Insufficient personal wallet balance. You need at least $${(amount + minBalance).toFixed(2)} (keeping $${minBalance} minimum).` });
+      if (balance < amount) {
+        return res.status(400).json({ message: `Insufficient personal wallet balance. Available: $${balance.toFixed(2)}.` });
       }
       // Deduct from personal wallet
       await storage.updateWalletBalance(userId, (balance - amount).toFixed(2));
@@ -3563,18 +3547,36 @@ export async function registerRoutes(
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
       const twBalance = parseFloat(tradeWallet.tradeBalance);
       const twLocked = tradeWallet.roiComplete ? 0 : parseFloat(tradeWallet.lockedPrincipal ?? "0");
-      // Only accumulated earnings (above capital) can be transferred; capital is non-refundable
-      const twWithdrawable = Math.max(0, twBalance - twLocked);
+      const twRealisedProfit = Math.max(0, twBalance - twLocked);
+      const twIsEarlyExit = !tradeWallet.roiComplete && twLocked > 0;
+      if (twIsEarlyExit && tradeWallet.earlyExitCompleted) {
+        return res.status(409).json({ message: "Your early-exit settlement has already been completed for this trading cycle." });
+      }
+      const twWithdrawable = twIsEarlyExit
+        ? Math.min(twBalance, twLocked * 0.5 + twRealisedProfit * 0.5)
+        : twBalance;
       if (amount > twWithdrawable) {
-        if (twLocked > 0 && !tradeWallet.roiComplete) {
-          return res.status(400).json({ message: `Only your trade earnings ($${twWithdrawable.toFixed(2)}) can be transferred. Your invested capital ($${twLocked.toFixed(2)}) is non-refundable.` });
+        if (twIsEarlyExit) {
+          return res.status(400).json({ message: `Early exit allows up to 50% of your capital plus 50% of realised profit: $${twWithdrawable.toFixed(2)}.` });
         }
         return res.status(400).json({ message: `Insufficient trade balance. Available: $${twWithdrawable.toFixed(2)}` });
       }
       // Wallet-to-wallet: no reserve deduction — full amount credited
       // (Reserve/fees only apply on bank and crypto withdrawals)
       // Deduct full amount from trade wallet
-      await storage.updateTradeBalance(userId, (-amount).toFixed(6));
+      const [debited] = await db.update(tradeWallets)
+        .set({
+          tradeBalance: sql`trade_balance - ${amount.toFixed(6)}::decimal`,
+          ...(twIsEarlyExit ? { earlyExitCompleted: true, botActivatedAt: null } : {}),
+          updatedAt: new Date(),
+        })
+        .where(sql`user_id = ${userId}
+          AND trade_balance >= ${amount.toFixed(6)}::decimal
+          AND (${!twIsEarlyExit} OR early_exit_completed = FALSE)`)
+        .returning();
+      if (!debited) {
+        return res.status(409).json({ message: "Balance or early-exit status changed. Refresh and try again." });
+      }
       await storage.createTradeTransaction({
         userId, type: "withdraw_exchange", walletType: null,
         amountUsd: amount.toFixed(6), feeUsd: "0.000000",
@@ -3869,11 +3871,17 @@ export async function registerRoutes(
       const wallet = await storage.getOrCreateTradeWallet(userId);
       const currentBalance = parseFloat(wallet.tradeBalance);
       const wdLocked = wallet.roiComplete ? 0 : parseFloat(wallet.lockedPrincipal ?? "0");
-      // Only accumulated earnings (above capital) can be withdrawn; capital is non-refundable
-      const wdWithdrawable = Math.max(0, currentBalance - wdLocked);
+      const realisedProfit = Math.max(0, currentBalance - wdLocked);
+      const isEarlyExit = !wallet.roiComplete && wdLocked > 0;
+      if (isEarlyExit && wallet.earlyExitCompleted) {
+        return res.status(409).json({ message: "Your early-exit settlement has already been completed for this trading cycle." });
+      }
+      const wdWithdrawable = isEarlyExit
+        ? Math.min(currentBalance, wdLocked * 0.5 + realisedProfit * 0.5)
+        : currentBalance;
       if (amount > wdWithdrawable) {
         if (wdLocked > 0 && !wallet.roiComplete) {
-          return res.status(400).json({ message: `Only your trade earnings ($${wdWithdrawable.toFixed(2)}) can be withdrawn. Your invested capital ($${wdLocked.toFixed(2)}) is non-refundable.` });
+          return res.status(400).json({ message: `Early exit allows up to 50% of your capital plus 50% of realised profit: $${wdWithdrawable.toFixed(2)}.` });
         }
         return res.status(400).json({ message: `Insufficient balance. Available: $${wdWithdrawable.toFixed(2)}` });
       }
@@ -3912,11 +3920,14 @@ export async function registerRoutes(
         }
 
         const [updated] = await dbTx.update(tradeWallets)
-          .set({ tradeBalance: sql`trade_balance - ${amount.toFixed(6)}::decimal`, updatedAt: new Date() })
-          .where(and(
-            eq(tradeWallets.userId, userId),
-            sql`${tradeWallets.tradeBalance} >= ${amount.toFixed(6)}::decimal`,
-          ))
+          .set({
+            tradeBalance: sql`trade_balance - ${amount.toFixed(6)}::decimal`,
+            ...(isEarlyExit ? { earlyExitCompleted: true, botActivatedAt: null } : {}),
+            updatedAt: new Date(),
+          })
+          .where(sql`user_id = ${userId}
+            AND trade_balance >= ${amount.toFixed(6)}::decimal
+            AND (${!isEarlyExit} OR early_exit_completed = FALSE)`)
           .returning();
         if (!updated) throw new Error("Your trade balance changed before this withdrawal could be submitted. Please refresh and try again.");
         return { tx: createdTx, updatedWallet: updated };
@@ -4804,11 +4815,10 @@ export async function registerRoutes(
       const user = await storage.getUser(userId);
       if (!user || user.role !== "affiliate") return res.status(403).json({ message: "Only affiliates can purchase scholarship codes." });
       const PRICE = 5.50;
-      const MIN_REMAINING = 2.00;
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
-      if (balance < PRICE + MIN_REMAINING)
-        return res.status(400).json({ message: `Insufficient balance. You need at least $${(PRICE + MIN_REMAINING).toFixed(2)} (cost $${PRICE.toFixed(2)} + $${MIN_REMAINING.toFixed(2)} min. reserve).` });
+      if (balance < PRICE)
+        return res.status(400).json({ message: `Insufficient balance. You need $${PRICE.toFixed(2)}.` });
       const newBal = (balance - PRICE).toFixed(2);
       await storage.updateWalletBalance(userId, newBal);
       await storage.createTransaction({
@@ -8802,11 +8812,9 @@ export async function registerRoutes(
       const senderBalance   = parseFloat(senderWallet.balance);
       const senderLien      = parseFloat(senderWallet.lienAmount ?? "0");
       const senderAvailable = Math.max(0, senderBalance - senderLien);
-      const WALLET_MIN_BALANCE = 2;
       if ((senderWallet.lienReason ?? "").startsWith("loan_active:")) return res.status(403).json({ message: "Your wallet is frozen due to an active loan. Transfers to other members are blocked until the loan is repaid. You may only withdraw the loan to your bank account.", code: "LOAN_LIEN" });
       if (senderLien > 0 && senderAvailable < amount) return res.status(400).json({ message: `Your wallet has an active lien of $${senderLien.toFixed(2)}. Available balance: $${senderAvailable.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (senderBalance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${senderBalance.toFixed(2)}` });
-      if (senderBalance - amount < WALLET_MIN_BALANCE) return res.status(400).json({ message: `A minimum of $${WALLET_MIN_BALANCE}.00 must remain in your wallet at all times. You can send up to $${Math.max(0, senderAvailable - WALLET_MIN_BALANCE).toFixed(2)}.` });
       const recipient = await storage.getUser(resolvedId);
       if (!recipient) return res.status(404).json({ message: "Recipient not found" });
       const sender = await storage.getUser(userId);
@@ -9118,7 +9126,6 @@ export async function registerRoutes(
       const availBal = Math.max(0, balance - effectiveLien);
       if (!isLoanLienActive && lien > 0 && availBal < transferAmount) return res.status(400).json({ message: `Your wallet has an active lien of $${lien.toFixed(2)}. Available balance: $${availBal.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (balance < transferAmount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (!isLoanLienActive && balance - transferAmount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can transfer up to $${Math.max(0, availBal - 2).toFixed(2)}.` });
 
       const vatAmount   = parseFloat((transferAmount * 0.075).toFixed(2));
       const netAmountUsd = parseFloat((transferAmount - vatAmount).toFixed(2));
@@ -9554,7 +9561,6 @@ export async function registerRoutes(
       if ((wallet.lienReason ?? "").startsWith("loan_active:")) return res.status(403).json({ message: "Your wallet is frozen due to an active loan. Bill payments are blocked until the loan is repaid. You may only withdraw the loan to your bank account.", code: "LOAN_LIEN" });
       if (lienW > 0 && availW < amount) return res.status(400).json({ message: `Your wallet has an active lien of $${lienW.toFixed(2)}. Available balance: $${availW.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (balance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
-      if (balance - amount < 2) return res.status(400).json({ message: `A minimum of $2.00 must remain in your wallet. You can spend up to $${Math.max(0, availW - 2).toFixed(2)}.` });
       await storage.updateWalletBalance(userId, (balance - amount).toFixed(2));
       const reference = `TSIA-BILL-${service.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
       await storage.createBillPayment({ userId, service, amount, reference });

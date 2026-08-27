@@ -141,7 +141,7 @@ function FundModal({ onClose, onSuccess }: {
   }, []);
 
   const parsed = parseFloat(amount) || 0;
-  const maxAllowed = swiftBal != null ? Math.max(0, swiftBal - 2) : 0; // keep $2 min in Swift
+  const maxAllowed = swiftBal ?? 0;
   const valid = parsed >= MIN_TRADE && parsed <= maxAllowed;
 
   async function submit() {

@@ -3304,7 +3304,7 @@ export default function AdminDashboard() {
                 <Card className="border-0 shadow-sm">
                   <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
                     <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-tsia-green" /> Wallet Floor Reserve Detail</CardTitle>
-                    <CardDescription>$2 minimum locked in {(reserveFundData as any)?.walletsAtMin ?? 0} of {(reserveFundData as any)?.totalWallets ?? 0} activated wallets</CardDescription>
+                    <CardDescription>No wallet minimum is locked. All settled SwiftWallet funds are available to users.</CardDescription>
                   </CardHeader>
                   <CardContent className="py-4 px-6">
                     <div className="flex flex-wrap gap-6 text-sm">

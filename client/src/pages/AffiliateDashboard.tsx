@@ -1414,8 +1414,10 @@ export default function AffiliateDashboard() {
   const cycleProgress    = Math.min(100, (tradingDayNumber / planDaysFromWallet) * 100);
   // Capital is only "released" (set to 0) when the time cycle ends, not merely because the cap was reached
   const lockedPrincipal  = (roiComplete && cycleTimeComplete) ? 0 : parseFloat(tradeWallet?.lockedPrincipal ?? "0");
-  // Earnings (above capital) are always withdrawable once ≥ $2 minimum
-  const withdrawableAmt  = Math.max(0, tradeBalance - lockedPrincipal);
+  const realisedProfit = Math.max(0, tradeBalance - lockedPrincipal);
+  const withdrawableAmt = !cycleTimeComplete && lockedPrincipal > 0
+    ? (tradeWallet?.earlyExitCompleted ? 0 : Math.min(tradeBalance, lockedPrincipal * 0.5 + realisedProfit * 0.5))
+    : tradeBalance;
   // Progress toward earnings cap (informational — not a withdrawal gate)
   // profitCapPct is the profit portion (0.70 / 0.80 / 1.00).
   // Target = capital × (1 + profitCapPct): earn 100% ON TOP of capital = need $198 back on a $99 deposit.
@@ -3451,7 +3453,7 @@ export default function AffiliateDashboard() {
                       <AlertCircle className="w-4 h-4 shrink-0" /> Insufficient Wallet Balance
                     </div>
                     <p className="text-xs text-red-600 dark:text-red-400">
-                      You need <strong>${finalAmt}</strong> but your wallet only has <strong>${walBal.toFixed(2)}</strong> (a $2 minimum must always remain). Please fund your wallet with at least <strong>${shortfall.toFixed(2)}</strong> more before enrolling.
+                      You need <strong>${finalAmt}</strong> but your wallet only has <strong>${walBal.toFixed(2)}</strong>. Please fund your wallet with at least <strong>${shortfall.toFixed(2)}</strong> more before enrolling.
                     </p>
                     <Button size="sm" variant="outline" className="w-full border-red-300 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 text-xs h-8"
                       onClick={() => { setSubscribeOpen(false); setActiveSection("wallet"); }}
@@ -3810,7 +3812,7 @@ export default function AffiliateDashboard() {
                   )}
                   {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) <= TRADE_MARKET.MAX_DEPOSIT && parseFloat(fundTradeAmt) > personalBalance - 2 && (
                     <p className="mt-2 text-xs text-red-500 font-semibold flex items-center gap-1">
-                      <span>⚠</span> Insufficient balance — you need at least ${(parseFloat(fundTradeAmt) + 2).toFixed(2)} (keeping $2.00 minimum in SwiftWallet)
+                      <span>⚠</span> Insufficient balance — you need ${parseFloat(fundTradeAmt).toFixed(2)} in SwiftWallet
                     </p>
                   )}
                 </div>
@@ -3885,7 +3887,7 @@ export default function AffiliateDashboard() {
             <DialogDescription>
               Balance: <strong>${tradeBalance.toFixed(2)}</strong>
               {!roiComplete && lockedPrincipal > 0 && (
-                <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· Available: <strong>${withdrawableAmt.toFixed(2)}</strong></span>
+                 <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· Early-exit limit: <strong>${withdrawableAmt.toFixed(2)}</strong></span>
               )}
             </DialogDescription>
           </DialogHeader>
@@ -3907,15 +3909,15 @@ export default function AffiliateDashboard() {
                   <Wallet className="w-5 h-5 text-tsia-green shrink-0" />
                   <div>
                     <p className="text-sm font-semibold text-tsia-green">Fintech Wallet (SwiftWallet)</p>
-                    <p className="text-xs text-muted-foreground">Funds land instantly in your Fintech Hub — withdraw, pay bills, or transfer from there.</p>
+                     <p className="text-xs text-muted-foreground">Funds land instantly in your Fintech Hub — withdraw, pay bills, or transfer from there.</p>
                   </div>
                 </div>
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-3 text-xs text-green-800 dark:text-green-200 font-medium">
-                  No fees on wallet-to-wallet transfers — <strong>100%</strong> is credited to your SwiftWallet. Only trade <strong>earnings</strong> can be transferred.
+                   No fees on wallet-to-wallet transfers. Before the cycle ends, your one-time early exit is limited to <strong>50% of capital plus 50% of realised profit</strong>.
                 </div>
                 <div className="space-y-2">
                   <Label>Amount (USD)</Label>
-                  <Input type="number" min={2} max={withdrawableAmt} placeholder="Min $2.00 (earnings only)" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
+                  <Input type="number" min={2} max={withdrawableAmt} placeholder="Min $2.00" value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)} data-testid="input-transfer-amount" />
                   {parseFloat(withdrawAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(withdrawAmt))} {rateLabel()}</p>}
                 </div>
                 {withdrawAmt && parseFloat(withdrawAmt) >= 5 && parseFloat(withdrawAmt) <= withdrawableAmt && (
@@ -4139,7 +4141,7 @@ export default function AffiliateDashboard() {
                   </div>
                   {upgradeAmt > 0 && !canAfford && (
                     <>
-                      <p className="text-red-600 dark:text-red-400 font-medium pt-1">Insufficient funds — you need ${shortfall.toFixed(2)} more (keeping $2 minimum).</p>
+                      <p className="text-red-600 dark:text-red-400 font-medium pt-1">Insufficient funds — you need ${shortfall.toFixed(2)} more.</p>
                       <Button size="sm" variant="outline" className="w-full border-red-300 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 h-8"
                         onClick={() => { setUpgradeOpen(false); setActiveSection("wallet"); }}
                         data-testid="button-upgrade-fund-account">

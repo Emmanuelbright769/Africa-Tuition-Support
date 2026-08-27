@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Grid2X2, Home, WalletCards, X,
@@ -61,6 +61,12 @@ export default function TradeMarketSection({
       }, 50);
     }
   };
+
+  useEffect(() => {
+    const openWallet = () => goTab("wallet");
+    window.addEventListener("tsia:open-trade-wallet", openWallet);
+    return () => window.removeEventListener("tsia:open-trade-wallet", openWallet);
+  }, []);
 
   // We keep `children` always mounted to prevent blank flash on return.
   // Component-tabs are lazily mounted once and kept in DOM thereafter.

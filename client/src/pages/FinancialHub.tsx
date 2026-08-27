@@ -784,7 +784,6 @@ export default function FinancialHub() {
   }>({ queryKey: ["/api/wallet/balances"], staleTime: 30_000 });
 
   const bookBalance   = parseFloat(balances?.bookBalance   ?? "0");
-  const lockedBalance = parseFloat(balances?.lockedBalance  ?? "0");
   const pendingAmount = parseFloat(balances?.pendingAmount  ?? "0");
 
   // ── Squad: load widget script ─────────────────────────────────────────────
@@ -2554,23 +2553,9 @@ export default function FinancialHub() {
               </button>
             </div>
 
-            {/* Balance amount — shows available (balance minus $2 ledger reserve) */}
-            {(() => {
-              const ledger = Math.min(balance, 2);
-              const available = Math.max(0, balance - ledger);
-              return (
-                <>
-                  <p className="text-4xl font-black text-white tracking-tight leading-none mb-0.5">
-                    {balanceHidden ? "••••••" : showLocalBalance ? formatAmount(available) : `$${available.toFixed(2)}`}
-                  </p>
-                  {!balanceHidden && (
-                    <p className="text-white/40 text-[10px] font-medium mb-0.5">
-                      Total: ${balance.toFixed(2)} · Ledger reserve: ${ledger.toFixed(2)}
-                    </p>
-                  )}
-                </>
-              );
-            })()}
+            <p className="text-4xl font-black text-white tracking-tight leading-none mb-0.5">
+              {balanceHidden ? "••••••" : showLocalBalance ? formatAmount(balance) : `$${balance.toFixed(2)}`}
+            </p>
 
             {/* Local equiv */}
             {!balanceHidden && !showLocalBalance && currency?.code !== "USD" && (
@@ -5266,8 +5251,7 @@ export default function FinancialHub() {
     const wdAmt = parseFloat(cryptoWdAmount) || 0;
     const feeAmt = parseFloat((wdAmt * CRYPTO_FEE).toFixed(2));
     const netAmt = parseFloat((wdAmt - feeAmt).toFixed(2));
-    const MIN_RESERVE = 2;
-    const maxWithdraw = Math.max(0, balance - MIN_RESERVE);
+    const maxWithdraw = balance;
     const canRequest = wdAmt >= 5 && cryptoWdAddress.trim().length >= 10 && wdAmt <= maxWithdraw && !cryptoWdSubmitting;
 
     const requestOtp = async () => {

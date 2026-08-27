@@ -344,7 +344,7 @@ export async function registerRoutes(
       }
       const tokenHash = hashVerificationToken(preVerificationToken);
       const identityPreview = await storage.getIdentityVerificationBySignupTokenHash(tokenHash);
-      if (!doesVerifiedNameMatch(identityPreview?.providerEvidence, firstName, lastName)) {
+      if (identityPreview?.providerStatus !== "BYPASSED" && !doesVerifiedNameMatch(identityPreview?.providerEvidence, firstName, lastName)) {
         return res.status(403).json({ message: "Your account name must match the name confirmed on your identity document." });
       }
       // Claim the handoff before accounts are created. This conditional update
@@ -791,7 +791,7 @@ export async function registerRoutes(
 
   // ── Helper: verify any Nigerian ID via Prembly (api.prembly.com) ─────────
   // Prembly (formerly Identitypass) supports NIN, BVN, VIN, Driver's Licence, Passport.
-  // Set PREMBLY_API_KEY and PREMBLY_APP_ID in secrets to enable live lookups.
+  // Current Prembly server authentication uses the secret API key only.
   async function ninverifyLookup(idType: string, idBody: Record<string, string>, fallbackNames?: { firstName?: string; lastName?: string }): Promise<{
     ok: boolean;
     data: any;
@@ -821,9 +821,8 @@ export async function registerRoutes(
     // ─────────────────────────────────────────────────────────────────────────
 
     const apiKey = process.env.PREMBLY_API_KEY;
-    const appId  = process.env.PREMBLY_APP_ID;
 
-    if (!apiKey || !appId) {
+    if (!apiKey) {
       return { ok: false, data: null, message: "Identity verification service is not configured. Please contact support." };
     }
 
@@ -856,7 +855,6 @@ export async function registerRoutes(
         method: "POST",
         headers: {
           "x-api-key":     apiKey,
-          "app-id":        appId,
           "Content-Type":  "application/json",
           "Accept":        "application/json",
         },
@@ -1007,7 +1005,7 @@ export async function registerRoutes(
     const lookup = await ninverifyLookup(documentType, getIdLookupBody(documentType, documentNumber, lastName, firstName), { firstName, lastName });
     if (!lookup.ok) return res.status(lookup.temporarilyUnavailable ? 503 : 422).json({ message: lookup.message });
     const evidence = verificationEvidence({ status: "VERIFIED", data: lookup.data });
-    if (!evidence.verifiedNameHash) {
+    if (!lookup.bypassed && !evidence.verifiedNameHash) {
       return res.status(422).json({ message: "The verification service did not return a confirmed name for this ID. Please choose another supported ID." });
     }
     const signupToken = randomBytes(32).toString("base64url");
@@ -1209,8 +1207,7 @@ export async function registerRoutes(
       // ─────────────────────────────────────────────────────────────────────────
 
       const apiKey = process.env.PREMBLY_API_KEY;
-      const appId  = process.env.PREMBLY_APP_ID;
-      if (!apiKey || !appId) {
+      if (!apiKey) {
         return res.status(503).json({ message: "Identity verification is temporarily unavailable. Please try again later." });
       }
 
@@ -1221,7 +1218,6 @@ export async function registerRoutes(
           method: "POST",
           headers: {
             "x-api-key":    apiKey,
-            "app-id":       appId,
             "Content-Type": "application/json",
             "Accept":       "application/json",
           },
@@ -1294,12 +1290,11 @@ export async function registerRoutes(
       // ── Optional: Prembly face/liveness check ──────────────────────────────
       try {
         const PREMBLY_KEY = process.env.PREMBLY_API_KEY || "";
-        const PREMBLY_APP = process.env.PREMBLY_APP_ID  || "";
-        if (PREMBLY_KEY && PREMBLY_APP) {
+        if (PREMBLY_KEY) {
           const imageData = selfieBase64.replace(/^data:image\/\w+;base64,/, "");
           const pfRes = await fetch("https://api.prembly.com/identitypass/verification/biometrics/face/liveliness_check", {
             method: "POST",
-            headers: { "x-api-key": PREMBLY_KEY, "app-id": PREMBLY_APP, "Content-Type": "application/json" },
+            headers: { "x-api-key": PREMBLY_KEY, "Content-Type": "application/json" },
             body: JSON.stringify({ image: imageData }),
             signal: AbortSignal.timeout(20000),
           });
@@ -1397,15 +1392,13 @@ export async function registerRoutes(
       let premblyFaceResult: any = null;
       try {
         const PREMBLY_KEY = process.env.PREMBLY_API_KEY || "";
-        const PREMBLY_APP = process.env.PREMBLY_APP_ID  || "";
-        if (PREMBLY_KEY && PREMBLY_APP) {
+        if (PREMBLY_KEY) {
           // Strip the data URI prefix if present
           const imageData = selfieBase64.replace(/^data:image\/\w+;base64,/, "");
           const pfRes = await fetch("https://api.prembly.com/identitypass/verification/biometrics/face/liveliness_check", {
             method: "POST",
             headers: {
               "x-api-key":    PREMBLY_KEY,
-              "app-id":       PREMBLY_APP,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ image: imageData }),
@@ -1442,10 +1435,9 @@ export async function registerRoutes(
       if (!image) return res.status(400).json({ message: "Image is required." });
 
       const PREMBLY_KEY = process.env.PREMBLY_API_KEY || "";
-      const PREMBLY_APP = process.env.PREMBLY_APP_ID  || "";
 
-      if (!PREMBLY_KEY || !PREMBLY_APP) {
-        console.error("[FaceLiveness] PREMBLY_API_KEY / PREMBLY_APP_ID not configured");
+      if (!PREMBLY_KEY) {
+        console.error("[FaceLiveness] PREMBLY_API_KEY not configured");
         return res.status(503).json({ live: false, reason: "Verification service not configured. Contact support." });
       }
 
@@ -1458,7 +1450,6 @@ export async function registerRoutes(
           method: "POST",
           headers: {
             "x-api-key":    PREMBLY_KEY,
-            "app-id":       PREMBLY_APP,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ image: imageData }),

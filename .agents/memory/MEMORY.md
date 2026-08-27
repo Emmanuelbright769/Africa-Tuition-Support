@@ -2,3 +2,4 @@
 - [Framer-motion transforms break position:sticky](framer-motion-sticky-break.md) — itemVariants (y:18→y:0) on a motion.div ancestor silently breaks sticky; use opacity-only animation instead.
 - [Trade bank withdrawal compatibility](trade-bank-withdrawal-compatibility.md) — keep bank requests compatible with the live constraint and refund trade-originated requests correctly.
 - [Back to School Kiddies wallet rules](back-to-school-vest-settlement.md) — $30 unlock is permanent; certificate approval gates use, with clear gross/net fee accounting.
+- [Prembly server authentication](prembly-auth.md) — current server API calls use the secret API key only; do not require or send the obsolete App ID.

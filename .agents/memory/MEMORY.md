@@ -3,3 +3,4 @@
 - [Trade bank withdrawal compatibility](trade-bank-withdrawal-compatibility.md) — keep bank requests compatible with the live constraint and refund trade-originated requests correctly.
 - [Back to School Kiddies wallet rules](back-to-school-vest-settlement.md) — $30 unlock is permanent; certificate approval gates use, with clear gross/net fee accounting.
 - [Prembly server authentication](prembly-auth.md) — current server API calls use the secret API key only; do not require or send the obsolete App ID.
+- [Admin control integrity](admin-control-integrity.md) — suspension is global across APIs; destructive/funds controls require durable audit and database-backed replay protection.

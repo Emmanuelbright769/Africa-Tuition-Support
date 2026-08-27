@@ -3,6 +3,7 @@ import { db } from "./db";
 import { calculateBackToSchoolDeposit, calculateBackToSchoolWithdrawal } from "./backToSchoolRules";
 import {
   users, verifications, identityVerifications, sponsorshipPlans, wallets, transactions, disbursements,
+  adminAuditLogs,
   leadershipInquiries, otpCodes, fileUploads, coAffiliates,
   tradeWallets, tradeTransactions, tradeReserveFund, affiliateTradeShares,
   landlordProperties, tenancyLeases, tenancyPayments, loans,
@@ -63,7 +64,7 @@ import {
 
 export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
-  deleteUserById(id: number): Promise<void>;
+  deleteUserById(id: number, audit?: { actorUserId: number; reason: string; metadata?: Record<string, unknown> }): Promise<void>;
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUsersByEmail(email: string): Promise<User[]>;
@@ -367,13 +368,22 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async deleteUserById(id: number): Promise<void> {
+  async deleteUserById(id: number, audit?: { actorUserId: number; reason: string; metadata?: Record<string, unknown> }): Promise<void> {
     // Fetch user email first (needed for OTP codes which are keyed by email, not user_id)
     const [targetUser] = await db.select({ email: users.email }).from(users).where(eq(users.id, id));
     const userEmail = targetUser?.email;
 
     // Must delete all related records in dependency order before removing the user
     await db.transaction(async (tx) => {
+      if (audit) {
+        await tx.insert(adminAuditLogs).values({
+          actorUserId: audit.actorUserId,
+          targetUserId: id,
+          action: "account.deleted",
+          reason: audit.reason,
+          metadata: audit.metadata ?? {},
+        });
+      }
       // 1. ecommerce chat messages — delete any message where this user is the sender
       //    OR the message belongs to a chat they own (buyer/seller). Must do sender first
       //    to avoid FK violation when deleting the user row.

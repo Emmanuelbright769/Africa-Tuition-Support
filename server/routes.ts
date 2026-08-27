@@ -34,10 +34,10 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers } from "@shared/schema";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
-import { eq, desc, ne, and, sql, or } from "drizzle-orm";
+import { eq, desc, ne, and, sql, or, ilike, asc, count } from "drizzle-orm";
 import YahooFinance from "yahoo-finance2";
 import { doesVerifiedNameMatch, hashVerifiedName } from "./identityVerificationSecurity";
 import { selectSpellingQuestions, spellingQuestionFor } from "./backToSchoolSpellingBank";
@@ -279,6 +279,23 @@ export async function registerRoutes(
     })
   );
 
+  // A suspended account must be unable to keep using an existing session on
+  // any API route. Login routes still perform their own pre-session checks.
+  app.use("/api", async (req, res, next) => {
+    const sessionUserId = (req.session as any)?.userId;
+    if (!sessionUserId || req.path === "/auth/logout") return next();
+    try {
+      const sessionUser = await storage.getUser(sessionUserId);
+      if (sessionUser?.accountStatus === "suspended") {
+        req.session.destroy(() => {});
+        return res.status(403).json({ message: "ACCOUNT_SUSPENDED", reason: "This account has been suspended." });
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   const requireWalletFundingIdentity = async (req: Request, res: Response): Promise<number | null> => {
     const userId = (req.session as any)?.userId;
     if (!userId) {
@@ -324,6 +341,9 @@ export async function registerRoutes(
 
         if (!targetUser) {
           return res.status(404).json({ message: `No ${loginRole} account found with this email.` });
+        }
+        if (targetUser.accountStatus === "suspended") {
+          return res.status(403).json({ message: "This account is suspended. Contact support if you believe this is an error." });
         }
 
         const code = generateOtp();
@@ -473,6 +493,7 @@ export async function registerRoutes(
         ? await storage.getUserByEmailAndRole(email, loginRole)
         : await storage.getUserByEmail(email);
       if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.accountStatus === "suspended") return res.status(403).json({ message: "This account is suspended. Contact support if you believe this is an error." });
 
       (req.session as any).userId = user.id;
 
@@ -511,6 +532,10 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ message: "User not found" });
+    if (user.accountStatus === "suspended") {
+      req.session.destroy(() => {});
+      return res.status(403).json({ message: "ACCOUNT_SUSPENDED", reason: "This account has been suspended." });
+    }
 
     // Single-session enforcement: if another device logged in, this session is stale
     if (user.activeSessionId && user.activeSessionId !== req.session.id) {
@@ -577,6 +602,7 @@ export async function registerRoutes(
       if (!targetUser) {
         return res.status(404).json({ error: `No ${targetRole} account found for this email. Please sign up for a ${targetRole} account first.` });
       }
+      if (targetUser.accountStatus === "suspended") return res.status(403).json({ error: "That linked account is suspended." });
       (req.session as any).userId = targetUser.id;
       req.session.save(async (err) => {
         if (err) return res.status(500).json({ error: "Session save failed" });
@@ -597,6 +623,7 @@ export async function registerRoutes(
       const user = await storage.getUserByEmail(email);
       if (!user || (user.password !== password && user.password !== "otp-only"))
         return res.status(401).json({ message: "Invalid credentials" });
+      if (user.accountStatus === "suspended") return res.status(403).json({ message: "This account is suspended." });
       (req.session as any).userId = user.id;
       req.session.save((err) => {
         if (err) return res.status(500).json({ message: "Session save failed" });
@@ -638,7 +665,7 @@ export async function registerRoutes(
         : (await storage.getUsersByEmail(email))[0];
       if (!user) return res.json({ exists: false, hasPassword: false });
       return res.json({ exists: true, hasPassword: hasPasswordSet(user.password), role: user.role });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
   // ── Password login (users who opted for password auth) ─────────────────────
@@ -650,6 +677,7 @@ export async function registerRoutes(
         ? await storage.getUserByEmailAndRole(email, loginRole)
         : (await storage.getUsersByEmail(email))[0];
       if (!user) return res.status(401).json({ message: "No account found with this email." });
+      if (user.accountStatus === "suspended") return res.status(403).json({ message: "This account is suspended." });
       if (!hasPasswordSet(user.password)) return res.status(401).json({ message: "This account uses OTP login. Please sign in with a one-time code." });
       if (!verifyPassword(password, user.password)) return res.status(401).json({ message: "Incorrect password. Try again or use OTP login." });
       (req.session as any).userId = user.id;
@@ -5215,6 +5243,7 @@ export async function registerRoutes(
       if (!reason || reason.trim().length < 3) {
         return res.status(400).json({ message: "A lien reason is required (min 3 characters)" });
       }
+      const [beforeWallet] = await db.select().from(wallets).where(eq(wallets.userId, targetId)).limit(1);
       const wallet = await storage.setWalletLien(targetId, parseFloat(amount).toFixed(2), reason.trim());
       // Notify the student
       const notif = await storage.createNotification({
@@ -5225,6 +5254,11 @@ export async function registerRoutes(
       });
       pushToUser(targetId, "notification", notif);
       invalidateCacheKey(`wallet:${targetId}`);
+      await writeAdminAudit({
+        actorUserId: admin.id, targetUserId: targetId, action: "wallet.lien_set",
+        reason: reason.trim(), beforeState: { lienAmount: beforeWallet?.lienAmount ?? "0.00", lienReason: beforeWallet?.lienReason ?? null },
+        afterState: { lienAmount: wallet.lienAmount, lienReason: wallet.lienReason },
+      });
       res.json({ success: true, wallet });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -5236,6 +5270,7 @@ export async function registerRoutes(
       const admin = await storage.getUser(sessionUserId);
       if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
       const targetId = parseInt(req.params.userId, 10);
+      const [beforeWallet] = await db.select().from(wallets).where(eq(wallets.userId, targetId)).limit(1);
       const wallet = await storage.releaseWalletLien(targetId);
       const notif = await storage.createNotification({
         userId: targetId, type: "system",
@@ -5245,6 +5280,12 @@ export async function registerRoutes(
       });
       pushToUser(targetId, "notification", notif);
       invalidateCacheKey(`wallet:${targetId}`);
+      await writeAdminAudit({
+        actorUserId: admin.id, targetUserId: targetId, action: "wallet.lien_released",
+        reason: "Admin released wallet lien",
+        beforeState: { lienAmount: beforeWallet?.lienAmount ?? "0.00", lienReason: beforeWallet?.lienReason ?? null },
+        afterState: { lienAmount: "0.00", lienReason: null },
+      });
       res.json({ success: true, wallet });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -5737,6 +5778,12 @@ export async function registerRoutes(
       if (referrer.id === targetId) return res.status(400).json({ message: "A user cannot refer themselves" });
       // Update the user's referred_by field
       await db.execute(sql`UPDATE users SET referred_by = ${affiliateCode.trim().toUpperCase()} WHERE id = ${targetId}`);
+      await writeAdminAudit({
+        actorUserId: admin.id, targetUserId: targetId, action: "account.referral_source_set",
+        reason: "Admin retroactive referral assignment",
+        reference: affiliateCode.trim().toUpperCase(),
+        afterState: { referredBy: affiliateCode.trim().toUpperCase(), referrerUserId: referrer.id },
+      });
       res.json({ success: true, message: `User's referral source set to ${affiliateCode.toUpperCase()} (${referrer.firstName} ${referrer.lastName})` });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -5808,6 +5855,233 @@ export async function registerRoutes(
       }
 
       res.json({ success: true, credited, skipped, summary: `${credited.length} commissions credited, ${skipped.length} skipped` });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ─── ADMIN OPERATIONS CENTER ───────────────────────────────────────────────
+  // These endpoints are deliberately bounded and explicit. The legacy admin
+  // screens remain available, while the operations center can safely load one
+  // page or one user's record at a time.
+  const requireAdminUser = async (req: Request, res: Response) => {
+    const sessionUserId = (req.session as any)?.userId;
+    if (!sessionUserId) {
+      res.status(401).json({ message: "Not authenticated" });
+      return null;
+    }
+    const admin = await storage.getUser(sessionUserId);
+    if (!admin || admin.role !== "admin") {
+      res.status(403).json({ message: "Forbidden" });
+      return null;
+    }
+    return admin;
+  };
+
+  const writeAdminAudit = async (input: {
+    actorUserId: number;
+    targetUserId?: number | null;
+    action: string;
+    reason?: string | null;
+    reference?: string | null;
+    outcome?: string;
+    beforeState?: unknown;
+    afterState?: unknown;
+    metadata?: unknown;
+  }) => {
+    const [entry] = await db.insert(adminAuditLogs).values({
+      actorUserId: input.actorUserId,
+      targetUserId: input.targetUserId ?? null,
+      action: input.action,
+      reason: input.reason ?? null,
+      reference: input.reference ?? null,
+      outcome: input.outcome ?? "success",
+      beforeState: input.beforeState as any,
+      afterState: input.afterState as any,
+      metadata: input.metadata as any,
+    }).returning();
+    return entry;
+  };
+
+  app.get("/api/admin/users", async (req, res) => {
+    try {
+      if (!await requireAdminUser(req, res)) return;
+      const rawPage = Number(req.query.page ?? 1);
+      const rawPageSize = Number(req.query.pageSize ?? 25);
+      const page = Number.isFinite(rawPage) ? Math.max(1, Math.floor(rawPage)) : 1;
+      const pageSize = Number.isFinite(rawPageSize) ? Math.min(100, Math.max(10, Math.floor(rawPageSize))) : 25;
+      const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+      const role = typeof req.query.role === "string" ? req.query.role : "";
+      const country = typeof req.query.country === "string" ? req.query.country.trim().toLowerCase() : "";
+      const verificationStatus = typeof req.query.verificationStatus === "string" ? req.query.verificationStatus : "";
+      const accountStatus = typeof req.query.accountStatus === "string" ? req.query.accountStatus : "";
+      const filters: any[] = [ne(users.role, "admin")];
+      if (q) {
+        const pattern = `%${q}%`;
+        filters.push(or(
+          ilike(users.firstName, pattern), ilike(users.lastName, pattern),
+          ilike(users.email, pattern), ilike(users.phone, pattern),
+          ilike(users.affiliateCode, pattern),
+          sql`CAST(${users.id} AS TEXT) ILIKE ${pattern}`,
+        ));
+      }
+      if (role && ["student", "affiliate"].includes(role)) filters.push(eq(users.role, role as any));
+      if (country) filters.push(eq(users.country, country));
+      if (accountStatus && ["active", "suspended"].includes(accountStatus)) filters.push(eq(users.accountStatus, accountStatus));
+      if (verificationStatus) filters.push(eq(verifications.status, verificationStatus as any));
+      const where = and(...filters);
+      const [rows, totalRows] = await Promise.all([
+        db.select({
+          id: users.id, firstName: users.firstName, lastName: users.lastName,
+          email: users.email, phone: users.phone, country: users.country,
+          role: users.role, affiliateCode: users.affiliateCode, referredBy: users.referredBy,
+          accountStatus: users.accountStatus, createdAt: users.createdAt,
+          walletBalance: wallets.balance, walletActivated: wallets.activated,
+          verificationStatus: verifications.status, verificationTier: verifications.tier,
+        }).from(users)
+          .leftJoin(wallets, eq(wallets.userId, users.id))
+          .leftJoin(verifications, eq(verifications.userId, users.id))
+          .where(where).orderBy(desc(users.createdAt))
+          .limit(pageSize).offset((page - 1) * pageSize),
+        db.select({ total: count(users.id) }).from(users)
+          .leftJoin(verifications, eq(verifications.userId, users.id))
+          .where(where),
+      ]);
+      res.json({
+        items: rows,
+        page,
+        pageSize,
+        total: Number(totalRows[0]?.total ?? 0),
+        totalPages: Math.max(1, Math.ceil(Number(totalRows[0]?.total ?? 0) / pageSize)),
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/admin/users/:id", async (req, res) => {
+    try {
+      if (!await requireAdminUser(req, res)) return;
+      const targetId = Number(req.params.id);
+      if (!Number.isInteger(targetId)) return res.status(400).json({ message: "Invalid user id" });
+      const target = await storage.getUser(targetId);
+      if (!target || target.role === "admin") return res.status(404).json({ message: "User not found" });
+      const [
+        wallet, verification, identity, files, transactionsForUser, disbursementsForUser,
+        loansForUser, tradeWallet, tradeTransactionsForUser, deposits, withdrawals,
+        ordersForUser, productsForUser, transfers, notificationsForUser, sponsorshipPlan,
+        referrals, referrer, kiddies, auditHistory,
+      ] = await Promise.all([
+        db.select().from(wallets).where(eq(wallets.userId, targetId)).limit(1),
+        storage.getVerificationByUser(targetId),
+        db.select().from(identityVerifications).where(eq(identityVerifications.userId, targetId)).orderBy(desc(identityVerifications.createdAt)),
+        db.select({ id: fileUploads.id, fileName: fileUploads.fileName, fileType: fileUploads.fileType, fileSize: fileUploads.fileSize, category: fileUploads.category, createdAt: fileUploads.createdAt }).from(fileUploads).where(eq(fileUploads.userId, targetId)).orderBy(desc(fileUploads.createdAt)),
+        storage.getTransactionsByUser(targetId),
+        storage.getDisbursementsByUser(targetId),
+        storage.getLoansByUser(targetId),
+        db.select().from(tradeWallets).where(eq(tradeWallets.userId, targetId)).limit(1),
+        storage.getTradeTransactionsByUser(targetId),
+        storage.getWalletDepositsByUser(targetId),
+        db.select().from(withdrawalRequests).where(eq(withdrawalRequests.userId, targetId)).orderBy(desc(withdrawalRequests.createdAt)),
+        db.select({
+          order: orders, productTitle: products.title,
+          buyerName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+        }).from(orders).innerJoin(products, eq(orders.productId, products.id))
+          .innerJoin(users, eq(orders.buyerId, users.id))
+          .where(or(eq(orders.buyerId, targetId), eq(orders.sellerId, targetId)))
+          .orderBy(desc(orders.createdAt)),
+        db.select().from(products).where(eq(products.sellerId, targetId)).orderBy(desc(products.createdAt)),
+        db.select().from(walletTransfers).where(or(eq(walletTransfers.senderId, targetId), eq(walletTransfers.recipientId, targetId))).orderBy(desc(walletTransfers.createdAt)),
+        storage.getNotifications(targetId),
+        storage.getSponsorshipPlanByUser(targetId),
+        target.affiliateCode ? storage.getReferralsByCode(target.affiliateCode) : Promise.resolve([]),
+        target.referredBy ? storage.getUserByAffiliateCode(target.referredBy) : Promise.resolve(undefined),
+        storage.getBackToSchoolProgramme(targetId),
+        db.select().from(adminAuditLogs).where(or(eq(adminAuditLogs.targetUserId, targetId), eq(adminAuditLogs.actorUserId, targetId))).orderBy(desc(adminAuditLogs.createdAt)).limit(100),
+      ]);
+      const safeUser = { ...target, password: undefined };
+      res.json({
+        user: safeUser,
+        profile: { createdAt: target.createdAt, country: target.country, phone: target.phone, accountStatus: target.accountStatus },
+        verification, identity, files, wallet: wallet[0] ?? { userId: targetId, balance: "0.00", cashbackBalance: "0.00", lienAmount: "0.00", activated: false }, transactions: transactionsForUser,
+        disbursements: disbursementsForUser, loans: loansForUser, tradeWallet: tradeWallet[0] ?? null,
+        tradeTransactions: tradeTransactionsForUser, deposits, withdrawals,
+        orders: ordersForUser.map((row: any) => ({ ...row.order, productTitle: row.productTitle, buyerName: row.buyerName })),
+        products: productsForUser, transfers, notifications: notificationsForUser,
+        sponsorshipPlan, referrals, referrer: referrer ? { id: referrer.id, firstName: referrer.firstName, lastName: referrer.lastName, email: referrer.email, affiliateCode: referrer.affiliateCode } : null,
+        kiddies, auditHistory,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/admin/files/:id", async (req, res) => {
+    try {
+      if (!await requireAdminUser(req, res)) return;
+      const fileId = Number(req.params.id);
+      const [file] = await db.select().from(fileUploads).where(eq(fileUploads.id, fileId)).limit(1);
+      if (!file) return res.status(404).json({ message: "File not found" });
+      const raw = file.fileData.includes(",") ? file.fileData.split(",").slice(1).join(",") : file.fileData;
+      res.setHeader("Content-Disposition", `inline; filename="${file.fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}"`);
+      res.type(file.fileType || "application/octet-stream").send(Buffer.from(raw, "base64"));
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/admin/audit-logs", async (req, res) => {
+    try {
+      if (!await requireAdminUser(req, res)) return;
+      const limit = Math.min(100, Math.max(10, Number(req.query.limit ?? 50)));
+      const rows = await db.select({
+        id: adminAuditLogs.id, actorUserId: adminAuditLogs.actorUserId, targetUserId: adminAuditLogs.targetUserId,
+        action: adminAuditLogs.action, reason: adminAuditLogs.reason, reference: adminAuditLogs.reference,
+        outcome: adminAuditLogs.outcome, beforeState: adminAuditLogs.beforeState, afterState: adminAuditLogs.afterState,
+        metadata: adminAuditLogs.metadata, createdAt: adminAuditLogs.createdAt,
+        actorName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+      }).from(adminAuditLogs).innerJoin(users, eq(adminAuditLogs.actorUserId, users.id))
+        .orderBy(desc(adminAuditLogs.createdAt)).limit(limit);
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/status", async (req, res) => {
+    try {
+      const admin = await requireAdminUser(req, res);
+      if (!admin) return;
+      const targetId = Number(req.params.id);
+      const status = req.body?.status;
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      const reference = typeof req.body?.reference === "string" ? req.body.reference.trim() : "";
+      const idempotencyKey = String(req.get("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
+      if (!Number.isInteger(targetId) || !["active", "suspended"].includes(status)) return res.status(400).json({ message: "Valid user id and status are required" });
+      if (targetId === admin.id) return res.status(400).json({ message: "You cannot change your own account status" });
+      if (reason.length < 5) return res.status(400).json({ message: "A reason of at least 5 characters is required" });
+      const target = await storage.getUser(targetId);
+      if (!target || target.role === "admin") return res.status(404).json({ message: "User not found" });
+      if (idempotencyKey) {
+        const [previous] = await db.select().from(adminAuditLogs).where(and(
+          eq(adminAuditLogs.actorUserId, admin.id), eq(adminAuditLogs.targetUserId, targetId),
+          sql`${adminAuditLogs.metadata}->>'idempotencyKey' = ${idempotencyKey}`,
+        )).limit(1);
+        if (previous) return res.json({ success: true, status: target.accountStatus, audit: previous, replayed: true });
+      }
+      const before = { accountStatus: target.accountStatus };
+      const audit = await db.transaction(async (tx) => {
+        if (target.accountStatus !== status) {
+          await tx.update(users).set({ accountStatus: status, activeSessionId: status === "suspended" ? null : target.activeSessionId }).where(eq(users.id, targetId));
+        }
+        const [entry] = await tx.insert(adminAuditLogs).values({
+          actorUserId: admin.id, targetUserId: targetId, action: `account.${status}`,
+          reason, reference: reference || null, beforeState: before, afterState: { accountStatus: status },
+          metadata: { idempotencyKey: idempotencyKey || null },
+        }).returning();
+        return entry;
+      });
+      res.json({ success: true, status, audit });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -5893,6 +6167,8 @@ export async function registerRoutes(
       const targetId = parseInt(req.params.id);
       if (isNaN(targetId)) return res.status(400).json({ message: "Invalid id" });
       const { email, firstName, lastName, newPassword } = req.body;
+      const targetBefore = await storage.getUser(targetId);
+      if (!targetBefore || targetBefore.role === "admin") return res.status(404).json({ message: "User not found" });
       if (email) {
         const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRx.test(email.trim())) return res.status(400).json({ message: "Invalid email address" });
@@ -5900,11 +6176,20 @@ export async function registerRoutes(
         if (existing && existing.id !== targetId) return res.status(409).json({ message: "That email is already in use by another account" });
       }
       if (newPassword && newPassword.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
-      await storage.updateUserProfileAdmin(targetId, {
+      const accountUpdate: Record<string, any> = {
         ...(email ? { email: email.trim().toLowerCase() } : {}),
         ...(firstName ? { firstName: firstName.trim() } : {}),
         ...(lastName ? { lastName: lastName.trim() } : {}),
-        ...(newPassword ? { passwordHash: hashPassword(newPassword) } : {}),
+        ...(newPassword ? { password: hashPassword(newPassword) } : {}),
+      };
+      await db.transaction(async (tx) => {
+        if (Object.keys(accountUpdate).length) await tx.update(users).set(accountUpdate).where(eq(users.id, targetId));
+        await tx.insert(adminAuditLogs).values({
+          actorUserId: admin.id, targetUserId: targetId, action: "account.profile_updated",
+          reason: "Admin account edit",
+          beforeState: { email: targetBefore.email, firstName: targetBefore.firstName, lastName: targetBefore.lastName },
+          afterState: { email: accountUpdate.email ?? targetBefore.email, firstName: accountUpdate.firstName ?? targetBefore.firstName, lastName: accountUpdate.lastName ?? targetBefore.lastName, passwordReset: !!newPassword },
+        });
       });
       res.json({ success: true });
     } catch (e: any) {
@@ -5922,7 +6207,14 @@ export async function registerRoutes(
       const targetId = parseInt(req.params.id);
       if (isNaN(targetId)) return res.status(400).json({ message: "Invalid id" });
       if (targetId === sessionUserId) return res.status(400).json({ message: "You cannot delete your own admin account." });
-      await storage.deleteUserById(targetId);
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      if (reason.length < 8) return res.status(400).json({ message: "A deletion reason of at least 8 characters is required" });
+      const target = await storage.getUser(targetId);
+      if (!target || target.role === "admin") return res.status(404).json({ message: "User not found" });
+      await storage.deleteUserById(targetId, {
+        actorUserId: admin.id, reason,
+        metadata: { deletedUserId: targetId, email: target.email, role: target.role },
+      });
       res.json({ success: true, deletedId: targetId });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -5940,6 +6232,7 @@ export async function registerRoutes(
       const { balance, note } = req.body;
       const newBal = parseFloat(balance);
       if (isNaN(newBal) || newBal < 0) return res.status(400).json({ message: "Invalid balance amount" });
+      if (typeof note !== "string" || note.trim().length < 5) return res.status(400).json({ message: "A reason of at least 5 characters is required" });
       const curWal = await storage.getOrCreateWallet(targetId);
       await storage.updateWalletBalance(targetId, newBal.toFixed(2));
       // Bust the per-user wallet cache so the updated balance is visible immediately
@@ -5954,6 +6247,10 @@ export async function registerRoutes(
       await storage.createTransaction({ userId: targetId, type: "admin_adjustment", amount: newBal.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin adjustment: ${note}` : "Admin wallet balance adjustment" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Updated", message: `Your TSIA wallet balance has been updated to $${newBal.toFixed(2)} by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
       pushToUser(targetId, "notification", notif);
+      await writeAdminAudit({
+        actorUserId: admin.id, targetUserId: targetId, action: "wallet.balance_set",
+        reason: note.trim(), beforeState: { balance: curWal.balance }, afterState: { balance: newBal.toFixed(2) },
+      });
       res.json({ success: true, newBalance: newBal.toFixed(2) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -9195,27 +9492,83 @@ export async function registerRoutes(
       const gross = parseFloat(amountUsd);
       if (isNaN(targetId) || targetId <= 0) return res.status(400).json({ message: "Valid userId is required" });
       if (isNaN(gross) || gross <= 0) return res.status(400).json({ message: "Valid amountUsd is required" });
+      if (typeof reference !== "string" || reference.trim().length < 4) return res.status(400).json({ message: "A payment reference is required" });
+      if (typeof note !== "string" || note.trim().length < 5) return res.status(400).json({ message: "A reason of at least 5 characters is required" });
 
       const targetUser = await storage.getUser(targetId);
       if (!targetUser) return res.status(404).json({ message: "User not found" });
-
-      // Check if reference already credited
-      const txRef = reference?.trim() || `ADMIN-MANUAL-${targetId}-${Date.now()}`;
-      const existingDeps = await storage.getWalletDepositsByUser(targetId);
-      const alreadyDone = existingDeps.find((d: any) => d.txHash === txRef && d.status === "completed");
-      if (alreadyDone) return res.status(409).json({ message: "This reference has already been credited. Re-crediting is blocked to prevent duplicates." });
-
-      // Create or find the deposit record
-      let dep = existingDeps.find((d: any) => d.txHash === txRef);
-      if (!dep) {
-        dep = await storage.createWalletDeposit({ userId: targetId, amountUsd: gross.toFixed(2), txHash: txRef, walletType: "manual", status: "pending" });
+      if (!await storage.hasCompletedIdentityVerification(targetId)) {
+        return res.status(409).json({ message: "The credit was not applied. Confirm the user's identity verification before retrying." });
       }
 
-      await creditWalletWithSplit(targetId, gross, note ? `manual (${note})` : "manual", txRef, { id: dep.id, amountUsd: gross.toFixed(2), status: dep.status });
+      const txRef = reference.trim();
+      const affiliateCut = parseFloat((gross * 0.05).toFixed(2));
+      const userCredit = parseFloat((gross - affiliateCut).toFixed(2));
+      const affiliateCount = await storage.getAffiliateCount();
+      const result = await db.transaction(async (tx) => {
+        const [guard] = await tx.insert(adminManualCreditGuards).values({ reference: txRef, userId: targetId }).onConflictDoNothing().returning();
+        if (!guard) {
+          const conflict: any = new Error("This reference has already been processed. Re-crediting is blocked to prevent duplicates.");
+          conflict.status = 409;
+          throw conflict;
+        }
 
+        const [referenceOwner] = await tx.select().from(walletDeposits).where(eq(walletDeposits.txHash, txRef)).limit(1);
+        if (referenceOwner && referenceOwner.userId !== targetId) {
+          const conflict: any = new Error("This payment reference belongs to another account.");
+          conflict.status = 409;
+          throw conflict;
+        }
+
+        await tx.insert(wallets).values({ userId: targetId, balance: "0.00" }).onConflictDoNothing();
+        const [wallet] = await tx.select().from(wallets).where(eq(wallets.userId, targetId)).for("update");
+        const newBalance = (parseFloat(wallet.balance) + userCredit).toFixed(2);
+        const activatedNow = !wallet.activated && parseFloat(newBalance) > 2;
+        await tx.update(wallets).set({
+          balance: newBalance,
+          ...(activatedNow ? { activated: true, activatedAt: new Date() } : {}),
+        }).where(eq(wallets.userId, targetId));
+
+        const [moneyTransaction] = await tx.insert(transactions).values({
+          userId: targetId, type: "deposit", amount: userCredit.toFixed(2), fee: affiliateCut.toFixed(2),
+          paymentMethod: "manual", description: `Wallet funded via manual (${txRef}) — $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
+        }).returning();
+        if (affiliateCut > 0) {
+          await tx.insert(affiliateTradeShares).values({
+            tradeTransactionId: moneyTransaction.id,
+            totalPoolAmount: affiliateCut.toFixed(6),
+            affiliateCount,
+            perAffiliateAmount: (affiliateCount > 0 ? affiliateCut / affiliateCount : 0).toFixed(6),
+            sourceType: "deposit",
+          });
+        }
+
+        if (referenceOwner) {
+          await tx.update(walletDeposits).set({ status: "completed", amountUsd: gross.toFixed(2), walletType: "manual" }).where(eq(walletDeposits.id, referenceOwner.id));
+        } else {
+          await tx.insert(walletDeposits).values({ userId: targetId, amountUsd: gross.toFixed(2), txHash: txRef, walletType: "manual", status: "completed" });
+        }
+        const [notification] = await tx.insert(notifications).values({
+          userId: targetId, type: "wallet_credit", title: "Wallet Funded ✓",
+          message: `$${userCredit.toFixed(2)} credited to your TSIA SwiftWallet (5% affiliate pool: $${affiliateCut.toFixed(2)})`,
+          data: { ref: txRef }, isRead: false,
+        }).returning();
+        await tx.insert(adminAuditLogs).values({
+          actorUserId: admin.id, targetUserId: targetId, action: "wallet.manual_payment_credit",
+          reason: note.trim(), reference: txRef,
+          beforeState: { balance: wallet.balance },
+          afterState: { balance: newBalance, grossAmount: gross.toFixed(2), creditedAmount: userCredit.toFixed(2), feeAmount: affiliateCut.toFixed(2) },
+        });
+        return { newBalance, activatedNow, notification };
+      });
+
+      invalidateCacheKey(`wallet:${targetId}`);
+      pushToUser(targetId, "notification", result.notification);
+      if (result.activatedNow) await creditReferrerCommissionOnce(targetId, gross, "personal wallet activation").catch(() => {});
+      sendAdminDepositConfirmedEmail({ name: `${targetUser.firstName} ${targetUser.lastName}`, email: targetUser.email, gross: gross.toFixed(2), credited: userCredit.toFixed(2), reserveCut: "0.00", affiliateCut: affiliateCut.toFixed(2), newBalance: result.newBalance, walletType: "manual", txHash: txRef, userId: targetId }).catch(() => {});
       console.log(`[ADMIN MANUAL CREDIT] Admin ${admin.email} credited user ${targetId} (${targetUser.email}) $${gross} — ref: ${txRef}`);
-      res.json({ success: true, message: `$${gross.toFixed(2)} credited in full to ${targetUser.firstName} ${targetUser.lastName}'s wallet`, grossAmount: gross.toFixed(2), creditedAmount: gross.toFixed(2) });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+      res.json({ success: true, message: `$${userCredit.toFixed(2)} credited to ${targetUser.firstName} ${targetUser.lastName}'s wallet`, grossAmount: gross.toFixed(2), creditedAmount: userCredit.toFixed(2) });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
   // Admin: confirm wallet deposit

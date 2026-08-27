@@ -27,6 +27,7 @@ export const users = pgTable("users", {
   password: text("password").notNull().default("otp-only"),
   country: text("country").notNull().default("ng"),
   role: roleEnum("role").notNull().default("student"),
+  accountStatus: text("account_status").notNull().default("active"),
   affiliateCode: text("affiliate_code").unique(),
   referredBy: text("referred_by"),
   walletFundDeadline: timestamp("wallet_fund_deadline"),
@@ -42,6 +43,28 @@ export const otpCodes = pgTable("otp_codes", {
   code: text("code").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   used: boolean("used").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Administrative actions are append-only so staff can explain and review
+// sensitive changes without relying on the mutable domain records alone.
+export const adminAuditLogs = pgTable("admin_audit_logs", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  actorUserId: integer("actor_user_id").notNull().references(() => users.id),
+  targetUserId: integer("target_user_id").references(() => users.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  reason: text("reason"),
+  reference: text("reference"),
+  outcome: text("outcome").notNull().default("success"),
+  beforeState: jsonb("before_state"),
+  afterState: jsonb("after_state"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const adminManualCreditGuards = pgTable("admin_manual_credit_guards", {
+  reference: text("reference").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

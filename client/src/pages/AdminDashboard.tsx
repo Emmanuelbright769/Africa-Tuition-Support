@@ -25,6 +25,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import BackToSchoolAdminSection from "@/components/BackToSchoolAdminSection";
+import AdminUsersWorkspace from "@/components/AdminUsersWorkspace";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmtUSD = (v: any) => `$${parseFloat(v || "0").toFixed(2)}`;
@@ -110,7 +111,16 @@ const NAV = [
   { id: "notifications", icon: Bell,          label: "Notifications" },
   { id: "scholarships",  icon: GraduationCap,  label: "Scholarships" },
   { id: "enrollment",   icon: UserPlus,       label: "Enrollment" },
+  { id: "audit",        icon: ShieldCheck,    label: "Audit Log" },
   { id: "settings",     icon: Settings,      label: "Plan Settings" },
+];
+
+const NAV_GROUPS = [
+  { label: "Operations", items: ["overview", "applications", "payouts", "loans"] },
+  { label: "Users & growth", items: ["users", "affiliates", "referrals", "kiddies"] },
+  { label: "Money", items: ["transactions", "deposits", "crypto_withdrawals", "bank_transfers", "trade_withdrawals", "reserve"] },
+  { label: "Products & community", items: ["ecommerce", "trade", "trustfunders", "messages", "notifications", "scholarships", "enrollment"] },
+  { label: "Configuration", items: ["audit", "settings"] },
 ];
 
 // ─── AdminDashboard ───────────────────────────────────────────────────────────
@@ -159,6 +169,7 @@ export default function AdminDashboard() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
   const [deleteUserDialog, setDeleteUserDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
+  const [deleteUserReason, setDeleteUserReason] = useState("");
   const [editUserDialog, setEditUserDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [editUserEmail, setEditUserEmail] = useState("");
   const [editUserFirst, setEditUserFirst] = useState("");
@@ -248,7 +259,7 @@ export default function AdminDashboard() {
   const { data: pendingDisbursements = [] } = useQuery({ queryKey: ["/api/admin/pending-disbursements"] });
   const { data: allDisbursements = [] }     = useQuery({ queryKey: ["/api/admin/all-disbursements"], enabled: activeTab === "payouts" });
   const { data: walletLiensData, refetch: refetchWalletLiens } = useQuery<{ withLiens: any[]; disbursed: any[] }>({ queryKey: ["/api/admin/wallet-liens"], enabled: activeTab === "payouts" });
-  const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: activeTab === "users" });
+  const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: false });
   const { data: allAffiliates = [] }       = useQuery({ queryKey: ["/api/admin/affiliates-all"], enabled: activeTab === "affiliates" });
   const { data: allLoans = [] }            = useQuery({ queryKey: ["/api/admin/loans-all"], enabled: activeTab === "loans" });
   const { data: allTransactions = [] }     = useQuery({ queryKey: ["/api/admin/transactions-all"], enabled: activeTab === "transactions" });
@@ -271,6 +282,15 @@ export default function AdminDashboard() {
   const { data: tradeSettingsData, refetch: refetchTradeSettings } = useQuery<{ feeExchangeWithdraw: number; feeBankWithdraw: number; reserveRate: number; affiliateShareRate: number; minDeposit: number; minWithdraw: number; coAffiliatePoolRate: number | null; botFullRate: number; bankTransfersEnabled: boolean; bankTransfersWeekendOverrideUntil: number; sponsorshipLocked: boolean }>({ queryKey: ["/api/admin/trade-settings"], enabled: activeTab === "settings" || activeTab === "bank_transfers" });
   const { data: batchStatus, refetch: refetchBatchStatus } = useQuery<{ batch: any; totalCapacity: number; remaining: number; enrolled: number }>({ queryKey: ["/api/admin/batch-status"], enabled: activeTab === "enrollment" });
   const { data: allScholarships = [], refetch: refetchScholarships } = useQuery<any[]>({ queryKey: ["/api/admin/all-scholarships"], enabled: activeTab === "scholarships" });
+  const { data: auditLogs = [], isLoading: auditLoading, refetch: refetchAuditLogs } = useQuery<any[]>({
+    queryKey: ["/api/admin/audit-logs"],
+    queryFn: async () => {
+      const response = await fetch("/api/admin/audit-logs?limit=100", { credentials: "include" });
+      if (!response.ok) throw new Error("Unable to load the audit log");
+      return response.json();
+    },
+    enabled: activeTab === "audit",
+  });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
   const verifyMutation = useMutation({
@@ -450,8 +470,8 @@ export default function AdminDashboard() {
   });
 
   const deleteUserMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("DELETE", `/api/admin/users/${id}`);
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      const res = await apiRequest("DELETE", `/api/admin/users/${id}`, { reason });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to delete user");
       return data;
@@ -462,6 +482,7 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/co-affiliates"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/enhanced-stats"] });
       setDeleteUserDialog({ open: false, user: null });
+      setDeleteUserReason("");
       toast({ title: "User Deleted", description: "User account has been permanently removed." });
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Delete Failed", description: e.message }),
@@ -1025,18 +1046,26 @@ export default function AdminDashboard() {
         <span className="text-[10px] font-bold text-tsia-gold tracking-widest uppercase pl-0.5">Admin Control Panel</span>
       </div>
       <nav className="p-4 space-y-1 flex-1 overflow-y-auto">
-        {NAV.map(item => {
-          const badge = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
-          return (
-            <button key={item.id} onClick={() => { setActiveTab(item.id); setSearch(""); setSidebarOpen(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === item.id ? "bg-tsia-green/15 text-tsia-green border border-tsia-green/25" : "hover:bg-slate-900 hover:text-white border border-transparent text-slate-400"}`}
-            >
-              <item.icon className="w-4 h-4 shrink-0" />
-              <span className="flex-1 text-left">{item.label}</span>
-              {badge > 0 && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${activeTab === item.id ? "bg-tsia-green text-white" : "bg-red-500 text-white"}`}>{badge}</span>}
-            </button>
-          );
-        })}
+        {NAV_GROUPS.map(group => (
+          <div key={group.label} className="mb-5">
+            <p className="px-4 pb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600">{group.label}</p>
+            <div className="space-y-1">
+              {group.items.map(id => {
+                const item = NAV.find(entry => entry.id === id)!;
+                const badge = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
+                return (
+                  <button key={item.id} onClick={() => { setActiveTab(item.id); setSearch(""); setSidebarOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === item.id ? "bg-tsia-green/15 text-tsia-green border border-tsia-green/25" : "hover:bg-slate-900 hover:text-white border border-transparent text-slate-400"}`}
+                  >
+                    <item.icon className="w-4 h-4 shrink-0" />
+                    <span className="flex-1 text-left">{item.label}</span>
+                    {badge > 0 && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${activeTab === item.id ? "bg-tsia-green text-white" : "bg-red-500 text-white"}`}>{badge}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
       <div className="p-4 border-t border-slate-800 shrink-0">
         <div className="flex items-center gap-3 px-2 mb-3">
@@ -1661,6 +1690,54 @@ export default function AdminDashboard() {
 
             {/* ═══════════════════════════════ ALL USERS ═══════════════════════════════ */}
             {activeTab === "users" && (
+              <AdminUsersWorkspace
+                onNotify={(target) => { setNotifyTarget(target); setNotifyDialog(true); }}
+                onEdit={(target) => { setEditUserDialog({ open: true, user: target }); setEditUserEmail(target.email || ""); setEditUserFirst(target.firstName || ""); setEditUserLast(target.lastName || ""); setEditUserPassword(""); }}
+                onWallet={(target) => { setEditBalanceDialog({ open: true, user: target }); setEditBalanceAmount(target.wallet?.balance || target.walletBalance || "0"); setEditBalanceNote(""); }}
+                onReferrer={(target) => { setSetReferrerDialog({ open: true, user: target }); setReferrerCode(target.referredBy || ""); }}
+                onLien={(target) => { setLienDialog({ open: true, user: target, wallet: target.wallet ?? {} }); setLienAmount(""); setLienReason(""); }}
+                onDelete={(target) => setDeleteUserDialog({ open: true, user: target })}
+                onManualCredit={() => setManualCreditOpen(true)}
+              />
+            )}
+            {activeTab === "audit" && (
+              <motion.div key="audit" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-tsia-green">Governance</p>
+                    <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Administrative action history</h2>
+                    <p className="mt-1 text-sm text-slate-500">Attributable records for sensitive account and money operations.</p>
+                  </div>
+                  <Button variant="outline" onClick={() => refetchAuditLogs()}><RefreshCw className="mr-2 h-4 w-4" /> Refresh log</Button>
+                </div>
+                <Card className="overflow-hidden border-slate-200/80 shadow-sm dark:border-slate-800">
+                  <CardHeader className="border-b bg-slate-50/80 dark:border-slate-800 dark:bg-slate-900/70">
+                    <CardTitle className="text-base">Latest actions</CardTitle>
+                    <CardDescription>Append-only operational evidence. User passwords and secrets are never recorded.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {auditLoading ? <div className="p-10 text-center text-sm text-slate-500">Loading action history…</div> :
+                      auditLogs.length === 0 ? <div className="p-10 text-center text-sm text-slate-500">No audited actions have been recorded yet.</div> :
+                      <div className="divide-y dark:divide-slate-800">
+                        {auditLogs.map((entry: any) => (
+                          <div key={entry.id} className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_180px_130px] sm:items-center">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold capitalize text-slate-900 dark:text-white">{String(entry.action).replace(/[._]/g, " ")}</p>
+                                <StatusBadge status={entry.outcome} />
+                              </div>
+                              <p className="mt-1 truncate text-xs text-slate-500">{entry.reason || "No reason supplied"}{entry.reference ? ` · Ref: ${entry.reference}` : ""}</p>
+                            </div>
+                            <div className="text-xs"><p className="text-slate-400">Performed by</p><p className="mt-0.5 font-medium">{entry.actorName || `Admin #${entry.actorUserId}`}</p></div>
+                            <div className="text-xs sm:text-right"><p className="text-slate-400">Recorded</p><p className="mt-0.5 font-medium">{fmtDate(entry.createdAt)}</p></div>
+                          </div>
+                        ))}
+                      </div>}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+            {false && activeTab === "users" && (
               <motion.div key="users" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
                 {/* Manual Payment Credit Tool */}
                 <Card className="border border-amber-200 bg-amber-50/60 dark:bg-amber-900/10">
@@ -5480,7 +5557,7 @@ export default function AdminDashboard() {
           )}
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => { setEditBalanceDialog({ open: false, user: null }); setEditBalanceAmount(""); setEditBalanceNote(""); }}>Cancel</Button>
-            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!editBalanceAmount || editBalanceMutation.isPending} onClick={() => editBalanceMutation.mutate({ id: editBalanceDialog.user?.id, balance: editBalanceAmount, note: editBalanceNote })} data-testid="button-confirm-edit-balance">
+            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!editBalanceAmount || editBalanceNote.trim().length < 5 || editBalanceMutation.isPending} onClick={() => editBalanceMutation.mutate({ id: editBalanceDialog.user?.id, balance: editBalanceAmount, note: editBalanceNote })} data-testid="button-confirm-edit-balance">
               {editBalanceMutation.isPending ? "Updating..." : <><Edit className="w-4 h-4 mr-2" /> Set Balance</>}
             </Button>
           </DialogFooter>
@@ -5492,7 +5569,7 @@ export default function AdminDashboard() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Manual Payment Credit</DialogTitle>
-            <DialogDescription>Credit a user's wallet for a Korapay/Squad payment that wasn't automatically applied. The full 100% is credited — no deductions at deposit time.</DialogDescription>
+            <DialogDescription>Recover a Korapay/Squad payment that was not automatically applied. The normal 5% affiliate-pool allocation is recorded.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
@@ -5509,16 +5586,16 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="font-semibold text-sm">Payment Reference (optional)</Label>
+              <Label className="font-semibold text-sm">Payment Reference <span className="text-red-400">*</span></Label>
               <Input placeholder="e.g. TSIA-KORA-26-1234567890 or from Korapay dashboard" className="h-10 bg-muted/30 font-mono text-sm" value={mcReference} onChange={e => setMcReference(e.target.value)} data-testid="input-mc-reference" />
             </div>
             <div className="space-y-1.5">
-              <Label className="font-semibold text-sm">Note (optional)</Label>
+              <Label className="font-semibold text-sm">Reason <span className="text-red-400">*</span></Label>
               <Input placeholder="e.g. Korapay payment confirmed by admin" className="h-10 bg-muted/30" value={mcNote} onChange={e => setMcNote(e.target.value)} data-testid="input-mc-note" />
             </div>
             {mcAmount && parseFloat(mcAmount) > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 space-y-0.5">
-                <p>Amount to credit: <strong>${parseFloat(mcAmount).toFixed(2)}</strong> (100% — no deductions at deposit)</p>
+                <p>Wallet credit: <strong>${(parseFloat(mcAmount) * 0.95).toFixed(2)}</strong> · Affiliate pool: <strong>${(parseFloat(mcAmount) * 0.05).toFixed(2)}</strong></p>
               </div>
             )}
           </div>
@@ -5526,7 +5603,7 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => { setManualCreditOpen(false); setMcUserId(""); setMcAmount(""); setMcReference(""); setMcNote(""); }}>Cancel</Button>
             <Button
               className="bg-amber-600 hover:bg-amber-700 text-white"
-              disabled={!mcUserId || !mcAmount || manualCreditMutation.isPending}
+              disabled={!mcUserId || !mcAmount || mcReference.trim().length < 4 || mcNote.trim().length < 5 || manualCreditMutation.isPending}
               onClick={() => manualCreditMutation.mutate({ userId: mcUserId, amountUsd: mcAmount, reference: mcReference, note: mcNote })}
               data-testid="btn-confirm-manual-credit"
             >
@@ -5622,7 +5699,7 @@ export default function AdminDashboard() {
       </Dialog>
 
       {/* Delete user confirm dialog */}
-      <Dialog open={deleteUserDialog.open} onOpenChange={open => { if (!open) setDeleteUserDialog({ open: false, user: null }); }}>
+      <Dialog open={deleteUserDialog.open} onOpenChange={open => { if (!open) { setDeleteUserDialog({ open: false, user: null }); setDeleteUserReason(""); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete User Account</DialogTitle>
@@ -5635,9 +5712,13 @@ export default function AdminDashboard() {
               <p className="text-red-500 text-xs">Wallet balance: {fmtUSD(deleteUserDialog.user.wallet?.balance)}</p>
             </div>
           )}
+          <div className="space-y-2">
+            <Label>Deletion reason <span className="text-red-500">*</span></Label>
+            <Input value={deleteUserReason} onChange={e => setDeleteUserReason(e.target.value)} placeholder="Explain why permanent deletion is required" />
+          </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setDeleteUserDialog({ open: false, user: null })}>Cancel</Button>
-            <Button variant="destructive" disabled={deleteUserMutation.isPending} onClick={() => deleteUserMutation.mutate(deleteUserDialog.user?.id)} data-testid="button-confirm-delete-user">
+            <Button variant="destructive" disabled={deleteUserReason.trim().length < 8 || deleteUserMutation.isPending} onClick={() => deleteUserMutation.mutate({ id: deleteUserDialog.user?.id, reason: deleteUserReason.trim() })} data-testid="button-confirm-delete-user">
               {deleteUserMutation.isPending ? "Deleting..." : <><Trash2 className="w-4 h-4 mr-2" /> Permanently Delete</>}
             </Button>
           </DialogFooter>

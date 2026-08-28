@@ -21,6 +21,7 @@ import {
   PiggyBank, Target, Sparkles, Trophy, Trash2, UserCircle, Home as HomeIcon, Star, Plus, CalendarDays,
 } from "lucide-react";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
+import { calculateBankTransferQuote, type BankTransferQuote } from "@shared/bankTransferPricing";
 
 // ─── Wallet Account Switcher (Student ↔ Affiliate) ────────────────────────────
 function WalletAccountSwitcher() {
@@ -127,9 +128,8 @@ declare global {
   }
 }
 
-// ─── Local-currency payout map (fixed platform rates) ──────────────────────────
+// ─── Local-currency display map ────────────────────────────────────────────────
 const PAYOUT_CURRENCY: Record<string, { symbol: string; code: string; rate: number }> = {
-  ng: { symbol: "₦", code: "NGN", rate: 1_280 },
   gh: { symbol: "₵", code: "GHS", rate: 15   },
   ke: { symbol: "Ksh", code: "KES", rate: 130  },
   za: { symbol: "R",  code: "ZAR", rate: 18   },
@@ -138,8 +138,11 @@ const PAYOUT_CURRENCY: Record<string, { symbol: string; code: string; rate: numb
   rw: { symbol: "Fr", code: "RWF", rate: 1_350 },
 };
 
-function LocalEquiv({ usd, country }: { usd: number; country?: string }) {
-  const info = PAYOUT_CURRENCY[(country ?? "").toLowerCase()];
+function LocalEquiv({ usd, country, ngnRate }: { usd: number; country?: string; ngnRate?: number }) {
+  const countryCode = (country ?? "").toLowerCase();
+  const info = countryCode === "ng" && ngnRate
+    ? { symbol: "₦", code: "NGN", rate: ngnRate }
+    : PAYOUT_CURRENCY[countryCode];
   if (!info || usd <= 0) return null;
   const local = Math.round(usd * info.rate);
   return (
@@ -171,6 +174,7 @@ const TSIA_WALLETS = {
 };
 type ReceiptData = { txRef: string; txDate: string; amount: string; senderName: string; recipientName: string; walletLabel: string; note: string | null; newBalance: string };
 type WalletData = { id: number; userId: number; balance: string; lienAmount?: string; lienReason?: string | null };
+type BankTransferPricing = Pick<BankTransferQuote, "exchangeRate" | "feeRate"> & { quotedAt: number };
 type TransferRecord = { id: number; senderId: number; recipientId: number; amount: string; note: string | null; status: string; createdAt: string; recipientName?: string; senderName?: string };
 type BillRecord = { id: number; service: string; amount: string; reference: string; status: string; createdAt: string };
 type Bank = { code: string; name: string; gateway?: "squad" | "korapay" };
@@ -566,6 +570,19 @@ export default function FinancialHub() {
   const { data: vcData, refetch: refetchCard } = useQuery<{ card: any | null }>({ queryKey: ["/api/fintech/virtual-card"] });
   const { data: cashbackData, refetch: refetchCashback } = useQuery<{ balance: string }>({ queryKey: ["/api/wallet/cashback"], staleTime: 30_000 });
   const { data: exchangeRatesData } = useQuery<{ buying: number; selling: number; currencies: Record<string, { buying: number; selling: number }>; updatedAt: number }>({ queryKey: ["/api/exchange-rates"], staleTime: 5 * 60 * 1000 });
+  const {
+    data: bankTransferPricing,
+    isLoading: bankTransferPricingLoading,
+    isError: bankTransferPricingError,
+    refetch: refetchBankTransferPricing,
+  } = useQuery<BankTransferPricing>({
+    queryKey: ["/api/fintech/bank-transfer-pricing"],
+    enabled: view === "send-amount",
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: view === "send-amount" ? 15_000 : false,
+  });
   const { data: loanLimit, isLoading: loanLimitLoading } = useQuery<{ eligible: boolean; reason?: string; limitUsd: number; tier?: string; activeLoan?: any; interestRate?: number; terms?: number[] }>({ queryKey: ["/api/loans/limit"], staleTime: 60_000, enabled: bottomNav === "finance" });
   const { data: myLoans = [], refetch: refetchLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"], staleTime: 60_000, enabled: bottomNav === "finance" });
   const { data: beneficiaries = [], refetch: refetchBenef } = useQuery<any[]>({ queryKey: ["/api/beneficiaries"], staleTime: 60_000 });
@@ -1046,6 +1063,8 @@ export default function FinancialHub() {
         amount: parseFloat(amount),
         narration: note || undefined,
         gateway: bankGateway,
+        quotedExchangeRate: bankTransferPricing?.exchangeRate,
+        quotedFeeRate: bankTransferPricing?.feeRate,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
@@ -1056,6 +1075,8 @@ export default function FinancialHub() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       const amt = parseFloat(amount);
       const vat = parseFloat(data.vatAmount ?? "0");
+      const feeRate = Number(data.feeRate ?? bankTransferPricing?.feeRate ?? 0);
+      const exchangeRate = Number(data.exchangeRate ?? bankTransferPricing?.exchangeRate ?? 0);
       const savedName = resolvedName || acctNumber;
       const savedAcct = acctNumber;
       const savedBank = selectedBank?.name || "—";
@@ -1086,7 +1107,8 @@ export default function FinancialHub() {
             { label: "Account No",           value: savedAcct },
             { label: "Bank",                 value: savedBank },
             { label: "Amount",               value: `$${amt.toFixed(2)}` },
-            { label: "VAT (7.5%)",           value: `-$${vat.toFixed(2)}`, red: true },
+            { label: `Fee (${(feeRate * 100).toFixed(1)}%)`, value: `-$${vat.toFixed(2)}`, red: true },
+            { label: "Exchange Rate",        value: `₦${exchangeRate.toLocaleString()} per $1` },
             { label: "Beneficiary Receives", value: `₦${(data.netAmountNgn ?? 0).toLocaleString()} NGN`, green: true, bold: true },
             { label: "Narration",            value: savedNote || "None" },
             { label: "Status",               value: "Successful ✓", bold: true, green: true },
@@ -1101,17 +1123,27 @@ export default function FinancialHub() {
         newTxLabel: "New Transfer",
       });
     },
-    onError: (e: any) => showTxDone({
-      isSuccess: false,
-      title: "Bank Transfer",
-      amount: `$${parseFloat(amount).toFixed(2)}`,
-      errorMessage: /(?:503|bankTransfersDisabled|Network error)/i.test(e?.message ?? "")
-        ? "Network error. Please try again later."
-        : e.message,
-      onDone: () => setView("send"),
-      onNewTx: () => setView("send"),
-      newTxLabel: "Try Again",
-    }),
+    onError: (e: any) => {
+      if (/payout rate changed/i.test(e?.message ?? "")) {
+        refetchBankTransferPricing();
+        toast({
+          title: "Payout rate updated",
+          description: "Review the refreshed fee and recipient amount, then send again.",
+        });
+        return;
+      }
+      showTxDone({
+        isSuccess: false,
+        title: "Bank Transfer",
+        amount: `$${parseFloat(amount).toFixed(2)}`,
+        errorMessage: /(?:503|bankTransfersDisabled|Network error)/i.test(e?.message ?? "")
+          ? "Network error. Please try again later."
+          : e.message,
+        onDone: () => setView("send"),
+        onNewTx: () => setView("send"),
+        newTxLabel: "Try Again",
+      });
+    },
   });
 
   const requestTransferOtpMutation = useMutation({
@@ -3877,7 +3909,16 @@ export default function FinancialHub() {
   // ═════════════════════════════════════════════════════════════════════════
   // SEND TO BANK — Amount screen
   // ═════════════════════════════════════════════════════════════════════════
-  if (view === "send-amount") return (
+  if (view === "send-amount") {
+    const enteredAmount = parseFloat(amount) || 0;
+    const payoutQuote = calculateBankTransferQuote(
+      enteredAmount,
+      bankTransferPricing?.exchangeRate ?? 0,
+      bankTransferPricing?.feeRate,
+    );
+    const pricingReady = Boolean(bankTransferPricing && payoutQuote.exchangeRate > 0);
+
+    return (
     <AnimatePresence mode="wait">
       <motion.div key="send-amount" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
         <BackHeader onBack={() => setView("send")} title="Enter Amount" sub={`To ${resolvedName ?? acctNumber} • ${selectedBank?.name}`} />
@@ -3896,8 +3937,47 @@ export default function FinancialHub() {
         <div className="text-center py-2">
           <div className="text-5xl font-black">${fmt(amount)}</div>
           <p className="text-xs text-muted-foreground mt-1">Available: ${balance.toFixed(2)}</p>
-          <LocalEquiv usd={parseFloat(amount) || 0} country={user?.country} />
           {parseFloat(amount) > balance && <p className="text-xs text-red-500 font-semibold mt-1">Exceeds your balance</p>}
+        </div>
+
+        <div className="rounded-2xl border border-tsia-green/25 bg-tsia-green/5 p-4 space-y-2.5" data-testid="bank-transfer-price-breakdown">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Payout breakdown</p>
+            {bankTransferPricingLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-tsia-green" />}
+          </div>
+          {bankTransferPricingError ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-red-600">Pricing is unavailable. Refresh before sending.</p>
+              <button onClick={() => refetchBankTransferPricing()} className="text-xs font-bold text-tsia-green">Retry</button>
+            </div>
+          ) : (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Amount charged</span>
+                <span className="font-semibold" data-testid="text-bank-gross">${payoutQuote.amountUsd.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Fee ({(payoutQuote.feeRate * 100).toFixed(1)}%)</span>
+                <span className="font-semibold text-red-600" data-testid="text-bank-fee">-${payoutQuote.feeUsd.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Net amount converted</span>
+                <span className="font-semibold" data-testid="text-bank-net-usd">${payoutQuote.netAmountUsd.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Exchange rate</span>
+                <span className="font-semibold" data-testid="text-bank-rate">
+                  {pricingReady ? `₦${payoutQuote.exchangeRate.toLocaleString()} per $1` : "Loading…"}
+                </span>
+              </div>
+              <div className="border-t border-tsia-green/20 pt-2.5 flex justify-between items-center">
+                <span className="text-sm font-bold">Recipient receives</span>
+                <span className="text-lg font-black text-tsia-green" data-testid="text-bank-recipient">
+                  ₦{payoutQuote.recipientAmountNgn.toLocaleString()} NGN
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         <input placeholder="Narration (optional)" value={note} onChange={e => setNote(e.target.value)}
@@ -3927,7 +4007,7 @@ export default function FinancialHub() {
         <div className="flex gap-3">
           <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-            disabled={sendBankMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+            disabled={sendBankMutation.isPending || !pricingReady || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
             onClick={() => sendBankMutation.mutate()} data-testid="btn-send-bank">
             {sendBankMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Send ${fmt(amount)} via {bankGateway === "korapay" ? "Korapay" : "Squad"}
@@ -3936,6 +4016,7 @@ export default function FinancialHub() {
       </motion.div>
     </AnimatePresence>
   );
+  }
 
   // ═════════════════════════════════════════════════════════════════════════
   // SEND TO TSIA — Amount screen
@@ -3959,7 +4040,7 @@ export default function FinancialHub() {
         <div className="text-center py-2">
           <div className="text-5xl font-black">${fmt(amount)}</div>
           <p className="text-xs text-muted-foreground mt-1">Available: ${balance.toFixed(2)}</p>
-          <LocalEquiv usd={parseFloat(amount) || 0} country={user?.country} />
+          <LocalEquiv usd={parseFloat(amount) || 0} country={user?.country} ngnRate={exchangeRatesData?.selling} />
           {parseFloat(amount) > balance && <p className="text-xs text-red-500 font-semibold mt-1">Exceeds your balance</p>}
         </div>
 

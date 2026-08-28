@@ -37,6 +37,7 @@ import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
 import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers, proctoringSessions, proctoringMediaChunks, proctoringPlaybackAudits, scholarships } from "@shared/schema";
+import { BANK_TRANSFER_FEE_RATE, calculateBankTransferQuote } from "@shared/bankTransferPricing";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
 import { eq, desc, ne, and, sql, or, ilike, asc, count, inArray, lt } from "drizzle-orm";
@@ -9714,6 +9715,21 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  app.get("/api/fintech/bank-transfer-pricing", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const rates = await getUsdNgnRates();
+      res.json({
+        exchangeRate: rates.selling,
+        feeRate: BANK_TRANSFER_FEE_RATE,
+        quotedAt: Date.now(),
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message ?? "Could not load bank transfer pricing" });
+    }
+  });
+
   // ── POST /api/fintech/bank-transfer — Direct Korapay disburse (no admin queue) ─
   app.post("/api/fintech/bank-transfer", async (req, res) => {
     try {
@@ -9727,7 +9743,7 @@ export async function registerRoutes(
         return res.status(503).json({ message: "Network error. Please try again later." });
       }
 
-      const { bankCode, bankName, accountNumber, accountName, amount, narration } = req.body;
+      const { bankCode, bankName, accountNumber, accountName, amount, narration, quotedExchangeRate, quotedFeeRate } = req.body;
       if (!bankCode || !accountNumber || !accountName || !amount) {
         return res.status(400).json({ message: "bankCode, accountNumber, accountName, and amount are required" });
       }
@@ -9753,9 +9769,25 @@ export async function registerRoutes(
       if (!isLoanLienActive && lien > 0 && availBal < transferAmount) return res.status(400).json({ message: `Your wallet has an active lien of $${lien.toFixed(2)}. Available balance: $${availBal.toFixed(2)}.`, code: "LIEN_BLOCKED" });
       if (balance < transferAmount) return res.status(400).json({ message: `Insufficient balance. You have $${balance.toFixed(2)}` });
 
-      const vatAmount   = parseFloat((transferAmount * 0.075).toFixed(2));
-      const netAmountUsd = parseFloat((transferAmount - vatAmount).toFixed(2));
-      const netAmountNgn = Math.round(netAmountUsd * (await getUsdNgnRates()).selling);
+      const rates = await getUsdNgnRates();
+      const quote = calculateBankTransferQuote(transferAmount, rates.selling);
+      if (
+        (quotedExchangeRate !== undefined && Number(quotedExchangeRate) !== quote.exchangeRate)
+        || (quotedFeeRate !== undefined && Number(quotedFeeRate) !== quote.feeRate)
+      ) {
+        return res.status(409).json({
+          message: "The payout rate changed. Review the updated amount before sending.",
+          code: "PAYOUT_PRICING_CHANGED",
+          pricing: {
+            exchangeRate: quote.exchangeRate,
+            feeRate: quote.feeRate,
+            quotedAt: Date.now(),
+          },
+        });
+      }
+      const vatAmount = quote.feeUsd;
+      const netAmountUsd = quote.netAmountUsd;
+      const netAmountNgn = quote.recipientAmountNgn;
       const txRef = `TSIA-FT-${userId}-${Date.now()}`;
 
       // ── Queue as pending — admin manually makes the bank transfer then approves ─
@@ -9763,10 +9795,23 @@ export async function registerRoutes(
       // rejects (reject refunds the full amount back to the user's wallet).
       await storage.updateWalletBalance(userId, (balance - transferAmount).toFixed(2));
 
-      const transferDetails = JSON.stringify({ bankCode, bankName, accountNumber, accountName, narration, netAmountNgn, vatAmount, txRef });
+      const transferDetails = JSON.stringify({
+        bankCode,
+        bankName,
+        accountNumber,
+        accountName,
+        narration,
+        amountUsd: transferAmount,
+        feeRate: quote.feeRate,
+        vatAmount,
+        netAmountUsd,
+        exchangeRate: quote.exchangeRate,
+        netAmountNgn,
+        txRef,
+      });
       const bill = await storage.createBillPayment({ userId, service: "bank_transfer", amount: transferAmount, reference: transferDetails, status: "pending" });
 
-      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer", description: `Bank transfer submitted — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} | Ref: ${txRef}` });
+      await storage.createTransaction({ userId, type: "withdrawal", amount: (-transferAmount).toFixed(2), fee: vatAmount.toFixed(2), paymentMethod: "bank_transfer", description: `Bank transfer submitted — ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) at ${bankName} | Rate: ₦${quote.exchangeRate.toLocaleString()}/$ | Ref: ${txRef}` });
 
       const msg = `Your bank transfer of ₦${netAmountNgn.toLocaleString()} to ${accountName} (${accountNumber}) has been completed successfully. Ref: ${txRef}`;
       const notif = await storage.createNotification({ userId, type: "wallet_credit", title: "Bank Transfer Submitted ✓", message: msg, data: { billId: bill.id, ref: txRef }, isRead: false });
@@ -9803,7 +9848,19 @@ export async function registerRoutes(
       }).catch(() => {});
 
       const updated = await storage.getOrCreateWallet(userId);
-      res.json({ success: true, pending: true, reference: txRef, netAmountNgn, vatAmount: vatAmount.toFixed(2), wallet: updated, message: msg, billId: bill.id });
+      res.json({
+        success: true,
+        pending: true,
+        reference: txRef,
+        netAmountNgn,
+        vatAmount: vatAmount.toFixed(2),
+        netAmountUsd: netAmountUsd.toFixed(2),
+        exchangeRate: quote.exchangeRate,
+        feeRate: quote.feeRate,
+        wallet: updated,
+        message: msg,
+        billId: bill.id,
+      });
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 

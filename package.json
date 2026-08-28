@@ -12,6 +12,7 @@
     "test:identity": "tsx --test server/identityVerificationSecurity.test.ts",
     "test:kiddies": "tsx --test server/backToSchoolSpellingBank.test.ts",
     "test:admin-control": "tsx --test server/adminControlIntegrity.test.ts",
+    "test:bank-transfer-pricing": "tsx --test server/bankTransferPricing.test.ts",
     "test:platform-ledger": "tsx --test server/platformLedgerPricing.test.ts",
     "db:push": "drizzle-kit push"
   },

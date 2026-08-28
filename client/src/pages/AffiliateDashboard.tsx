@@ -46,6 +46,7 @@ import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
 import TradeMarketSection from "@/components/TradeMarketSection";
 import BackToSchoolSection from "@/components/BackToSchoolSection";
+import SponsorCodeHistory from "@/components/SponsorCodeHistory";
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.07 } } };
 const itemVariants = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } };
@@ -530,30 +531,7 @@ function LocationSection({ user }: { user: any }) {
 }
 // ── SPONSORSHIP COHORT SECTION ───────────────────────────────────────────────
 function SponsorshipCohortSection() {
-  const { toast } = useToast();
   const [tab, setTab] = useState<"scholarship" | "sponsorship">("scholarship");
-  const [buying, setBuying] = useState(false);
-  const [codes, setCodes] = useState<{ code: string; boughtAt: string }[]>([]);
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const buyCode = async () => {
-    setBuying(true);
-    try {
-      const res = await fetch("/api/affiliate/scholarship-sponsor-code", { method: "POST", headers: { "Content-Type": "application/json" } });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to purchase code");
-      setCodes(prev => [{ code: data.code, boughtAt: new Date().toLocaleString() }, ...prev]);
-      toast({ title: "Code Purchased!", description: `Your scholarship code: ${data.code}` });
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
-    } finally { setBuying(false); }
-  };
-
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopied(code);
-    setTimeout(() => setCopied(null), 2000);
-  };
 
   return (
     <div className="space-y-6">
@@ -575,49 +553,7 @@ function SponsorshipCohortSection() {
       </div>
 
       {tab === "scholarship" && (
-        <div className="space-y-4">
-          <div className="rounded-2xl border bg-card p-5 space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-tsia-green/10 flex items-center justify-center shrink-0">
-                <Trophy className="w-5 h-5 text-tsia-green" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-base">Scholarship Sponsor Code</h3>
-                <p className="text-sm text-muted-foreground mt-0.5">Pay <strong>$5.50</strong> from your wallet and receive a unique code. Give the code to any eligible student — they present it during onboarding to activate their wallet and access the Scholarship CBT.</p>
-              </div>
-            </div>
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
-              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
-              <span>Each code is single-use. Once a student applies it, the code is consumed. Purchase a new code for each student you wish to sponsor.</span>
-            </div>
-            <div className="flex items-center justify-between pt-1">
-              <div>
-                <p className="text-2xl font-bold text-tsia-green">$5.50</p>
-                <p className="text-xs text-muted-foreground">deducted from your wallet</p>
-              </div>
-              <Button onClick={buyCode} disabled={buying} className="bg-tsia-green hover:bg-tsia-green/90 text-white px-6" data-testid="button-buy-scholarship-code">
-                {buying ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Purchasing…</> : <><Gift className="w-4 h-4 mr-2" /> Buy Code</>}
-              </Button>
-            </div>
-          </div>
-
-          {codes.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Purchased This Session</h4>
-              {codes.map((c, i) => (
-                <div key={i} className="rounded-xl border bg-card px-4 py-3 flex items-center justify-between gap-3" data-testid={`card-scholarship-code-${i}`}>
-                  <div>
-                    <p className="font-mono font-bold text-lg tracking-widest text-tsia-green">{c.code}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{c.boughtAt}</p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => copyCode(c.code)} data-testid={`button-copy-code-${i}`}>
-                    {copied === c.code ? <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-tsia-green" /> Copied</> : <><Copy className="w-3.5 h-3.5 mr-1.5" /> Copy</>}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <SponsorCodeHistory />
       )}
 
       {tab === "sponsorship" && (

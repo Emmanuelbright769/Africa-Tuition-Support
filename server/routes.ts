@@ -43,6 +43,7 @@ import { doesVerifiedNameMatch, hashVerifiedName } from "./identityVerificationS
 import { selectSpellingQuestions, spellingQuestionFor } from "./backToSchoolSpellingBank";
 import { areBankTransfersEnabled, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
 import { isUserFundsOutRequest } from "./accountLienPolicy";
+import { isValidSponsorCodeIdempotencyKey, SPONSOR_CODE_PRICE_USD } from "./sponsorCodePurchase";
 
 const PgSession = pgSession(session);
 
@@ -4971,35 +4972,37 @@ export async function registerRoutes(
   });
 
   // ── AFFILIATE SCHOLARSHIP CODE PURCHASE ─────────────────────────────────
+  app.get("/api/affiliate/scholarship-sponsor-codes", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "affiliate") return res.status(403).json({ message: "Only affiliates can view scholarship codes." });
+      res.json(await storage.getAffiliateSponsorCodePurchases(userId));
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/affiliate/scholarship-sponsor-code", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "affiliate") return res.status(403).json({ message: "Only affiliates can purchase scholarship codes." });
-      const PRICE = 5.50;
-      const wallet = await storage.getOrCreateWallet(userId);
-      const balance = parseFloat(wallet.balance);
-      if (balance < PRICE)
-        return res.status(400).json({ message: `Insufficient balance. You need $${PRICE.toFixed(2)}.` });
-      const newBal = (balance - PRICE).toFixed(2);
-      await storage.updateWalletBalance(userId, newBal);
-      await storage.createTransaction({
-        userId,
-        type: "debit",
-        amount: PRICE.toFixed(2),
-        fee: "0.00",
-        paymentMethod: "wallet",
-        description: "Scholarship sponsor code purchase — $5.50 deducted",
-      });
-      const { cohort, masterCode } = await storage.createPublicSponsorCohort({
-        sponsorName: `${user.firstName} ${user.lastName}`,
-        sponsorEmail: user.email,
-        totalSlots: 1,
-        orgName: "Affiliate Scholarship",
-      });
-      res.json({ code: masterCode, cohortId: cohort.id, walletBalance: newBal });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+      const idempotencyKey = req.get("Idempotency-Key")?.trim() ?? "";
+      if (!isValidSponsorCodeIdempotencyKey(idempotencyKey)) {
+        return res.status(400).json({ message: "A valid Idempotency-Key is required to safely purchase a code." });
+      }
+      const PRICE = SPONSOR_CODE_PRICE_USD;
+      const purchase = await withAccountFundsLock(userId, () =>
+        storage.purchaseAffiliateSponsorCode({ affiliate: user, amountUsd: PRICE, idempotencyKey })
+      );
+      res.json(purchase);
+    } catch (e: any) {
+      const status = String(e.message).startsWith("Insufficient balance") ? 400 : 500;
+      res.status(status).json({ message: e.message });
+    }
   });
 
   app.get("/api/admin/all-scholarships", async (req, res) => {
@@ -7600,6 +7603,55 @@ export async function registerRoutes(
       res.json(cohorts);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/admin/sponsor-code-purchases", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const q = typeof req.query.q === "string" ? req.query.q : "";
+      const status = typeof req.query.status === "string" ? req.query.status : "all";
+      if (!["all", "available", "disabled", "redeemed"].includes(status)) {
+        return res.status(400).json({ message: "Invalid sponsor-code status filter." });
+      }
+      res.json(await storage.getSponsorCodeAdminReport({ q, status }));
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.patch("/api/admin/sponsor-code-purchases/:purchaseId/status", async (req, res) => {
+    try {
+      const adminId = (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Not authenticated" });
+      const admin = await storage.getUser(adminId);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const purchaseId = Number(req.params.purchaseId);
+      const status = String(req.body?.status ?? "");
+      const reason = String(req.body?.reason ?? "").trim();
+      if (!Number.isInteger(purchaseId) || purchaseId <= 0) {
+        return res.status(400).json({ message: "Invalid sponsor-code purchase." });
+      }
+      if (!["available", "disabled"].includes(status)) {
+        return res.status(400).json({ message: "Status must be available or disabled." });
+      }
+      if (reason.length < 5) {
+        return res.status(400).json({ message: "An audit reason of at least 5 characters is required." });
+      }
+      const updated = await storage.setSponsorCodePurchaseStatus({
+        purchaseId,
+        status: status as "available" | "disabled",
+        adminUserId: adminId,
+        reason,
+      });
+      res.json(updated);
+    } catch (e: any) {
+      const message = String(e.message ?? "Unable to update sponsor code.");
+      const status = message.includes("not found") ? 404 : message.includes("cannot be changed") ? 409 : 500;
+      res.status(status).json({ message });
     }
   });
 

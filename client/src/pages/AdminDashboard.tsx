@@ -26,6 +26,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import BackToSchoolAdminSection from "@/components/BackToSchoolAdminSection";
 import AdminUsersWorkspace from "@/components/AdminUsersWorkspace";
+import AdminSponsorCodes from "@/components/AdminSponsorCodes";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmtUSD = (v: any) => `$${parseFloat(v || "0").toFixed(2)}`;
@@ -96,6 +97,7 @@ const NAV = [
   { id: "loans",         icon: Landmark,       label: "Loans",         badgeKey: "pendingLoans" },
   { id: "users",         icon: Users,          label: "All Users" },
   { id: "affiliates",    icon: Share2,         label: "Affiliates" },
+  { id: "sponsor_codes", icon: ShieldCheck,    label: "Sponsor Codes" },
   { id: "referrals",     icon: GitBranch,      label: "Referrals" },
   { id: "kiddies",       icon: GraduationCap,  label: "School Kiddies" },
   { id: "transactions",  icon: ArrowLeftRight, label: "Transactions" },
@@ -117,7 +119,7 @@ const NAV = [
 
 const NAV_GROUPS = [
   { label: "Operations", items: ["overview", "applications", "payouts", "loans"] },
-  { label: "Users & growth", items: ["users", "affiliates", "referrals", "kiddies"] },
+  { label: "Users & growth", items: ["users", "affiliates", "sponsor_codes", "referrals", "kiddies"] },
   { label: "Money", items: ["transactions", "deposits", "crypto_withdrawals", "bank_transfers", "trade_withdrawals", "reserve"] },
   { label: "Products & community", items: ["ecommerce", "trade", "trustfunders", "messages", "notifications", "scholarships", "enrollment"] },
   { label: "Configuration", items: ["audit", "settings"] },
@@ -1232,6 +1234,12 @@ export default function AdminDashboard() {
                     </CardContent>
                   </Card>
                 </div>
+              </motion.div>
+            )}
+
+            {activeTab === "sponsor_codes" && (
+              <motion.div key="sponsor_codes" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <AdminSponsorCodes />
               </motion.div>
             )}
 

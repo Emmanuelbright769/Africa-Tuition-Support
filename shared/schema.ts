@@ -1182,6 +1182,26 @@ export const cohortCodes = pgTable("cohort_codes", {
   createdAt:    timestamp("created_at").defaultNow().notNull(),
 });
 
+export const sponsorCodePurchases = pgTable("sponsor_code_purchases", {
+  id:               integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  affiliateUserId:  integer("affiliate_user_id").references(() => users.id, { onDelete: "set null" }),
+  cohortId:         integer("cohort_id").notNull().references(() => sponsorCohorts.id).unique(),
+  transactionId:    integer("transaction_id").references(() => transactions.id, { onDelete: "set null" }).unique(),
+  code:             text("code").notNull().unique(),
+  amountUsd:        decimal("amount_usd", { precision: 10, scale: 2 }).notNull(),
+  currency:         text("currency").notNull().default("USD"),
+  reference:        text("reference").notNull().unique(),
+  idempotencyKey:   text("idempotency_key").notNull(),
+  status:           text("status").notNull().default("available"),
+  redeemedByUserId: integer("redeemed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  redeemedAt:       timestamp("redeemed_at"),
+  createdAt:        timestamp("created_at").defaultNow().notNull(),
+  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  affiliateRequestUnique: uniqueIndex("sponsor_code_purchases_affiliate_request_uq")
+    .on(table.affiliateUserId, table.idempotencyKey),
+}));
+
 export const insertSponsorCohortSchema = createInsertSchema(sponsorCohorts).omit({ id: true, createdAt: true, usedSlots: true });
 export type InsertSponsorCohort = z.infer<typeof insertSponsorCohortSchema>;
 export type SponsorCohort = typeof sponsorCohorts.$inferSelect;
@@ -1189,6 +1209,7 @@ export type SponsorCohort = typeof sponsorCohorts.$inferSelect;
 export const insertCohortCodeSchema = createInsertSchema(cohortCodes).omit({ id: true, createdAt: true });
 export type InsertCohortCode = z.infer<typeof insertCohortCodeSchema>;
 export type CohortCode = typeof cohortCodes.$inferSelect;
+export type SponsorCodePurchase = typeof sponsorCodePurchases.$inferSelect;
 
 // ─── SPONSORSHIP BATCHES ─────────────────────────────────────────────────────
 // Tracks enrollment windows. Max per batch is server-side only — never exposed.

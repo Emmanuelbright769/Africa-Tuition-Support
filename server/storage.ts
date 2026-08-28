@@ -1,6 +1,8 @@
 import { eq, desc, and, gt, gte, lte, lt, count, sql, ne, like, ilike, or, not, isNull, inArray } from "drizzle-orm";
+import { randomBytes } from "crypto";
 import { db } from "./db";
 import { calculateBackToSchoolDeposit, calculateBackToSchoolWithdrawal } from "./backToSchoolRules";
+import { executeSponsorCodePurchase } from "./sponsorCodePurchase";
 import {
   users, verifications, identityVerifications, sponsorshipPlans, wallets, transactions, disbursements,
   adminAuditLogs,
@@ -13,7 +15,7 @@ import {
   notifications, callSessions, forumTopics, forumPosts, forumTopicLikes, forumPostLikes,
   qceSavings, qceTransactions,
   priceAlerts, categorySubscriptions,
-  sponsorCohorts, cohortCodes, sponsorshipBatches,
+  sponsorCohorts, cohortCodes, sponsorCodePurchases, sponsorshipBatches,
   withdrawalRequests, withdrawalOtps,
   personalInvitations, type PersonalInvitation,
   virtualCards, type VirtualCard, type InsertVirtualCard,
@@ -58,9 +60,26 @@ import {
   type PriceAlert, type CategorySubscription,
   type SponsorCohort, type InsertSponsorCohort,
   type CohortCode,
+  type SponsorCodePurchase,
   type SponsorshipBatch,
   TRADE_MARKET, ECOMMERCE, QCE, calculateQceEligibility,
 } from "@shared/schema";
+
+export type SponsorCodeRecord = {
+  purchaseId: number | null;
+  code: string;
+  cohortId: number;
+  amountUsd: string | null;
+  currency: string;
+  transactionId: number | null;
+  reference: string | null;
+  status: "available" | "disabled" | "redeemed";
+  purchasedAt: Date;
+  redeemedAt: Date | null;
+  purchaser: { id: number | null; firstName: string; lastName: string; email: string } | null;
+  redeemedBy: { id: number | null; firstName: string; lastName: string; email: string } | null;
+  legacy: boolean;
+};
 
 export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
@@ -279,6 +298,14 @@ export interface IStorage {
 
   // Sponsor Cohorts
   createSponsorCohort(data: InsertSponsorCohort): Promise<{ cohort: SponsorCohort; codes: CohortCode[] }>;
+  createPublicSponsorCohort(data: { sponsorName: string; sponsorEmail: string; sponsorPhone?: string; totalSlots: number; orgName?: string }): Promise<{ cohort: SponsorCohort; masterCode: string }>;
+  purchaseAffiliateSponsorCode(data: { affiliate: User; amountUsd: number; idempotencyKey: string }): Promise<SponsorCodeRecord & { walletBalance: string }>;
+  getAffiliateSponsorCodePurchases(userId: number): Promise<SponsorCodeRecord[]>;
+  getSponsorCodeAdminReport(filters?: { q?: string; status?: string }): Promise<{
+    summary: { totalPurchases: number; totalRevenue: number; availableCodes: number; redeemedCodes: number; disabledCodes: number };
+    records: SponsorCodeRecord[];
+  }>;
+  setSponsorCodePurchaseStatus(data: { purchaseId: number; status: "available" | "disabled"; adminUserId: number; reason: string }): Promise<SponsorCodeRecord>;
   getSponsorCohorts(): Promise<(SponsorCohort & { codes: CohortCode[] })[]>;
   getSponsorCohortById(id: number): Promise<(SponsorCohort & { codes: CohortCode[] }) | undefined>;
   validateSponsorCode(code: string): Promise<{ valid: boolean; cohortName?: string; reason?: string }>;
@@ -1975,6 +2002,230 @@ export class DatabaseStorage implements IStorage {
     return { cohort, masterCode };
   }
 
+  private async sponsorCodeRecords(): Promise<SponsorCodeRecord[]> {
+    const [purchases, cohorts] = await Promise.all([
+      db.select().from(sponsorCodePurchases).orderBy(desc(sponsorCodePurchases.createdAt)),
+      db.select().from(sponsorCohorts).orderBy(desc(sponsorCohorts.createdAt)),
+    ]);
+    const userIds = Array.from(new Set(purchases.flatMap((row) =>
+      [row.affiliateUserId, row.redeemedByUserId].filter((id): id is number => id !== null)
+    )));
+    const relatedUsers = userIds.length
+      ? await db.select({
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          email: users.email,
+        }).from(users).where(inArray(users.id, userIds))
+      : [];
+    const userById = new Map(relatedUsers.map((user) => [user.id, user]));
+    const cohortById = new Map(cohorts.map((cohort) => [cohort.id, cohort]));
+    const trackedCohortIds = new Set(purchases.map((purchase) => purchase.cohortId));
+
+    const tracked: SponsorCodeRecord[] = purchases.map((purchase) => {
+      const cohort = cohortById.get(purchase.cohortId);
+      const redeemed = purchase.status === "redeemed" || !!purchase.redeemedAt || (cohort?.usedSlots ?? 0) >= (cohort?.totalSlots ?? 1);
+      const status: SponsorCodeRecord["status"] = redeemed
+        ? "redeemed"
+        : purchase.status === "disabled" ? "disabled" : "available";
+      return {
+        purchaseId: purchase.id,
+        code: purchase.code,
+        cohortId: purchase.cohortId,
+        amountUsd: purchase.amountUsd,
+        currency: purchase.currency,
+        transactionId: purchase.transactionId,
+        reference: purchase.reference,
+        status,
+        purchasedAt: purchase.createdAt,
+        redeemedAt: purchase.redeemedAt,
+        purchaser: purchase.affiliateUserId ? userById.get(purchase.affiliateUserId) ?? null : null,
+        redeemedBy: purchase.redeemedByUserId ? userById.get(purchase.redeemedByUserId) ?? null : null,
+        legacy: false,
+      };
+    });
+
+    const legacy: SponsorCodeRecord[] = cohorts
+      .filter((cohort) => !!cohort.masterCode && !trackedCohortIds.has(cohort.id))
+      .map((cohort) => ({
+        purchaseId: null,
+        code: cohort.masterCode!,
+        cohortId: cohort.id,
+        amountUsd: null,
+        currency: "USD",
+        transactionId: null,
+        reference: null,
+        status: cohort.usedSlots >= cohort.totalSlots ? "redeemed" : cohort.status === "active" ? "available" : "disabled",
+        purchasedAt: cohort.createdAt,
+        redeemedAt: null,
+        purchaser: {
+          id: null,
+          firstName: cohort.sponsorName,
+          lastName: "",
+          email: cohort.sponsorEmail,
+        },
+        redeemedBy: null,
+        legacy: true,
+      }));
+
+    return [...tracked, ...legacy].sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
+  }
+
+  async purchaseAffiliateSponsorCode(data: { affiliate: User; amountUsd: number; idempotencyKey: string }): Promise<SponsorCodeRecord & { walletBalance: string }> {
+    const outcome = await db.transaction((tx) => executeSponsorCodePurchase({
+      findPurchase: async (userId, idempotencyKey) => {
+        const [row] = await tx.select({ id: sponsorCodePurchases.id }).from(sponsorCodePurchases).where(and(
+          eq(sponsorCodePurchases.affiliateUserId, userId),
+          eq(sponsorCodePurchases.idempotencyKey, idempotencyKey),
+        ));
+        return row;
+      },
+      getWallet: async (userId) => {
+        const [row] = await tx.select({ id: wallets.id, balance: wallets.balance }).from(wallets).where(eq(wallets.userId, userId));
+        return row;
+      },
+      createWallet: async (userId) => {
+        const [row] = await tx.insert(wallets).values({ userId, balance: "0.00" }).returning({ id: wallets.id, balance: wallets.balance });
+        return row;
+      },
+      createCohort: async ({ sponsorName, sponsorEmail, sponsorPhone, code }) => {
+        const [row] = await tx.insert(sponsorCohorts).values({
+          sponsorName,
+          sponsorEmail,
+          sponsorPhone,
+          totalSlots: 1,
+          notes: "Affiliate scholarship sponsor-code purchase",
+          status: "active",
+          masterCode: code,
+        }).returning({ id: sponsorCohorts.id });
+        return row;
+      },
+      createTransaction: async ({ userId, amount, code }) => {
+        const [row] = await tx.insert(transactions).values({
+          userId,
+          type: "withdrawal",
+          amount,
+          fee: "0.00",
+          paymentMethod: "wallet",
+          description: `Scholarship sponsor code purchase — ${code}`,
+        }).returning({ id: transactions.id });
+        return row;
+      },
+      createPurchase: async (purchase) => {
+        const [row] = await tx.insert(sponsorCodePurchases).values({
+          ...purchase,
+          currency: "USD",
+          status: "available",
+        }).returning({ id: sponsorCodePurchases.id });
+        return row;
+      },
+      debitWallet: async (walletId, amountUsd) => {
+        const [row] = await tx.update(wallets)
+          .set({ balance: sql`${wallets.balance} - ${amountUsd.toFixed(2)}::numeric` })
+          .where(and(
+            eq(wallets.id, walletId),
+            gte(wallets.balance, amountUsd.toFixed(2)),
+          ))
+          .returning({ balance: wallets.balance });
+        return row;
+      },
+    }, {
+      buyer: data.affiliate,
+      amountUsd: data.amountUsd,
+      idempotencyKey: data.idempotencyKey,
+      generateCode: () => `TSIA-${randomBytes(5).toString("hex").toUpperCase()}`,
+    }));
+
+    const record = (await this.sponsorCodeRecords()).find((row) => row.purchaseId === outcome.purchaseId);
+    if (!record) throw new Error("Sponsor-code purchase was saved but could not be reloaded.");
+    return { ...record, walletBalance: outcome.walletBalance };
+  }
+
+  async getAffiliateSponsorCodePurchases(userId: number): Promise<SponsorCodeRecord[]> {
+    const user = await this.getUser(userId);
+    if (!user) return [];
+    const records = await this.sponsorCodeRecords();
+    const legacyCohorts = await db.select().from(sponsorCohorts).where(eq(sponsorCohorts.sponsorEmail, user.email));
+    const legacyCohortIds = new Set(legacyCohorts.map((cohort) => cohort.id));
+    return records.filter((record) =>
+      record.purchaser?.id === userId || (record.legacy && legacyCohortIds.has(record.cohortId))
+    );
+  }
+
+  async getSponsorCodeAdminReport(filters: { q?: string; status?: string } = {}): Promise<{
+    summary: { totalPurchases: number; totalRevenue: number; availableCodes: number; redeemedCodes: number; disabledCodes: number };
+    records: SponsorCodeRecord[];
+  }> {
+    const all = await this.sponsorCodeRecords();
+    const q = filters.q?.trim().toLowerCase() ?? "";
+    const status = filters.status?.trim().toLowerCase() ?? "all";
+    const records = all.filter((record) => {
+      if (status !== "all" && record.status !== status) return false;
+      if (!q) return true;
+      const haystack = [
+        record.code, record.reference, record.transactionId, record.cohortId,
+        record.purchaser?.firstName, record.purchaser?.lastName,
+        record.purchaser?.email, record.redeemedBy?.firstName, record.redeemedBy?.lastName,
+        record.redeemedBy?.email,
+      ].filter((value) => value !== null && value !== undefined).join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+    return {
+      summary: {
+        totalPurchases: all.length,
+        totalRevenue: all.reduce((total, record) => total + parseFloat(record.amountUsd ?? "0"), 0),
+        availableCodes: all.filter((record) => record.status === "available").length,
+        redeemedCodes: all.filter((record) => record.status === "redeemed").length,
+        disabledCodes: all.filter((record) => record.status === "disabled").length,
+      },
+      records,
+    };
+  }
+
+  async setSponsorCodePurchaseStatus(data: { purchaseId: number; status: "available" | "disabled"; adminUserId: number; reason: string }): Promise<SponsorCodeRecord> {
+    await db.transaction(async (tx) => {
+      const [purchase] = await tx.select().from(sponsorCodePurchases).where(eq(sponsorCodePurchases.id, data.purchaseId));
+      if (!purchase) throw new Error("Sponsor-code purchase not found.");
+      if (purchase.status === "redeemed" || purchase.redeemedAt) {
+        throw new Error("Redeemed sponsor codes cannot be changed.");
+      }
+      const [cohort] = await tx.select().from(sponsorCohorts).where(eq(sponsorCohorts.id, purchase.cohortId));
+      if (!cohort || cohort.usedSlots >= cohort.totalSlots) {
+        throw new Error("Redeemed sponsor codes cannot be changed.");
+      }
+      const [updatedPurchase] = await tx.update(sponsorCodePurchases)
+        .set({ status: data.status, updatedAt: new Date() })
+        .where(and(
+          eq(sponsorCodePurchases.id, data.purchaseId),
+          isNull(sponsorCodePurchases.redeemedAt),
+          inArray(sponsorCodePurchases.status, ["available", "disabled"]),
+        ))
+        .returning();
+      if (!updatedPurchase) throw new Error("Redeemed sponsor codes cannot be changed.");
+      const [updatedCohort] = await tx.update(sponsorCohorts)
+        .set({ status: data.status === "available" ? "active" : "disabled" })
+        .where(and(
+          eq(sponsorCohorts.id, purchase.cohortId),
+          lt(sponsorCohorts.usedSlots, sponsorCohorts.totalSlots),
+        ))
+        .returning();
+      if (!updatedCohort) throw new Error("Redeemed sponsor codes cannot be changed.");
+      await tx.insert(adminAuditLogs).values({
+        actorUserId: data.adminUserId,
+        targetUserId: purchase.affiliateUserId,
+        action: `sponsor_code.${data.status}`,
+        reason: data.reason,
+        reference: purchase.reference,
+        beforeState: { status: purchase.status },
+        afterState: { status: data.status },
+        metadata: { purchaseId: purchase.id, cohortId: purchase.cohortId, code: purchase.code },
+      });
+    });
+    const record = (await this.sponsorCodeRecords()).find((row) => row.purchaseId === data.purchaseId);
+    if (!record) throw new Error("Sponsor-code purchase was updated but could not be reloaded.");
+    return record;
+  }
+
   async getSponsorCohorts(): Promise<(SponsorCohort & { codes: CohortCode[] })[]> {
     const allCohorts = await db.select().from(sponsorCohorts).orderBy(desc(sponsorCohorts.createdAt));
     const allCodes = await db.select().from(cohortCodes);
@@ -2006,6 +2257,9 @@ export class DatabaseStorage implements IStorage {
     // 2. Check master codes (public-payment-created cohorts)
     const [cohort] = await db.select().from(sponsorCohorts).where(eq(sponsorCohorts.masterCode, normalised));
     if (!cohort) return { valid: false, reason: "Code not found" };
+    const [purchase] = await db.select().from(sponsorCodePurchases).where(eq(sponsorCodePurchases.cohortId, cohort.id));
+    if (purchase?.status === "disabled") return { valid: false, reason: "Code has been disabled" };
+    if (purchase?.status === "redeemed") return { valid: false, reason: "Code has already been used" };
     if (cohort.status !== "active") return { valid: false, reason: "Cohort is no longer active" };
     if (cohort.usedSlots >= cohort.totalSlots) return { valid: false, reason: "All sponsor slots have been filled" };
     return { valid: true, cohortName: cohort.sponsorName };
@@ -2013,29 +2267,46 @@ export class DatabaseStorage implements IStorage {
 
   async useSponsorCode(code: string, userId: number): Promise<void> {
     const normalised = code.toUpperCase().trim();
-
-    // Determine if this is a masterCode or an individual cohortCode
-    const [individualCode] = await db.select().from(cohortCodes).where(eq(cohortCodes.code, normalised));
-    const [cohortByMaster] = !individualCode
-      ? await db.select().from(sponsorCohorts).where(eq(sponsorCohorts.masterCode, normalised))
-      : [undefined];
-
-    if (!individualCode && !cohortByMaster) throw new Error("Invalid sponsor code");
-    if (individualCode?.used) throw new Error("This code has already been used");
-    if (cohortByMaster && cohortByMaster.usedSlots >= cohortByMaster.totalSlots) throw new Error("All sponsor slots have been filled");
-
     await db.transaction(async (tx) => {
+      const [individualCode] = await tx.select().from(cohortCodes).where(eq(cohortCodes.code, normalised));
+      const [cohortByMaster] = !individualCode
+        ? await tx.select().from(sponsorCohorts).where(eq(sponsorCohorts.masterCode, normalised))
+        : [undefined];
+      if (!individualCode && !cohortByMaster) throw new Error("Invalid sponsor code");
+
       if (individualCode) {
-        await tx.update(cohortCodes)
+        const [consumed] = await tx.update(cohortCodes)
           .set({ used: true, usedByUserId: userId, usedAt: new Date() })
-          .where(eq(cohortCodes.id, individualCode.id));
+          .where(and(eq(cohortCodes.id, individualCode.id), eq(cohortCodes.used, false)))
+          .returning();
+        if (!consumed) throw new Error("This code has already been used");
         await tx.update(sponsorCohorts)
           .set({ usedSlots: sql`${sponsorCohorts.usedSlots} + 1` })
           .where(eq(sponsorCohorts.id, individualCode.cohortId));
       } else {
-        await tx.update(sponsorCohorts)
+        const [purchase] = await tx.select().from(sponsorCodePurchases)
+          .where(eq(sponsorCodePurchases.cohortId, cohortByMaster!.id));
+        if (purchase?.status === "disabled") throw new Error("Code has been disabled");
+        if (purchase?.status === "redeemed") throw new Error("This code has already been used");
+        const [consumedCohort] = await tx.update(sponsorCohorts)
           .set({ usedSlots: sql`${sponsorCohorts.usedSlots} + 1` })
-          .where(eq(sponsorCohorts.id, cohortByMaster!.id));
+          .where(and(
+            eq(sponsorCohorts.id, cohortByMaster!.id),
+            eq(sponsorCohorts.status, "active"),
+            lt(sponsorCohorts.usedSlots, sponsorCohorts.totalSlots),
+          ))
+          .returning();
+        if (!consumedCohort) throw new Error("All sponsor slots have been filled");
+        if (purchase) {
+          const [consumedPurchase] = await tx.update(sponsorCodePurchases)
+            .set({ status: "redeemed", redeemedByUserId: userId, redeemedAt: new Date(), updatedAt: new Date() })
+            .where(and(
+              eq(sponsorCodePurchases.id, purchase.id),
+              eq(sponsorCodePurchases.status, "available"),
+            ))
+            .returning();
+          if (!consumedPurchase) throw new Error("This code has already been used");
+        }
       }
 
       let verification = await tx.select().from(verifications).where(eq(verifications.userId, userId)).then(r => r[0]);

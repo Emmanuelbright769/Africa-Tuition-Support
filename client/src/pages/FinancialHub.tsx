@@ -348,10 +348,10 @@ function Numpad({ value, onChange }: { value: string; onChange: (v: string) => v
     onChange(value + k);
   };
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-3 gap-1.5 sm:gap-2" data-testid="amount-numpad">
       {["1","2","3","4","5","6","7","8","9",".","0","⌫"].map((k, i) => (
         <button key={i} onClick={() => handle(k)}
-          className={`h-14 rounded-2xl font-bold text-xl transition-all active:scale-95 ${k === "⌫" ? "bg-red-50 dark:bg-red-900/20 text-red-500" : "bg-muted/60 hover:bg-muted text-foreground"}`}
+          className={`h-11 sm:h-14 rounded-xl sm:rounded-2xl font-bold text-lg sm:text-xl transition-all active:scale-95 ${k === "⌫" ? "bg-red-50 dark:bg-red-900/20 text-red-500" : "bg-muted/60 hover:bg-muted text-foreground"}`}
         >{k === "⌫" ? <Delete className="w-5 h-5 mx-auto" /> : k}</button>
       ))}
     </div>
@@ -361,7 +361,7 @@ function Numpad({ value, onChange }: { value: string; onChange: (v: string) => v
 // ─── Back Header ──────────────────────────────────────────────────────────────
 function BackHeader({ onBack, title, sub }: { onBack: () => void; title: string; sub?: string }) {
   return (
-    <div className="flex items-center gap-3 mb-5">
+    <div className="flex items-center gap-3 mb-3 sm:mb-5">
       <button onClick={onBack} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center hover:bg-muted/80 active:scale-95 transition-all">
         <ArrowLeft className="w-4 h-4" />
       </button>
@@ -3920,7 +3920,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
 
     return (
     <AnimatePresence mode="wait">
-      <motion.div key="send-amount" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+      <motion.div key="send-amount" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-3 sm:space-y-5">
         <BackHeader onBack={() => setView("send")} title="Enter Amount" sub={`To ${resolvedName ?? acctNumber} • ${selectedBank?.name}`} />
 
         <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-2xl px-4 py-3">
@@ -3934,13 +3934,15 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             : <CheckCircle2 className="w-5 h-5 text-tsia-green" />}
         </div>
 
-        <div className="text-center py-2">
-          <div className="text-5xl font-black">${fmt(amount)}</div>
+        <div className="text-center py-1 sm:py-2">
+          <div className="text-4xl sm:text-5xl font-black">${fmt(amount)}</div>
           <p className="text-xs text-muted-foreground mt-1">Available: ${balance.toFixed(2)}</p>
           {parseFloat(amount) > balance && <p className="text-xs text-red-500 font-semibold mt-1">Exceeds your balance</p>}
         </div>
 
-        <div className="rounded-2xl border border-tsia-green/25 bg-tsia-green/5 p-4 space-y-2.5" data-testid="bank-transfer-price-breakdown">
+        <Numpad value={amount} onChange={setAmount} />
+
+        <div className="rounded-2xl border border-tsia-green/25 bg-tsia-green/5 p-3 sm:p-4 space-y-2 sm:space-y-2.5" data-testid="bank-transfer-price-breakdown">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Payout breakdown</p>
             {bankTransferPricingLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-tsia-green" />}
@@ -3951,41 +3953,41 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
               <button onClick={() => refetchBankTransferPricing()} className="text-xs font-bold text-tsia-green">Retry</button>
             </div>
           ) : (
-            <>
-              <div className="flex justify-between text-sm">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:block sm:space-y-2.5">
+              <div className="flex justify-between text-xs sm:text-sm">
                 <span className="text-muted-foreground">Amount charged</span>
                 <span className="font-semibold" data-testid="text-bank-gross">${payoutQuote.amountUsd.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-xs sm:text-sm">
                 <span className="text-muted-foreground">Fee ({(payoutQuote.feeRate * 100).toFixed(1)}%)</span>
                 <span className="font-semibold text-red-600" data-testid="text-bank-fee">-${payoutQuote.feeUsd.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-xs sm:text-sm">
                 <span className="text-muted-foreground">Net amount converted</span>
                 <span className="font-semibold" data-testid="text-bank-net-usd">${payoutQuote.netAmountUsd.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-xs sm:text-sm">
                 <span className="text-muted-foreground">Exchange rate</span>
                 <span className="font-semibold" data-testid="text-bank-rate">
                   {pricingReady ? `₦${payoutQuote.exchangeRate.toLocaleString()} per $1` : "Loading…"}
                 </span>
               </div>
-              <div className="border-t border-tsia-green/20 pt-2.5 flex justify-between items-center">
+              <div className="col-span-2 border-t border-tsia-green/20 pt-2 flex justify-between items-center sm:pt-2.5">
                 <span className="text-sm font-bold">Recipient receives</span>
                 <span className="text-lg font-black text-tsia-green" data-testid="text-bank-recipient">
                   ₦{payoutQuote.recipientAmountNgn.toLocaleString()} NGN
                 </span>
               </div>
-            </>
+            </div>
           )}
         </div>
 
         <input placeholder="Narration (optional)" value={note} onChange={e => setNote(e.target.value)}
-          className="w-full text-center text-sm border border-border rounded-2xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
+          className="w-full text-center text-sm border border-border rounded-2xl px-4 py-2.5 sm:py-3 bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
           data-testid="input-narration" />
 
         {/* Gateway picker */}
-        <div className="space-y-2">
+        <div className="space-y-1.5 sm:space-y-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payout Gateway</p>
           <div className="grid grid-cols-2 gap-2">
             {([
@@ -3993,7 +3995,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
               { id: "korapay", label: "Alternative",     desc: "Backup payout route",  color: "border-orange-400 bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400" },
             ] as const).map(g => (
               <button key={g.id} onClick={() => setBankGateway(g.id)}
-                className={`rounded-xl border-2 p-2.5 text-left transition-all ${bankGateway === g.id ? g.color : "border-border text-muted-foreground"}`}
+                className={`rounded-xl border-2 p-2 sm:p-2.5 text-left transition-all ${bankGateway === g.id ? g.color : "border-border text-muted-foreground"}`}
                 data-testid={`btn-gateway-${g.id}`}>
                 <p className="text-xs font-bold">{g.label}</p>
                 <p className="text-[10px] opacity-70 mt-0.5">{g.desc}</p>
@@ -4002,11 +4004,9 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
           </div>
         </div>
 
-        <Numpad value={amount} onChange={setAmount} />
-
         <div className="flex gap-3">
-          <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
-          <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
+          <button onClick={() => { setView("home"); resetSend(); }} className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+          <Button className="flex-1 h-11 sm:h-12 bg-tsia-green text-white font-bold rounded-2xl"
             disabled={sendBankMutation.isPending || !pricingReady || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
             onClick={() => sendBankMutation.mutate()} data-testid="btn-send-bank">
             {sendBankMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
@@ -4023,7 +4023,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
   // ═════════════════════════════════════════════════════════════════════════
   if (view === "tsia-amount" && tsiaUser) return (
     <AnimatePresence mode="wait">
-      <motion.div key="tsia-amount" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
+      <motion.div key="tsia-amount" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-3 sm:space-y-5">
         <BackHeader onBack={() => setView("send")} title="Enter Amount" sub="Transfer to TSIA member" />
 
         <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-tsia-green/30 rounded-2xl p-4">
@@ -4037,15 +4037,17 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
           <div className="flex items-center gap-1 text-tsia-green"><CheckCircle2 className="w-4 h-4" /><span className="text-xs font-bold">TSIA</span></div>
         </div>
 
-        <div className="text-center py-2">
-          <div className="text-5xl font-black">${fmt(amount)}</div>
+        <div className="text-center py-1 sm:py-2">
+          <div className="text-4xl sm:text-5xl font-black">${fmt(amount)}</div>
           <p className="text-xs text-muted-foreground mt-1">Available: ${balance.toFixed(2)}</p>
           <LocalEquiv usd={parseFloat(amount) || 0} country={user?.country} ngnRate={exchangeRatesData?.selling} />
           {parseFloat(amount) > balance && <p className="text-xs text-red-500 font-semibold mt-1">Exceeds your balance</p>}
         </div>
 
+        <Numpad value={amount} onChange={setAmount} />
+
         <input placeholder="What's this for? (optional)" value={note} onChange={e => setNote(e.target.value)}
-          className="w-full text-center text-sm border border-border rounded-2xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
+          className="w-full text-center text-sm border border-border rounded-2xl px-4 py-2.5 sm:py-3 bg-background focus:outline-none focus:ring-2 focus:ring-tsia-green/40"
           data-testid="input-tsia-note" />
 
         {parseFloat(amount) > 0 && (
@@ -4057,11 +4059,9 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
           </div>
         )}
 
-        <Numpad value={amount} onChange={setAmount} />
-
         <div className="flex gap-3">
-          <button onClick={() => { setView("home"); resetSend(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
-          <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
+          <button onClick={() => { setView("home"); resetSend(); }} className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
+          <Button className="flex-1 h-11 sm:h-12 bg-tsia-green text-white font-bold rounded-2xl"
             disabled={requestTransferOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
             onClick={() => { requestTransferOtpMutation.mutate(); }} data-testid="btn-send-tsia">
             {requestTransferOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}

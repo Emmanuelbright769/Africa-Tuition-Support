@@ -9,8 +9,8 @@ Account suspension must be enforced for every authenticated API request as well 
 
 **How to apply:** Treat suspension as shared authentication middleware, not route-specific business logic. For manually credited payments, use a globally unique provider reference plus cross-process serialization; never rely only on a read-before-write duplicate check.
 
-An active account lien must block direct Trade Market bank withdrawals as well as SwiftHub spending paths, with a second lien check inside the debit transaction.
+An active account lien must block every user-initiated funds-out path across every product and linked role, including withdrawals, transfers, purchases, reservations, trading allocations, and escrow release.
 
-**Why:** Checking liens only against the SwiftWallet lets users route funds directly from another product wallet to a bank.
+**Why:** Checking only one wallet or checking before a debit without serialization lets users route funds through another product, switch linked roles, or win a race against lien placement.
 
-**How to apply:** Treat liens as account-level payout restrictions. Admin lien placement interfaces must also expose an audited release action.
+**How to apply:** Serialize funds-out requests and every automatic/manual lien mutation on one stable linked-account identity. Preserve lien ownership: a lifecycle may release only the lien it created, while explicit admin release may clear the whole hold.

@@ -42,6 +42,7 @@ import YahooFinance from "yahoo-finance2";
 import { doesVerifiedNameMatch, hashVerifiedName } from "./identityVerificationSecurity";
 import { selectSpellingQuestions, spellingQuestionFor } from "./backToSchoolSpellingBank";
 import { areBankTransfersEnabled, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
+import { isUserFundsOutRequest } from "./accountLienPolicy";
 
 const PgSession = pgSession(session);
 
@@ -269,6 +270,11 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  const fundsLockPool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 8,
+    connectionTimeoutMillis: 5000,
+  });
 
   app.use(
     session({
@@ -293,6 +299,162 @@ export async function registerRoutes(
       }
       next();
     } catch (error) {
+      next(error);
+    }
+  });
+
+  type AccountFundsLockIdentity = {
+    lockKey: string;
+    normalizedEmail: string | null;
+    userId: number;
+  };
+
+  const getAccountFundsLockIdentity = async (userId: number): Promise<AccountFundsLockIdentity> => {
+    const user = await storage.getUser(userId);
+    const normalizedEmail = user?.email?.trim().toLowerCase() || null;
+    return {
+      lockKey: normalizedEmail ? `email:${normalizedEmail}` : `user:${userId}`,
+      normalizedEmail,
+      userId,
+    };
+  };
+
+  const acquireAccountFundsLock = async (
+    lockKey: string,
+    timeoutMs = 15000,
+  ): Promise<pg.PoolClient> => {
+    const deadline = Date.now() + timeoutMs;
+    do {
+      const lockClient = await fundsLockPool.connect();
+      try {
+        const result = await lockClient.query<{ locked: boolean }>(
+          "SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked",
+          [lockKey],
+        );
+        if (result.rows[0]?.locked) return lockClient;
+      } catch (error) {
+        lockClient.release(error as Error);
+        throw error;
+      }
+      lockClient.release();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    } while (Date.now() < deadline);
+    throw new Error("Account funds are busy. Please try again.");
+  };
+
+  const releaseAccountFundsLock = async (
+    lockClient: pg.PoolClient,
+    lockKey: string,
+  ): Promise<void> => {
+    try {
+      const result = await lockClient.query<{ unlocked: boolean }>(
+        "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked",
+        [lockKey],
+      );
+      if (!result.rows[0]?.unlocked) {
+        throw new Error("Database did not release the account funds lock");
+      }
+      lockClient.release();
+    } catch (error) {
+      // Session advisory locks survive connection reuse. Destroy this client
+      // if unlock fails instead of returning a possibly locked session.
+      lockClient.release(error as Error);
+      throw error;
+    }
+  };
+
+  const withAccountFundsLock = async <T>(userId: number, action: () => Promise<T>): Promise<T> => {
+    const { lockKey } = await getAccountFundsLockIdentity(userId);
+    const lockClient = await acquireAccountFundsLock(lockKey);
+    try {
+      return await action();
+    } finally {
+      try {
+        await releaseAccountFundsLock(lockClient, lockKey);
+      } catch (error) {
+        console.error("[ACCOUNT LIEN] Failed to release admin funds lock:", error);
+      }
+    }
+  };
+
+  const placeLoanLien = async (
+    userId: number,
+    loanId: number,
+    amount: string,
+  ): Promise<void> => {
+    const currentWallet = await storage.getOrCreateWallet(userId);
+    const currentAmount = parseFloat(currentWallet.lienAmount ?? "0");
+    if (currentAmount > 0) {
+      throw new Error("An existing account lien must be resolved before this loan can be activated.");
+    }
+    await storage.setWalletLien(userId, amount, `loan_active:${loanId}`);
+  };
+
+  const releaseLoanLien = async (userId: number, loanId: number): Promise<boolean> => {
+    return withAccountFundsLock(userId, async () => {
+      const currentWallet = await storage.getOrCreateWallet(userId);
+      const expectedReasons = new Set([`loan_active:${loanId}`, `loan_withdrawn:${loanId}`]);
+      if (
+        parseFloat(currentWallet.lienAmount ?? "0") > 0
+        && expectedReasons.has(currentWallet.lienReason ?? "")
+      ) {
+        await storage.releaseWalletLien(userId);
+        return true;
+      }
+      return false;
+    });
+  };
+
+  // A lien is an account-wide funds-out lock. Hold the same database advisory
+  // lock used by admin lien placement until the response finishes, so a lien
+  // cannot be placed between a route-level check and its eventual debit.
+  // Linked student/affiliate accounts share the lock and lien check by email.
+  app.use("/api", async (req, res, next) => {
+    const sessionUserId = (req.session as any)?.userId;
+    if (!sessionUserId || !isUserFundsOutRequest(req.method, req.originalUrl)) return next();
+
+    let lockClient: pg.PoolClient | null = null;
+    let lockKey = "";
+    let released = false;
+    const releaseLock = async () => {
+      if (released || !lockClient) return;
+      released = true;
+      const clientToRelease = lockClient;
+      lockClient = null;
+      try {
+        await releaseAccountFundsLock(clientToRelease, lockKey);
+      } catch (error) {
+        console.error("[ACCOUNT LIEN] Failed to release funds lock:", error);
+      }
+    };
+
+    try {
+      const identity = await getAccountFundsLockIdentity(sessionUserId);
+      lockKey = identity.lockKey;
+      lockClient = await acquireAccountFundsLock(lockKey);
+      const lienResult = await lockClient.query(
+        `SELECT 1
+           FROM wallets w
+           JOIN users u ON u.id = w.user_id
+          WHERE (($1::text IS NOT NULL AND LOWER(TRIM(u.email)) = $1)
+              OR ($1::text IS NULL AND u.id = $2))
+            AND w.lien_amount::numeric > 0
+          LIMIT 1`,
+        [identity.normalizedEmail, identity.userId],
+      );
+      if (lienResult.rowCount && lienResult.rowCount > 0) {
+        await releaseLock();
+        return res.status(403).json({
+          code: "ACCOUNT_LIENED",
+          message: "Your account is restricted. Please contact support.",
+        });
+      }
+
+      res.once("finish", () => { void releaseLock(); });
+      res.once("close", () => { void releaseLock(); });
+      next();
+    } catch (error) {
+      await releaseLock();
       next(error);
     }
   });
@@ -4868,29 +5030,24 @@ export async function registerRoutes(
       if (prizeAmt <= 0) return res.status(400).json({ message: "No prize amount set on this record" });
 
       const studentId = record.userId;
-
-      // 1. Credit the prize to the student's wallet
-      const wallet = await storage.getOrCreateWallet(studentId);
-      const newBalance = (parseFloat(wallet.balance) + prizeAmt).toFixed(2);
-      await storage.updateWalletBalance(studentId, newBalance);
-
-      // 2. Record the transaction
       const typeLabel = record.type === "masters" ? "Masters" : "Student";
-      await storage.createTransaction({
-        userId: studentId,
-        type: "sponsorship_credit",
-        amount: prizeAmt.toFixed(2),
-        fee: "0.00",
-        paymentMethod: "wallet",
-        description: `${typeLabel} Scholarship prize — $${prizeAmt.toFixed(2)} credited to wallet`,
-      });
-
-      // 3. Place a lien for the full credited amount (funds locked until admin releases)
-      try {
-        const freshWallet = await storage.getOrCreateWallet(studentId);
-        const existingLien = parseFloat(freshWallet.lienAmount ?? "0");
+      const updated = await withAccountFundsLock(studentId, async () => {
+        // Place the lien before crediting, while holding the account lock. If
+        // a later write fails, funds remain restricted rather than exposed.
+        const wallet = await storage.getOrCreateWallet(studentId);
+        const existingLien = parseFloat(wallet.lienAmount ?? "0");
         const newLien = (existingLien + prizeAmt).toFixed(2);
         await storage.setWalletLien(studentId, newLien, `${typeLabel} Scholarship prize hold — $${prizeAmt.toFixed(2)} locked until admin releases`);
+        const newBalance = (parseFloat(wallet.balance) + prizeAmt).toFixed(2);
+        await storage.updateWalletBalance(studentId, newBalance);
+        await storage.createTransaction({
+          userId: studentId,
+          type: "sponsorship_credit",
+          amount: prizeAmt.toFixed(2),
+          fee: "0.00",
+          paymentMethod: "wallet",
+          description: `${typeLabel} Scholarship prize — $${prizeAmt.toFixed(2)} credited to wallet`,
+        });
         await storage.createNotification({
           userId: studentId, type: "lien_placed",
           title: "Scholarship Prize Credited 🔒",
@@ -4898,10 +5055,8 @@ export async function registerRoutes(
           data: { prizeAmount: prizeAmt, lienAmount: newLien },
           isRead: false,
         });
-      } catch { /* non-critical */ }
-
-      // 4. Mark prize as paid
-      const updated = await storage.updateScholarship(id, { prizePaid: true });
+        return storage.updateScholarship(id, { prizePaid: true });
+      });
 
       res.json(updated);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -5149,26 +5304,26 @@ export async function registerRoutes(
       const dId = parseInt(req.params.disbursementId);
       const disbursement = await storage.updateDisbursement(dId, { status: "completed", processedAt: new Date() });
 
-      const disbWallet = await storage.getOrCreateWallet(disbursement.userId);
-      const newBalance = (parseFloat(disbWallet.balance) + parseFloat(disbursement.amount)).toFixed(2);
-      await storage.updateWalletBalance(disbursement.userId, newBalance);
-      await storage.createTransaction({
-        userId: disbursement.userId, type: "sponsorship_credit",
-        amount: disbursement.amount,
-        fee: "0.00",
-        paymentMethod: "wallet",
-        description: `Sponsorship payout $${disbursement.amount} (₦${(parseFloat(disbursement.amount) * (await getUsdNgnRates()).selling).toLocaleString()})`,
-      });
-
-      // Auto-place lien on the student's wallet for the disbursed amount
-      try {
-        const currentWallet = await storage.getOrCreateWallet(disbursement.userId);
-        const existingLien = parseFloat(currentWallet.lienAmount ?? "0");
+      const newBalance = await withAccountFundsLock(disbursement.userId, async () => {
+        // The restriction is persisted before crediting so a partial failure
+        // cannot leave newly credited funds withdrawable.
+        const disbWallet = await storage.getOrCreateWallet(disbursement.userId);
+        const existingLien = parseFloat(disbWallet.lienAmount ?? "0");
         const newLienAmount = (existingLien + parseFloat(disbursement.amount)).toFixed(2);
         const semLabel = disbursement.semesterNum === 2 ? "Semester 2" : "Semester 1";
         await storage.setWalletLien(disbursement.userId, newLienAmount, `Scholarship disbursement hold (${semLabel}) — funds locked until admin releases`);
+        const newBalance = (parseFloat(disbWallet.balance) + parseFloat(disbursement.amount)).toFixed(2);
+        await storage.updateWalletBalance(disbursement.userId, newBalance);
+        await storage.createTransaction({
+          userId: disbursement.userId, type: "sponsorship_credit",
+          amount: disbursement.amount,
+          fee: "0.00",
+          paymentMethod: "wallet",
+          description: `Sponsorship payout $${disbursement.amount} (₦${(parseFloat(disbursement.amount) * (await getUsdNgnRates()).selling).toLocaleString()})`,
+        });
         await storage.createNotification({ userId: disbursement.userId, type: "lien_placed", title: "Wallet Funds Locked 🔒", message: `$${parseFloat(disbursement.amount).toFixed(2)} from your ${semLabel} scholarship has been credited but is temporarily locked. It will be released by admin once verified.`, data: { lienAmount: newLienAmount }, isRead: false });
-      } catch { /* non-critical */ }
+        return newBalance;
+      });
 
       // If Semester 1 just processed, ensure Semester 2 exists (backward-compat: older enrollments may only have Sem 1)
       if ((disbursement.semesterNum ?? 1) === 1) {
@@ -5254,21 +5409,23 @@ export async function registerRoutes(
       if (!reason || reason.trim().length < 3) {
         return res.status(400).json({ message: "A lien reason is required (min 3 characters)" });
       }
-      const [beforeWallet] = await db.select().from(wallets).where(eq(wallets.userId, targetId)).limit(1);
-      const wallet = await storage.setWalletLien(targetId, parseFloat(amount).toFixed(2), reason.trim());
-      // Notify the student
-      const notif = await storage.createNotification({
-        userId: targetId, type: "system",
-        title: "Account Lien Placed 🔒",
-        message: `A lien of $${parseFloat(amount).toFixed(2)} has been placed on your SwiftWallet by TSIA administration. Reason: ${reason.trim()}. Your available balance has been adjusted. Contact support for more information.`,
-        data: { lienAmount: amount, reason: reason.trim() }, isRead: false,
-      });
-      pushToUser(targetId, "notification", notif);
-      invalidateCacheKey(`wallet:${targetId}`);
-      await writeAdminAudit({
-        actorUserId: admin.id, targetUserId: targetId, action: "wallet.lien_set",
-        reason: reason.trim(), beforeState: { lienAmount: beforeWallet?.lienAmount ?? "0.00", lienReason: beforeWallet?.lienReason ?? null },
-        afterState: { lienAmount: wallet.lienAmount, lienReason: wallet.lienReason },
+      const wallet = await withAccountFundsLock(targetId, async () => {
+        const [beforeWallet] = await db.select().from(wallets).where(eq(wallets.userId, targetId)).limit(1);
+        const updatedWallet = await storage.setWalletLien(targetId, parseFloat(amount).toFixed(2), reason.trim());
+        const notif = await storage.createNotification({
+          userId: targetId, type: "system",
+          title: "Account Lien Placed 🔒",
+          message: `A lien of $${parseFloat(amount).toFixed(2)} has been placed on your account by TSIA administration. All withdrawals, transfers, purchases, and other funds-out activity are restricted until it is released. Reason: ${reason.trim()}. Contact support for more information.`,
+          data: { lienAmount: amount, reason: reason.trim() }, isRead: false,
+        });
+        pushToUser(targetId, "notification", notif);
+        invalidateCacheKey(`wallet:${targetId}`);
+        await writeAdminAudit({
+          actorUserId: admin.id, targetUserId: targetId, action: "wallet.lien_set",
+          reason: reason.trim(), beforeState: { lienAmount: beforeWallet?.lienAmount ?? "0.00", lienReason: beforeWallet?.lienReason ?? null },
+          afterState: { lienAmount: updatedWallet.lienAmount, lienReason: updatedWallet.lienReason },
+        });
+        return updatedWallet;
       });
       res.json({ success: true, wallet });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -5281,21 +5438,24 @@ export async function registerRoutes(
       const admin = await storage.getUser(sessionUserId);
       if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
       const targetId = parseInt(req.params.userId, 10);
-      const [beforeWallet] = await db.select().from(wallets).where(eq(wallets.userId, targetId)).limit(1);
-      const wallet = await storage.releaseWalletLien(targetId);
-      const notif = await storage.createNotification({
-        userId: targetId, type: "system",
-        title: "Account Lien Released ✅",
-        message: "The lien on your SwiftWallet has been released by TSIA administration. Your full wallet balance is now available.",
-        data: {}, isRead: false,
-      });
-      pushToUser(targetId, "notification", notif);
-      invalidateCacheKey(`wallet:${targetId}`);
-      await writeAdminAudit({
-        actorUserId: admin.id, targetUserId: targetId, action: "wallet.lien_released",
-        reason: "Admin released wallet lien",
-        beforeState: { lienAmount: beforeWallet?.lienAmount ?? "0.00", lienReason: beforeWallet?.lienReason ?? null },
-        afterState: { lienAmount: "0.00", lienReason: null },
+      const wallet = await withAccountFundsLock(targetId, async () => {
+        const [beforeWallet] = await db.select().from(wallets).where(eq(wallets.userId, targetId)).limit(1);
+        const updatedWallet = await storage.releaseWalletLien(targetId);
+        const notif = await storage.createNotification({
+          userId: targetId, type: "system",
+          title: "Account Lien Released ✅",
+          message: "The lien on your account has been released by TSIA administration. Withdrawals, transfers, purchases, and other funds-out activity are available again.",
+          data: {}, isRead: false,
+        });
+        pushToUser(targetId, "notification", notif);
+        invalidateCacheKey(`wallet:${targetId}`);
+        await writeAdminAudit({
+          actorUserId: admin.id, targetUserId: targetId, action: "wallet.lien_released",
+          reason: "Admin released wallet lien",
+          beforeState: { lienAmount: beforeWallet?.lienAmount ?? "0.00", lienReason: beforeWallet?.lienReason ?? null },
+          afterState: { lienAmount: "0.00", lienReason: null },
+        });
+        return updatedWallet;
       });
       res.json({ success: true, wallet });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -6692,6 +6852,8 @@ export async function registerRoutes(
       const { status, offerAmountUsd, repaymentDueDate, adminNote } = req.body;
       const loanId = parseInt(req.params.id);
       if (!["approved", "active", "rejected", "repaid"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+      const existingLoan = await storage.getLoan(loanId);
+      if (!existingLoan) return res.status(404).json({ message: "Loan not found" });
 
       // Build update payload — when approving, apply any admin edits first
       const updatePayload: any = {
@@ -6705,13 +6867,12 @@ export async function registerRoutes(
       if (status === "active" && offerAmountUsd) {
         const offer = parseFloat(offerAmountUsd);
         if (!isNaN(offer) && offer > 0) {
-          const preLoan = await storage.getLoan(loanId);
-          const originalAmount = parseFloat((preLoan as any)?.amountUsd ?? offer);
+          const originalAmount = parseFloat((existingLoan as any).amountUsd ?? offer);
           if (Math.abs(offer - originalAmount) > 0.001) {
             // Scale totals proportionally to the new principal
             const ratio = offer / originalAmount;
-            const newTotal   = parseFloat((parseFloat((preLoan as any).totalPayableUsd) * ratio).toFixed(2));
-            const newMonthly = parseFloat((parseFloat((preLoan as any).monthlyPaymentUsd) * ratio).toFixed(2));
+            const newTotal   = parseFloat((parseFloat((existingLoan as any).totalPayableUsd) * ratio).toFixed(2));
+            const newMonthly = parseFloat((parseFloat((existingLoan as any).monthlyPaymentUsd) * ratio).toFixed(2));
             updatePayload.amountUsd        = offer.toFixed(2);
             updatePayload.totalPayableUsd  = newTotal.toFixed(2);
             updatePayload.monthlyPaymentUsd = newMonthly.toFixed(2);
@@ -6719,35 +6880,48 @@ export async function registerRoutes(
         }
       }
 
-      const loan = await storage.updateLoan(loanId, updatePayload);
-
+      let loan: any;
       if (status === "active") {
-        const loanWallet = await storage.getOrCreateWallet(loan.userId);
-        await storage.updateWalletBalance(loan.userId, (parseFloat(loanWallet.balance) + parseFloat(loan.amountUsd)).toFixed(2));
-        await storage.createTransaction({
-          userId: loan.userId, type: "loan",
-          amount: loan.amountUsd,
-          fee: "0.00",
-          paymentMethod: "wallet",
-          description: `Loan disbursed: $${loan.amountUsd} (${loan.userRole} loan)`,
+        loan = await withAccountFundsLock(existingLoan.userId, async () => {
+          const loanWallet = await storage.getOrCreateWallet(existingLoan.userId);
+          await placeLoanLien(
+            existingLoan.userId,
+            loanId,
+            updatePayload.totalPayableUsd ?? existingLoan.totalPayableUsd,
+          );
+          const activatedLoan = await storage.updateLoan(loanId, updatePayload);
+          await storage.updateWalletBalance(activatedLoan.userId, (parseFloat(loanWallet.balance) + parseFloat(activatedLoan.amountUsd)).toFixed(2));
+          await storage.createTransaction({
+            userId: activatedLoan.userId, type: "loan",
+            amount: activatedLoan.amountUsd,
+            fee: "0.00",
+            paymentMethod: "wallet",
+            description: `Loan disbursed: $${activatedLoan.amountUsd} (${activatedLoan.userRole} loan)`,
+          });
+          return activatedLoan;
         });
-        // ── Place wallet lien equal to total repayable amount ──────────────────
-        await storage.setWalletLien(loan.userId, loan.totalPayableUsd, `loan_active:${loanId}`);
-        const loanApprNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Disbursed 💰", message: `Your $${loan.amountUsd} loan has been credited to your wallet. Your wallet is now frozen — you may only withdraw the loan to your bank account. All other transactions are blocked until the loan is repaid.`, data: { loanId: loan.id }, isRead: false });
+        const loanApprNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Disbursed 💰", message: `Your $${loan.amountUsd} loan has been credited to your wallet. Your account is restricted from withdrawals, transfers, purchases, and other funds-out activity until the loan is repaid or the lien is released.`, data: { loanId: loan.id }, isRead: false });
         pushToUser(loan.userId, "notification", loanApprNotif);
         storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "approved", loan.amountUsd).catch((err: any) => console.error("[EMAIL] Loan email failed:", err?.message ?? err)); });
       } else if (status === "repaid") {
+        loan = await storage.updateLoan(loanId, updatePayload);
         // ── Lift lien on repayment ─────────────────────────────────────────────
-        await storage.releaseWalletLien(loan.userId).catch(() => {});
-        const repaidNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Repaid ✅", message: `Your loan of $${loan.amountUsd} has been marked as fully repaid. Your wallet is now restored — all transactions are available again.`, data: { loanId: loan.id }, isRead: false });
+        const loanLienReleased = await releaseLoanLien(loan.userId, loanId);
+        const repaidMessage = loanLienReleased
+          ? `Your loan of $${loan.amountUsd} has been marked as fully repaid and its account lien has been released.`
+          : `Your loan of $${loan.amountUsd} has been marked as fully repaid. A separate account lien remains active.`;
+        const repaidNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Repaid ✅", message: repaidMessage, data: { loanId: loan.id }, isRead: false });
         pushToUser(loan.userId, "notification", repaidNotif);
         storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "repaid", loan.amountUsd).catch((err: any) => console.error("[EMAIL] Loan email failed:", err?.message ?? err)); });
       } else if (status === "rejected") {
+        loan = await storage.updateLoan(loanId, updatePayload);
         // ── Also lift any lien in case it was previously set ──────────────────
-        await storage.releaseWalletLien(loan.userId).catch(() => {});
+        await releaseLoanLien(loan.userId, loanId);
         const loanRejNotif = await storage.createNotification({ userId: loan.userId, type: "verification_update", title: "Loan Application Update", message: "Your loan application was not approved at this time. Please contact support for more information.", data: { loanId: loan.id }, isRead: false });
         pushToUser(loan.userId, "notification", loanRejNotif);
         storage.getUser(loan.userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "rejected", loan.amountUsd).catch((err: any) => console.error("[EMAIL] Loan email failed:", err?.message ?? err)); });
+      } else {
+        loan = await storage.updateLoan(loanId, updatePayload);
       }
       res.json(loan);
     } catch (e: any) {
@@ -7814,12 +7988,15 @@ export async function registerRoutes(
       if (loan.status !== "approved") return res.status(400).json({ message: "This loan offer is no longer pending your response" });
 
       if (action === "accept") {
-        const updated = await storage.updateLoan(loanId, { status: "active", disbursedAt: new Date() });
-        const loanWallet = await storage.getOrCreateWallet(userId);
-        await storage.updateWalletBalance(userId, (parseFloat(loanWallet.balance) + parseFloat(loan.amountUsd)).toFixed(2));
-        await storage.createTransaction({ userId, type: "loan", amount: loan.amountUsd, fee: "0.00", paymentMethod: "wallet", description: `Loan disbursed: $${loan.amountUsd}` });
-        await storage.setWalletLien(userId, loan.totalPayableUsd, `loan_active:${loanId}`);
-        const notif = await storage.createNotification({ userId, type: "verification_update", title: "Loan Accepted & Disbursed 💰", message: `Your $${loan.amountUsd} loan has been credited to your wallet. Your wallet is now frozen — you may only withdraw the loan to your bank account. All other transactions are blocked until repaid.`, data: { loanId }, isRead: false });
+        const updated = await withAccountFundsLock(userId, async () => {
+          const loanWallet = await storage.getOrCreateWallet(userId);
+          await placeLoanLien(userId, loanId, loan.totalPayableUsd);
+          const activatedLoan = await storage.updateLoan(loanId, { status: "active", disbursedAt: new Date() });
+          await storage.updateWalletBalance(userId, (parseFloat(loanWallet.balance) + parseFloat(loan.amountUsd)).toFixed(2));
+          await storage.createTransaction({ userId, type: "loan", amount: loan.amountUsd, fee: "0.00", paymentMethod: "wallet", description: `Loan disbursed: $${loan.amountUsd}` });
+          return activatedLoan;
+        });
+        const notif = await storage.createNotification({ userId, type: "verification_update", title: "Loan Accepted & Disbursed 💰", message: `Your $${loan.amountUsd} loan has been credited to your wallet. Your account is restricted from withdrawals, transfers, purchases, and other funds-out activity until the loan is repaid or the lien is released.`, data: { loanId }, isRead: false });
         pushToUser(userId, "notification", notif);
         storage.getUser(userId).then(u => { if (u) sendLoanUpdateEmail(u.email, u.firstName, "approved", loan.amountUsd).catch(() => {}); });
         res.json(updated);

@@ -26,6 +26,29 @@ test("Trade Market bank withdrawals enforce the global admin switch", () => {
 
   assert.match(tradeWithdrawRoute, /getPlatformSetting\("bank_transfers_enabled"\)/);
   assert.match(tradeWithdrawRoute, /bankTransfersDisabled:\s*true/);
+  assert.match(tradeWithdrawRoute, /message:\s*"Network error\. Please try again later\."/);
   assert.match(tradeWithdrawRoute, /getTradeProfitWithdrawable\(currentBalance,\s*wdLocked\)/);
   assert.doesNotMatch(tradeWithdrawRoute, /0\.5\s*\+\s*realisedProfit\s*\*\s*0\.5/);
+});
+
+test("Trade Market does not reveal the bank-transfer shutdown before submission", () => {
+  const dashboard = readFileSync(
+    new URL("../client/src/pages/AffiliateDashboard.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(dashboard, /Bank transfers are temporarily closed/);
+  assert.doesNotMatch(dashboard, /Bank Closed/);
+  assert.doesNotMatch(dashboard, /bankTransfersOpen/);
+});
+
+test("exchange-rate save remains clickable and validates its audit reason on click", () => {
+  const dashboard = readFileSync(
+    new URL("../client/src/pages/AdminDashboard.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(dashboard, /id="exchange-rate-change-reason"/);
+  assert.match(dashboard, /disabled=\{saveMultiRatesMutation\.isPending\}/);
+  assert.match(dashboard, /title:\s*"Reason required"/);
 });

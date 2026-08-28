@@ -3850,7 +3850,7 @@ export async function registerRoutes(
         const bankTransfersEnabled = (await storage.getPlatformSetting("bank_transfers_enabled")) ?? "true";
         if (!areBankTransfersEnabled(bankTransfersEnabled)) {
           return res.status(503).json({
-            message: "Bank transfers are temporarily unavailable. Please try again when the service is reopened.",
+            message: "Network error. Please try again later.",
             bankTransfersDisabled: true,
           });
         }

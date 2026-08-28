@@ -1035,10 +1035,6 @@ export default function AffiliateDashboard() {
   );
   const { data: tradeWallet, refetch: refetchTradeWallet } = useQuery({ queryKey: ["/api/trade/wallet"] });
   const { data: tradeTxs = [], refetch: refetchTradeTxs } = useQuery({ queryKey: ["/api/trade/transactions"] });
-  const { data: bankTransferStatus } = useQuery<{ open: boolean; adminClosed: boolean }>({
-    queryKey: ["/api/fintech/bank-transfer-status"],
-    refetchInterval: 15_000,
-  });
   const { data: loanLimit, refetch: refetchLoanLimit } = useQuery<any>({ queryKey: ["/api/loans/limit"] });
   const { data: myLoans = [], refetch: refetchMyLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"] });
   const { data: myTenancyProps = [] } = useQuery<any[]>({ queryKey: ["/api/tenancy/my-properties"] });
@@ -1422,7 +1418,6 @@ export default function AffiliateDashboard() {
   // The ordinary withdrawable balance is realised profit only. Any future
   // early-exit settlement must be a separate, explicit action.
   const withdrawableAmt = getTradeProfitWithdrawable(tradeBalance, lockedPrincipal);
-  const bankTransfersOpen = bankTransferStatus?.open !== false;
   // Progress toward earnings cap (informational — not a withdrawal gate)
   // profitCapPct is the profit portion (0.70 / 0.80 / 1.00).
   // Target = capital × (1 + profitCapPct): earn 100% ON TOP of capital = need $198 back on a $99 deposit.
@@ -3901,12 +3896,11 @@ export default function AffiliateDashboard() {
               <Wallet className="w-3.5 h-3.5" /> SwiftWallet
             </button>
             <button
-              onClick={() => bankTransfersOpen && setWithdrawType("withdraw_bank")}
-              disabled={!bankTransfersOpen}
-              className={`flex-1 py-2 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition-all disabled:cursor-not-allowed disabled:opacity-45 ${withdrawType === "withdraw_bank" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
+              onClick={() => setWithdrawType("withdraw_bank")}
+              className={`flex-1 py-2 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${withdrawType === "withdraw_bank" ? "bg-card shadow text-foreground" : "text-muted-foreground"}`}
               data-testid="toggle-withdraw-bank"
             >
-              <Building2 className="w-3.5 h-3.5" /> {bankTransfersOpen ? "Bank Account" : "Bank Closed"}
+              <Building2 className="w-3.5 h-3.5" /> Bank Account
             </button>
           </div>
 
@@ -3939,11 +3933,6 @@ export default function AffiliateDashboard() {
               </>
             ) : (
               <>
-                {!bankTransfersOpen && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
-                    Bank transfers are temporarily closed by the administrator. Use SwiftWallet or try again after the service is reopened.
-                  </div>
-                )}
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-xs text-blue-800 dark:text-blue-200 font-medium">
                   An <strong>8% service fee</strong> and co-affiliate pool contribution apply on bank withdrawals. Funds are processed within 1–2 business days.
                 </div>
@@ -4077,7 +4066,7 @@ export default function AffiliateDashboard() {
               </Button>
             ) : (
               <Button onClick={() => withdrawMutation.mutate()}
-                disabled={!bankTransfersOpen || withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 2 || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted || tradeBankStep !== "amount"}
+                disabled={withdrawMutation.isPending || !withdrawAmt || parseFloat(withdrawAmt) < 2 || parseFloat(withdrawAmt) > withdrawableAmt || !withdrawTradeTermsAccepted || tradeBankStep !== "amount"}
                 className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="button-withdraw-bank">
                 {withdrawMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Building2 className="w-4 h-4 mr-2" />} Withdraw to Bank
               </Button>

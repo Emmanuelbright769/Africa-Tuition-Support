@@ -19,4 +19,4 @@ The `bank_transfers_enabled` admin setting is global and must gate both SwiftHub
 
 **Why:** UI-only or route-specific shutdowns leave another bank payout path open.
 
-**How to apply:** Check the persisted setting immediately before every bank-transfer request is accepted; UI status is explanatory, not the security boundary.
+**How to apply:** Check the persisted setting only at final server submission. Let users complete the normal bank form, then return a generic network error without revealing that an administrator disabled transfers.

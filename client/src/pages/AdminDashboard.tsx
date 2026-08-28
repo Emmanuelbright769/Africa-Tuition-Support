@@ -4688,10 +4688,34 @@ export default function AdminDashboard() {
                         <strong>Buy</strong> = ₦ users pay to get 1 unit of foreign currency (deposit/funding).
                         <strong> Sell</strong> = ₦ users receive per 1 unit (withdrawal/conversion).
                       </p>
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                        <Label htmlFor="exchange-rate-change-reason">
+                          Reason for rate change <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="exchange-rate-change-reason"
+                          className="mt-2 bg-white"
+                          value={financialChangeReason}
+                          onChange={(e) => setFinancialChangeReason(e.target.value)}
+                          placeholder="e.g. Updated to current market rates"
+                        />
+                        <p className="mt-1.5 text-[10px] text-slate-500">Required for the financial audit log (minimum 5 characters).</p>
+                      </div>
                       <Button
                         className="w-full h-11 font-semibold bg-blue-600 hover:bg-blue-700 text-white"
-                        disabled={saveMultiRatesMutation.isPending || financialChangeReason.trim().length < 5}
-                        onClick={() => saveMultiRatesMutation.mutate(multiRates)}
+                        disabled={saveMultiRatesMutation.isPending}
+                        onClick={() => {
+                          if (financialChangeReason.trim().length < 5) {
+                            toast({
+                              title: "Reason required",
+                              description: "Enter a reason of at least 5 characters before saving exchange rates.",
+                              variant: "destructive",
+                            });
+                            document.getElementById("exchange-rate-change-reason")?.focus();
+                            return;
+                          }
+                          saveMultiRatesMutation.mutate(multiRates);
+                        }}
                         data-testid="button-save-multi-rates"
                       >
                         {saveMultiRatesMutation.isPending

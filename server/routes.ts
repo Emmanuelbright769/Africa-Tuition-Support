@@ -411,7 +411,7 @@ export async function registerRoutes(
   // Linked student/affiliate accounts share the lock and lien check by email.
   app.use("/api", async (req, res, next) => {
     const sessionUserId = (req.session as any)?.userId;
-    if (!sessionUserId || !isUserFundsOutRequest(req.method, req.originalUrl)) return next();
+    if (!sessionUserId || !isUserFundsOutRequest(req.method, req.originalUrl, req.body)) return next();
 
     let lockClient: pg.PoolClient | null = null;
     let lockKey = "";

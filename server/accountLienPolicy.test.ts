@@ -8,22 +8,57 @@ test("normalizes mounted API paths without losing route parameters", () => {
   assert.equal(normalizeApiPath("/trade/withdraw"), "/trade/withdraw");
 });
 
-test("classifies every product's user-initiated funds-out routes", () => {
+test("classifies only external bank and crypto payout routes", () => {
   const coveredRequests: Array<[string, string]> = [
-    ["POST", "/api/wallet/send"],
+    ["POST", "/api/wallet/withdraw"],
     ["POST", "/api/wallet/withdraw__disabled"],
+    ["POST", "/api/wallet/withdraw-crypto"],
+    ["POST", "/api/wallet/withdraw-crypto__disabled"],
     ["POST", "/api/fintech/crypto-withdraw"],
     ["POST", "/api/fintech/bank-transfer"],
-    ["POST", "/api/fintech/airtime"],
-    ["POST", "/api/wallet/bill"],
     ["POST", "/api/korapay/payout"],
+  ];
+
+  for (const [method, path] of coveredRequests) {
+    assert.equal(isUserFundsOutRequest(method, path), true, `${method} ${path}`);
+  }
+  assert.equal(
+    isUserFundsOutRequest("POST", "/api/trade/withdraw", { withdrawalType: "withdraw_bank" }),
+    true,
+    "Trade Market bank withdrawals are external payouts",
+  );
+});
+
+test("allows trading, internal transfers, financial services, and non-payout activity", () => {
+  const allowedRequests: Array<[string, string]> = [
+    ["POST", "/api/wallet/deposit"],
+    ["POST", "/api/wallet/paystack/verify"],
+    ["POST", "/api/wallet/send"],
+    ["POST", "/api/wallet/bill"],
+    ["POST", "/api/wallet/cashback/withdraw"],
+    ["POST", "/api/fintech/airtime"],
+    ["POST", "/api/fintech/data"],
+    ["POST", "/api/fintech/electricity"],
+    ["POST", "/api/fintech/cable-tv"],
+    ["POST", "/api/fintech/betting"],
+    ["POST", "/api/fintech/airtime-to-cash"],
+    ["POST", "/api/fintech/virtual-card/purchase"],
+    ["POST", "/api/trade/deposit"],
+    ["POST", "/api/trade/korapay/verify"],
     ["POST", "/api/trade/fund-from-wallet"],
     ["POST", "/api/trade/transfer-to-wallet"],
     ["POST", "/api/trade/reinvest"],
-    ["POST", "/api/trade/withdraw"],
     ["POST", "/api/trade/bot/activate"],
     ["POST", "/api/trade/signals/enter"],
     ["POST", "/api/trade/manual/open"],
+    ["POST", "/api/exchange/korapay/verify"],
+    ["POST", "/api/exchange/fund"],
+    ["POST", "/api/exchange/withdraw"],
+    ["POST", "/api/exchange/order"],
+    ["POST", "/api/p2p/offers"],
+    ["POST", "/api/p2p/orders"],
+    ["PATCH", "/api/p2p/orders/9/paid"],
+    ["PATCH", "/api/p2p/orders/9/complete"],
     ["POST", "/api/affiliate/withdraw-commission"],
     ["POST", "/api/affiliate/scholarship-sponsor-code"],
     ["POST", "/api/co-affiliate/subscribe"],
@@ -34,13 +69,6 @@ test("classifies every product's user-initiated funds-out routes", () => {
     ["POST", "/api/savings/goals/42/withdraw"],
     ["POST", "/api/back-to-school/children/7/contributions"],
     ["POST", "/api/back-to-school/children/7/withdrawals"],
-    ["POST", "/api/exchange/fund"],
-    ["POST", "/api/exchange/withdraw"],
-    ["POST", "/api/exchange/order"],
-    ["POST", "/api/p2p/offers"],
-    ["POST", "/api/p2p/orders"],
-    ["PATCH", "/api/p2p/orders/9/paid"],
-    ["PATCH", "/api/p2p/orders/9/complete"],
     ["POST", "/api/orders"],
     ["POST", "/api/orders/31/mark-received"],
     ["POST", "/api/tour/book"],
@@ -48,20 +76,6 @@ test("classifies every product's user-initiated funds-out routes", () => {
     ["POST", "/api/sponsorship/select"],
     ["POST", "/api/verification/pay-fee"],
     ["POST", "/api/scholarship/pay-commitment"],
-  ];
-
-  for (const [method, path] of coveredRequests) {
-    assert.equal(isUserFundsOutRequest(method, path), true, `${method} ${path}`);
-  }
-});
-
-test("allows incoming credits, refunds, reads, and non-financial account activity", () => {
-  const allowedRequests: Array<[string, string]> = [
-    ["POST", "/api/wallet/deposit"],
-    ["POST", "/api/wallet/paystack/verify"],
-    ["POST", "/api/trade/deposit"],
-    ["POST", "/api/trade/korapay/verify"],
-    ["POST", "/api/exchange/korapay/verify"],
     ["DELETE", "/api/p2p/offers/4"],
     ["PATCH", "/api/p2p/orders/4/cancel"],
     ["POST", "/api/loans/4/respond"],
@@ -73,6 +87,11 @@ test("allows incoming credits, refunds, reads, and non-financial account activit
   for (const [method, path] of allowedRequests) {
     assert.equal(isUserFundsOutRequest(method, path), false, `${method} ${path}`);
   }
+  assert.equal(
+    isUserFundsOutRequest("POST", "/api/trade/withdraw", { withdrawalType: "withdraw_exchange" }),
+    false,
+    "Trade Market exchange withdrawals stay inside the platform",
+  );
 });
 
 test("server guard checks linked accounts and serializes against admin lien changes", () => {
@@ -86,6 +105,7 @@ test("server guard checks linked accounts and serializes against admin lien chan
   assert.match(middleware, /LOWER\(TRIM\(u\.email\)\) = \$1/);
   assert.match(middleware, /u\.id = \$2/);
   assert.match(middleware, /w\.lien_amount::numeric > 0/);
+  assert.match(middleware, /isUserFundsOutRequest\(req\.method, req\.originalUrl, req\.body\)/);
   assert.match(routes, /fundsLockPool\.connect\(\)/);
   assert.match(routes, /lockClient\.release\(error as Error\)/);
   assert.match(middleware, /res\.once\("finish"/);

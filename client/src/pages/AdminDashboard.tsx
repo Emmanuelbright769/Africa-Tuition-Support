@@ -5260,8 +5260,25 @@ export default function AdminDashboard() {
               </div>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setLienDialog(null)}>Cancel</Button>
+            {lienDialog?.wallet?.lienAmount && parseFloat(lienDialog.wallet.lienAmount) > 0 && (
+              <Button
+                variant="outline"
+                className="border-green-500 text-green-700 hover:bg-green-50"
+                data-testid="button-remove-lien-from-account"
+                onClick={() => {
+                  if (!lienDialog) return;
+                  setReleaseConfirm({
+                    userId: lienDialog.user.id,
+                    name: `${lienDialog.user.firstName} ${lienDialog.user.lastName}`,
+                  });
+                  setLienDialog(null);
+                }}
+              >
+                <LockOpen className="mr-1.5 h-4 w-4" /> Remove Lien
+              </Button>
+            )}
             <Button className="bg-red-600 hover:bg-red-700 text-white" disabled={lienSaving || !lienAmount || !lienReason.trim()}
               data-testid="button-confirm-lien"
               onClick={async () => {
@@ -5302,6 +5319,8 @@ export default function AdminDashboard() {
                   if (!res.ok) throw new Error(d.message);
                   toast({ title: "Lien released ✓", description: `Lien removed from ${releaseConfirm.name}'s wallet.`, className: "border-tsia-green" });
                   refetchWalletLiens();
+                  queryClient.invalidateQueries({ queryKey: ["/api/admin/all-users"] });
+                  queryClient.invalidateQueries({ queryKey: ["/api/admin/affiliates-all"] });
                   setReleaseConfirm(null);
                 } catch (e: any) {
                   toast({ title: "Error", description: e.message, variant: "destructive" });

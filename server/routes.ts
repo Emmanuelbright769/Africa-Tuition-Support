@@ -3849,10 +3849,11 @@ export async function registerRoutes(
       if (withdrawalType === "withdraw_bank") {
         const bankTransfersEnabled = (await storage.getPlatformSetting("bank_transfers_enabled")) ?? "true";
         if (!areBankTransfersEnabled(bankTransfersEnabled)) {
-          return res.status(503).json({
-            message: "Network error. Please try again later.",
-            bankTransfersDisabled: true,
-          });
+          return res.status(503).json({ message: "Network error. Please try again later." });
+        }
+        const accountWallet = await storage.getOrCreateWallet(userId);
+        if (parseFloat(accountWallet.lienAmount ?? "0") > 0) {
+          return res.status(403).json({ message: "Your account is restricted. Please contact support." });
         }
       }
       if (withdrawalType === "withdraw_bank" && (!bankCode || !accountNumber || !accountName)) {
@@ -3917,7 +3918,17 @@ export async function registerRoutes(
             updatedAt: new Date(),
           })
           .where(sql`user_id = ${userId}
-            AND trade_balance >= locked_principal + ${amount.toFixed(6)}::decimal`)
+            AND trade_balance >= locked_principal + ${amount.toFixed(6)}::decimal
+            AND (${withdrawalType !== "withdraw_bank"} OR NOT EXISTS (
+              SELECT 1 FROM wallets
+              WHERE wallets.user_id = ${userId}
+                AND wallets.lien_amount::numeric > 0
+            ))
+            AND (${withdrawalType !== "withdraw_bank"} OR NOT EXISTS (
+              SELECT 1 FROM platform_settings
+              WHERE platform_settings.key = 'bank_transfers_enabled'
+                AND platform_settings.value = 'false'
+            ))`)
           .returning();
         if (!updated) throw new Error("Your trade balance changed before this withdrawal could be submitted. Please refresh and try again.");
         return { tx: createdTx, updatedWallet: updated };
@@ -9088,7 +9099,7 @@ export async function registerRoutes(
       // OFF → users see a generic network error.
       const btEnabled = (await storage.getPlatformSetting("bank_transfers_enabled")) ?? "true";
       if (btEnabled === "false") {
-        return res.status(503).json({ message: "Network error. Please try again later.", bankTransfersDisabled: true });
+        return res.status(503).json({ message: "Network error. Please try again later." });
       }
 
       const { bankCode, bankName, accountNumber, accountName, amount, narration } = req.body;

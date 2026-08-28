@@ -1105,7 +1105,9 @@ export default function FinancialHub() {
       isSuccess: false,
       title: "Bank Transfer",
       amount: `$${parseFloat(amount).toFixed(2)}`,
-      errorMessage: e.message,
+      errorMessage: /(?:503|bankTransfersDisabled|Network error)/i.test(e?.message ?? "")
+        ? "Network error. Please try again later."
+        : e.message,
       onDone: () => setView("send"),
       onNewTx: () => setView("send"),
       newTxLabel: "Try Again",

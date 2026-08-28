@@ -1068,7 +1068,13 @@ export default function AffiliateDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
     },
-    onError: (err: any) => toast({ title: "Withdrawal Failed", description: err.message, variant: "destructive" }),
+    onError: (err: any) => toast({
+      title: "Withdrawal Failed",
+      description: /(?:503|bankTransfersDisabled|Network error)/i.test(err?.message ?? "")
+        ? "Network error. Please try again later."
+        : err.message,
+      variant: "destructive",
+    }),
   });
 
   const applyLoanMutation = useMutation({

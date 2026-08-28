@@ -41,6 +41,7 @@ import { eq, desc, ne, and, sql, or, ilike, asc, count } from "drizzle-orm";
 import YahooFinance from "yahoo-finance2";
 import { doesVerifiedNameMatch, hashVerifiedName } from "./identityVerificationSecurity";
 import { selectSpellingQuestions, spellingQuestionFor } from "./backToSchoolSpellingBank";
+import { areBankTransfersEnabled, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
 
 const PgSession = pgSession(session);
 
@@ -3546,20 +3547,12 @@ export async function registerRoutes(
       if (isNaN(amount) || amount < 5) return res.status(400).json({ message: "Minimum transfer is $5 (earnings only)." });
       const tradeWallet = await storage.getOrCreateTradeWallet(userId);
       const twBalance = parseFloat(tradeWallet.tradeBalance);
-      const twLocked = tradeWallet.roiComplete ? 0 : parseFloat(tradeWallet.lockedPrincipal ?? "0");
-      const twRealisedProfit = Math.max(0, twBalance - twLocked);
-      const twIsEarlyExit = !tradeWallet.roiComplete && twLocked > 0;
-      if (twIsEarlyExit && tradeWallet.earlyExitCompleted) {
-        return res.status(409).json({ message: "Your early-exit settlement has already been completed for this trading cycle." });
-      }
-      const twWithdrawable = twIsEarlyExit
-        ? Math.min(twBalance, twLocked * 0.5 + twRealisedProfit * 0.5)
-        : twBalance;
+      const twLocked = parseFloat(tradeWallet.lockedPrincipal ?? "0");
+      // Ordinary withdrawals are profit-only. Capital must never become part of
+      // this amount unless a separate, explicit early-exit flow is requested.
+      const twWithdrawable = getTradeProfitWithdrawable(twBalance, twLocked);
       if (amount > twWithdrawable) {
-        if (twIsEarlyExit) {
-          return res.status(400).json({ message: `Early exit allows up to 50% of your capital plus 50% of realised profit: $${twWithdrawable.toFixed(2)}.` });
-        }
-        return res.status(400).json({ message: `Insufficient trade balance. Available: $${twWithdrawable.toFixed(2)}` });
+        return res.status(400).json({ message: `Only realised profit can be transferred. Available: $${twWithdrawable.toFixed(2)}` });
       }
       // Wallet-to-wallet: no reserve deduction — full amount credited
       // (Reserve/fees only apply on bank and crypto withdrawals)
@@ -3567,12 +3560,10 @@ export async function registerRoutes(
       const [debited] = await db.update(tradeWallets)
         .set({
           tradeBalance: sql`trade_balance - ${amount.toFixed(6)}::decimal`,
-          ...(twIsEarlyExit ? { earlyExitCompleted: true, botActivatedAt: null } : {}),
           updatedAt: new Date(),
         })
         .where(sql`user_id = ${userId}
-          AND trade_balance >= ${amount.toFixed(6)}::decimal
-          AND (${!twIsEarlyExit} OR early_exit_completed = FALSE)`)
+          AND trade_balance >= locked_principal + ${amount.toFixed(6)}::decimal`)
         .returning();
       if (!debited) {
         return res.status(409).json({ message: "Balance or early-exit status changed. Refresh and try again." });
@@ -3855,6 +3846,15 @@ export async function registerRoutes(
       if (!["withdraw_exchange", "withdraw_bank"].includes(withdrawalType)) {
         return res.status(400).json({ message: "withdrawalType must be withdraw_exchange or withdraw_bank." });
       }
+      if (withdrawalType === "withdraw_bank") {
+        const bankTransfersEnabled = (await storage.getPlatformSetting("bank_transfers_enabled")) ?? "true";
+        if (!areBankTransfersEnabled(bankTransfersEnabled)) {
+          return res.status(503).json({
+            message: "Bank transfers are temporarily unavailable. Please try again when the service is reopened.",
+            bankTransfersDisabled: true,
+          });
+        }
+      }
       if (withdrawalType === "withdraw_bank" && (!bankCode || !accountNumber || !accountName)) {
         return res.status(400).json({ message: "Bank details required for bank withdrawal: bankCode, accountNumber, accountName." });
       }
@@ -3870,20 +3870,12 @@ export async function registerRoutes(
 
       const wallet = await storage.getOrCreateTradeWallet(userId);
       const currentBalance = parseFloat(wallet.tradeBalance);
-      const wdLocked = wallet.roiComplete ? 0 : parseFloat(wallet.lockedPrincipal ?? "0");
-      const realisedProfit = Math.max(0, currentBalance - wdLocked);
-      const isEarlyExit = !wallet.roiComplete && wdLocked > 0;
-      if (isEarlyExit && wallet.earlyExitCompleted) {
-        return res.status(409).json({ message: "Your early-exit settlement has already been completed for this trading cycle." });
-      }
-      const wdWithdrawable = isEarlyExit
-        ? Math.min(currentBalance, wdLocked * 0.5 + realisedProfit * 0.5)
-        : currentBalance;
+      const wdLocked = parseFloat(wallet.lockedPrincipal ?? "0");
+      // Keep the API aligned with the Trade Wallet card: only realised profit
+      // is available through the standard bank/exchange withdrawal flow.
+      const wdWithdrawable = getTradeProfitWithdrawable(currentBalance, wdLocked);
       if (amount > wdWithdrawable) {
-        if (wdLocked > 0 && !wallet.roiComplete) {
-          return res.status(400).json({ message: `Early exit allows up to 50% of your capital plus 50% of realised profit: $${wdWithdrawable.toFixed(2)}.` });
-        }
-        return res.status(400).json({ message: `Insufficient balance. Available: $${wdWithdrawable.toFixed(2)}` });
+        return res.status(400).json({ message: `Only realised profit can be withdrawn. Available: $${wdWithdrawable.toFixed(2)}` });
       }
 
       const txType = withdrawalType === "withdraw_bank" ? "withdraw_bank" : "withdraw_exchange";
@@ -3922,12 +3914,10 @@ export async function registerRoutes(
         const [updated] = await dbTx.update(tradeWallets)
           .set({
             tradeBalance: sql`trade_balance - ${amount.toFixed(6)}::decimal`,
-            ...(isEarlyExit ? { earlyExitCompleted: true, botActivatedAt: null } : {}),
             updatedAt: new Date(),
           })
           .where(sql`user_id = ${userId}
-            AND trade_balance >= ${amount.toFixed(6)}::decimal
-            AND (${!isEarlyExit} OR early_exit_completed = FALSE)`)
+            AND trade_balance >= locked_principal + ${amount.toFixed(6)}::decimal`)
           .returning();
         if (!updated) throw new Error("Your trade balance changed before this withdrawal could be submitted. Please refresh and try again.");
         return { tx: createdTx, updatedWallet: updated };

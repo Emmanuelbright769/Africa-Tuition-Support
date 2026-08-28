@@ -9,8 +9,14 @@ Trade-market bank withdrawals must be recorded as the existing `bank` request ty
 
 **How to apply:** Keep trade withdrawal creation and balance debit in one database transaction. When a marked request is refunded, return its full gross amount to the trade wallet, not the SwiftWallet.
 
-An early-cycle exit is a one-time settlement capped at 50% of authoritative locked capital plus 50% of realised profit; it must be blocked while a trade session is active and guarded against concurrent repeat requests.
+Ordinary Trade Market withdrawals and SwiftWallet transfers expose realised profit only (`trade balance - locked principal`). Any early-cycle capital settlement must be a separate, explicit action.
 
-**Why:** A balance-only cap can be bypassed with repeated withdrawals, allowing more than the intended early-exit entitlement.
+**Why:** Presenting an early-exit allowance as the normal withdrawable balance makes locked capital appear spendable and can cause large unintended withdrawals.
 
-**How to apply:** Calculate the cap on the server from the current wallet state, display the same cap before confirmation, and atomically mark the cycle's early exit as completed with the debit.
+**How to apply:** Reuse one profit-only calculation in overview, wallet, and server routes. Never infer early-exit intent from an ordinary withdrawal request.
+
+The `bank_transfers_enabled` admin setting is global and must gate both SwiftHub bank transfers and Trade Market bank withdrawals on the server.
+
+**Why:** UI-only or route-specific shutdowns leave another bank payout path open.
+
+**How to apply:** Check the persisted setting immediately before every bank-transfer request is accepted; UI status is explanatory, not the security boundary.

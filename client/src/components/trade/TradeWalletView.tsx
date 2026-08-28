@@ -6,6 +6,7 @@ import {
   Link2, Eye, EyeOff, TrendingUp, Shield, RefreshCw, RefreshCcw,
   CreditCard, Banknote, Lock,
 } from "lucide-react";
+import { getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
 
 const MAX_TOPUPS = 3;
 
@@ -36,7 +37,7 @@ export default function TradeWalletView({
   // currentCycleEarnings is the server-computed sum of positive bot earnings
   // since cycle_started_at — immune to wallet-field corruption or admin resets.
   const totalEarnings   = parseFloat(wallet?.currentCycleEarnings ?? wallet?.totalBotEarnings ?? "0");
-  const withdrawable    = Math.max(0, tradeBalance - lockedPrincipal);
+  const withdrawable    = getTradeProfitWithdrawable(tradeBalance, lockedPrincipal);
 
   const planDays        = wallet?.tradingPlanDays ?? 120;
   const profitCapPct    = planDays === 60 ? 0.70 : planDays === 90 ? 0.80 : 1.00;

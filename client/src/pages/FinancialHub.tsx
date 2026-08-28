@@ -374,7 +374,7 @@ function BackHeader({ onBack, title, sub }: { onBack: () => void; title: string;
 }
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────────────────────
-export default function FinancialHub() {
+export default function FinancialHub({ restrictedFundingOnly = false }: { restrictedFundingOnly?: boolean }) {
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -409,7 +409,7 @@ export default function FinancialHub() {
   const [sgDeleteConfirm, setSgDeleteConfirm] = useState(false);
 
   // ── View state ────────────────────────────────────────────────────────────
-  const [view, setView]       = useState<View>("home");
+  const [view, setView]       = useState<View>(restrictedFundingOnly ? "fund" : "home");
   const [amount, setAmount]   = useState("0");
   const [note, setNote]       = useState("");
   const [activeTab, setActiveTab] = useState<"transfers" | "bank-transfers" | "bills">("transfers");
@@ -563,12 +563,12 @@ export default function FinancialHub() {
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: wallet }         = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
-  const { data: txHistory = [] } = useQuery<any[]>({ queryKey: ["/api/transactions"] });
-  const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"] });
-  const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"] });
+  const { data: txHistory = [] } = useQuery<any[]>({ queryKey: ["/api/transactions"], enabled: !restrictedFundingOnly });
+  const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"], enabled: !restrictedFundingOnly });
+  const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], enabled: !restrictedFundingOnly });
   const { data: banks = [] }     = useQuery<Bank[]>({ queryKey: ["/api/wallet/banks"] });
-  const { data: vcData, refetch: refetchCard } = useQuery<{ card: any | null }>({ queryKey: ["/api/fintech/virtual-card"] });
-  const { data: cashbackData, refetch: refetchCashback } = useQuery<{ balance: string }>({ queryKey: ["/api/wallet/cashback"], staleTime: 30_000 });
+  const { data: vcData, refetch: refetchCard } = useQuery<{ card: any | null }>({ queryKey: ["/api/fintech/virtual-card"], enabled: !restrictedFundingOnly });
+  const { data: cashbackData, refetch: refetchCashback } = useQuery<{ balance: string }>({ queryKey: ["/api/wallet/cashback"], staleTime: 30_000, enabled: !restrictedFundingOnly });
   const { data: exchangeRatesData } = useQuery<{ buying: number; selling: number; currencies: Record<string, { buying: number; selling: number }>; updatedAt: number }>({ queryKey: ["/api/exchange-rates"], staleTime: 5 * 60 * 1000 });
   const {
     data: bankTransferPricing,
@@ -585,7 +585,7 @@ export default function FinancialHub() {
   });
   const { data: loanLimit, isLoading: loanLimitLoading } = useQuery<{ eligible: boolean; reason?: string; limitUsd: number; tier?: string; activeLoan?: any; interestRate?: number; terms?: number[] }>({ queryKey: ["/api/loans/limit"], staleTime: 60_000, enabled: bottomNav === "finance" });
   const { data: myLoans = [], refetch: refetchLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"], staleTime: 60_000, enabled: bottomNav === "finance" });
-  const { data: beneficiaries = [], refetch: refetchBenef } = useQuery<any[]>({ queryKey: ["/api/beneficiaries"], staleTime: 60_000 });
+  const { data: beneficiaries = [], refetch: refetchBenef } = useQuery<any[]>({ queryKey: ["/api/beneficiaries"], staleTime: 60_000, enabled: !restrictedFundingOnly });
   const saveBenefMutation = useMutation({
     mutationFn: async (b: { bankCode: string; bankName: string; accountNumber: string; accountName: string; nickname?: string }) => {
       const res = await apiRequest("POST", "/api/beneficiaries", b);
@@ -938,24 +938,24 @@ export default function FinancialHub() {
       setCryptoAmount(""); setCryptoTxHash(""); setCryptoNetwork("trc20");
       showTxDone({
         isSuccess: true,
-        title: "Crypto Deposit",
-        amount: `$${userCredit.toFixed(2)}`,
-        amountLabel: "Credited to wallet (95%)",
+        title: "Crypto Deposit Submitted",
+        amount: `$${amt.toFixed(2)}`,
+        amountLabel: "Pending on-chain verification",
         receiptProps: {
           title: "Crypto Deposit",
-          status: "success",
-          amount: `$${userCredit.toFixed(2)}`,
-          amountLabel: "USD credited",
+          status: "pending",
+          amount: `$${amt.toFixed(2)}`,
+          amountLabel: "Submitted amount",
           rows: [
             { label: "TX Hash",         value: savedHash, mono: true },
             { label: "Network",         value: savedNetwork === "trc20" ? "TRC20 / TRON" : "BEP20 / BSC" },
             { label: "Deposited",       value: `$${amt.toFixed(2)}` },
-            { label: "Affiliate Pool (5%)", value: `-$${affiliateCut.toFixed(2)}`, red: true },
-            { label: "You Received (95%)",  value: `$${userCredit.toFixed(2)}`,   green: true, bold: true },
-            { label: "Status",          value: "Credited Instantly ✓", green: true, bold: true },
+            { label: "Expected fee (5%)", value: `-$${affiliateCut.toFixed(2)}` },
+            { label: "Expected credit (95%)", value: `$${userCredit.toFixed(2)}`, bold: true },
+            { label: "Status",          value: "Pending verification", bold: true },
           ] as ReceiptRow[],
           referenceRow: savedHash,
-          footerNote: "Crypto deposits are auto-credited. Keep this receipt for your records.",
+          footerNote: "Funds are credited only after the transaction, recipient, network, and amount are verified on-chain.",
           onNewTx: () => { setTxReceiptOpen(false); setView("fund"); setFundStep("amount"); },
           newTxLabel: "New Deposit",
         },
@@ -3247,7 +3247,7 @@ export default function FinancialHub() {
         <BackHeader
           onBack={() => {
             if (fundStep === "amount") { setFundStep("method"); }
-            else { setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("home"); }
+            else if (!restrictedFundingOnly) { setFundAmount(""); setCryptoAmount(""); setCryptoTxHash(""); setView("home"); }
           }}
           title={fundStep === "method" ? "Fund Account" : fundMethod === "squad" ? "Pay via Squad" : fundMethod === "korapay" ? "Pay via Korapay" : "Crypto Deposit"}
           sub={fundStep === "method" ? "Choose how you want to add money" : "Add money to your TSIA wallet"}

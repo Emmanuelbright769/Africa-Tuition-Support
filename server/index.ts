@@ -6,8 +6,14 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
-import { sendEmail, sendTradeWindowOpenEmail, sendTradeWindowCloseEmail, sendMaintenanceFeeEmail } from "./email";
+import { sendEmail, sendTradeWindowOpenEmail, sendTradeWindowCloseEmail } from "./email";
 import { pushToUser } from "./realtime";
+import { processCurrentMonthlyBilling, reconcileMonthlyBilling } from "./monthlyBilling";
+import { creditVerifiedDepositAtomic } from "./walletBalance";
+import {
+  TSIA_BEP20_ADDRESS,
+  validateCanonicalUsdtTransfer,
+} from "./cryptoDepositPolicy";
 
 const app = express();
 const httpServer = createServer(app);
@@ -197,6 +203,25 @@ async function runMigrations() {
     `);
     await db.execute(sql`DROP INDEX IF EXISTS wallet_deposits_tx_hash_unique`);
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS wallet_credit_claims (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        provider TEXT NOT NULL,
+        reference TEXT NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        deposit_id INTEGER REFERENCES wallet_deposits(id) ON DELETE SET NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT wallet_credit_claims_provider_reference_uq UNIQUE (provider, reference)
+      )
+    `);
+    await db.execute(sql`
+      INSERT INTO wallet_credit_claims (provider, reference, user_id, deposit_id)
+      SELECT LOWER(wallet_type), tx_hash, user_id, id
+      FROM wallet_deposits
+      WHERE tx_hash IS NOT NULL
+        AND status IN ('completed', 'verified')
+      ON CONFLICT (provider, reference) DO NOTHING
+    `);
+    await db.execute(sql`
       ALTER TABLE co_affiliates
         ADD COLUMN IF NOT EXISTS withdrawn_amount DECIMAL(14,6) NOT NULL DEFAULT 0
     `);
@@ -263,8 +288,32 @@ async function runMigrations() {
       ON sponsor_code_purchases (status, created_at DESC)
     `);
     // Seed default plan prices and tier payouts (skip if already set)
-    // Add maintenance_fee to the transaction_type enum (safe to re-run; skipped if already exists)
+    // Monthly account billing is recorded as two explicit ledger entries.
+    await db.execute(sql`ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'subscription_fee'`);
     await db.execute(sql`ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'maintenance_fee'`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS monthly_billing_cycles (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        month_key VARCHAR(7) NOT NULL,
+        subscription_fee DECIMAL(10,2) NOT NULL DEFAULT 1.50,
+        maintenance_fee DECIMAL(10,2) NOT NULL DEFAULT 0.50,
+        total_fee DECIMAL(10,2) NOT NULL DEFAULT 2.00,
+        status TEXT NOT NULL DEFAULT 'payment_required'
+          CHECK (status IN ('payment_required', 'paid')),
+        balance_at_attempt DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        attempt_count INTEGER NOT NULL DEFAULT 1,
+        charged_at TIMESTAMP,
+        last_attempt_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT monthly_billing_cycles_user_month_uq UNIQUE (user_id, month_key)
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS monthly_billing_cycles_status_month_idx
+      ON monthly_billing_cycles (month_key, status)
+    `);
     await db.execute(sql`
       INSERT INTO platform_settings (key, value) VALUES
         ('plan_1yr_base',            '35'),
@@ -631,19 +680,15 @@ async function startTradeWindowBroadcastJob() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Background on-chain verifier for crypto wallet deposits.
-// Auto-credited TRC20/BEP20 deposits are checked against TronScan / BscScan
+// Pending TRC20/BEP20 deposits are checked against TronScan / BscScan
 // every 5 min. After a 10-min grace period:
-//   • If the txHash matches our recipient address + amount → status="verified"
-//   • If invalid (fake hash, wrong recipient, wrong amount) → wallet is debited,
-//     status="reversed", user is notified.
+//   • If the txHash matches our recipient address + amount → credit 95% once
+//   • If invalid (fake hash, wrong recipient, wrong amount) → reject without credit
 // Deposits older than 48h that never resolved → status="expired_unverified".
 // ─────────────────────────────────────────────────────────────────────────────
 async function startCryptoDepositVerifierJob() {
   const INTERVAL_MS  = 5 * 60 * 1000;
   const GRACE_MS     = 10 * 60 * 1000;
-  const TSIA_TRC20   = "TGwtyWAmBkcQiuD4CFavKr8ySTJ8zFt9Mj";
-  const TSIA_BEP20   = "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977".toLowerCase();
-  const AMOUNT_TOLERANCE = 0.5; // dollars
 
   async function verifyTron(txHash: string, expectedUsd: number): Promise<{ ok: boolean; reason?: string }> {
     try {
@@ -656,15 +701,15 @@ async function startCryptoDepositVerifierJob() {
       if (d.contractRet && d.contractRet !== "SUCCESS") return { ok: false, reason: `tx status: ${d.contractRet}` };
       const transfer = d.tokenTransferInfo;
       if (!transfer) return { ok: false, reason: "no token transfer in this tx" };
-      if (transfer.to_address !== TSIA_TRC20) return { ok: false, reason: `recipient mismatch (${transfer.to_address || "unknown"})` };
-      const symbol = String(transfer.symbol || "").toUpperCase();
-      if (symbol !== "USDT") return { ok: false, reason: `not USDT (got ${symbol || "unknown"})` };
-      const decimals = parseInt(transfer.decimals || "6", 10) || 6;
-      const amt = parseFloat(transfer.amount_str || "0") / Math.pow(10, decimals);
-      if (Math.abs(amt - expectedUsd) > AMOUNT_TOLERANCE) {
-        return { ok: false, reason: `amount mismatch (chain ${amt.toFixed(2)} vs claimed ${expectedUsd.toFixed(2)})` };
-      }
-      return { ok: true };
+      return validateCanonicalUsdtTransfer({
+        network: "trc20",
+        recipient: String(transfer.to_address || ""),
+        contract: String(transfer.contract_address || transfer.contractAddress || ""),
+        symbol: String(transfer.symbol || ""),
+        rawAmount: String(transfer.amount_str || "0"),
+        decimals: parseInt(transfer.decimals || "6", 10) || 6,
+        expectedUsd,
+      });
     } catch (e: any) {
       return { ok: false, reason: `tron api error: ${e?.message ?? "network"}` };
     }
@@ -680,22 +725,22 @@ async function startCryptoDepositVerifierJob() {
       const ds: any = await rs.json();
       if (ds?.result?.status !== "1") return { ok: false, reason: "tx failed or not found on BSC" };
       // Step 2 — list token transfers TO our address & match this hash
-      const rt = await fetch(`https://api.bscscan.com/api?module=account&action=tokentx&address=${TSIA_BEP20}&startblock=0&endblock=99999999&sort=desc${apiKey}`, {
+      const rt = await fetch(`https://api.bscscan.com/api?module=account&action=tokentx&address=${TSIA_BEP20_ADDRESS}&startblock=0&endblock=99999999&sort=desc${apiKey}`, {
         signal: AbortSignal.timeout(15000),
       });
       const dt: any = await rt.json();
       if (!Array.isArray(dt?.result)) return { ok: false, reason: "could not fetch token transfers" };
       const tx = dt.result.find((t: any) => String(t.hash || "").toLowerCase() === txHash.toLowerCase());
       if (!tx) return { ok: false, reason: "tx not found among our address inflows" };
-      if (String(tx.to || "").toLowerCase() !== TSIA_BEP20) return { ok: false, reason: "recipient mismatch" };
-      const sym = String(tx.tokenSymbol || "").toUpperCase();
-      if (!["USDT", "BUSD", "USDC"].includes(sym)) return { ok: false, reason: `unsupported token (${sym})` };
-      const decimals = parseInt(tx.tokenDecimal || "18", 10) || 18;
-      const amt = parseFloat(tx.value || "0") / Math.pow(10, decimals);
-      if (Math.abs(amt - expectedUsd) > AMOUNT_TOLERANCE) {
-        return { ok: false, reason: `amount mismatch (chain ${amt.toFixed(2)} vs claimed ${expectedUsd.toFixed(2)})` };
-      }
-      return { ok: true };
+      return validateCanonicalUsdtTransfer({
+        network: "bep20",
+        recipient: String(tx.to || ""),
+        contract: String(tx.contractAddress || ""),
+        symbol: String(tx.tokenSymbol || ""),
+        rawAmount: String(tx.value || "0"),
+        decimals: parseInt(tx.tokenDecimal || "18", 10) || 18,
+        expectedUsd,
+      });
     } catch (e: any) {
       return { ok: false, reason: `bsc api error: ${e?.message ?? "network"}` };
     }
@@ -720,36 +765,60 @@ async function startCryptoDepositVerifierJob() {
         else continue;
 
         if (result.ok) {
-          await storage.updateWalletDeposit(dep.id, { status: "verified" } as any);
-          console.log(`[CRYPTO-VERIFY] ✓ Deposit #${dep.id} (${wt}) verified on-chain — $${expected.toFixed(2)}`);
-        } else {
-          // Reverse the credit
+          const affiliateCut = parseFloat((expected * 0.05).toFixed(2));
+          const userCredit = parseFloat((expected - affiliateCut).toFixed(2));
+          const credited = await creditVerifiedDepositAtomic({
+            depositId: dep.id,
+            userId: dep.userId,
+            userCredit,
+            fee: affiliateCut,
+            provider: wt,
+            reference: String(dep.txHash),
+            description: `Verified crypto deposit (${String(dep.txHash).slice(0, 12)}…) — $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
+            finalStatus: "verified",
+          });
+          if (!credited.credited || !credited.balance) {
+            console.log(`[CRYPTO-VERIFY] Deposit #${dep.id} already credited — skipping.`);
+            continue;
+          }
+          const billing = await reconcileMonthlyBilling(dep.userId, new Date(), { recordAttempt: true });
+          const newBalance = billing.chargedNow ? billing.walletBalance.toFixed(2) : credited.balance;
+          if (!credited.activated && parseFloat(credited.balance) >= 5) {
+            try { await storage.updateWalletActivation?.(dep.userId, true); } catch {}
+          }
           try {
-            const wallet = await storage.getOrCreateWallet(dep.userId);
-            const newBal = Math.max(0, parseFloat(wallet.balance as any) - expected).toFixed(2);
-            await storage.updateWalletBalance(dep.userId, newBal);
-            await storage.updateWalletDeposit(dep.id, { status: "reversed" } as any);
-            await storage.createTransaction({
-              userId: dep.userId,
-              type: "refund",
-              amount: (-expected).toFixed(2),
-              fee: "0.00",
-              paymentMethod: wt,
-              description: `Crypto deposit reversed — could not verify on-chain. Reason: ${result.reason}. Tx: ${String(dep.txHash).slice(0, 14)}…`,
-            } as any);
+            const affCount = await storage.getAffiliateCount();
+            const perAff = affCount > 0 ? affiliateCut / affCount : 0;
+            if (credited.transactionId) {
+              await storage.recordAffiliateTradeShare(credited.transactionId, affiliateCut.toFixed(6), affCount, perAff.toFixed(6));
+            }
+          } catch {}
+          const notif = await storage.createNotification({
+            userId: dep.userId,
+            type: "deposit",
+            title: "Crypto Deposit Verified ✓",
+            message: `$${userCredit.toFixed(2)} was credited after on-chain verification. New balance: $${newBalance}.`,
+            data: { depositId: dep.id, txHash: dep.txHash, newBalance },
+            isRead: false,
+          } as any);
+          try { pushToUser(dep.userId, "notification", notif); } catch {}
+          try { pushToUser(dep.userId, "wallet:updated", { balance: newBalance }); } catch {}
+          console.log(`[CRYPTO-VERIFY] ✓ Deposit #${dep.id} (${wt}) verified and credited — $${userCredit.toFixed(2)}`);
+        } else {
+          try {
+            await storage.updateWalletDeposit(dep.id, { status: "rejected" } as any);
             const notif = await storage.createNotification({
               userId: dep.userId,
               type: "deposit",
-              title: "❌ Crypto Deposit Reversed",
-              message: `We could not verify your ${wt.toUpperCase()} deposit on-chain (${result.reason}). $${expected.toFixed(2)} has been removed from your wallet. New balance: $${newBal}. If you believe this is a mistake, contact support with your tx hash.`,
+              title: "Crypto Deposit Not Verified",
+              message: `We could not verify your ${wt.toUpperCase()} deposit on-chain (${result.reason}). No funds were credited. Contact support if you believe this is a mistake.`,
               data: { depositId: dep.id, reason: result.reason, txHash: dep.txHash },
               isRead: false,
             } as any);
             try { pushToUser(dep.userId, "notification", notif); } catch {}
-            try { pushToUser(dep.userId, "wallet:updated", { balance: newBal }); } catch {}
-            console.warn(`[CRYPTO-VERIFY] ✗ Deposit #${dep.id} (${wt}) REVERSED — ${result.reason}`);
+            console.warn(`[CRYPTO-VERIFY] ✗ Deposit #${dep.id} (${wt}) REJECTED — ${result.reason}`);
           } catch (revErr: any) {
-            console.error(`[CRYPTO-VERIFY] Failed to reverse deposit #${dep.id}:`, revErr?.message ?? revErr);
+            console.error(`[CRYPTO-VERIFY] Failed to reject deposit #${dep.id}:`, revErr?.message ?? revErr);
           }
         }
       }
@@ -759,102 +828,28 @@ async function startCryptoDepositVerifierJob() {
   };
 
   setInterval(run, INTERVAL_MS);
-  console.log("[CRYPTO-VERIFY] Background on-chain verifier started — checks confirmed crypto deposits every 5 min");
+  console.log("[CRYPTO-VERIFY] Background on-chain verifier started — checks pending crypto deposits every 5 min");
 }
 
-async function startMaintenanceFeeJob() {
-  const MAINTENANCE_FEE = 0.50;
-  const SETTING_KEY = "maintenance_fee_last_run";
-  // The product launch date is deliberate: no user may be charged before
-  // September 1, 2026 in West Africa Time.
-  const FIRST_COLLECTION_AT = new Date("2026-09-01T00:00:00+01:00");
-
-  const runDeduction = async () => {
-    const now = new Date();
-    if (now < FIRST_COLLECTION_AT) {
-      console.log(`[MAINTENANCE-FEE] Not started — first collection is ${FIRST_COLLECTION_AT.toUTCString()}.`);
-      return;
-    }
-    const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
-    const monthLabel = now.toLocaleString("en-US", { month: "long", year: "numeric" });
-
-    // Check if already run this month
-    const lastRun = await storage.getPlatformSetting(SETTING_KEY);
-    if (lastRun === monthKey) {
-      console.log(`[MAINTENANCE-FEE] Already collected for ${monthLabel} — skipping.`);
-      return;
-    }
-
-    const allUsers = await db.select({ id: users.id, email: users.email, firstName: users.firstName, role: users.role }).from(users);
-    const targets = allUsers.filter(u => u.role !== "admin");
-    let deducted = 0;
-
-    for (const u of targets) {
-      try {
-        const wallet = await storage.getOrCreateWallet(u.id);
-        const currentBalance = parseFloat(wallet.balance as string);
-        if (currentBalance <= 0) continue;
-
-        // Deduct up to $0.50 — can dip below the $2 floor (intentional per product spec)
-        const feeAmount = Math.min(MAINTENANCE_FEE, currentBalance);
-        const newBalance = Math.max(0, currentBalance - feeAmount).toFixed(2);
-
-        await storage.updateWalletBalance(u.id, newBalance);
-        await storage.createTransaction({
-          userId: u.id,
-          type: "maintenance_fee",
-          amount: (-feeAmount).toFixed(2),
-          fee: "0.00",
-          paymentMethod: "wallet",
-          description: `Monthly maintenance fee — ${monthLabel}`,
-        });
-        const notif = await storage.createNotification({
-          userId: u.id,
-          type: "wallet_credit",
-          title: "Monthly Maintenance Fee",
-          message: `$${feeAmount.toFixed(2)} has been deducted from your TSIA SwiftWallet as the monthly maintenance fee (${monthLabel}). New balance: $${newBalance}.`,
-          data: { fee: feeAmount.toFixed(2), newBalance, month: monthLabel },
-          isRead: false,
-        });
-        try { pushToUser(u.id, "notification", notif); } catch {}
-        try { pushToUser(u.id, "wallet:updated", { balance: newBalance }); } catch {}
-        sendMaintenanceFeeEmail(u.email, u.firstName, feeAmount.toFixed(2), newBalance, monthLabel).catch(() => {});
-        deducted++;
-      } catch (e: any) {
-        console.error(`[MAINTENANCE-FEE] Failed for user ${u.id}: ${e?.message ?? e}`);
+async function startMonthlyBillingJob() {
+  const INTERVAL_MS = 60 * 60 * 1000;
+  const run = async () => {
+    try {
+      const result = await processCurrentMonthlyBilling();
+      if (result.processed > 0) {
+        console.log(
+          `[MONTHLY-BILLING] Processed ${result.processed}: `
+          + `${result.paid} paid, ${result.restricted} restricted, ${result.failed} failed.`,
+        );
       }
+    } catch (error) {
+      console.error("[MONTHLY-BILLING] Job failed:", error);
     }
-
-    await storage.setPlatformSetting(SETTING_KEY, monthKey);
-    console.log(`[MAINTENANCE-FEE] ${monthLabel} — deducted $${MAINTENANCE_FEE} from ${deducted}/${targets.length} users.`);
   };
 
-  // Run immediately only after the September 1, 2026 launch date; otherwise
-  // the start-date guard above leaves all balances untouched.
-  await runDeduction();
-
-  // Schedule future runs: fire at 00:05 on the 1st of every subsequent month.
-  // Node's setTimeout uses a 32-bit signed integer (max ~24.8 days). When the
-  // delay to the next 1st exceeds that, split it into safe intermediate hops.
-  const MAX_SAFE_TIMEOUT = 2_147_483_647; // ~24.8 days in ms
-  const scheduleNext = () => {
-    const now = new Date();
-    const next1st = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 5, 0));
-    const delay = next1st.getTime() - Date.now();
-
-    if (delay > MAX_SAFE_TIMEOUT) {
-      // Sleep for a safe chunk, then re-evaluate (the target date hasn't arrived yet)
-      setTimeout(() => scheduleNext(), MAX_SAFE_TIMEOUT);
-      return;
-    }
-
-    setTimeout(async () => {
-      await runDeduction();
-      scheduleNext();
-    }, delay);
-    console.log(`[MAINTENANCE-FEE] Next collection scheduled: ${next1st.toUTCString()}`);
-  };
-  scheduleNext();
+  await run();
+  setInterval(run, INTERVAL_MS);
+  console.log("[MONTHLY-BILLING] Reconciliation job started — checks hourly.");
 }
 
 (async () => {
@@ -866,7 +861,7 @@ async function startMaintenanceFeeJob() {
   startTradeWindowBroadcastJob();
   startCryptoDepositVerifierJob();
   startIdentityVerificationReviewJob();
-  startMaintenanceFeeJob();
+  startMonthlyBillingJob();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

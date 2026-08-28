@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/lib/theme";
 import { LocalCurrencyProvider } from "@/contexts/LocalCurrencyContext";
 import NotFound from "@/pages/not-found";
 import KycPromptModal from "@/components/KycPromptModal";
+import MonthlyBillingGate from "@/components/MonthlyBillingGate";
 
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
@@ -164,8 +165,10 @@ function App() {
                 <SubdomainRedirect />
                 <Toaster />
                 <KycGate />
-                <Router />
-                <ConditionalAiAssistant />
+                <MonthlyBillingGate>
+                  <Router />
+                  <ConditionalAiAssistant />
+                </MonthlyBillingGate>
               </TooltipProvider>
             </AuthProvider>
           </LocalCurrencyProvider>

@@ -48,6 +48,9 @@ import { areBankTransfersEnabled, getTradeProfitWithdrawable } from "@shared/tra
 import { isUserFundsOutRequest } from "./accountLienPolicy";
 import { isValidSponsorCodeIdempotencyKey, SPONSOR_CODE_PRICE_USD } from "./sponsorCodePurchase";
 import { canCompleteProctoring, hasContinuousChunkTimeline, hasSustainedProctoringCoverage, isSafeProctoringMime, parseProctoringFinalStatus } from "./proctoringPolicy";
+import { reconcileMonthlyBilling } from "./monthlyBilling";
+import { isMonthlyBillingAllowedRequest, type MonthlyBillingStatus } from "@shared/monthlyBillingPolicy";
+import { creditVerifiedDepositAtomic } from "./walletBalance";
 
 const PgSession = pgSession(session);
 
@@ -301,6 +304,28 @@ export async function registerRoutes(
       if (sessionUser?.accountStatus === "suspended") {
         req.session.destroy(() => {});
         return res.status(403).json({ message: "ACCOUNT_SUSPENDED", reason: "This account has been suspended." });
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Monthly platform billing is enforced centrally so protected APIs cannot be
+  // reached by bypassing client-side navigation. Login, billing status, identity
+  // verification, and wallet funding remain available while payment is due.
+  app.use("/api", async (req, res, next) => {
+    const sessionUserId = (req.session as any)?.userId;
+    if (!sessionUserId) return next();
+    try {
+      const billing = await reconcileMonthlyBilling(sessionUserId);
+      (req as any).monthlyBilling = billing;
+      if (!billing.hasAccess && !isMonthlyBillingAllowedRequest(req.method, req.path)) {
+        return res.status(402).json({
+          code: "MONTHLY_BILLING_REQUIRED",
+          message: "Monthly platform fees must be paid before you can use this feature.",
+          billing,
+        });
       }
       next();
     } catch (error) {
@@ -717,7 +742,27 @@ export async function registerRoutes(
       kycCompleted = await storage.hasCompletedIdentityVerification(userId);
     }
 
-    res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, phone: user.phone, country: user.country, affiliateCode: user.affiliateCode, walletFundDeadline: user.walletFundDeadline ?? null, kycCompleted });
+    res.json({
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      phone: user.phone,
+      country: user.country,
+      affiliateCode: user.affiliateCode,
+      walletFundDeadline: user.walletFundDeadline ?? null,
+      kycCompleted,
+      monthlyBilling: (req as any).monthlyBilling ?? null,
+    });
+  });
+
+  app.get("/api/billing/status", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const status = ((req as any).monthlyBilling as MonthlyBillingStatus | undefined)
+      ?? await reconcileMonthlyBilling(userId);
+    res.json(status);
   });
 
   app.post("/api/auth/logout", async (req, res) => {
@@ -8583,6 +8628,9 @@ export async function registerRoutes(
       // Check not already credited
       const deposits = await storage.getWalletDepositsByUser(userId);
       const existing = deposits.find((d: any) => d.txHash === transactionRef);
+      if (!existing || existing.walletType !== "squad") {
+        return res.status(404).json({ message: "No matching payment request exists for this account." });
+      }
       if (existing && existing.status === "completed") return res.status(400).json({ message: "This payment has already been credited to your wallet." });
       // Verify with Squad API
       const response = await fetch(`${baseUrl}/transaction/verify/${encodeURIComponent(transactionRef)}`, {
@@ -8595,9 +8643,13 @@ export async function registerRoutes(
       // Amount in kobo → USD
       const amountKoboFromSquad = data.data?.transaction_amount ?? 0;
       const rates = await getUsdNgnRates();
-      const gross = parseFloat(existing?.amountUsd ?? (amountKoboFromSquad / Math.round(rates.buying * 100)).toFixed(2));
+      const expectedKobo = Math.round(parseFloat(existing.amountUsd) * Math.round(rates.buying * 100));
+      if (Number(amountKoboFromSquad) !== expectedKobo) {
+        return res.status(400).json({ message: "The settled payment amount does not match this funding request." });
+      }
+      const gross = parseFloat(existing.amountUsd);
       // Credit wallet using shared helper (95% to user, 5% affiliate pool) — same as Korapay
-      await creditWalletWithSplit(userId, gross, "squad", transactionRef, existing ? { id: existing.id, amountUsd: existing.amountUsd, status: existing.status } : undefined);
+      await creditWalletWithSplit(userId, gross, "squad", transactionRef, { id: existing.id, amountUsd: existing.amountUsd, status: existing.status });
       const userCredit = parseFloat((gross * 0.95).toFixed(2));
       res.json({ message: `$${userCredit.toFixed(2)} has been credited to your TSIA SwiftWallet`, amountUsd: userCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -8634,7 +8686,7 @@ export async function registerRoutes(
         const squadRow = await squadPool.query("SELECT * FROM wallet_deposits WHERE tx_hash=$1 LIMIT 1", [ref]);
         await squadPool.end();
         const allDeposits = squadRow.rows[0] ?? null;
-        if (allDeposits && allDeposits.status !== "completed") {
+        if (allDeposits && allDeposits.wallet_type === "squad" && allDeposits.status !== "completed") {
           const secretKey = process.env.SQUAD_SECRET_KEY ?? "";
           const isLive = secretKey.startsWith("sk_");
           const baseUrl = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
@@ -8646,6 +8698,13 @@ export async function registerRoutes(
             // raw Pool rows are snake_case — use user_id and amount_usd
             const userId = allDeposits.user_id ?? allDeposits.userId;
             const wkGross = parseFloat(allDeposits.amount_usd ?? allDeposits.amountUsd);
+            const rates = await getUsdNgnRates();
+            const expectedKobo = Math.round(wkGross * Math.round(rates.buying * 100));
+            if (Number(verData.data?.transaction_amount) !== expectedKobo) {
+              console.warn(`[SQUAD WEBHOOK] Amount mismatch for ${ref} — skipping credit.`);
+              res.sendStatus(200);
+              return;
+            }
             // Credit using shared helper (95% user, 5% affiliate pool) — same as Korapay
             await creditWalletWithSplit(userId, wkGross, "squad", ref, { id: allDeposits.id, amountUsd: allDeposits.amount_usd ?? allDeposits.amountUsd, status: allDeposits.status });
           }
@@ -8747,6 +8806,9 @@ export async function registerRoutes(
     try {
       const deposits = await storage.getWalletDepositsByUser(userId);
       const existing = deposits.find((d: any) => d.txHash === reference);
+      if (!existing || existing.walletType !== "korapay") {
+        return res.status(404).json({ message: "No matching payment request exists for this account." });
+      }
       if (existing && existing.status === "completed") return res.status(400).json({ message: "This payment has already been credited to your wallet." });
       const verRes = await fetch(`${KORA_BASE}/charges/${encodeURIComponent(reference)}`, {
         headers: { "Authorization": `Bearer ${secretKey}` },
@@ -8756,8 +8818,12 @@ export async function registerRoutes(
       if (!verData.status || verData.data?.status !== "success") {
         return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment or contact support." });
       }
-      const rates = await getUsdNgnRates();
-      const gross = parseFloat(existing?.amountUsd ?? (verData.data.amount / rates.buying).toFixed(2));
+      const metadataUserId = Number(verData.data?.metadata?.userId);
+      const metadataAmount = Number(verData.data?.metadata?.amountUsd);
+      if (metadataUserId !== userId || metadataAmount !== Number(existing.amountUsd)) {
+        return res.status(400).json({ message: "Payment ownership or amount does not match this funding request." });
+      }
+      const gross = parseFloat(existing.amountUsd);
       await creditWalletWithSplit(userId, gross, "korapay", reference, existing);
       res.json({ message: `$${gross.toFixed(2)} has been credited to your TSIA SwiftWallet`, amountUsd: gross.toFixed(2) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -8872,6 +8938,13 @@ export async function registerRoutes(
 
         if (dep) {
           // ── Normal path: deposit record found ──────────────────────────────
+          const metadataUserId = data.metadata?.userId == null ? dep.user_id : Number(data.metadata.userId);
+          const metadataAmount = data.metadata?.amountUsd == null ? Number(dep.amount_usd) : Number(data.metadata.amountUsd);
+          if (metadataUserId !== Number(dep.user_id) || metadataAmount !== Number(dep.amount_usd)) {
+            console.warn(`[KORAPAY WEBHOOK] Ownership or amount mismatch for ${ref} — skipping credit.`);
+            res.sendStatus(200);
+            return;
+          }
           if (dep.status !== "completed") {
             const gross = parseFloat(dep.amount_usd);
             if (dep.wallet_type === "exchange_korapay" || ref.startsWith("TSIA-EXKORA-")) {
@@ -8896,54 +8969,7 @@ export async function registerRoutes(
             console.log(`[KORAPAY WEBHOOK] Ref ${ref} already completed — skipping`);
           }
         } else {
-          // ── Fallback: no deposit record — extract userId from metadata or reference ──
-          // Reference format: TSIA-KORA-{userId}-{timestamp} or TSIA-EXKORA-{userId}-{timestamp}
-          const metaUserId = data.metadata?.userId;
-          const metaAmountUsd = data.metadata?.amountUsd;
-          const metaFundType = data.metadata?.fundType;
-          let fallbackUserId: number | null = null;
-          if (metaUserId && !isNaN(parseInt(metaUserId))) {
-            fallbackUserId = parseInt(metaUserId);
-          } else if (ref.startsWith("TSIA-KORA-") || ref.startsWith("TSIA-EXKORA-")) {
-            const parts = ref.split("-"); // ["TSIA","KORA"|"EXKORA","{userId}","{ts}"]
-            const uidIdx = ref.startsWith("TSIA-EXKORA-") ? 2 : 2;
-            if (parts.length >= 3 && !isNaN(parseInt(parts[uidIdx]))) {
-              fallbackUserId = parseInt(parts[uidIdx]);
-            }
-          }
-          if (fallbackUserId) {
-            // Amount: prefer metadata, fall back to Korapay's reported NGN amount
-            const _koraRates = await getUsdNgnRates();
-            // Korapay data.amount is in NGN (not kobo), so divide by buying rate for USD
-            const grossFromKora = data.amount ? parseFloat((data.amount / _koraRates.buying).toFixed(2)) : 0;
-            const gross = metaAmountUsd ? parseFloat(metaAmountUsd) : grossFromKora;
-            if (gross > 0) {
-              const isExchange = metaFundType === "exchange" || ref.startsWith("TSIA-EXKORA-");
-              if (isExchange) {
-                console.log(`[KORAPAY WEBHOOK] Exchange fallback: crediting user ${fallbackUserId} $${gross} to exchangeBalance for ref ${ref}`);
-                await storage.createWalletDeposit({ userId: fallbackUserId, amountUsd: gross.toFixed(2), txHash: ref, walletType: "exchange_korapay", status: "pending" });
-                await storage.updateExchangeBalance(fallbackUserId, gross);
-                const { Pool: _P2 } = await import("pg");
-                const _pool2 = new _P2({ connectionString: process.env.DATABASE_URL });
-                await _pool2.query("UPDATE wallet_deposits SET status='completed' WHERE tx_hash=$1", [ref]);
-                await _pool2.end();
-                await storage.createNotification({
-                  userId: fallbackUserId, type: "wallet_credit",
-                  title: "Exchange Account Funded ✓",
-                  message: `$${gross.toFixed(2)} added to your Exchange account via card/bank payment.`,
-                  data: { amount: gross, reference: ref }, isRead: false,
-                });
-              } else {
-                console.log(`[KORAPAY WEBHOOK] No deposit record found for ref ${ref} — crediting user ${fallbackUserId} $${gross} via fallback`);
-                const newDep = await storage.createWalletDeposit({ userId: fallbackUserId, amountUsd: gross.toFixed(2), txHash: ref, walletType: "korapay", status: "pending" });
-                await creditWalletWithSplit(fallbackUserId, gross, "korapay", ref, { id: newDep.id, amountUsd: gross.toFixed(2), status: "pending" });
-              }
-            } else {
-              console.warn(`[KORAPAY WEBHOOK] Ref ${ref} — could not determine amount, skipping`);
-            }
-          } else {
-            console.warn(`[KORAPAY WEBHOOK] Ref ${ref} — no deposit record and could not extract userId, skipping`);
-          }
+          console.warn(`[KORAPAY WEBHOOK] Ref ${ref} has no server-created deposit intent — skipping credit.`);
         }
       }
     } catch (e: any) {
@@ -8965,23 +8991,41 @@ export async function registerRoutes(
     // 5% affiliate pool charged on every deposit; 95% credited to user
     const affiliateCut = parseFloat((gross * 0.05).toFixed(2));
     const userCredit   = parseFloat((gross - affiliateCut).toFixed(2));
-    const w = await storage.getOrCreateWallet(userId);
-    const newBal = (parseFloat(w.balance) + userCredit).toFixed(2);
-    await storage.updateWalletBalance(userId, newBal);
-    if (!w.activated && parseFloat(newBal) > 2) {
+    const deposit = existingDeposit?.id
+      ? existingDeposit
+      : await storage.createWalletDeposit({
+          userId,
+          amountUsd: gross.toFixed(2),
+          txHash: ref,
+          walletType: method,
+          status: "pending",
+        });
+    const creditedWallet = await creditVerifiedDepositAtomic({
+      depositId: deposit.id,
+      userId,
+      userCredit,
+      fee: affiliateCut,
+      provider: method,
+      reference: ref,
+      description: `Wallet funded via ${method} (${ref}) — $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
+    });
+    if (!creditedWallet.credited || !creditedWallet.balance) return false;
+    const billing = await reconcileMonthlyBilling(userId, new Date(), { recordAttempt: true });
+    const newBal = billing.chargedNow ? billing.walletBalance.toFixed(2) : creditedWallet.balance;
+    if (!creditedWallet.activated && parseFloat(creditedWallet.balance) > 2) {
       try {
         await storage.activateWallet(userId);
         await creditReferrerCommissionOnce(userId, gross, "personal wallet activation");
       } catch { /* non-critical */ }
     }
-    const tx = await storage.createTransaction({ userId, type: "deposit", amount: userCredit.toFixed(2), fee: affiliateCut.toFixed(2), paymentMethod: method, description: `Wallet funded via ${method} (${ref}) — $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} affiliate pool (5%)` });
     // Route 5% to co-affiliate pool
     try {
       const affCount = await storage.getAffiliateCount();
       const perAff = affCount > 0 ? affiliateCut / affCount : 0;
-      await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affCount, perAff.toFixed(6));
+      if (creditedWallet.transactionId) {
+        await storage.recordAffiliateTradeShare(creditedWallet.transactionId, affiliateCut.toFixed(6), affCount, perAff.toFixed(6));
+      }
     } catch { /* non-critical */ }
-    if (existingDeposit?.id) await storage.updateWalletDeposit(existingDeposit.id, { status: "completed" });
     try {
       const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${userCredit.toFixed(2)} credited to your TSIA SwiftWallet (5% affiliate pool: $${affiliateCut.toFixed(2)})`, data: { ref }, isRead: false });
       pushToUser(userId, "notification", notif);
@@ -9048,65 +9092,28 @@ export async function registerRoutes(
       // Check not already credited
       const deposits = await storage.getWalletDepositsByUser(userId);
       const existing = deposits.find((d: any) => d.txHash === reference);
+      if (!existing || existing.walletType !== "paystack") {
+        return res.status(404).json({ message: "No matching payment request exists for this account." });
+      }
       if (existing && existing.status === "completed") return res.status(400).json({ message: "This payment has already been credited to your wallet" });
       const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
         headers: { Authorization: `Bearer ${key}` },
       });
       const data = await response.json() as any;
       if (!data.status || data.data?.status !== "success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again in a moment." });
-      const rates = await getUsdNgnRates();
-      const psGross = parseFloat(data.data.metadata?.amountUsd || (data.data.amount / Math.round(rates.buying * 100)).toFixed(2));
-      // 5% affiliate pool on deposit, 95% credited to user
-      const psAffiliateCut = parseFloat((psGross * 0.05).toFixed(2));
-      const psUserCredit   = parseFloat((psGross - psAffiliateCut).toFixed(2));
-      const psReserveCut   = 0;
-      const pstackWallet = await storage.getOrCreateWallet(userId);
-      const psNewBalance = (parseFloat(pstackWallet.balance) + psUserCredit).toFixed(2);
-      await storage.updateWalletBalance(userId, psNewBalance);
-      // Activate wallet on first funding ≥ $2 and credit referral commission
-      if (!pstackWallet.activated && parseFloat(psNewBalance) > 2) {
-        try {
-          await storage.activateWallet(userId);
-          const paystackReferralResult = await creditReferrerCommissionOnce(userId, psGross, "personal wallet activation");
-          if (!paystackReferralResult.credited) console.log(`[REFERRAL] No Paystack wallet activation commission credited for user ${userId}`);
-          const psUser = await storage.getUser(userId);
-          if (psUser?.referredBy) {
-            const psReferrer = await storage.getUserByAffiliateCode(psUser.referredBy);
-            if (psReferrer) {
-              const refN = await storage.createNotification({
-                userId: psReferrer.id, type: "referral_activated",
-                title: "Referral Activated 🎉",
-                message: `${psUser.firstName} ${psUser.lastName.charAt(0)}. (one of your referrals) has activated their TSIA wallet. Your referral commission is now active!`,
-                data: { referredUserId: psUser.id }, isRead: false,
-              });
-              pushToUser(psReferrer.id, "notification", refN);
-            }
-          }
-        } catch { /* non-critical */ }
+      if (Number(data.data.metadata?.userId) !== userId || Number(data.data.metadata?.amountUsd) !== Number(existing.amountUsd)) {
+        return res.status(400).json({ message: "Payment ownership or amount does not match this funding request." });
       }
-      // Mark deposit as completed
-      if (existing) await storage.updateWalletDeposit(existing.id, { status: "completed" });
-      // Record transaction (for complete history)
-      const psTx = await storage.createTransaction({ userId, type: "deposit", amount: psUserCredit.toFixed(2), fee: psAffiliateCut.toFixed(2), paymentMethod: "paystack", description: `Wallet funded via Paystack (${reference}) — $${psUserCredit.toFixed(2)} credited (95%), $${psAffiliateCut.toFixed(2)} affiliate pool (5%)` });
-      // Route 5% affiliate cut to co-affiliate pool
-      try { const psAffCount = await storage.getAffiliateCount(); const psPerAff = psAffCount > 0 ? psAffiliateCut / psAffCount : 0; await storage.recordAffiliateTradeShare(psTx.id, psAffiliateCut.toFixed(6), psAffCount, psPerAff.toFixed(6)); } catch { /* non-critical */ }
-      const psNotif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${psUserCredit.toFixed(2)} credited to your TSIA SwiftWallet (5% affiliate pool: $${psAffiliateCut.toFixed(2)})`, data: { reference }, isRead: false });
-      pushToUser(userId, "notification", psNotif);
-      const psDepositUser = await storage.getUser(userId);
-      if (psDepositUser) {
-        sendAdminDepositConfirmedEmail({
-          name: `${psDepositUser.firstName} ${psDepositUser.lastName}`,
-          email: psDepositUser.email,
-          gross: psGross.toFixed(2),
-          credited: psUserCredit.toFixed(2),
-          reserveCut: psReserveCut.toFixed(2),
-          affiliateCut: psAffiliateCut.toFixed(2),
-          newBalance: psNewBalance,
-          walletType: "paystack",
-          txHash: reference,
-          userId,
-        }).catch((err: any) => console.error("[EMAIL] Admin Paystack confirmed deposit email failed:", err?.message ?? err));
-      }
+      const psGross = parseFloat(existing.amountUsd);
+      const psUserCredit = parseFloat((psGross * 0.95).toFixed(2));
+      const credited = await creditWalletWithSplit(
+        userId,
+        psGross,
+        "paystack",
+        reference,
+        { id: existing.id, amountUsd: existing.amountUsd, status: existing.status },
+      );
+      if (!credited) return res.status(409).json({ message: "This payment has already been credited or is not eligible for credit." });
       res.json({ message: `$${psUserCredit.toFixed(2)} has been credited to your TSIA SwiftWallet`, amountUsd: psUserCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -9125,37 +9132,12 @@ export async function registerRoutes(
       if (alreadyProcessed) {
         return res.status(400).json({ message: "This transaction hash has already been submitted and credited to your wallet. Each transaction can only be used once." });
       }
-      // ── AUTO-APPROVE: instantly credit the user's wallet, no admin queue ──
-      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "confirmed" });
-
-      // 5% affiliate pool on deposit, 95% credited to user
-      const cryptoAffiliateCut = parseFloat((amount * 0.05).toFixed(2));
-      const cryptoUserCredit   = parseFloat((amount - cryptoAffiliateCut).toFixed(2));
-
-      // Credit the wallet balance immediately (95% after 5% affiliate pool)
-      const wallet = await storage.getOrCreateWallet(userId);
-      const newBal = (parseFloat(wallet.balance || "0") + cryptoUserCredit).toFixed(2);
-      await storage.updateWalletBalance(userId, newBal);
-
-      // Auto-activate wallet on first qualifying deposit
-      if (!wallet.activated && parseFloat(newBal) >= 5) {
-        try { await storage.updateWalletActivation?.(userId, true); } catch {}
-      }
-
-      // Record the transaction
-      const cryptoTx = await storage.createTransaction({ userId, type: "deposit", amount: cryptoUserCredit.toFixed(2), fee: cryptoAffiliateCut.toFixed(2), paymentMethod: walletType || "trc20", description: `Crypto deposit auto-credited (txn: ${txHash.trim().slice(0, 12)}…) — $${cryptoUserCredit.toFixed(2)} credited (95%), $${cryptoAffiliateCut.toFixed(2)} affiliate pool (5%)` });
-      // Route 5% affiliate cut to co-affiliate pool
-      try { const crAffCount = await storage.getAffiliateCount(); const crPerAff = crAffCount > 0 ? cryptoAffiliateCut / crAffCount : 0; await storage.recordAffiliateTradeShare(cryptoTx.id, cryptoAffiliateCut.toFixed(6), crAffCount, crPerAff.toFixed(6)); } catch { /* non-critical */ }
-
-      // Notify user — funds are live
-      const notif = await storage.createNotification({ userId, type: "deposit", title: "✅ Wallet Funded", message: `$${cryptoUserCredit.toFixed(2)} credited to your TSIA SwiftWallet (5% affiliate pool: $${cryptoAffiliateCut.toFixed(2)}). New balance: $${newBal}.`, data: { depositId: deposit.id, amount: cryptoUserCredit.toFixed(2), newBalance: newBal }, isRead: false });
+      // Crypto is never credited from caller-supplied data. It remains pending
+      // until the background verifier confirms the chain, recipient, and amount.
+      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "pending" });
+      const notif = await storage.createNotification({ userId, type: "deposit", title: "Crypto Deposit Submitted", message: `Your ${String(walletType || "trc20").toUpperCase()} deposit is being verified on-chain. It will be credited only after the transaction, recipient, and amount are confirmed.`, data: { depositId: deposit.id }, isRead: false });
       pushToUser(userId, "notification", notif);
-      pushToUser(userId, "wallet:updated", { balance: newBal });
-
-      // Credit referral commission on first qualifying deposit (best-effort)
-      try { creditReferrerCommission(userId, amount, "wallet deposit").catch(() => {}); } catch {}
-
-      res.json({ deposit, balance: newBal, message: `$${cryptoUserCredit.toFixed(2)} credited to your wallet (5% affiliate pool applied). Balance: $${newBal}.` });
+      res.status(202).json({ deposit, pending: true, message: "Crypto deposit submitted for on-chain verification. No funds have been credited yet." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

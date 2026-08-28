@@ -18,6 +18,12 @@ type AuthUser = {
   isNewUser?: boolean;
   walletFundDeadline?: string | null;
   kycCompleted?: boolean;
+  monthlyBilling?: {
+    required: boolean;
+    hasAccess: boolean;
+    state: string;
+    monthKey: string | null;
+  } | null;
 };
 
 type AuthContextType = {

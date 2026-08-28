@@ -1723,12 +1723,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Crypto deposits needing on-chain verification ─────────────────────────
-  // Returns auto-credited TRC20/BEP20 deposits in last 48h still in "confirmed" state
+  // Returns uncredited TRC20/BEP20 submissions awaiting on-chain verification.
   async getCryptoDepositsNeedingVerification(): Promise<WalletDeposit[]> {
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
     const rows = await db.select().from(walletDeposits)
       .where(and(
-        eq(walletDeposits.status, "confirmed"),
+        eq(walletDeposits.status, "pending"),
         sql`LOWER(${walletDeposits.walletType}) IN ('trc20','bep20')`,
         sql`${walletDeposits.createdAt} > ${cutoff}`,
       ))

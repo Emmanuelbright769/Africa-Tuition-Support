@@ -8,7 +8,7 @@ export const coAffiliateStatusEnum = pgEnum("co_affiliate_status", ["active", "p
 export const verificationStatusEnum = pgEnum("verification_status", ["pending", "verified", "rejected"]);
 export const identityVerificationStatusEnum = pgEnum("identity_verification_status", ["pending", "verified", "failed", "expired", "manual_review"]);
 export const tierEnum = pgEnum("tier", ["platinum", "gold", "silver", "none"]);
-export const transactionTypeEnum = pgEnum("transaction_type", ["verification_fee", "plan_payment", "sponsorship_credit", "withdrawal", "vat_deduction", "deposit", "transfer", "bill", "trade_transfer", "loan", "admin_credit", "admin_adjustment", "crypto_withdrawal", "refund", "maintenance_fee"]);
+export const transactionTypeEnum = pgEnum("transaction_type", ["verification_fee", "plan_payment", "sponsorship_credit", "withdrawal", "vat_deduction", "deposit", "transfer", "bill", "trade_transfer", "loan", "admin_credit", "admin_adjustment", "crypto_withdrawal", "refund", "subscription_fee", "maintenance_fee"]);
 export const disbursementStatusEnum = pgEnum("disbursement_status", ["pending", "approved", "rejected", "completed"]);
 export const tradeWalletTypeEnum = pgEnum("trade_wallet_type", ["trc20", "bep20"]);
 export const tradeTransactionTypeEnum = pgEnum("trade_transaction_type", ["deposit", "topup", "withdraw_exchange", "withdraw_bank", "bot_earning"]);
@@ -255,6 +255,26 @@ export const transactions = pgTable("transactions", {
   description: text("description").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const monthlyBillingCycles = pgTable("monthly_billing_cycles", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  monthKey: varchar("month_key", { length: 7 }).notNull(),
+  subscriptionFee: decimal("subscription_fee", { precision: 10, scale: 2 }).notNull().default("1.50"),
+  maintenanceFee: decimal("maintenance_fee", { precision: 10, scale: 2 }).notNull().default("0.50"),
+  totalFee: decimal("total_fee", { precision: 10, scale: 2 }).notNull().default("2.00"),
+  status: text("status").notNull().default("payment_required"),
+  balanceAtAttempt: decimal("balance_at_attempt", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  attemptCount: integer("attempt_count").notNull().default(1),
+  chargedAt: timestamp("charged_at"),
+  lastAttemptAt: timestamp("last_attempt_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  userMonthUnique: uniqueIndex("monthly_billing_cycles_user_month_uq").on(table.userId, table.monthKey),
+}));
+
+export type MonthlyBillingCycle = typeof monthlyBillingCycles.$inferSelect;
 
 export const disbursements = pgTable("disbursements", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -788,6 +808,17 @@ export const walletDeposits = pgTable("wallet_deposits", {
   status:     text("status").notNull().default("pending"),
   createdAt:  timestamp("created_at").defaultNow().notNull(),
 });
+
+export const walletCreditClaims = pgTable("wallet_credit_claims", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  provider: text("provider").notNull(),
+  reference: text("reference").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  depositId: integer("deposit_id").references(() => walletDeposits.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  providerReferenceUnique: uniqueIndex("wallet_credit_claims_provider_reference_uq").on(table.provider, table.reference),
+}));
 
 export const insertProductSchema = createInsertSchema(products).omit({ id: true, createdAt: true, viewCount: true });
 export type InsertProduct = z.infer<typeof insertProductSchema>;

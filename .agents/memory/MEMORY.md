@@ -8,3 +8,4 @@
 - [Account lien scope](account-lien-scope.md) — liens block only external bank and crypto payouts; trading and internal financial services remain available.
 - [App Storage client startup](app-storage-client-startup.md) — create the object-storage client at request time so a missing bucket cannot crash the whole server.
 - [Trade active-session lock](trade-active-session-lock.md) — freeze wallet funding, payouts, and address changes while a bot trade is active; keep deactivation available.
+- [Monthly account billing](monthly-account-billing.md) — collect all $2 monthly cycles atomically; unpaid accounts retain only verified funding and identity access.

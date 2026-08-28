@@ -1,0 +1,171 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { sql } from "drizzle-orm";
+import { db } from "./db";
+import { reconcileMonthlyBilling } from "./monthlyBilling";
+import { creditVerifiedDepositAtomic, creditWalletBalanceAtomic } from "./walletBalance";
+
+function rowsOf<T>(result: unknown): T[] {
+  if (result && typeof result === "object" && "rows" in result) {
+    return ((result as { rows?: T[] }).rows ?? []);
+  }
+  return [];
+}
+
+test("monthly billing is atomic under concurrency and settles all arrears before restoring access", async () => {
+  const marker = `${Date.now()}-${process.pid}`;
+  let userId: number | null = null;
+
+  try {
+    const userResult = await db.execute(sql`
+      INSERT INTO users (first_name, last_name, email, phone, password, role, account_status)
+      VALUES ('Billing', 'Test', ${`billing-test-${marker}@example.invalid`}, '0000000000', 'otp-only', 'student', 'active')
+      RETURNING id
+    `);
+    userId = Number(rowsOf<{ id: number }>(userResult)[0].id);
+    await db.execute(sql`
+      INSERT INTO wallets (user_id, balance, activated, cashback_balance, lien_amount)
+      VALUES (${userId}, '1.99', TRUE, '0.00', '0.00')
+    `);
+
+    const september = new Date("2026-09-01T00:05:00+01:00");
+    const restricted = await reconcileMonthlyBilling(userId, september);
+    assert.equal(restricted.state, "payment_required");
+    assert.equal(restricted.hasAccess, false);
+    assert.equal(restricted.walletBalance, 1.99);
+    assert.equal(restricted.shortfall, 0.01);
+    assert.equal(restricted.amountDue, 2);
+    assert.equal(restricted.unpaidMonths, 1);
+
+    const unchangedBalanceResult = await db.execute(sql`
+      SELECT balance::numeric AS balance FROM wallets WHERE user_id = ${userId}
+    `);
+    assert.equal(Number(rowsOf<{ balance: string }>(unchangedBalanceResult)[0].balance), 1.99);
+    await reconcileMonthlyBilling(userId, september);
+    await reconcileMonthlyBilling(userId, september);
+    const readOnlyAuditResult = await db.execute(sql`
+      SELECT attempt_count
+      FROM monthly_billing_cycles
+      WHERE user_id = ${userId} AND month_key = '2026-09'
+    `);
+    assert.equal(rowsOf<{ attempt_count: number }>(readOnlyAuditResult)[0].attempt_count, 1);
+
+    await db.execute(sql`UPDATE wallets SET balance = '2.00' WHERE user_id = ${userId}`);
+    const concurrent = await Promise.all([
+      reconcileMonthlyBilling(userId, september),
+      reconcileMonthlyBilling(userId, september),
+      reconcileMonthlyBilling(userId, september),
+    ]);
+    assert.equal(concurrent.every((status) => status.state === "paid" && status.hasAccess), true);
+    assert.equal(concurrent.filter((status) => status.chargedNow).length, 1);
+
+    const septemberLedgerResult = await db.execute(sql`
+      SELECT type, amount::numeric AS amount
+      FROM transactions
+      WHERE user_id = ${userId}
+      ORDER BY id
+    `);
+    const septemberLedger = rowsOf<{ type: string; amount: string }>(septemberLedgerResult);
+    assert.deepEqual(
+      septemberLedger.map((entry) => [entry.type, Number(entry.amount)]),
+      [["subscription_fee", -1.5], ["maintenance_fee", -0.5]],
+    );
+
+    await db.execute(sql`UPDATE wallets SET balance = '0.00' WHERE user_id = ${userId}`);
+    const october = await reconcileMonthlyBilling(userId, new Date("2026-10-01T00:05:00+01:00"));
+    assert.equal(october.state, "payment_required");
+
+    await db.execute(sql`UPDATE wallets SET balance = '2.00' WHERE user_id = ${userId}`);
+    const november = new Date("2026-11-01T00:05:00+01:00");
+    const arrears = await reconcileMonthlyBilling(userId, november);
+    assert.equal(arrears.state, "payment_required");
+    assert.equal(arrears.amountDue, 4);
+    assert.equal(arrears.unpaidMonths, 2);
+    assert.equal(arrears.walletBalance, 2);
+
+    const raceResults = await Promise.all([
+      reconcileMonthlyBilling(userId, november),
+      (async () => {
+        await creditWalletBalanceAtomic(userId!, 2);
+        return reconcileMonthlyBilling(userId!, november, { recordAttempt: true });
+      })(),
+    ]);
+    assert.equal(raceResults.some((status) => status.chargedNow), true);
+    const settled = await reconcileMonthlyBilling(userId, november);
+    assert.equal(settled.state, "paid");
+    assert.equal(settled.hasAccess, true);
+    assert.equal(settled.walletBalance, 0);
+
+    const cyclesResult = await db.execute(sql`
+      SELECT month_key, status
+      FROM monthly_billing_cycles
+      WHERE user_id = ${userId}
+      ORDER BY month_key
+    `);
+    assert.deepEqual(
+      rowsOf<{ month_key: string; status: string }>(cyclesResult),
+      [
+        { month_key: "2026-09", status: "paid" },
+        { month_key: "2026-10", status: "paid" },
+        { month_key: "2026-11", status: "paid" },
+      ],
+    );
+
+    const finalLedgerResult = await db.execute(sql`
+      SELECT type, amount::numeric AS amount
+      FROM transactions
+      WHERE user_id = ${userId}
+      ORDER BY id
+    `);
+    assert.deepEqual(
+      rowsOf<{ type: string; amount: string }>(finalLedgerResult)
+        .map((entry) => [entry.type, Number(entry.amount)]),
+      [
+        ["subscription_fee", -1.5],
+        ["maintenance_fee", -0.5],
+        ["subscription_fee", -1.5],
+        ["maintenance_fee", -0.5],
+        ["subscription_fee", -1.5],
+        ["maintenance_fee", -0.5],
+      ],
+    );
+
+    const depositResult = await db.execute(sql`
+      INSERT INTO wallet_deposits (user_id, amount_usd, tx_hash, wallet_type, status)
+      VALUES (${userId}, '5.00', ${`verified-ref-${marker}`}, 'squad', 'pending')
+      RETURNING id
+    `);
+    const depositId = rowsOf<{ id: number }>(depositResult)[0].id;
+    const verifiedCredit = {
+      depositId,
+      userId,
+      userCredit: 4.75,
+      fee: 0.25,
+      provider: "squad",
+      reference: `verified-ref-${marker}`,
+      description: "Concurrent verified funding test",
+    };
+    await assert.rejects(creditVerifiedDepositAtomic({ ...verifiedCredit, userId: 1 }));
+    const duplicateRace = await Promise.all([
+      creditVerifiedDepositAtomic(verifiedCredit),
+      creditVerifiedDepositAtomic(verifiedCredit),
+    ]);
+    assert.equal(duplicateRace.filter((result) => result.credited).length, 1);
+    const duplicateLedgerResult = await db.execute(sql`
+      SELECT COUNT(*)::int AS count
+      FROM transactions
+      WHERE user_id = ${userId} AND type = 'deposit'
+    `);
+    assert.equal(rowsOf<{ count: number }>(duplicateLedgerResult)[0].count, 1);
+  } finally {
+    if (userId !== null) {
+      await db.execute(sql`DELETE FROM notifications WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM transactions WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM monthly_billing_cycles WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM wallet_credit_claims WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM wallet_deposits WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM wallets WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+    }
+  }
+});

@@ -3741,7 +3741,12 @@ export async function registerRoutes(
       const cm = (cycleMetrics.rows[0] as any) ?? {};
       const depositCount         = parseInt(cm.deposit_count ?? "0", 10);
       const currentCycleEarnings = parseFloat(cm.current_cycle_earnings ?? "0");
-      res.json({ ...wallet, depositCount, currentCycleEarnings });
+      res.json({
+        ...wallet,
+        depositCount,
+        currentCycleEarnings,
+        tradeSessionActive: await isTradeSessionActive(userId),
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -3751,6 +3756,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Wallet changes are disabled during an active trade session. Please wait until the current session ends." });
+      }
       const { trc20Address, bep20Address } = req.body;
       if (!trc20Address && !bep20Address) return res.status(400).json({ message: "Provide at least one wallet address." });
       await storage.getOrCreateTradeWallet(userId);
@@ -3850,6 +3858,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Deposits are disabled during an active trade session. Please wait until the current session ends." });
+      }
       const { amountUsd, walletType, txHash, brokerId: depositBrokerId, tradingPlanDays: rawPlanDays } = req.body;
       const amount = parseFloat(amountUsd);
       const depositBroker = TRADE_BROKERS.find(b => b.id === depositBrokerId);
@@ -4227,6 +4238,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Deposits are disabled during an active trade session. Please wait until the current session ends." });
+      }
       const { transactionRef } = req.body;
       if (!transactionRef) return res.status(400).json({ message: "Transaction reference is required" });
       const secretKey = process.env.SQUAD_SECRET_KEY;
@@ -4312,6 +4326,9 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Deposits are disabled during an active trade session. Please wait until the current session ends." });
+      }
       const { reference } = req.body;
       if (!reference) return res.status(400).json({ message: "reference is required" });
       const secretKey = process.env.KORAPAY_SECRET_KEY;

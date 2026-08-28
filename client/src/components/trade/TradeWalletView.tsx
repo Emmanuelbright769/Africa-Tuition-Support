@@ -11,6 +11,7 @@ import { getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
 const MAX_TOPUPS = 3;
 
 interface TradeWalletViewProps {
+  tradeSessionActive: boolean;
   onDeposit: () => void;
   onWithdraw: () => void;
   onFund: () => void;
@@ -20,7 +21,7 @@ interface TradeWalletViewProps {
 }
 
 export default function TradeWalletView({
-  onDeposit, onWithdraw, onFund, onConnect, onReinvest, onBankDeposit,
+  tradeSessionActive, onDeposit, onWithdraw, onFund, onConnect, onReinvest, onBankDeposit,
 }: TradeWalletViewProps) {
   const [hidden, setHidden] = useState(false);
   const { data: wallet, isLoading, refetch } = useQuery<any>({
@@ -62,6 +63,18 @@ export default function TradeWalletView({
   const capReached      = roiComplete || (profitTarget > 0 && totalEarnings >= profitTarget);
 
   const hasWallet       = wallet?.trc20Address || wallet?.bep20Address;
+  // Keep the client locked during the short interval before the wallet query
+  // refreshes. The server remains the final authority for every mutation.
+  const localSessionActive = (() => {
+    const activatedAt = wallet?.botActivatedAt ? new Date(wallet.botActivatedAt).getTime() : 0;
+    if (!activatedAt || Date.now() - activatedAt >= 12 * 3600 * 1000) return false;
+    const londonNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" }));
+    const ukDay = londonNow.getDay();
+    const ukHour = londonNow.getHours();
+    return (ukDay >= 1 && ukDay <= 5 && ukHour >= 13) || (ukDay >= 2 && ukDay <= 6 && ukHour < 1);
+  })();
+  const controlsLocked = tradeSessionActive || wallet?.tradeSessionActive === true || localSessionActive;
+  const lockedSublabel = "Locked during active trade";
 
   // Top-up tracking — clamp display to avoid showing "11/3"
   const rawDepositCount = wallet?.depositCount ?? 0;
@@ -72,7 +85,7 @@ export default function TradeWalletView({
   const fmt = (n: number) => hidden ? "••••••" : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // ── Action grid (2 × 2) ─────────────────────────────────────
-  const depositDisabled = limitReached;
+  const depositDisabled = limitReached || controlsLocked;
   // When all slots are used AND the cycle is complete, the "Top Up" slot becomes "Reinvest"
   const topUpIsReinvest = limitReached && cycleComplete;
   const topUpDisabled   = limitReached && !cycleComplete;
@@ -81,7 +94,7 @@ export default function TradeWalletView({
     {
       id: "bank",
       label: "Bank Deposit",
-      sublabel: depositDisabled ? "Top-up limit reached" : "Paystack · card / bank",
+      sublabel: controlsLocked ? lockedSublabel : depositDisabled ? "Top-up limit reached" : "Paystack · card / bank",
       icon: CreditCard,
       color: depositDisabled
         ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
@@ -93,7 +106,7 @@ export default function TradeWalletView({
     {
       id: "deposit",
       label: "Crypto Deposit",
-      sublabel: depositDisabled ? "Top-up limit reached" : "Via TRC20 / BEP20",
+      sublabel: controlsLocked ? lockedSublabel : depositDisabled ? "Top-up limit reached" : "Via TRC20 / BEP20",
       icon: ArrowDownToLine,
       color: depositDisabled
         ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
@@ -105,7 +118,9 @@ export default function TradeWalletView({
     {
       id: "fund",
       label: topUpIsReinvest ? "Reinvest" : "Top Up",
-      sublabel: topUpIsReinvest
+      sublabel: controlsLocked
+        ? lockedSublabel
+        : topUpIsReinvest
         ? withdrawable >= 2
           ? `Roll $${withdrawable.toFixed(2)} into new cycle`
           : "Need ≥$2 withdrawable earnings"
@@ -113,17 +128,23 @@ export default function TradeWalletView({
           ? "Limit reached — 3/3 used"
           : `From SwiftWallet · ${topupsLeft} left`,
       icon: topUpIsReinvest ? RefreshCcw : Wallet,
-      color: topUpIsReinvest
+      color: controlsLocked
+        ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
+        : topUpIsReinvest
         ? withdrawable >= 2
           ? "bg-tsia-gold/20 text-tsia-gold border-tsia-gold/50"
           : "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
         : topUpDisabled
           ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
           : "bg-tsia-gold/15 text-tsia-gold border-tsia-gold/30",
-      iconBg: topUpIsReinvest
+      iconBg: controlsLocked
+        ? "bg-slate-600"
+        : topUpIsReinvest
         ? withdrawable >= 2 ? "bg-tsia-gold" : "bg-slate-600"
         : topUpDisabled ? "bg-slate-600" : "bg-tsia-gold",
-      onClick: topUpIsReinvest
+      onClick: controlsLocked
+        ? undefined
+        : topUpIsReinvest
         ? withdrawable >= 2 ? onReinvest : undefined
         : topUpDisabled ? undefined : onFund,
       badge: topUpIsReinvest && withdrawable >= 2
@@ -133,11 +154,13 @@ export default function TradeWalletView({
     {
       id: "withdraw",
       label: "Withdraw",
-      sublabel: "Earnings to wallet / bank",
+      sublabel: controlsLocked ? lockedSublabel : "Earnings to wallet / bank",
       icon: ArrowUpFromLine,
-      color: "bg-blue-400/15 text-blue-400 border-blue-400/30",
-      iconBg: "bg-blue-500",
-      onClick: onWithdraw,
+      color: controlsLocked
+        ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
+        : "bg-blue-400/15 text-blue-400 border-blue-400/30",
+      iconBg: controlsLocked ? "bg-slate-600" : "bg-blue-500",
+      onClick: controlsLocked ? undefined : onWithdraw,
       badge: null,
     },
   ];
@@ -287,6 +310,13 @@ export default function TradeWalletView({
       </motion.div>
 
       {/* Action buttons — 2×2 grid */}
+      {controlsLocked && (
+        <div className="flex items-start gap-2 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs text-amber-200" role="status">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>Trade Market funding, withdrawals, deposits, and wallet changes are locked while your active trade is running. You can turn off the trade session above.</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         {actions.map((a, i) => (
           <motion.button
@@ -319,19 +349,22 @@ export default function TradeWalletView({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.28 }}
-        onClick={onConnect}
-        className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-all hover:scale-[1.01] active:scale-[0.99] ${
-          hasWallet
+        onClick={controlsLocked ? undefined : onConnect}
+        disabled={controlsLocked}
+        className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-all hover:scale-[1.01] active:scale-[0.99] disabled:pointer-events-none ${
+          controlsLocked
+            ? "bg-slate-400/10 text-slate-500 border-slate-400/20 opacity-50 cursor-not-allowed"
+            : hasWallet
             ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30"
             : "bg-slate-400/15 text-slate-300 border-slate-400/30"
         }`}
       >
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${hasWallet ? "bg-emerald-500" : "bg-slate-600"}`}>
-          {hasWallet ? <Link2 className="h-5 w-5 text-white" /> : <ArrowLeftRight className="h-5 w-5 text-white" />}
+           {controlsLocked ? <Lock className="h-5 w-5 text-white" /> : hasWallet ? <Link2 className="h-5 w-5 text-white" /> : <ArrowLeftRight className="h-5 w-5 text-white" />}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold leading-tight">{hasWallet ? "Exchange Wallet" : "Connect Wallet"}</p>
-          <p className="mt-0.5 text-[10px] opacity-70 leading-snug">{hasWallet ? "TRC20/BEP20 connected" : "Link your exchange address"}</p>
+           <p className="text-sm font-bold leading-tight">{hasWallet ? "Exchange Wallet" : "Connect Wallet"}</p>
+           <p className="mt-0.5 text-[10px] opacity-70 leading-snug">{controlsLocked ? lockedSublabel : hasWallet ? "TRC20/BEP20 connected" : "Link your exchange address"}</p>
         </div>
         {hasWallet && (
           <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-[9px] font-bold text-emerald-300">Edit</span>

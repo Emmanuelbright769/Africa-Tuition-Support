@@ -971,6 +971,20 @@ export default function AffiliateDashboard() {
   );
   const { data: tradeWallet, refetch: refetchTradeWallet } = useQuery({ queryKey: ["/api/trade/wallet"] });
   const { data: tradeTxs = [], refetch: refetchTradeTxs } = useQuery({ queryKey: ["/api/trade/transactions"] });
+  const tradeSessionActive = botActive || tradeWalletRaw?.tradeSessionActive === true;
+  useEffect(() => {
+    if (!tradeSessionActive) return;
+    setDepositOpen(false);
+    setWithdrawOpen(false);
+    setConnectOpen(false);
+    setFundTradeOpen(false);
+    setReinvestOpen(false);
+    setTradePSDepositOpen(false);
+    if (tradePSKoraPollRef.current) {
+      clearInterval(tradePSKoraPollRef.current);
+      tradePSKoraPollRef.current = null;
+    }
+  }, [tradeSessionActive]);
   const { data: loanLimit, refetch: refetchLoanLimit } = useQuery<any>({ queryKey: ["/api/loans/limit"] });
   const { data: myLoans = [], refetch: refetchMyLoans } = useQuery<any[]>({ queryKey: ["/api/loans/my-loans"] });
   const { data: myTenancyProps = [] } = useQuery<any[]>({ queryKey: ["/api/tenancy/my-properties"] });
@@ -1685,6 +1699,7 @@ export default function AffiliateDashboard() {
                 <TradeMarketSection
                   tradeBalance={tradeBalance}
                   userId={user?.id ?? 0}
+                  tradeSessionActive={tradeSessionActive}
                   onDeposit={() => setDepositOpen(true)}
                   onWithdraw={() => setWithdrawOpen(true)}
                   onFund={() => setFundTradeOpen(true)}

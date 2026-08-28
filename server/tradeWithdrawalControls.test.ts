@@ -53,6 +53,44 @@ test("Trade Market bank withdrawals reject active liens at check and debit time"
   assert.match(tradeWithdrawRoute, /platform_settings\.value = 'false'/);
 });
 
+test("Trade Market funding controls have server-side active-session gates", () => {
+  const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+  const protectedRoutes = [
+    'app.post("/api/trade/wallet/connect"',
+    'app.post("/api/trade/deposit"',
+    'app.post("/api/trade/fund-from-wallet"',
+    'app.post("/api/trade/transfer-to-wallet"',
+    'app.post("/api/trade/withdraw"',
+    'app.post("/api/trade/squad/initiate"',
+    'app.post("/api/trade/squad/verify"',
+    'app.post("/api/trade/korapay/initiate"',
+    'app.post("/api/trade/korapay/verify"',
+  ];
+
+  for (const route of protectedRoutes) {
+    const routeStart = routes.indexOf(route);
+    assert.notEqual(routeStart, -1, `${route} should exist`);
+    const routeEnd = routes.indexOf("\n  app.", routeStart + route.length);
+    const routeBody = routes.slice(routeStart, routeEnd > routeStart ? routeEnd : routeStart + 3000);
+    assert.match(routeBody, /isTradeSessionActive\(userId\)/, `${route} should reject active sessions`);
+  }
+});
+
+test("Trade Market wallet exposes authoritative session state and disables the five controls", () => {
+  const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+  const walletStart = routes.indexOf('app.get("/api/trade/wallet"');
+  const walletEnd = routes.indexOf('app.post("/api/trade/wallet/connect"', walletStart);
+  assert.match(routes.slice(walletStart, walletEnd), /tradeSessionActive:\s*await isTradeSessionActive\(userId\)/);
+
+  const walletView = readFileSync(
+    new URL("../client/src/components/trade/TradeWalletView.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(walletView, /const controlsLocked =/);
+  assert.match(walletView, /disabled=\{controlsLocked\}/);
+  assert.match(walletView, /Locked during active trade/);
+});
+
 test("disabled bank-transfer responses expose no internal shutdown metadata", () => {
   const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
   assert.doesNotMatch(routes, /bankTransfersDisabled:\s*true/);

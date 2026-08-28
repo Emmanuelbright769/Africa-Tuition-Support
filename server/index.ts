@@ -96,6 +96,75 @@ async function runMigrations() {
       ON admin_audit_logs (target_user_id, created_at DESC)
     `);
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS proctoring_sessions (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        owner_user_id INTEGER NOT NULL REFERENCES users(id),
+        assessment_type TEXT NOT NULL CHECK (assessment_type IN ('kiddies','student','masters')),
+        child_id INTEGER REFERENCES back_to_school_children(id),
+        back_to_school_attempt_id INTEGER REFERENCES back_to_school_attempts(id),
+        scholarship_id INTEGER REFERENCES scholarships(id),
+        consented_at TIMESTAMP NOT NULL,
+        consent_policy_version VARCHAR(80) NOT NULL,
+        status TEXT NOT NULL DEFAULT 'created' CHECK (status IN ('created','ready','running','completed','interrupted','failed','deleted')),
+        camera_available BOOLEAN NOT NULL DEFAULT FALSE,
+        microphone_available BOOLEAN NOT NULL DEFAULT FALSE,
+        device_health JSONB NOT NULL DEFAULT '{}'::jsonb,
+        started_at TIMESTAMP, completed_at TIMESTAMP, last_heartbeat_at TIMESTAMP,
+        heartbeat_count INTEGER NOT NULL DEFAULT 0,
+        duration_seconds INTEGER NOT NULL DEFAULT 0, total_bytes INTEGER NOT NULL DEFAULT 0,
+        chunk_count INTEGER NOT NULL DEFAULT 0, audio_bytes INTEGER NOT NULL DEFAULT 0,
+        video_bytes INTEGER NOT NULL DEFAULT 0, audio_chunk_count INTEGER NOT NULL DEFAULT 0,
+        video_chunk_count INTEGER NOT NULL DEFAULT 0, failure_reason TEXT, retention_until TIMESTAMP,
+        deleted_at TIMESTAMP, deleted_by_user_id INTEGER REFERENCES users(id),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS proctoring_media_chunks (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES proctoring_sessions(id),
+        track TEXT NOT NULL CHECK (track IN ('audio','video')),
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        object_key TEXT NOT NULL UNIQUE, content_type VARCHAR(100) NOT NULL,
+        byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(session_id, track, sequence)
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS proctoring_playback_audits (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        actor_user_id INTEGER REFERENCES users(id),
+        session_id INTEGER NOT NULL REFERENCES proctoring_sessions(id),
+        chunk_id INTEGER REFERENCES proctoring_media_chunks(id),
+        action VARCHAR(24) NOT NULL,
+        reason TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      ALTER TABLE proctoring_sessions
+        ADD COLUMN IF NOT EXISTS audio_bytes INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS video_bytes INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS audio_chunk_count INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS video_chunk_count INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS heartbeat_count INTEGER NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`ALTER TABLE proctoring_playback_audits ADD COLUMN IF NOT EXISTS reason TEXT`);
+    await db.execute(sql`ALTER TABLE proctoring_playback_audits ALTER COLUMN actor_user_id DROP NOT NULL`);
+    await db.execute(sql`
+      ALTER TABLE proctoring_sessions
+        DROP CONSTRAINT IF EXISTS proctoring_sessions_status_check,
+        ALTER COLUMN status SET DEFAULT 'created'
+    `);
+    await db.execute(sql`
+      ALTER TABLE proctoring_sessions
+        ADD CONSTRAINT proctoring_sessions_status_check
+        CHECK (status IN ('created','ready','running','completed','interrupted','failed','deleted'))
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS proctoring_sessions_owner_idx ON proctoring_sessions(owner_user_id, created_at DESC)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS proctoring_chunks_session_idx ON proctoring_media_chunks(session_id, track, sequence)`);
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS admin_manual_credit_guards (
         reference TEXT PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,

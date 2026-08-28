@@ -1428,6 +1428,64 @@ export const scholarships = pgTable("scholarships", {
   updatedAt:           timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Recording bytes are deliberately not represented here: they live only in
+// private App Storage. PostgreSQL retains the minimal immutable index needed
+// for access control, retention and an auditable playback trail.
+export const proctoringSessions = pgTable("proctoring_sessions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerUserId: integer("owner_user_id").notNull().references(() => users.id),
+  assessmentType: text("assessment_type").$type<"kiddies" | "student" | "masters">().notNull(),
+  childId: integer("child_id").references(() => backToSchoolChildren.id),
+  backToSchoolAttemptId: integer("back_to_school_attempt_id").references(() => backToSchoolAttempts.id),
+  scholarshipId: integer("scholarship_id").references(() => scholarships.id),
+  consentedAt: timestamp("consented_at").notNull(),
+  consentPolicyVersion: varchar("consent_policy_version", { length: 80 }).notNull(),
+  status: text("status").$type<"created" | "ready" | "running" | "completed" | "interrupted" | "failed" | "deleted">().notNull().default("created"),
+  cameraAvailable: boolean("camera_available").notNull().default(false),
+  microphoneAvailable: boolean("microphone_available").notNull().default(false),
+  deviceHealth: jsonb("device_health").notNull().default({}),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  lastHeartbeatAt: timestamp("last_heartbeat_at"),
+  heartbeatCount: integer("heartbeat_count").notNull().default(0),
+  durationSeconds: integer("duration_seconds").notNull().default(0),
+  totalBytes: integer("total_bytes").notNull().default(0),
+  chunkCount: integer("chunk_count").notNull().default(0),
+  audioBytes: integer("audio_bytes").notNull().default(0),
+  videoBytes: integer("video_bytes").notNull().default(0),
+  audioChunkCount: integer("audio_chunk_count").notNull().default(0),
+  videoChunkCount: integer("video_chunk_count").notNull().default(0),
+  failureReason: text("failure_reason"),
+  retentionUntil: timestamp("retention_until"),
+  deletedAt: timestamp("deleted_at"),
+  deletedByUserId: integer("deleted_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const proctoringMediaChunks = pgTable("proctoring_media_chunks", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  sessionId: integer("session_id").notNull().references(() => proctoringSessions.id),
+  track: text("track").$type<"audio" | "video">().notNull(),
+  sequence: integer("sequence").notNull(),
+  objectKey: text("object_key").notNull().unique(),
+  contentType: varchar("content_type", { length: 100 }).notNull(),
+  byteLength: integer("byte_length").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  sessionTrackSequence: uniqueIndex("proctoring_media_chunks_session_track_sequence_uq").on(table.sessionId, table.track, table.sequence),
+}));
+
+export const proctoringPlaybackAudits = pgTable("proctoring_playback_audits", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  actorUserId: integer("actor_user_id").references(() => users.id),
+  sessionId: integer("session_id").notNull().references(() => proctoringSessions.id),
+  chunkId: integer("chunk_id").references(() => proctoringMediaChunks.id),
+  action: varchar("action", { length: 24 }).notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertScholarshipSchema = createInsertSchema(scholarships).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertScholarship = z.infer<typeof insertScholarshipSchema>;
 export type Scholarship = typeof scholarships.$inferSelect;

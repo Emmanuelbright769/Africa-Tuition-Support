@@ -1,4 +1,6 @@
 import type { Express, Request, Response } from "express";
+import { raw } from "express";
+import { Client as ObjectStorageClient } from "@replit/object-storage";
 import { type Server } from "http";
 import { scryptSync, randomBytes, timingSafeEqual, createHash } from "crypto";
 import { storage } from "./storage";
@@ -34,16 +36,17 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers, proctoringSessions, proctoringMediaChunks, proctoringPlaybackAudits, scholarships } from "@shared/schema";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
-import { eq, desc, ne, and, sql, or, ilike, asc, count } from "drizzle-orm";
+import { eq, desc, ne, and, sql, or, ilike, asc, count, inArray, lt } from "drizzle-orm";
 import YahooFinance from "yahoo-finance2";
 import { doesVerifiedNameMatch, hashVerifiedName } from "./identityVerificationSecurity";
 import { selectSpellingQuestions, spellingQuestionFor } from "./backToSchoolSpellingBank";
 import { areBankTransfersEnabled, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
 import { isUserFundsOutRequest } from "./accountLienPolicy";
 import { isValidSponsorCodeIdempotencyKey, SPONSOR_CODE_PRICE_USD } from "./sponsorCodePurchase";
+import { canCompleteProctoring, hasContinuousChunkTimeline, hasSustainedProctoringCoverage, isSafeProctoringMime, parseProctoringFinalStatus } from "./proctoringPolicy";
 
 const PgSession = pgSession(session);
 
@@ -2810,6 +2813,362 @@ export async function registerRoutes(
     } catch (e: any) { res.status(400).json({ message: e.message || "Withdrawal could not be completed" }); }
   });
 
+  // Proctoring recordings are private App Storage objects; only this narrow
+  // administrative endpoint ever reads their bytes.
+  const proctoringSummary = (session: any) => session ? ({
+    id: session.id, assessmentType: session.assessmentType, childId: session.childId,
+    scholarshipId: session.scholarshipId, status: session.status, cameraAvailable: session.cameraAvailable,
+    microphoneAvailable: session.microphoneAvailable, deviceHealth: session.deviceHealth,
+    consentedAt: session.consentedAt, consentPolicyVersion: session.consentPolicyVersion,
+    startedAt: session.startedAt, completedAt: session.completedAt, lastHeartbeatAt: session.lastHeartbeatAt,
+    heartbeatCount: session.heartbeatCount,
+    durationSeconds: session.durationSeconds, durationMs: session.durationSeconds * 1000,
+    totalBytes: session.totalBytes, chunkCount: session.chunkCount,
+    audioBytes: session.audioBytes, videoBytes: session.videoBytes,
+    audioChunkCount: session.audioChunkCount, videoChunkCount: session.videoChunkCount,
+    failureReason: session.failureReason, retentionUntil: session.retentionUntil, deletedAt: session.deletedAt,
+  }) : null;
+  const failProctoring = async (id: number, reason: string) => {
+    await db.update(proctoringSessions).set({ status: "failed", failureReason: reason, updatedAt: new Date() }).where(eq(proctoringSessions.id, id));
+  };
+  const ownedReadyProctoring = async (id: unknown, userId: number, type: string, links: { childId?: number; scholarshipId?: number }) => {
+    const sessionId = Number(id);
+    if (!Number.isInteger(sessionId) || sessionId < 1) return undefined;
+    const [session] = await db.select().from(proctoringSessions).where(and(eq(proctoringSessions.id, sessionId), eq(proctoringSessions.ownerUserId, userId)));
+    if (!session || session.status !== "ready" || session.assessmentType !== type ||
+      (links.childId !== undefined && session.childId !== links.childId) ||
+      (links.scholarshipId !== undefined && session.scholarshipId !== links.scholarshipId)) return undefined;
+    return session;
+  };
+  const completedLinkedProctoring = async (id: unknown, userId: number, type: "kiddies" | "student" | "masters", links: { childId?: number; scholarshipId?: number; backToSchoolAttemptId?: number }) => {
+    const sessionId = Number(id);
+    if (!Number.isInteger(sessionId) || sessionId < 1) return undefined;
+    const conditions = [
+      eq(proctoringSessions.id, sessionId),
+      eq(proctoringSessions.ownerUserId, userId),
+      eq(proctoringSessions.assessmentType, type),
+      eq(proctoringSessions.status, "completed"),
+      sql`${proctoringSessions.audioChunkCount} > 0`,
+      sql`${proctoringSessions.videoChunkCount} > 0`,
+    ];
+    if (links.childId !== undefined) conditions.push(eq(proctoringSessions.childId, links.childId));
+    if (links.scholarshipId !== undefined) conditions.push(eq(proctoringSessions.scholarshipId, links.scholarshipId));
+    if (links.backToSchoolAttemptId !== undefined) conditions.push(eq(proctoringSessions.backToSchoolAttemptId, links.backToSchoolAttemptId));
+    const [session] = await db.select().from(proctoringSessions).where(and(...conditions));
+    return session;
+  };
+
+  app.post("/api/proctoring/sessions", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { assessmentType, childId, consent } = req.body ?? {};
+      const consentPolicyVersion = req.body?.consentPolicyVersion ?? req.body?.policyVersion;
+      if (!consent || !["kiddies", "student", "masters"].includes(assessmentType) || typeof consentPolicyVersion !== "string" || !consentPolicyVersion.trim()) {
+        return res.status(400).json({ message: "Assessment type, affirmative consent, and a consent policy version are required." });
+      }
+      let child: number | null = null, scholarship: number | null = null;
+      if (assessmentType === "kiddies") {
+        child = Number(childId);
+        const programme = await storage.getBackToSchoolProgramme(userId);
+        if (!Number.isInteger(child) || !programme.some(item => item.id === child)) return res.status(403).json({ message: "Child assessment ownership could not be verified." });
+      } else {
+        const record = await storage.getScholarship(userId, assessmentType);
+        if (!record) return res.status(403).json({ message: "Scholarship assessment ownership could not be verified." });
+        scholarship = record.id;
+      }
+      const [session] = await db.insert(proctoringSessions).values({
+        ownerUserId: userId, assessmentType, childId: child, scholarshipId: scholarship,
+        consentedAt: new Date(), consentPolicyVersion: consentPolicyVersion.trim().slice(0, 80),
+        status: "created", retentionUntil: new Date(Date.now() + 90 * 86400_000),
+      } as any).returning();
+      res.status(201).json(proctoringSummary(session));
+    } catch (e: any) { res.status(500).json({ message: e.message || "Unable to create proctoring session" }); }
+  });
+
+  app.post("/api/proctoring/sessions/:id/ready", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const cameraAvailable = req.body?.cameraAvailable === true || req.body?.camera === true;
+      const microphoneAvailable = req.body?.microphoneAvailable === true || req.body?.microphone === true;
+      const audioMime = String(req.body?.audioMimeType ?? ""), videoMime = String(req.body?.videoMimeType ?? "");
+      if (!cameraAvailable || !microphoneAvailable || !isSafeProctoringMime("audio", audioMime) || !isSafeProctoringMime("video", videoMime)) {
+        return res.status(400).json({ message: "A camera, microphone, and safe audio/video recording formats are required." });
+      }
+      const [session] = await db.update(proctoringSessions).set({
+        status: "ready", cameraAvailable, microphoneAvailable,
+        deviceHealth: { ...(typeof req.body?.deviceHealth === "object" && req.body.deviceHealth ? req.body.deviceHealth : {}), audioMime, videoMime },
+        updatedAt: new Date(),
+      }).where(and(
+        eq(proctoringSessions.id, Number(req.params.id)),
+        eq(proctoringSessions.ownerUserId, userId),
+        eq(proctoringSessions.status, "created"),
+      )).returning();
+      if (!session) return res.status(404).json({ message: "Proctoring session not found." });
+      res.json({ session: proctoringSummary(session) });
+    } catch (e: any) { res.status(500).json({ message: e.message || "Unable to validate recording device" }); }
+  });
+
+  app.post("/api/proctoring/sessions/:id/heartbeat", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const cameraActive = req.body?.cameraActive === true;
+    const microphoneActive = req.body?.microphoneActive === true;
+    const devicesHealthy = cameraActive && microphoneActive;
+    const now = new Date();
+    const [session] = await db.update(proctoringSessions).set({
+      lastHeartbeatAt: now,
+      heartbeatCount: sql`${proctoringSessions.heartbeatCount} + 1`,
+      cameraAvailable: cameraActive,
+      microphoneAvailable: microphoneActive,
+      deviceHealth: { cameraActive, microphoneActive },
+      ...(!devicesHealthy ? {
+        status: "interrupted" as const,
+        completedAt: now,
+        failureReason: "A required camera or microphone became unavailable.",
+      } : {}),
+      updatedAt: now,
+    }).where(and(
+      eq(proctoringSessions.id, Number(req.params.id)),
+      eq(proctoringSessions.ownerUserId, userId),
+      inArray(proctoringSessions.status, ["ready", "running"]),
+    )).returning();
+    if (!session) return res.status(404).json({ message: "Proctoring session not found." });
+    res.json({ session: proctoringSummary(session) });
+  });
+
+  app.post("/api/proctoring/sessions/:id/chunks/:track/:sequence", raw({ type: "*/*", limit: "4mb" }), async (req, res) => {
+    const userId = (req.session as any)?.userId, sessionId = Number(req.params.id), sequence = Number(req.params.sequence), track = req.params.track;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!["audio", "video"].includes(track) || !Number.isInteger(sequence) || sequence < 0 || sequence > 1_000_000 || !Buffer.isBuffer(req.body) || !req.body.length || !isSafeProctoringMime(track, req.get("content-type") ?? "")) return res.status(400).json({ message: "Invalid recording chunk." });
+    const [session] = await db.select().from(proctoringSessions).where(and(eq(proctoringSessions.id, sessionId), eq(proctoringSessions.ownerUserId, userId)));
+    if (!session || session.status !== "running") return res.status(409).json({ message: "Recording session is not active." });
+    const [existing] = await db.select().from(proctoringMediaChunks).where(and(eq(proctoringMediaChunks.sessionId, sessionId), eq(proctoringMediaChunks.track, track as any), eq(proctoringMediaChunks.sequence, sequence)));
+    if (existing) return res.json({ chunk: { id: existing.id, track, sequence, byteLength: existing.byteLength }, idempotent: true });
+    const contentType = req.get("content-type")!.split(";")[0], objectKey = `private/proctoring/${sessionId}/${track}/${sequence}`;
+    try {
+      const storageClient = new ObjectStorageClient();
+      const uploaded = await storageClient.uploadFromBytes(objectKey, req.body, { compress: false });
+      if (!uploaded.ok) throw new Error(uploaded.error.message);
+      const [chunk] = await db.insert(proctoringMediaChunks)
+        .values({ sessionId, track: track as any, sequence, objectKey, contentType, byteLength: req.body.length })
+        .onConflictDoNothing()
+        .returning();
+      if (!chunk) {
+        const [racedChunk] = await db.select().from(proctoringMediaChunks).where(and(
+          eq(proctoringMediaChunks.sessionId, sessionId),
+          eq(proctoringMediaChunks.track, track as any),
+          eq(proctoringMediaChunks.sequence, sequence),
+        ));
+        if (racedChunk) return res.json({ chunk: { id: racedChunk.id, track, sequence, byteLength: racedChunk.byteLength }, idempotent: true });
+        throw new Error("Recording chunk index could not be created.");
+      }
+      const isAudio = track === "audio";
+      const [updated] = await db.update(proctoringSessions).set({
+        lastHeartbeatAt: new Date(),
+        totalBytes: sql`${proctoringSessions.totalBytes} + ${req.body.length}`,
+        chunkCount: sql`${proctoringSessions.chunkCount} + 1`,
+        audioBytes: sql`${proctoringSessions.audioBytes} + ${isAudio ? req.body.length : 0}`,
+        videoBytes: sql`${proctoringSessions.videoBytes} + ${isAudio ? 0 : req.body.length}`,
+        audioChunkCount: sql`${proctoringSessions.audioChunkCount} + ${isAudio ? 1 : 0}`,
+        videoChunkCount: sql`${proctoringSessions.videoChunkCount} + ${isAudio ? 0 : 1}`,
+        updatedAt: new Date(),
+      }).where(eq(proctoringSessions.id, sessionId)).returning();
+      res.status(201).json({ chunk: { id: chunk.id, track, sequence, byteLength: chunk.byteLength }, session: proctoringSummary(updated) });
+    } catch (e: any) {
+      await failProctoring(sessionId, "Private recording storage is unavailable.");
+      res.status(503).json({ message: "Private recording storage is unavailable; recording was marked failed." });
+    }
+  });
+
+  app.post("/api/proctoring/sessions/:id/finalize", async (req, res) => {
+    const userId = (req.session as any)?.userId, id = Number(req.params.id);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const [session] = await db.select().from(proctoringSessions).where(and(eq(proctoringSessions.id, id), eq(proctoringSessions.ownerUserId, userId)));
+    const requestedStatus = parseProctoringFinalStatus(req.body?.status);
+    if (!requestedStatus) return res.status(400).json({ message: "A valid final recording status is required." });
+    if (!session) return res.status(404).json({ message: "Recording session not found." });
+    if (session.status === requestedStatus && ["completed", "interrupted", "failed"].includes(session.status)) {
+      return res.json({ session: proctoringSummary(session), idempotent: true });
+    }
+    if (!["ready", "running"].includes(session.status)) return res.status(409).json({ message: "Recording session cannot be finalized." });
+    const now = new Date();
+    const durationSeconds = session.startedAt
+      ? Math.max(0, Math.floor((now.getTime() - new Date(session.startedAt).getTime()) / 1000))
+      : 0;
+    const secondsSinceHeartbeat = session.lastHeartbeatAt
+      ? Math.max(0, Math.floor((now.getTime() - new Date(session.lastHeartbeatAt).getTime()) / 1000))
+      : null;
+    const hasBothTracks = canCompleteProctoring(session.audioChunkCount, session.videoChunkCount);
+    const hasCoverage = hasSustainedProctoringCoverage({
+      durationSeconds,
+      audioChunkCount: session.audioChunkCount,
+      videoChunkCount: session.videoChunkCount,
+      heartbeatCount: session.heartbeatCount,
+      secondsSinceHeartbeat,
+    });
+    const chunkTimeline = requestedStatus === "completed"
+      ? await db.select({
+          track: proctoringMediaChunks.track,
+          createdAt: proctoringMediaChunks.createdAt,
+        }).from(proctoringMediaChunks).where(eq(proctoringMediaChunks.sessionId, id))
+      : [];
+    const startedAtMs = session.startedAt ? new Date(session.startedAt).getTime() : Number.NaN;
+    const audioTimelineCovered = hasContinuousChunkTimeline(startedAtMs, now.getTime(), chunkTimeline.filter(chunk => chunk.track === "audio").map(chunk => new Date(chunk.createdAt).getTime()));
+    const videoTimelineCovered = hasContinuousChunkTimeline(startedAtMs, now.getTime(), chunkTimeline.filter(chunk => chunk.track === "video").map(chunk => new Date(chunk.createdAt).getTime()));
+    if (requestedStatus === "completed" && (!hasBothTracks || !hasCoverage || !audioTimelineCovered || !videoTimelineCovered)) {
+      await db.update(proctoringSessions).set({
+        status: "failed",
+        completedAt: now,
+        durationSeconds,
+        failureReason: "Recording coverage was incomplete for the assessment interval.",
+        updatedAt: now,
+      }).where(eq(proctoringSessions.id, id));
+      return res.status(409).json({ message: "The recording did not continuously cover the assessment. It was marked incomplete." });
+    }
+    const failureReason = requestedStatus === "completed" ? null : String(req.body?.failureReason || (requestedStatus === "failed" ? "Recording failed." : "Recording was interrupted.")).slice(0, 500);
+    const [updated] = await db.update(proctoringSessions).set({
+      status: requestedStatus, completedAt: now, durationSeconds, failureReason, updatedAt: now,
+    }).where(eq(proctoringSessions.id, id)).returning();
+    res.json({ session: proctoringSummary(updated) });
+  });
+
+  const requireProctoringAdmin = async (req: Request, res: Response) => {
+    const id = (req.session as any)?.userId;
+    if (!id) { res.status(401).json({ message: "Not authenticated" }); return undefined; }
+    const user = await storage.getUser(id);
+    if (!user || user.role !== "admin") { res.status(403).json({ message: "Forbidden" }); return undefined; }
+    return user;
+  };
+  app.get("/api/admin/proctoring/sessions/:id", async (req, res) => {
+    const admin = await requireProctoringAdmin(req, res); if (!admin) return;
+    const [session] = await db.select().from(proctoringSessions).where(eq(proctoringSessions.id, Number(req.params.id)));
+    if (!session) return res.status(404).json({ message: "Proctoring session not found." });
+    const chunks = await db.select({ id: proctoringMediaChunks.id, track: proctoringMediaChunks.track, sequence: proctoringMediaChunks.sequence, contentType: proctoringMediaChunks.contentType, byteLength: proctoringMediaChunks.byteLength, createdAt: proctoringMediaChunks.createdAt }).from(proctoringMediaChunks).where(eq(proctoringMediaChunks.sessionId, session.id)).orderBy(asc(proctoringMediaChunks.track), asc(proctoringMediaChunks.sequence));
+    res.json({ session: proctoringSummary(session), chunks });
+  });
+  app.get("/api/admin/proctoring/sessions/:id/chunks/:track", async (req, res) => {
+    const admin = await requireProctoringAdmin(req, res); if (!admin) return;
+    const track = req.params.track;
+    if (track !== "audio" && track !== "video") return res.status(400).json({ message: "Invalid recording track." });
+    const sessionId = Number(req.params.id);
+    const [session] = await db.select({ id: proctoringSessions.id }).from(proctoringSessions).where(eq(proctoringSessions.id, sessionId));
+    if (!session) return res.status(404).json({ message: "Proctoring session not found." });
+    const chunks = await db.select({
+      id: proctoringMediaChunks.id, sequence: proctoringMediaChunks.sequence,
+      contentType: proctoringMediaChunks.contentType, byteLength: proctoringMediaChunks.byteLength,
+    }).from(proctoringMediaChunks).where(and(eq(proctoringMediaChunks.sessionId, sessionId), eq(proctoringMediaChunks.track, track))).orderBy(asc(proctoringMediaChunks.sequence));
+    res.json({ chunks });
+  });
+  app.get("/api/admin/proctoring/sessions/:id/chunks/:track/:sequence", async (req, res) => {
+    const admin = await requireProctoringAdmin(req, res); if (!admin) return;
+    const track = req.params.track, sequence = Number(req.params.sequence), sessionId = Number(req.params.id);
+    if ((track !== "audio" && track !== "video") || !Number.isInteger(sequence)) return res.status(400).json({ message: "Invalid recording chunk." });
+    const [chunk] = await db.select().from(proctoringMediaChunks).where(and(
+      eq(proctoringMediaChunks.sessionId, sessionId),
+      eq(proctoringMediaChunks.track, track),
+      eq(proctoringMediaChunks.sequence, sequence),
+    ));
+    if (!chunk) return res.status(404).json({ message: "Recording chunk not found." });
+    try {
+      const storageClient = new ObjectStorageClient();
+      const downloaded = await storageClient.downloadAsBytes(chunk.objectKey, { decompress: false });
+      if (!downloaded.ok) throw new Error(downloaded.error.message);
+      await db.insert(proctoringPlaybackAudits).values({ actorUserId: admin.id, sessionId, chunkId: chunk.id, action: "playback" });
+      res.set({ "Content-Type": chunk.contentType, "Cache-Control": "private, no-store, max-age=0", "Content-Disposition": `inline; filename="recording-${track}-${sequence}"` });
+      res.send(downloaded.value[0]);
+    } catch {
+      res.status(503).json({ message: "Private recording storage is unavailable." });
+    }
+  });
+  app.get("/api/admin/proctoring/sessions/:id/chunks/:chunkId", async (req, res) => {
+    const admin = await requireProctoringAdmin(req, res); if (!admin) return;
+    const [chunk] = await db.select().from(proctoringMediaChunks).where(and(eq(proctoringMediaChunks.id, Number(req.params.chunkId)), eq(proctoringMediaChunks.sessionId, Number(req.params.id))));
+    if (!chunk) return res.status(404).json({ message: "Recording chunk not found." });
+    try {
+      const storageClient = new ObjectStorageClient();
+      const downloaded = await storageClient.downloadAsBytes(chunk.objectKey, { decompress: false });
+      if (!downloaded.ok) throw new Error(downloaded.error.message);
+      await db.insert(proctoringPlaybackAudits).values({ actorUserId: admin.id, sessionId: chunk.sessionId, chunkId: chunk.id, action: "playback" });
+      res.set({ "Content-Type": chunk.contentType, "Cache-Control": "private, no-store, max-age=0", "Content-Disposition": `inline; filename="recording-${chunk.track}-${chunk.sequence}"` });
+      res.send(downloaded.value[0]);
+    } catch {
+      res.status(503).json({ message: "Private recording storage is unavailable." });
+    }
+  });
+  app.delete("/api/admin/proctoring/sessions/:id", async (req, res) => {
+    const admin = await requireProctoringAdmin(req, res); if (!admin) return;
+    const id = Number(req.params.id);
+    const deletionReason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 500) : "";
+    if (!deletionReason) return res.status(400).json({ message: "A deletion reason is required for the audit record." });
+    const [session] = await db.select().from(proctoringSessions).where(eq(proctoringSessions.id, id));
+    if (!session) return res.status(404).json({ message: "Proctoring session not found." });
+    const chunks = await db.select().from(proctoringMediaChunks).where(eq(proctoringMediaChunks.sessionId, id));
+    try {
+      const storageClient = new ObjectStorageClient();
+      for (const chunk of chunks) {
+        const removed = await storageClient.delete(chunk.objectKey, { ignoreNotFound: true });
+        if (!removed.ok) throw new Error(removed.error.message);
+      }
+      const now = new Date();
+      const [deleted] = await db.update(proctoringSessions).set({ status: "deleted", deletedAt: now, deletedByUserId: admin.id, updatedAt: now }).where(eq(proctoringSessions.id, id)).returning();
+      await db.insert(proctoringPlaybackAudits).values({ actorUserId: admin.id, sessionId: id, action: "deletion", reason: deletionReason });
+      res.json({ session: proctoringSummary(deleted) });
+    } catch {
+      res.status(503).json({ message: "Private recording storage is unavailable; recording was not deleted." });
+    }
+  });
+  app.delete("/api/admin/proctoring/sessions/:id/chunks/:chunkId", async (req, res) => {
+    const admin = await requireProctoringAdmin(req, res); if (!admin) return;
+    const [chunk] = await db.select().from(proctoringMediaChunks).where(and(eq(proctoringMediaChunks.id, Number(req.params.chunkId)), eq(proctoringMediaChunks.sessionId, Number(req.params.id))));
+    if (!chunk) return res.status(404).json({ message: "Recording chunk not found." });
+    try {
+      const storageClient = new ObjectStorageClient();
+      const removed = await storageClient.delete(chunk.objectKey, { ignoreNotFound: true });
+      if (!removed.ok) throw new Error(removed.error.message);
+      await db.delete(proctoringMediaChunks).where(eq(proctoringMediaChunks.id, chunk.id));
+      await db.update(proctoringSessions).set({ totalBytes: sql`GREATEST(0, ${proctoringSessions.totalBytes} - ${chunk.byteLength})`, chunkCount: sql`GREATEST(0, ${proctoringSessions.chunkCount} - 1)`, updatedAt: new Date() }).where(eq(proctoringSessions.id, chunk.sessionId));
+      // The row is gone, so retain the deletion audit at session scope.
+      await db.insert(proctoringPlaybackAudits).values({ actorUserId: admin.id, sessionId: chunk.sessionId, action: "chunk_deletion" });
+      res.json({ deleted: true, chunkId: chunk.id });
+    } catch {
+      res.status(503).json({ message: "Private recording storage is unavailable; chunk was not deleted." });
+    }
+  });
+
+  const purgeExpiredProctoring = async () => {
+    const expired = await db.select().from(proctoringSessions).where(and(
+      lt(proctoringSessions.retentionUntil, new Date()),
+      ne(proctoringSessions.status, "deleted"),
+    ));
+    for (const session of expired) {
+      const chunks = await db.select().from(proctoringMediaChunks).where(eq(proctoringMediaChunks.sessionId, session.id));
+      try {
+        const storageClient = new ObjectStorageClient();
+        for (const chunk of chunks) {
+          const removed = await storageClient.delete(chunk.objectKey, { ignoreNotFound: true });
+          if (!removed.ok) throw new Error(removed.error.message);
+        }
+        const now = new Date();
+        const [deleted] = await db.update(proctoringSessions).set({
+          status: "deleted", deletedAt: now, updatedAt: now,
+        }).where(and(eq(proctoringSessions.id, session.id), ne(proctoringSessions.status, "deleted"))).returning();
+        if (deleted) {
+          await db.insert(proctoringPlaybackAudits).values({
+            actorUserId: null, sessionId: session.id, action: "retention_deletion",
+            reason: "Automatic deletion after the disclosed retention period.",
+          });
+        }
+      } catch (error) {
+        console.error(`[PROCTORING-RETENTION] Could not purge expired session ${session.id}:`, error instanceof Error ? error.message : "Unknown storage error");
+      }
+    }
+  };
+  const retentionTimer = setInterval(() => void purgeExpiredProctoring(), 6 * 60 * 60 * 1000);
+  retentionTimer.unref();
+  setTimeout(() => void purgeExpiredProctoring(), 2 * 60 * 1000).unref();
+
   app.post("/api/back-to-school/children/:childId/cbt/start", async (req, res) => {
     try {
       const guardian = await requireBackToSchoolGuardian(req, res);
@@ -2826,6 +3185,8 @@ export async function registerRoutes(
       if (!entry.vest?.cbtUnlockedAt && !entry.vest?.qualifiedAt) {
         return res.status(403).json({ message: "The spelling bee unlocks when the kiddies wallet first reaches $30.00." });
       }
+      const proctoring = await ownedReadyProctoring(req.body?.proctoringSessionId, guardian.userId, "kiddies", { childId });
+      if (!proctoring) return res.status(403).json({ message: "A ready proctoring session for this child is required before starting the spelling bee." });
       let attempt = entry.attempt;
       if (attempt?.status === "completed" || attempt?.status === "expired") {
         return res.status(409).json({ message: "This child has already used their spelling-bee attempt." });
@@ -2846,6 +3207,11 @@ export async function registerRoutes(
        if (questions.length !== 25 || new Set(questionIds).size !== 25) {
          return res.status(500).json({ message: "The spelling session could not be prepared safely. Please try again." });
        }
+      const [claimed] = await db.update(proctoringSessions).set({
+        status: "running", backToSchoolAttemptId: attempt.id, startedAt: proctoring.startedAt ?? new Date(),
+        lastHeartbeatAt: new Date(), updatedAt: new Date(),
+      }).where(and(eq(proctoringSessions.id, proctoring.id), eq(proctoringSessions.status, "ready"))).returning();
+      if (!claimed) return res.status(409).json({ message: "This proctoring session has already been used. Start a new recording session to continue." });
       res.json({ attemptId: attempt.id, startedAt: attempt.startedAt, durationMinutes: BACK_TO_SCHOOL_CBT_MINUTES, questions });
     } catch (e: any) { res.status(500).json({ message: e.message || "Unable to start spelling bee" }); }
   });
@@ -2858,6 +3224,10 @@ export async function registerRoutes(
       const childId = Number(req.params.childId);
       const attempt = await storage.getBackToSchoolAttempt(childId, guardian.userId);
       if (!attempt || attempt.status !== "started") return res.status(409).json({ message: "There is no active spelling-bee attempt to submit." });
+      const proctoring = await completedLinkedProctoring(req.body?.proctoringSessionId, guardian.userId, "kiddies", {
+        childId, backToSchoolAttemptId: attempt.id,
+      });
+      if (!proctoring) return res.status(403).json({ message: "A completed camera and microphone recording linked to this attempt is required before submission." });
       if (Date.now() > new Date(attempt.startedAt).getTime() + BACK_TO_SCHOOL_CBT_MINUTES * 60_000) {
         const expired = await storage.completeBackToSchoolAttempt({
           childId, guardianUserId: guardian.userId, score: 0, percentage: 0, awardAmount: 0, expired: true,
@@ -2889,7 +3259,12 @@ export async function registerRoutes(
       if (!Number.isInteger(childId) || childId < 1 || !allowedEvents.includes(eventType) || !description) {
         return res.status(400).json({ message: "Invalid assessment integrity event." });
       }
-      res.json(await storage.recordBackToSchoolCheatingEvent({ childId, guardianUserId: guardian.userId, eventType, description }));
+      const integrity = await storage.recordBackToSchoolCheatingEvent({ childId, guardianUserId: guardian.userId, eventType, description });
+      if (integrity.shouldAutoSubmit) {
+        await db.update(proctoringSessions).set({ status: "interrupted", completedAt: new Date(), failureReason: "Assessment was auto-submitted after test-integrity events.", updatedAt: new Date() })
+          .where(and(eq(proctoringSessions.childId, childId), eq(proctoringSessions.ownerUserId, guardian.userId), eq(proctoringSessions.status, "running")));
+      }
+      res.json(integrity);
     } catch (e: any) { res.status(409).json({ message: e.message || "Unable to record assessment activity" }); }
   });
 
@@ -5012,7 +5387,11 @@ export async function registerRoutes(
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
       const all = await storage.getAllScholarships();
-      res.json(all);
+      const ids = all.map(record => record.id);
+      const sessions = ids.length ? await db.select().from(proctoringSessions).where(inArray(proctoringSessions.scholarshipId, ids)) : [];
+      const latest = new Map<number, any>();
+      for (const session of sessions) if (session.scholarshipId && (!latest.has(session.scholarshipId) || new Date(latest.get(session.scholarshipId).createdAt) < new Date(session.createdAt))) latest.set(session.scholarshipId, session);
+      res.json(all.map(record => ({ ...record, proctoring: proctoringSummary(latest.get(record.id)) })));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -12155,6 +12534,8 @@ export async function registerRoutes(
 
         const record = await storage.getScholarship(userId, type);
         if (!record) return res.status(400).json({ message: "No scholarship application found" });
+        const proctoring = await ownedReadyProctoring(req.body?.proctoringSessionId, userId, type, { scholarshipId: record.id });
+        if (!proctoring) return res.status(403).json({ message: "A ready proctoring session for this scholarship test is required." });
 
         // Masters can start after fee_paid when commitmentFeePaid is already true (fresh restart)
         const canStart = (type === "student" && record.status === "fee_paid") ||
@@ -12163,49 +12544,70 @@ export async function registerRoutes(
         if (!canStart) return res.status(403).json({ message: "Not eligible to start the test yet" });
         if (["passed", "failed"].includes(record.status)) return res.status(400).json({ message: "Test already completed" });
 
-        let verbalQs: any[];
-        let quantQs: any[];
+        const questions = await db.transaction(async tx => {
+          await tx.execute(sql`SELECT id FROM scholarships WHERE id = ${record.id} FOR UPDATE`);
+          const [lockedRecord] = await tx.select().from(scholarships).where(and(
+            eq(scholarships.id, record.id),
+            eq(scholarships.userId, userId),
+            eq(scholarships.type, type),
+          ));
+          if (!lockedRecord) throw Object.assign(new Error("Scholarship application not found."), { statusCode: 404 });
+          const lockedCanStart = (type === "student" && lockedRecord.status === "fee_paid") ||
+            (type === "masters" && lockedRecord.status === "fee_paid" && lockedRecord.commitmentFeePaid) ||
+            lockedRecord.status === "test_in_progress";
+          if (!lockedCanStart) throw Object.assign(new Error("Not eligible to start the test yet"), { statusCode: 403 });
 
-        if (record.status === "test_in_progress" && record.testData) {
-          // Resume an in-progress test — serve the same questions as before
-          const td = record.testData as any;
-          const allQuestions = [...VERBAL_QUESTIONS, ...QUANT_QUESTIONS];
-          const qMap = Object.fromEntries(allQuestions.map(q => [q.id, q]));
-          verbalQs = (td.verbalIds as number[]).map((id: number) => {
-            const { correctIndex, ...rest } = qMap[id];
-            return { ...rest, correctIndex };
-          });
-          quantQs = (td.quantIds as number[]).map((id: number) => {
-            const { correctIndex, ...rest } = qMap[id];
-            return { ...rest, correctIndex };
-          });
-        } else {
-          // Fresh test start — exclude any previously seen question IDs
-          const td = (record.testData ?? {}) as any;
-          const usedVerbalIds: number[] = td.usedVerbalIds ?? [];
-          const usedQuantIds: number[] = td.usedQuantIds ?? [];
+          const [activeRecording] = await tx.select({ id: proctoringSessions.id }).from(proctoringSessions).where(and(
+            eq(proctoringSessions.scholarshipId, lockedRecord.id),
+            eq(proctoringSessions.status, "running"),
+          ));
+          if (activeRecording) throw Object.assign(new Error("This test already has an active recording session."), { statusCode: 409 });
 
-          const freshVerbalPool = VERBAL_QUESTIONS.filter(q => !usedVerbalIds.includes(q.id));
-          const freshQuantPool = QUANT_QUESTIONS.filter(q => !usedQuantIds.includes(q.id));
+          const now = new Date();
+          const [claimed] = await tx.update(proctoringSessions).set({
+            status: "running", scholarshipId: lockedRecord.id, startedAt: proctoring.startedAt ?? now,
+            lastHeartbeatAt: now, updatedAt: now,
+          }).where(and(eq(proctoringSessions.id, proctoring.id), eq(proctoringSessions.status, "ready"))).returning();
+          if (!claimed) throw Object.assign(new Error("This proctoring session has already been used. Start a new recording session to continue."), { statusCode: 409 });
 
-          // If the remaining pool is too small (shouldn't happen with 200-question pools), fall back to full pool
-          verbalQs = pickQuestions(15, freshVerbalPool.length >= 15 ? freshVerbalPool : VERBAL_QUESTIONS);
-          quantQs = pickQuestions(15, freshQuantPool.length >= 15 ? freshQuantPool : QUANT_QUESTIONS);
-
-          await storage.updateScholarship(record.id, {
-            status: "test_in_progress",
-            testStartedAt: new Date(),
-            testData: {
-              usedVerbalIds,
-              usedQuantIds,
-              verbalIds: verbalQs.map((q: any) => q.id),
-              quantIds: quantQs.map((q: any) => q.id),
-            } as any,
-          });
-        }
-
-        res.json({ verbal: verbalQs, quant: quantQs });
-      } catch (e: any) { res.status(500).json({ message: e.message }); }
+          let verbalQs: any[];
+          let quantQs: any[];
+          if (lockedRecord.status === "test_in_progress" && lockedRecord.testData) {
+            const td = lockedRecord.testData as any;
+            const allQuestions = [...VERBAL_QUESTIONS, ...QUANT_QUESTIONS];
+            const qMap = Object.fromEntries(allQuestions.map(q => [q.id, q]));
+            verbalQs = (td.verbalIds as number[]).map((id: number) => {
+              const { correctIndex, ...rest } = qMap[id];
+              return { ...rest, correctIndex };
+            });
+            quantQs = (td.quantIds as number[]).map((id: number) => {
+              const { correctIndex, ...rest } = qMap[id];
+              return { ...rest, correctIndex };
+            });
+          } else {
+            const td = (lockedRecord.testData ?? {}) as any;
+            const usedVerbalIds: number[] = td.usedVerbalIds ?? [];
+            const usedQuantIds: number[] = td.usedQuantIds ?? [];
+            const freshVerbalPool = VERBAL_QUESTIONS.filter(q => !usedVerbalIds.includes(q.id));
+            const freshQuantPool = QUANT_QUESTIONS.filter(q => !usedQuantIds.includes(q.id));
+            verbalQs = pickQuestions(15, freshVerbalPool.length >= 15 ? freshVerbalPool : VERBAL_QUESTIONS);
+            quantQs = pickQuestions(15, freshQuantPool.length >= 15 ? freshQuantPool : QUANT_QUESTIONS);
+            await tx.update(scholarships).set({
+              status: "test_in_progress",
+              testStartedAt: now,
+              testData: {
+                usedVerbalIds,
+                usedQuantIds,
+                verbalIds: verbalQs.map((q: any) => q.id),
+                quantIds: quantQs.map((q: any) => q.id),
+              },
+              updatedAt: now,
+            }).where(eq(scholarships.id, lockedRecord.id));
+          }
+          return { verbal: verbalQs, quant: quantQs };
+        });
+        res.json(questions);
+      } catch (e: any) { res.status(Number(e.statusCode) || 500).json({ message: e.message }); }
     });
 
     app.post("/api/scholarship/submit-test", async (req, res) => {
@@ -12217,6 +12619,8 @@ export async function registerRoutes(
 
         const record = await storage.getScholarship(userId, type);
         if (!record || record.status !== "test_in_progress") return res.status(400).json({ message: "No active test found" });
+        const proctoring = await completedLinkedProctoring(req.body?.proctoringSessionId, userId, type, { scholarshipId: record.id });
+        if (!proctoring) return res.status(403).json({ message: "A completed camera and microphone recording linked to this test is required before submission." });
 
         const td = record.testData as any;
         const allQuestions = [...VERBAL_QUESTIONS, ...QUANT_QUESTIONS];
@@ -12249,7 +12653,6 @@ export async function registerRoutes(
           testData: { ...td, answers: answerMap } as any,
           ...(passed ? { prizeAmount: prizeAmount.toFixed(2) } : {}),
         });
-
         if (passed) {
           try {
             const notif = await storage.createNotification({

@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import BackToSchoolAdminSection from "@/components/BackToSchoolAdminSection";
 import AdminUsersWorkspace from "@/components/AdminUsersWorkspace";
 import AdminSponsorCodes from "@/components/AdminSponsorCodes";
+import { ProctoringPlayback } from "@/components/ProctoringPlayback";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmtUSD = (v: any) => `$${parseFloat(v || "0").toFixed(2)}`;
@@ -3832,7 +3833,7 @@ export default function AdminDashboard() {
                                       : <span className="text-xs font-semibold text-amber-600">{fmtUSD(s.prizeAmount)} Due</span>
                                   ) : "—"}
                                 </TableCell>
-                                <TableCell className="text-xs text-slate-500">{fmtDate(s.createdAt)}</TableCell>
+                                 <TableCell className="text-xs text-slate-500"><div>{fmtDate(s.createdAt)}</div>{s.proctoring && <Badge variant="outline" className={`mt-1 text-[10px] ${s.proctoring.status === "completed" ? "border-emerald-300 text-emerald-700" : "border-red-300 text-red-700"}`}>Recording: {s.proctoring.status || "incomplete"}</Badge>}</TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-1 flex-wrap">
                                     <Button size="sm" variant="outline" className="h-7 w-7 p-0" title="View full grades & details"
@@ -3953,6 +3954,12 @@ export default function AdminDashboard() {
                                 <p className="text-sm"><span className="text-slate-500">Location:</span> <strong>{s.schoolLocation || "—"}</strong></p>
                               </div>
                             </div>
+
+                            {s.proctoring && <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Proctoring evidence</h4><StatusBadge status={s.proctoring.status || "incomplete"} /></div>
+                              <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2"><span>Consent: {s.proctoring.consentedAt ? fmtDate(s.proctoring.consentedAt) : "Not recorded"}</span><span>Duration: {s.proctoring.durationMs ? `${Math.round(s.proctoring.durationMs / 60000)} min` : "—"}</span><span>Audio: {s.proctoring.audioBytes || 0} bytes / {s.proctoring.audioChunkCount || 0} chunks</span><span>Video: {s.proctoring.videoBytes || 0} bytes / {s.proctoring.videoChunkCount || 0} chunks</span></div>
+                              {s.proctoring.id && <div className="mt-3 grid gap-3 sm:grid-cols-2"><div><p className="mb-1 text-xs font-semibold text-slate-500">Audio playback</p><ProctoringPlayback sessionId={s.proctoring.id} track="audio" /></div><div><p className="mb-1 text-xs font-semibold text-slate-500">Video playback</p><ProctoringPlayback sessionId={s.proctoring.id} track="video" /></div></div>}
+                            </div>}
 
                             {/* WAEC Subject Grades */}
                             <div className="bg-slate-50 border rounded-xl p-4 space-y-3">

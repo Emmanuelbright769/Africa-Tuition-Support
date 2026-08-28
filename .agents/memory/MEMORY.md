@@ -6,3 +6,4 @@
 - [Admin control integrity](admin-control-integrity.md) — suspension is global across APIs; destructive/funds controls require durable audit and database-backed replay protection.
 - [Authoritative financial settings](authoritative-financial-settings.md) — transaction-time conversions use live persisted rates; pricing changes require reasons and before/after audits.
 - [Account lien scope](account-lien-scope.md) — liens block only external bank and crypto payouts; trading and internal financial services remain available.
+- [App Storage client startup](app-storage-client-startup.md) — create the object-storage client at request time so a missing bucket cannot crash the whole server.

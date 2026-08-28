@@ -23,6 +23,7 @@ import {
   savingsGoals, savingsTransactions,
   backToSchoolChildren, backToSchoolVests, backToSchoolVestTransactions,
   backToSchoolOperations, backToSchoolAttempts, backToSchoolAwards,
+  proctoringSessions,
   scholarships, type Scholarship, type InsertScholarship,
   researchGrants, type ResearchGrant, type InsertResearchGrant,
   platformSettings, type PlatformSetting, DEFAULT_PLAN_PRICES, DEFAULT_TIER_PAYOUTS,
@@ -3168,18 +3169,23 @@ export class DatabaseStorage implements IStorage {
     const childIds = children.map(child => child.id);
     const guardianIds = Array.from(new Set(children.map(child => child.guardianUserId)));
     const certificateIds = children.map(child => child.birthCertificateUploadId).filter((id): id is number => typeof id === "number");
-    const [vests, attempts, awards, guardians, certificates] = await Promise.all([
+    const [vests, attempts, awards, guardians, certificates, proctoring] = await Promise.all([
       db.select().from(backToSchoolVests).where(inArray(backToSchoolVests.childId, childIds)),
       db.select().from(backToSchoolAttempts).where(inArray(backToSchoolAttempts.childId, childIds)),
       db.select().from(backToSchoolAwards).where(inArray(backToSchoolAwards.childId, childIds)),
       db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email }).from(users).where(inArray(users.id, guardianIds)),
       certificateIds.length ? db.select({ id: fileUploads.id, fileName: fileUploads.fileName, fileType: fileUploads.fileType }).from(fileUploads).where(inArray(fileUploads.id, certificateIds)) : Promise.resolve([]),
+      db.select().from(proctoringSessions).where(inArray(proctoringSessions.childId, childIds)),
     ]);
     const vestByChild = new Map(vests.map(record => [record.childId, record]));
     const attemptByChild = new Map(attempts.map(record => [record.childId, record]));
     const awardByChild = new Map(awards.map(record => [record.childId, record]));
     const guardianById = new Map(guardians.map(record => [record.id, record]));
     const certificateById = new Map(certificates.map(record => [record.id, record]));
+    const proctoringByChild = new Map<number, any>();
+    for (const session of proctoring) {
+      if (session.childId && (!proctoringByChild.has(session.childId) || new Date(proctoringByChild.get(session.childId).createdAt) < new Date(session.createdAt))) proctoringByChild.set(session.childId, session);
+    }
     return children.map(child => ({
       ...child,
       guardian: guardianById.get(child.guardianUserId) ?? null,
@@ -3187,6 +3193,7 @@ export class DatabaseStorage implements IStorage {
       attempt: attemptByChild.get(child.id) ?? null,
       award: awardByChild.get(child.id) ?? null,
       certificate: child.birthCertificateUploadId ? certificateById.get(child.birthCertificateUploadId) ?? null : null,
+      proctoring: proctoringByChild.get(child.id) ?? null,
     }));
   }
 

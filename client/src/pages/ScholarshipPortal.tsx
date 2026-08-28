@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
+import { useProctoringController } from "@/hooks/use-proctoring-controller";
+import { ProctoringNotice } from "@/components/ProctoringNotice";
+import { ProctoringStatusBar } from "@/components/ProctoringStatusBar";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,6 +181,7 @@ export default function ScholarshipPortal() {
   const [loading, setLoading] = useState(false);
   const [cheatAck, setCheatAck] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
+  const proctoring = useProctoringController();
 
   const [scholarshipRecord, setScholarshipRecord] = useState<any>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
@@ -674,7 +678,9 @@ export default function ScholarshipPortal() {
     if (!scholarshipType) return;
     setLoading(true);
     try {
-      const data = await (await apiRequest("POST", "/api/scholarship/start-test", { type: scholarshipType })).json() as { verbal: TestQuestion[]; quant: TestQuestion[] };
+      const proctoringSessionId = await proctoring.start({ assessmentType: scholarshipType });
+      const data = await (await apiRequest("POST", "/api/scholarship/start-test", { type: scholarshipType, proctoringSessionId })).json() as { verbal: TestQuestion[]; quant: TestQuestion[] };
+      proctoring.beginRecording();
       const allQs = [...data.verbal, ...data.quant];
       setQuestions(allQs);
       // Build a per-question shuffle permutation of option positions [0,1,2,3]
@@ -701,6 +707,7 @@ export default function ScholarshipPortal() {
       lastFocusLossRef.current = 0;
       setStep("test");
     } catch (e: any) {
+      await proctoring.finalize("interrupted");
       toast({ title: "Could not start test", description: e.message, variant: "destructive" });
     }
     setLoading(false);
@@ -711,8 +718,10 @@ export default function ScholarshipPortal() {
     const allQs = [...verbalQs, ...quantQs];
     const answerPayload = allQs.map(q => ({ questionId: q.id, selectedIndex: answers[q.id] ?? -1 }));
     try {
+      const recordingUploaded = await proctoring.finalize("completed");
+      if (!recordingUploaded) throw new Error("Your recording could not be fully uploaded, so the test was not marked complete.");
       const data = await (await apiRequest("POST", "/api/scholarship/submit-test", {
-        type: scholarshipType, answers: answerPayload,
+         type: scholarshipType, answers: answerPayload, proctoringSessionId: proctoring.sessionId,
       })).json() as TestResult;
       clearTimers();
       setResult(data);
@@ -749,7 +758,9 @@ export default function ScholarshipPortal() {
   if (step === "test") {
     if (testPhase === "transition") {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-900 to-slate-900 p-4">
+          <ProctoringStatusBar cameraActive={proctoring.cameraActive} microphoneActive={proctoring.microphoneActive} status={proctoring.status} />
+          <div className="flex min-h-[80vh] items-center justify-center">
           <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center text-white">
             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.3, type: "spring" }}
               className="w-24 h-24 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -765,24 +776,28 @@ export default function ScholarshipPortal() {
               ))}
             </div>
           </motion.div>
+          </div>
         </div>
       );
     }
 
     if (testPhase === "submitting") {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 p-4">
+          <ProctoringStatusBar cameraActive={proctoring.cameraActive} microphoneActive={proctoring.microphoneActive} status={proctoring.status} />
+          <div className="flex min-h-[80vh] items-center justify-center">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center text-white">
             <Loader2 className="w-14 h-14 animate-spin text-indigo-400 mx-auto mb-5" />
             <h2 className="text-2xl font-bold mb-2">Submitting your answers…</h2>
             <p className="text-indigo-300">Calculating your score, please wait.</p>
           </motion.div>
+          </div>
         </div>
       );
     }
 
     if (testPhase === "waiting_min_time") {
-      return <WaitingMinTime testStartedAt={testStartedAtRef.current} onReady={() => setTestPhase("submitting")} />;
+      return <div className="min-h-screen bg-slate-950 p-4"><ProctoringStatusBar cameraActive={proctoring.cameraActive} microphoneActive={proctoring.microphoneActive} status={proctoring.status} /><WaitingMinTime testStartedAt={testStartedAtRef.current} onReady={() => setTestPhase("submitting")} /></div>;
     }
 
     const isVerbal = testPhase === "verbal";
@@ -835,6 +850,7 @@ export default function ScholarshipPortal() {
         {/* Question area */}
         <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
           <div className="w-full max-w-2xl">
+            <ProctoringStatusBar cameraActive={proctoring.cameraActive} microphoneActive={proctoring.microphoneActive} status={proctoring.status} />
             <AnimatePresence mode="wait">
               {currentQ && (
                 <motion.div key={currentIdx}
@@ -1590,11 +1606,8 @@ export default function ScholarshipPortal() {
                 </label>
               </div>
 
-              <Button onClick={handleStartTest} disabled={loading || !cheatAck}
-                className="w-full h-14 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-lg shadow-lg shadow-indigo-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity">
-                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : "Start Scholarship CBT →"}
-              </Button>
-              <p className="text-white/40 text-xs text-center mt-3">You must acknowledge the policy above before starting</p>
+              <ProctoringNotice assessmentLabel="the scholarship CBT" busy={loading || proctoring.status === "preparing"} disabled={!cheatAck} error={proctoring.error} onStart={handleStartTest} />
+              <p className="text-white/40 text-xs text-center mt-3">Acknowledge the integrity policy and recording notice before starting.</p>
             </motion.div>
           )}
 

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { ProctoringPlayback } from "@/components/ProctoringPlayback";
 
 const money = (value: unknown) => `$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -49,6 +50,11 @@ export default function BackToSchoolAdminSection() {
             {award?.status === "recommended" && <><Button size="sm" onClick={() => awardReview.mutate({ awardId: award.id, approved: true, reason: actionReason("Grant approval") })}>Approve {money(award.awardAmount)} grant</Button><Button variant="outline" size="sm" className="text-red-700" onClick={() => awardReview.mutate({ awardId: award.id, approved: false, reason: actionReason("Grant decline") })}>Decline grant</Button></>}
             {award?.status === "approved" && <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { const reference = window.prompt("Payment reference:"); if (reference?.trim()) payAward.mutate({ awardId: award.id, reference: reference.trim() }); }}>Credit {money(award.awardAmount)} to guardian wallet</Button>}
           </div>
+           {child.proctoring && <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+             <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">CBT recording evidence</p><Badge variant="outline" className={child.proctoring.status === "completed" ? "border-emerald-300 text-emerald-700" : child.proctoring.status === "failed" || child.proctoring.status === "deleted" ? "border-red-300 text-red-700" : "border-amber-300 text-amber-700"}>{child.proctoring.status || "incomplete"}</Badge></div>
+             <p className="mt-2 text-xs text-slate-500">Consent {child.proctoring.consentedAt ? "recorded" : "not recorded"} · Duration {child.proctoring.durationMs ? `${Math.round(child.proctoring.durationMs / 60000)} min` : "—"} · Audio {child.proctoring.audioBytes || 0} bytes · Video {child.proctoring.videoBytes || 0} bytes</p>
+             {child.proctoring.id && <div className="mt-3 grid gap-2 sm:grid-cols-2"><div><p className="mb-1 text-[11px] font-semibold text-slate-500">Audio</p><ProctoringPlayback sessionId={child.proctoring.id} track="audio" /></div><div><p className="mb-1 text-[11px] font-semibold text-slate-500">Video</p><ProctoringPlayback sessionId={child.proctoring.id} track="video" /></div></div>}
+           </div>}
           {(child.certificateReviewReason || award?.reviewReason || award?.paymentReference) && <p className="mt-3 text-xs text-slate-500">{child.certificateReviewReason || award?.reviewReason || `Payment reference: ${award.paymentReference}`}</p>}
         </div>;
       })}

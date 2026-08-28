@@ -6444,7 +6444,7 @@ export async function registerRoutes(
       const { balance, note } = req.body;
       const newBal = parseFloat(balance);
       if (isNaN(newBal) || newBal < 0) return res.status(400).json({ message: "Invalid balance amount" });
-      if (typeof note !== "string" || note.trim().length < 5) return res.status(400).json({ message: "A reason of at least 5 characters is required" });
+      if (typeof note !== "string" || note.trim().length < 3) return res.status(400).json({ message: "A reason of at least 3 characters is required" });
       const curWal = await storage.getOrCreateWallet(targetId);
       await storage.updateWalletBalance(targetId, newBal.toFixed(2));
       // Bust the per-user wallet cache so the updated balance is visible immediately

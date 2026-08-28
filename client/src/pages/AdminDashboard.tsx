@@ -5630,14 +5630,21 @@ export default function AdminDashboard() {
                 <Input type="number" min="0" step="0.01" placeholder="e.g. 150.00" className="h-10 bg-muted/30" value={editBalanceAmount} onChange={e => setEditBalanceAmount(e.target.value)} data-testid="input-edit-balance" />
               </div>
               <div className="space-y-2">
-                <Label className="font-semibold">Note (optional)</Label>
-                <Input placeholder="Reason for adjustment" className="h-10 bg-muted/30" value={editBalanceNote} onChange={e => setEditBalanceNote(e.target.value)} data-testid="input-edit-balance-note" />
+                <Label className="font-semibold">Note (required, at least 3 characters)</Label>
+                <Input placeholder="e.g. Owed balance adjustment" className="h-10 bg-muted/30" value={editBalanceNote} onChange={e => setEditBalanceNote(e.target.value)} data-testid="input-edit-balance-note" />
+                <p className="text-xs text-muted-foreground">A reason is required so this financial change can be audited.</p>
               </div>
             </div>
           )}
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => { setEditBalanceDialog({ open: false, user: null }); setEditBalanceAmount(""); setEditBalanceNote(""); }}>Cancel</Button>
-            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!editBalanceAmount || editBalanceNote.trim().length < 5 || editBalanceMutation.isPending} onClick={() => editBalanceMutation.mutate({ id: editBalanceDialog.user?.id, balance: editBalanceAmount, note: editBalanceNote })} data-testid="button-confirm-edit-balance">
+            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!editBalanceAmount || editBalanceMutation.isPending} onClick={() => {
+              if (editBalanceNote.trim().length < 3) {
+                toast({ title: "Note required", description: "Enter at least 3 characters explaining this balance adjustment.", variant: "destructive" });
+                return;
+              }
+              editBalanceMutation.mutate({ id: editBalanceDialog.user?.id, balance: editBalanceAmount, note: editBalanceNote });
+            }} data-testid="button-confirm-edit-balance">
               {editBalanceMutation.isPending ? "Updating..." : <><Edit className="w-4 h-4 mr-2" /> Set Balance</>}
             </Button>
           </DialogFooter>

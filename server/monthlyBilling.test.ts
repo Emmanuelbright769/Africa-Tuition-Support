@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   getLagosBillingMonthKey,
-  getBillingMonthKeys,
   getMonthlyBillingDecision,
   isMonthlyBillingAllowedRequest,
   isMonthlyBillingStarted,
@@ -15,13 +14,6 @@ test("monthly billing starts exactly at September 1, 2026 in Lagos", () => {
   assert.equal(isMonthlyBillingStarted(new Date("2026-08-31T23:00:00.000Z")), true);
   assert.equal(getLagosBillingMonthKey(new Date("2026-08-31T23:00:00.000Z")), "2026-09");
   assert.equal(getLagosBillingMonthKey(new Date("2026-09-30T23:00:00.000Z")), "2026-10");
-  assert.deepEqual(
-    getBillingMonthKeys(
-      new Date("2026-12-01T00:05:00+01:00"),
-      new Date("2026-11-15T12:00:00+01:00"),
-    ),
-    ["2026-11", "2026-12"],
-  );
 });
 
 test("the full two-dollar amount is required and partial balances are not chargeable", () => {
@@ -82,7 +74,8 @@ test("billing implementation is transaction-scoped, idempotent, and no longer pa
   assert.match(service, /FOR UPDATE/);
   assert.match(service, /ON CONFLICT \(user_id, month_key\)/);
   assert.match(service, /ORDER BY month_key/);
-  assert.match(service, /getBillingMonthKeys/);
+   assert.match(service, /status = 'waived'/);
+   assert.match(service, /month_key = \$\{monthKey\}/);
   assert.match(walletBalance, /wallet_credit_claims/);
   assert.match(routes, /Crypto is never credited from caller-supplied data/);
   assert.doesNotMatch(index, /Math\.min\(MAINTENANCE_FEE,\s*currentBalance\)/);

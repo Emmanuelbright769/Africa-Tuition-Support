@@ -40,29 +40,6 @@ export function isMonthlyBillingStarted(now = new Date()): boolean {
   return now.getTime() >= MONTHLY_BILLING_START_AT.getTime();
 }
 
-export function getBillingMonthKeys(now = new Date(), accountCreatedAt?: Date): string[] {
-  if (!isMonthlyBillingStarted(now)) return [];
-  const current = getLagosBillingMonthKey(now);
-  const [endYear, endMonth] = current.split("-").map(Number);
-  const accountStart = accountCreatedAt
-    ? getLagosBillingMonthKey(accountCreatedAt)
-    : "2026-09";
-  const startKey = accountStart > "2026-09" ? accountStart : "2026-09";
-  const [startYear, startMonth] = startKey.split("-").map(Number);
-  const keys: string[] = [];
-  let year = startYear;
-  let month = startMonth;
-  while (year < endYear || (year === endYear && month <= endMonth)) {
-    keys.push(`${year}-${String(month).padStart(2, "0")}`);
-    month += 1;
-    if (month === 13) {
-      month = 1;
-      year += 1;
-    }
-  }
-  return keys;
-}
-
 export function getMonthlyBillingDecision(balance: number, amountDue = MONTHLY_TOTAL_FEE_USD): "charge" | "restrict" {
   return Number.isFinite(balance) && balance >= amountDue
     ? "charge"

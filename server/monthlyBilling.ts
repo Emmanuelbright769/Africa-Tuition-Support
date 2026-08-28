@@ -3,7 +3,6 @@ import { db } from "./db";
 import { pushToUser } from "./realtime";
 import { acquireWalletUserLock } from "./walletBalance";
 import {
-  getBillingMonthKeys,
   getLagosBillingMonthKey,
   getMonthlyBillingDecision,
   isMonthlyBillingStarted,
@@ -64,12 +63,12 @@ export async function reconcileMonthlyBilling(
     await acquireWalletUserLock(tx, userId);
 
     const userResult = await tx.execute(sql`
-      SELECT id, role, account_status, created_at
+      SELECT id, role, account_status
       FROM users
       WHERE id = ${userId}
       LIMIT 1
     `);
-    const user = rowsOf<{ id: number; role: string; account_status: string; created_at: string | Date }>(userResult)[0];
+    const user = rowsOf<{ id: number; role: string; account_status: string }>(userResult)[0];
     if (!user) throw new Error("User not found");
 
     if (user.role === "admin" || user.account_status !== "active") {
@@ -101,26 +100,33 @@ export async function reconcileMonthlyBilling(
     `);
     const walletBalance = Number(rowsOf<{ balance: string | number }>(walletResult)[0]?.balance ?? 0);
 
-    for (const requiredMonth of getBillingMonthKeys(now, new Date(user.created_at))) {
-      await tx.execute(sql`
-        INSERT INTO monthly_billing_cycles (
-          user_id, month_key, subscription_fee, maintenance_fee, total_fee,
-          status, balance_at_attempt, attempt_count, last_attempt_at, updated_at
-        )
-        VALUES (
-          ${userId}, ${requiredMonth}, ${MONTHLY_SUBSCRIPTION_FEE_USD},
-          ${MONTHLY_MAINTENANCE_FEE_USD}, ${MONTHLY_TOTAL_FEE_USD},
-          'payment_required', ${walletBalance.toFixed(2)}, 1, NOW(), NOW()
-        )
-        ON CONFLICT (user_id, month_key) DO NOTHING
-      `);
-    }
+    // Missed months do not accumulate. Keep their records for audit/history,
+    // but waive them when a later billing month is evaluated.
+    await tx.execute(sql`
+      UPDATE monthly_billing_cycles
+      SET status = 'waived', updated_at = NOW()
+      WHERE user_id = ${userId}
+        AND month_key < ${monthKey}
+        AND status = 'payment_required'
+    `);
+    await tx.execute(sql`
+      INSERT INTO monthly_billing_cycles (
+        user_id, month_key, subscription_fee, maintenance_fee, total_fee,
+        status, balance_at_attempt, attempt_count, last_attempt_at, updated_at
+      )
+      VALUES (
+        ${userId}, ${monthKey}, ${MONTHLY_SUBSCRIPTION_FEE_USD},
+        ${MONTHLY_MAINTENANCE_FEE_USD}, ${MONTHLY_TOTAL_FEE_USD},
+        'payment_required', ${walletBalance.toFixed(2)}, 1, NOW(), NOW()
+      )
+      ON CONFLICT (user_id, month_key) DO NOTHING
+    `);
 
     const unpaidResult = await tx.execute(sql`
       SELECT month_key
       FROM monthly_billing_cycles
       WHERE user_id = ${userId}
-        AND month_key <= ${monthKey}
+        AND month_key = ${monthKey}
         AND status = 'payment_required'
       ORDER BY month_key
       FOR UPDATE
@@ -153,7 +159,7 @@ export async function reconcileMonthlyBilling(
           last_attempt_at = NOW(),
           updated_at = NOW()
           WHERE user_id = ${userId}
-            AND month_key <= ${monthKey}
+            AND month_key = ${monthKey}
             AND status = 'payment_required'
         `);
       }
@@ -206,7 +212,7 @@ export async function reconcileMonthlyBilling(
         ${userId},
         'system',
         'Monthly Platform Access Active',
-        ${`$${amountDue.toFixed(2)} was collected for ${unpaidMonths.length} monthly billing cycle(s). Your platform access is active.`},
+        ${`$${amountDue.toFixed(2)} was collected for the ${monthKey} monthly billing cycle. Your platform access is active.`},
         ${JSON.stringify({
           monthKey,
           paidMonths: unpaidMonths,

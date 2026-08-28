@@ -300,7 +300,7 @@ async function runMigrations() {
         maintenance_fee DECIMAL(10,2) NOT NULL DEFAULT 0.50,
         total_fee DECIMAL(10,2) NOT NULL DEFAULT 2.00,
         status TEXT NOT NULL DEFAULT 'payment_required'
-          CHECK (status IN ('payment_required', 'paid')),
+          CHECK (status IN ('payment_required', 'paid', 'waived')),
         balance_at_attempt DECIMAL(10,2) NOT NULL DEFAULT 0.00,
         attempt_count INTEGER NOT NULL DEFAULT 1,
         charged_at TIMESTAMP,
@@ -309,6 +309,15 @@ async function runMigrations() {
         updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
         CONSTRAINT monthly_billing_cycles_user_month_uq UNIQUE (user_id, month_key)
       )
+    `);
+    await db.execute(sql`
+      ALTER TABLE monthly_billing_cycles
+      DROP CONSTRAINT IF EXISTS monthly_billing_cycles_status_check
+    `);
+    await db.execute(sql`
+      ALTER TABLE monthly_billing_cycles
+      ADD CONSTRAINT monthly_billing_cycles_status_check
+      CHECK (status IN ('payment_required', 'paid', 'waived'))
     `);
     await db.execute(sql`
       CREATE INDEX IF NOT EXISTS monthly_billing_cycles_status_month_idx

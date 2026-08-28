@@ -46,7 +46,7 @@ export default function MonthlyBillingGate({ children }: { children: ReactNode }
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-black">Monthly platform fees are due</h1>
                 <p className="text-sm text-white/90 max-w-xl">
-                  Add enough money to your SwiftWallet to cover all outstanding monthly charges. Access is restored automatically as soon as payment is collected.
+                  Add this month’s fee to your SwiftWallet. Missed months do not accumulate, and access is restored automatically as soon as the current monthly fee is collected.
                 </p>
               </div>
               <ShieldCheck className="w-10 h-10 shrink-0 text-white/90" />
@@ -71,12 +71,10 @@ export default function MonthlyBillingGate({ children }: { children: ReactNode }
                   <span className="font-semibold">Total required</span>
                   <span className="font-black">${billing.amountDue.toFixed(2)}</span>
                 </div>
-                {billing.unpaidMonths > 1 && (
-                  <div className="flex justify-between gap-4 text-sm mt-1 text-muted-foreground">
-                    <span>Unpaid months</span>
-                    <span>{billing.unpaidMonths}</span>
-                  </div>
-                )}
+                <div className="flex justify-between gap-4 text-sm mt-1 text-muted-foreground">
+                  <span>Month to unlock access</span>
+                  <span>{billing.unpaidMonths > 0 ? "Current month" : "—"}</span>
+                </div>
                 <div className="flex justify-between gap-4 text-sm mt-1 text-muted-foreground">
                   <span>Current wallet balance</span>
                   <span>${billing.walletBalance.toFixed(2)}</span>

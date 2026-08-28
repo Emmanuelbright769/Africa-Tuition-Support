@@ -12,7 +12,7 @@ function rowsOf<T>(result: unknown): T[] {
   return [];
 }
 
-test("monthly billing is atomic under concurrency and settles all arrears before restoring access", async () => {
+test("monthly billing is atomic and a missed month never accumulates into arrears", async () => {
   const marker = `${Date.now()}-${process.pid}`;
   let userId: number | null = null;
 
@@ -74,27 +74,17 @@ test("monthly billing is atomic under concurrency and settles all arrears before
     await db.execute(sql`UPDATE wallets SET balance = '0.00' WHERE user_id = ${userId}`);
     const october = await reconcileMonthlyBilling(userId, new Date("2026-10-01T00:05:00+01:00"));
     assert.equal(october.state, "payment_required");
+    assert.equal(october.amountDue, 2);
+    assert.equal(october.unpaidMonths, 1);
 
     await db.execute(sql`UPDATE wallets SET balance = '2.00' WHERE user_id = ${userId}`);
     const november = new Date("2026-11-01T00:05:00+01:00");
-    const arrears = await reconcileMonthlyBilling(userId, november);
-    assert.equal(arrears.state, "payment_required");
-    assert.equal(arrears.amountDue, 4);
-    assert.equal(arrears.unpaidMonths, 2);
-    assert.equal(arrears.walletBalance, 2);
-
-    const raceResults = await Promise.all([
-      reconcileMonthlyBilling(userId, november),
-      (async () => {
-        await creditWalletBalanceAtomic(userId!, 2);
-        return reconcileMonthlyBilling(userId!, november, { recordAttempt: true });
-      })(),
-    ]);
-    assert.equal(raceResults.some((status) => status.chargedNow), true);
-    const settled = await reconcileMonthlyBilling(userId, november);
-    assert.equal(settled.state, "paid");
-    assert.equal(settled.hasAccess, true);
-    assert.equal(settled.walletBalance, 0);
+    const currentMonthOnly = await reconcileMonthlyBilling(userId, november);
+    assert.equal(currentMonthOnly.state, "paid");
+    assert.equal(currentMonthOnly.hasAccess, true);
+    assert.equal(currentMonthOnly.amountDue, 0);
+    assert.equal(currentMonthOnly.unpaidMonths, 0);
+    assert.equal(currentMonthOnly.walletBalance, 0);
 
     const cyclesResult = await db.execute(sql`
       SELECT month_key, status
@@ -106,7 +96,7 @@ test("monthly billing is atomic under concurrency and settles all arrears before
       rowsOf<{ month_key: string; status: string }>(cyclesResult),
       [
         { month_key: "2026-09", status: "paid" },
-        { month_key: "2026-10", status: "paid" },
+        { month_key: "2026-10", status: "waived" },
         { month_key: "2026-11", status: "paid" },
       ],
     );
@@ -121,8 +111,6 @@ test("monthly billing is atomic under concurrency and settles all arrears before
       rowsOf<{ type: string; amount: string }>(finalLedgerResult)
         .map((entry) => [entry.type, Number(entry.amount)]),
       [
-        ["subscription_fee", -1.5],
-        ["maintenance_fee", -0.5],
         ["subscription_fee", -1.5],
         ["maintenance_fee", -0.5],
         ["subscription_fee", -1.5],

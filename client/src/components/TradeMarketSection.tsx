@@ -10,12 +10,14 @@ import BotLiveView from "./trade/BotLiveView";
 import ManualTrading from "./trade/ManualTrading";
 import TradeWalletView from "./trade/TradeWalletView";
 import P2PExchange from "./trade/P2PExchange";
+import TradeHistoryView from "./trade/TradeHistoryView";
 
-type Tab = "home" | "wallet" | "signals" | "botlive" | "manual" | "activity" | "p2p";
+type Tab = "home" | "wallet" | "signals" | "botlive" | "manual" | "history" | "p2p";
 
 interface TradeMarketSectionProps {
   children: ReactNode;
   tradeBalance: number;
+  tradeTransactions: any[];
   userId: number;
   tradeSessionActive: boolean;
   onDeposit: () => void;
@@ -35,15 +37,15 @@ const PRIMARY_TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
 const EXTRA_TABS: { id: Tab; label: string; desc: string; Icon: React.ElementType }[] = [
   { id: "botlive",  label: "Itera BOT",      desc: "Live bot position & controls",    Icon: Bot },
   { id: "manual",   label: "Manual Trading", desc: "Open your own market position",   Icon: CandlestickChart },
-  { id: "activity", label: "Activity",       desc: "Your full market history",        Icon: BarChart2 },
+  { id: "history",  label: "History",        desc: "Profit, loss & transaction history", Icon: BarChart2 },
   { id: "p2p",      label: "P2P Exchange",   desc: "Buy & sell USD peer-to-peer",     Icon: Handshake },
 ];
 
 // Tabs that render dedicated components (not the scrollable children)
-const COMPONENT_TABS = new Set<Tab>(["wallet", "signals", "botlive", "manual", "activity", "p2p"]);
+const COMPONENT_TABS = new Set<Tab>(["wallet", "signals", "botlive", "manual", "history", "p2p"]);
 
 export default function TradeMarketSection({
-  children, tradeBalance, tradeSessionActive, onDeposit, onWithdraw, onFund, onConnect, onReinvest, onBankDeposit,
+  children, tradeBalance, tradeTransactions, tradeSessionActive, onDeposit, onWithdraw, onFund, onConnect, onReinvest, onBankDeposit,
 }: TradeMarketSectionProps) {
   const [tab, setTab]       = useState<Tab>("home");
   const [more, setMore]     = useState(false);
@@ -129,22 +131,11 @@ export default function TradeMarketSection({
               <ManualTrading tradeBalance={tradeBalance} />
             </motion.div>
           )}
-          {tab === "activity" && (
-            <motion.div key="activity"
+          {tab === "history" && (
+            <motion.div key="history"
               initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.22 }}>
-              {/* Activity placeholder — reuses closed positions from scroll content */}
-              <div className="py-12 text-center text-white/30">
-                <BarChart2 className="mx-auto mb-3 h-10 w-10 opacity-30" />
-                <p className="font-bold text-white/50">Activity Log</p>
-                <p className="mt-1 text-sm">Scroll to Activity in Overview to see your history.</p>
-                <button
-                  onClick={() => goTab("home")}
-                  className="mt-4 rounded-xl border border-white/10 px-5 py-2 text-sm font-bold text-white hover:bg-white/10 transition-colors"
-                >
-                  Go to Overview
-                </button>
-              </div>
+              <TradeHistoryView transactions={tradeTransactions} />
             </motion.div>
           )}
           {tab === "p2p" && (

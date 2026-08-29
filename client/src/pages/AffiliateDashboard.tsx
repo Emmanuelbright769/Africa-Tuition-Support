@@ -1698,6 +1698,7 @@ export default function AffiliateDashboard() {
               <>
                 <TradeMarketSection
                   tradeBalance={tradeBalance}
+                  tradeTransactions={tradeTxs as any[]}
                   userId={user?.id ?? 0}
                   tradeSessionActive={tradeSessionActive}
                   onDeposit={() => setDepositOpen(true)}
@@ -2018,7 +2019,7 @@ export default function AffiliateDashboard() {
                 </motion.div>
 
                 {/* ── P&L Chart — weekly profit / loss breakdown ── */}
-                {(() => {
+                {false && (() => {
                   // Filter to actual bot earning sessions only (exclude referral commissions — those go to commission wallet)
                   const botSessions = (tradeTxs as any[]).filter(t => t.type === "bot_earning" && !String(t.note ?? "").startsWith("Referral commission"));
                   if (botSessions.length === 0) return null;
@@ -2236,7 +2237,7 @@ export default function AffiliateDashboard() {
                 </motion.div>
 
                 {/* ── Trade Transaction History — after broker selection, collapsible ── */}
-                {(tradeTxs as any[]).length > 0 && (
+                {false && (tradeTxs as any[]).length > 0 && (
                   <motion.div variants={itemVariants} data-trade-anchor="activity" style={{ scrollMarginTop: "5rem" }}>
                     <Card className="shadow-md border-0 overflow-hidden" data-testid="panel-trade-tx-history">
                       <button

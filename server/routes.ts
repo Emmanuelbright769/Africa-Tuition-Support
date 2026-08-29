@@ -110,6 +110,87 @@ const TRADE_SYMBOLS = [
   { symbol: "GOOGL",    label: "Alphabet",      category: "stocks" },
   { symbol: "JPM",      label: "JPMorgan",      category: "stocks" },
 ];
+const ITERA_MARKETS = [
+  { symbol: "BTC-USD", label: "BTC/USD", name: "Bitcoin", category: "crypto" },
+  { symbol: "ETH-USD", label: "ETH/USD", name: "Ethereum", category: "crypto" },
+  { symbol: "SOL-USD", label: "SOL/USD", name: "Solana", category: "crypto" },
+  { symbol: "EURUSD=X", label: "EUR/USD", name: "Euro / US Dollar", category: "forex" },
+  { symbol: "GBPUSD=X", label: "GBP/USD", name: "Pound / US Dollar", category: "forex" },
+  { symbol: "GC=F", label: "XAU/USD", name: "Gold", category: "commodities" },
+  { symbol: "CL=F", label: "WTI/USD", name: "WTI Crude Oil", category: "commodities" },
+] as const;
+const iteraChartCache = new Map<string, { ts: number; candles: any[] }>();
+const iteraControlState = new Map<number, { sessionStartedAt: number; sizeMultiplier: number; direction: "long" | "short" }>();
+
+function getIteraMarketForSession(userId: number, activatedAt: Date) {
+  const sessionSlot = Math.floor(activatedAt.getTime() / (12 * 3600 * 1000));
+  return ITERA_MARKETS[Math.abs(userId + sessionSlot) % ITERA_MARKETS.length];
+}
+
+async function getTradeMarketPrices() {
+  if (Date.now() - priceCache.ts < 15000 && priceCache.data.length) return priceCache.data;
+  const data = await Promise.all(TRADE_SYMBOLS.map(async s => {
+    try {
+      const q: any = await yf.quote(s.symbol);
+      return { ...s, price: Number(q.regularMarketPrice ?? 0), change: Number(q.regularMarketChange ?? 0), changePct: Number(q.regularMarketChangePercent ?? 0), high: Number(q.regularMarketDayHigh ?? 0), low: Number(q.regularMarketDayLow ?? 0) };
+    } catch {
+      return { ...s, price: null, change: 0, changePct: 0, high: null, low: null };
+    }
+  }));
+  priceCache.ts = Date.now();
+  priceCache.data = data;
+  return data;
+}
+
+async function getIteraCandles(symbol: string, interval: "1m" | "5m" | "15m" | "1h", currentPrice: number) {
+  const cacheKey = `${symbol}:${interval}`;
+  const cached = iteraChartCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < 15000) return cached.candles;
+  const intervalMs = interval === "1m" ? 60_000 : interval === "15m" ? 900_000 : interval === "1h" ? 3_600_000 : 300_000;
+  try {
+    const chart: any = await yf.chart(symbol, {
+      period1: new Date(Date.now() - 24 * 3600 * 1000),
+      period2: new Date(),
+      interval: interval as any,
+    });
+    const timestamps = chart?.timestamp ?? [];
+    const quote = chart?.indicators?.quote?.[0] ?? {};
+    const candles = timestamps.map((timestamp: number, index: number) => ({
+      time: new Date(timestamp * 1000).toISOString(),
+      open: Number(quote.open?.[index] ?? 0),
+      high: Number(quote.high?.[index] ?? 0),
+      low: Number(quote.low?.[index] ?? 0),
+      close: Number(quote.close?.[index] ?? 0),
+      volume: Number(quote.volume?.[index] ?? 0),
+    })).filter((c: any) => c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0).slice(-72);
+    if (candles.length > 1) {
+      iteraChartCache.set(cacheKey, { ts: Date.now(), candles });
+      return candles;
+    }
+  } catch (error) {
+    console.warn(`[Trade] chart fetch failed for ${symbol}:`, error instanceof Error ? error.message : error);
+  }
+
+  if (!currentPrice || !Number.isFinite(currentPrice)) return [];
+  const seed = symbol.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const candles = Array.from({ length: 48 }, (_, index) => {
+    const wave = Math.sin((index + seed) * 0.72) * 0.0012 + Math.cos((index + seed) * 0.21) * 0.0007;
+    const drift = (index - 24) * 0.00008;
+    const close = currentPrice * (1 + wave + drift);
+    const previousIndex = Math.max(0, index - 1);
+    const previousWave = Math.sin((previousIndex + seed) * 0.72) * 0.0012 + Math.cos((previousIndex + seed) * 0.21) * 0.0007;
+    const open = currentPrice * (1 + previousWave + (previousIndex - 24) * 0.00008);
+    return {
+      time: new Date(Date.now() - (47 - index) * intervalMs).toISOString(),
+      open,
+      high: Math.max(open, close) * 1.0007,
+      low: Math.min(open, close) * 0.9993,
+      close,
+      volume: 0,
+    };
+  });
+  return candles;
+}
 
 // ── USD/NGN exchange rate in-memory cache (5-min TTL) ─────────────────────
 let _usdNgnRatesCache: { buying: number; selling: number; cachedAt: number } | null = null;
@@ -5052,12 +5133,7 @@ export async function registerRoutes(
   // Admin-only detailed view
   app.get("/api/trade/market-prices", async (req, res) => {
     if (!(req.session as any)?.userId) return res.status(401).json({ message: "Not authenticated" });
-    if (Date.now() - priceCache.ts < 15000 && priceCache.data.length) return res.json(priceCache.data);
-    const data = await Promise.all(TRADE_SYMBOLS.map(async s => {
-      try { const q: any = await yf.quote(s.symbol); return { ...s, price: Number(q.regularMarketPrice ?? 0), change: Number(q.regularMarketChange ?? 0), changePct: Number(q.regularMarketChangePercent ?? 0), high: Number(q.regularMarketDayHigh ?? 0), low: Number(q.regularMarketDayLow ?? 0) }; }
-      catch { return { ...s, price: null, change: 0, changePct: 0, high: null, low: null }; }
-    }));
-    priceCache.ts = Date.now(); priceCache.data = data; res.json(data);
+    res.json(await getTradeMarketPrices());
   });
   app.get("/api/trade/signals", async (req, res) => {
     if (!(req.session as any)?.userId) return res.status(401).json({ message: "Not authenticated" });
@@ -5078,7 +5154,80 @@ export async function registerRoutes(
   app.post("/api/trade/signals/resolve/:id", async (req, res) => {
     const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { signalTrades, tradeWallets } = await import("@shared/schema"); const [t] = await db.select().from(signalTrades).where(and(eq(signalTrades.id, Number(req.params.id)), eq(signalTrades.userId, uid))); if (!t || t.status !== "open") return res.status(404).json({ message: "Trade not found" }); const q: any = await yf.quote(t.symbol); const exit = Number(q.regularMarketPrice ?? t.entryPrice); const pct = (exit - Number(t.entryPrice)) / Number(t.entryPrice) * (t.direction === "long" ? 1 : -1); const pnl = Number(t.amountUsd) * pct; const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); await db.update(signalTrades).set({ exitPrice: String(exit), pnlPct: String(pct * 100), pnlUsd: String(pnl), status: pnl >= 0 ? "won" : "lost", resolvedAt: new Date() }).where(eq(signalTrades.id, t.id)); if (w) await db.update(tradeWallets).set({ tradeBalance: (Number(w.tradeBalance) + Number(t.amountUsd) + pnl).toFixed(6) }).where(eq(tradeWallets.userId, uid)); res.json({ pnlUsd: pnl, pnlPct: pct * 100, exitPrice: exit, status: pnl >= 0 ? "won" : "lost" });
   });
-  app.get("/api/trade/bot-position", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { tradeWallets } = await import("@shared/schema"); const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); if (!w?.botActivatedAt) return res.json({ active: false }); const p = priceCache.data.find(x => x.symbol === "BTC-USD"); const entry = p?.price ?? 0; const elapsedHours = Math.min(12, (Date.now() - new Date(w.botActivatedAt).getTime()) / 36e5); const size = Number(w.lockedPrincipal) * .1; const pnl = size * .02 * elapsedHours / 12; res.json({ active: true, symbol: "BTC-USD", entryPrice: entry, currentPrice: entry, size, unrealizedPnl: pnl, unrealizedPnlPct: pnl / (size || 1), elapsedHours, direction: "long" }); });
+  app.get("/api/trade/bot-position", async (req, res) => {
+    try {
+      const uid = (req.session as any)?.userId;
+      if (!uid) return res.status(401).json({ message: "Not authenticated" });
+      const { tradeWallets } = await import("@shared/schema");
+      const [wallet] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid));
+      if (!wallet?.botActivatedAt) {
+        iteraControlState.delete(uid);
+        return res.json({ active: false });
+      }
+
+      const activatedAt = new Date(wallet.botActivatedAt);
+      const sessionStartedAt = activatedAt.getTime();
+      const market = getIteraMarketForSession(uid, activatedAt);
+      const prices = await getTradeMarketPrices();
+      const quote = prices.find((item: any) => item.symbol === market.symbol);
+      const currentPrice = Number(quote?.price ?? 0);
+      const defaultDirection: "long" | "short" = Math.floor(sessionStartedAt / (12 * 3600 * 1000)) % 2 === 0 ? "long" : "short";
+      const storedControl = iteraControlState.get(uid);
+      const control = storedControl?.sessionStartedAt === sessionStartedAt
+        ? storedControl
+        : { sessionStartedAt, sizeMultiplier: 1, direction: defaultDirection };
+      iteraControlState.set(uid, control);
+
+      const entryPrice = Number.isFinite(currentPrice - Number(quote?.change ?? 0))
+        ? Math.max(0, currentPrice - Number(quote?.change ?? 0))
+        : currentPrice;
+      const priceMove = entryPrice > 0 ? (currentPrice - entryPrice) / entryPrice : 0;
+      const signedMove = control.direction === "long" ? priceMove : -priceMove;
+      const elapsedHours = Math.max(0, Math.min(12, (Date.now() - sessionStartedAt) / 36e5));
+      const size = Math.max(0, Number(wallet.lockedPrincipal) * .1 * control.sizeMultiplier);
+      const unrealizedPnl = size * signedMove;
+      const timeframe = (["1m", "5m", "15m", "1h"] as const).includes(req.query.timeframe as any)
+        ? req.query.timeframe as "1m" | "5m" | "15m" | "1h"
+        : "5m";
+      const candles = await getIteraCandles(market.symbol, timeframe, currentPrice);
+      const markets = ITERA_MARKETS.map(item => {
+        const itemQuote = prices.find((price: any) => price.symbol === item.symbol);
+        return {
+          ...item,
+          price: itemQuote?.price ?? null,
+          changePct: Number(itemQuote?.changePct ?? 0),
+          active: item.symbol === market.symbol,
+        };
+      });
+
+      res.json({
+        active: true,
+        symbol: market.symbol,
+        symbolLabel: market.label,
+        marketName: market.name,
+        category: market.category,
+        entryPrice,
+        currentPrice,
+        sessionHigh: quote?.high ?? null,
+        sessionLow: quote?.low ?? null,
+        size,
+        baseSize: Math.max(0, Number(wallet.lockedPrincipal) * .1),
+        sizeMultiplier: control.sizeMultiplier,
+        unrealizedPnl,
+        unrealizedPnlPct: signedMove * 100,
+        elapsedHours,
+        sessionStartedAt: activatedAt.toISOString(),
+        sessionEndsAt: new Date(sessionStartedAt + 12 * 3600 * 1000).toISOString(),
+        direction: control.direction,
+        timeframe,
+        candles,
+        markets,
+        lastUpdated: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message ?? "Could not load the live bot position" });
+    }
+  });
   app.get("/api/trade/manual/positions", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { manualTrades } = await import("@shared/schema"); res.json(await db.select().from(manualTrades).where(eq(manualTrades.userId, uid)).orderBy(desc(manualTrades.createdAt)).limit(20)); });
   app.post("/api/trade/manual/open", async (req, res) => {
     const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
@@ -5106,7 +5255,34 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.post("/api/trade/bot-position/override", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { tradeWallets } = await import("@shared/schema"); const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); if (!w) return res.status(404).json({ message: "Trade wallet not found" }); res.json({ message: `${req.body.action || "override"} recorded`, newBalance: w.tradeBalance }); });
+  app.post("/api/trade/bot-position/override", async (req, res) => {
+    const uid = (req.session as any)?.userId;
+    if (!uid) return res.status(401).json({ message: "Not authenticated" });
+    const action = String(req.body?.action ?? "");
+    if (!["double_down", "reverse"].includes(action)) return res.status(400).json({ message: "Unsupported bot control" });
+    const { tradeWallets } = await import("@shared/schema");
+    const [wallet] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid));
+    if (!wallet) return res.status(404).json({ message: "Trade wallet not found" });
+    if (!wallet.botActivatedAt || !(await isTradeSessionActive(uid))) return res.status(409).json({ message: "There is no active Itera session to control" });
+
+    const sessionStartedAt = new Date(wallet.botActivatedAt).getTime();
+    const existing = iteraControlState.get(uid);
+    const current = existing?.sessionStartedAt === sessionStartedAt
+      ? existing
+      : { sessionStartedAt, sizeMultiplier: 1, direction: "long" as const };
+    const next = action === "double_down"
+      ? { ...current, sizeMultiplier: Math.min(2, current.sizeMultiplier * 2) }
+      : { ...current, direction: (current.direction === "long" ? "short" : "long") as "long" | "short" };
+    iteraControlState.set(uid, next);
+    res.json({
+      message: action === "double_down"
+        ? (next.sizeMultiplier >= 2 && current.sizeMultiplier >= 2 ? "Position is already at the 2× session limit" : "Live position exposure increased to 2× for this session")
+        : `Live position reversed to ${next.direction.toUpperCase()}`,
+      action,
+      position: next,
+      financialSettlementUnchanged: true,
+    });
+  });
 
   app.get("/api/trade/reserve-fund", async (req, res) => {
     try {

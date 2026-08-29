@@ -9,12 +9,32 @@ type Session = { id: string | number };
 
 const POLICY_VERSION = "2026-08-28";
 const TIMESLICE = 10_000;
+const UPLOAD_TIMEOUT_MS = 15_000;
+const STOP_TIMEOUT_MS = 8_000;
 
 function supportedMime(kind: "audio" | "video") {
   const candidates = kind === "video"
-    ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
-    : ["audio/webm;codecs=opus", "audio/webm"];
+    ? ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4;codecs=avc1.42E01E", "video/mp4"]
+    : ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"];
   return candidates.find((mime) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(mime)) || "";
+}
+
+function waitForRecorderStop(recorder: MediaRecorder) {
+  return new Promise<void>((resolve) => {
+    if (recorder.state === "inactive") return resolve();
+    const timeout = window.setTimeout(resolve, STOP_TIMEOUT_MS);
+    recorder.addEventListener("stop", () => {
+      window.clearTimeout(timeout);
+      resolve();
+    }, { once: true });
+    try {
+      recorder.requestData();
+      recorder.stop();
+    } catch {
+      window.clearTimeout(timeout);
+      resolve();
+    }
+  });
 }
 
 async function responseJson(response: Response) {
@@ -46,15 +66,24 @@ export function useProctoringController() {
     const task = previous.then(async () => {
       let lastError: unknown;
       for (let attempt = 0; attempt < 3; attempt += 1) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
         try {
           const response = await fetch(`/api/proctoring/sessions/${id}/chunks/${track}/${sequence}`, {
-            method: "POST", body: blob, credentials: "include", headers: { "Content-Type": blob.type || "application/octet-stream" },
+            method: "POST", body: blob, credentials: "include",
+            headers: { "Content-Type": blob.type || "application/octet-stream" },
+            signal: controller.signal,
           });
-          if (!response.ok) throw new Error(`Upload failed (${response.status})`);
+          if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body?.message || `Upload failed (${response.status})`);
+          }
           return;
         } catch (caught) {
           lastError = caught;
           await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+        } finally {
+          window.clearTimeout(timeout);
         }
       }
       failedUploadRef.current = true;
@@ -72,11 +101,7 @@ export function useProctoringController() {
     const id = idRef.current;
     if (!id || finalizedRef.current) return !failedUploadRef.current;
     setStatus("flushing");
-    const stopped = recordersRef.current.map((recorder) => new Promise<void>((resolve) => {
-      if (recorder.state === "inactive") return resolve();
-      recorder.addEventListener("stop", () => resolve(), { once: true });
-      recorder.stop();
-    }));
+    const stopped = recordersRef.current.map(waitForRecorderStop);
     await Promise.all(stopped);
     await Promise.all(Object.values(queuesRef.current));
     const stream = streamRef.current;
@@ -102,6 +127,8 @@ export function useProctoringController() {
 
   const start = useCallback(async ({ assessmentType, childId }: Options) => {
     setStatus("preparing"); setError(""); errorRef.current = ""; failedUploadRef.current = false; finalizedRef.current = false;
+    queuesRef.current = {}; sequenceRef.current = { audio: 0, video: 0 };
+    idRef.current = null; setSessionId(null);
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera and microphone access is not available in this browser.");
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -120,8 +147,9 @@ export function useProctoringController() {
       await responseJson(await apiRequest("POST", `/api/proctoring/sessions/${session.id}/ready`, {
         camera: true, microphone: true, audioMimeType, videoMimeType,
       }));
-      sequenceRef.current = { audio: 0, video: 0 };
-      const videoRecorder = new MediaRecorder(stream, { mimeType: videoMimeType });
+      // Keep each recorder on a single physical track. Reusing the microphone in
+      // both recorders causes intermittent failures in mobile Safari.
+      const videoRecorder = new MediaRecorder(new MediaStream([videoTrack]), { mimeType: videoMimeType });
       const audioRecorder = new MediaRecorder(new MediaStream([audioTrack]), { mimeType: audioMimeType });
       const attach = (recorder: MediaRecorder, track: "audio" | "video") => {
         recorder.ondataavailable = (event) => {

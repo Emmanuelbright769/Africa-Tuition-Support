@@ -2955,9 +2955,8 @@ export async function registerRoutes(
     audioChunkCount: session.audioChunkCount, videoChunkCount: session.videoChunkCount,
     failureReason: session.failureReason, retentionUntil: session.retentionUntil, deletedAt: session.deletedAt,
   }) : null;
-  const failProctoring = async (id: number, reason: string) => {
-    await db.update(proctoringSessions).set({ status: "failed", failureReason: reason, updatedAt: new Date() }).where(eq(proctoringSessions.id, id));
-  };
+  const PROCTORING_UPLOAD_FAILURE_PREFIX = "Server recording upload failure:";
+  const PROCTORING_STORAGE_TIMEOUT_MS = 10_000;
   const ownedReadyProctoring = async (id: unknown, userId: number, type: string, links: { childId?: number; scholarshipId?: number }) => {
     const sessionId = Number(id);
     if (!Number.isInteger(sessionId) || sessionId < 1) return undefined;
@@ -2967,16 +2966,26 @@ export async function registerRoutes(
       (links.scholarshipId !== undefined && session.scholarshipId !== links.scholarshipId)) return undefined;
     return session;
   };
-  const completedLinkedProctoring = async (id: unknown, userId: number, type: "kiddies" | "student" | "masters", links: { childId?: number; scholarshipId?: number; backToSchoolAttemptId?: number }) => {
+  const finalizedLinkedProctoring = async (id: unknown, userId: number, type: "kiddies" | "student" | "masters", links: { childId?: number; scholarshipId?: number; backToSchoolAttemptId?: number }) => {
     const sessionId = Number(id);
     if (!Number.isInteger(sessionId) || sessionId < 1) return undefined;
     const conditions = [
       eq(proctoringSessions.id, sessionId),
       eq(proctoringSessions.ownerUserId, userId),
       eq(proctoringSessions.assessmentType, type),
-      eq(proctoringSessions.status, "completed"),
-      sql`${proctoringSessions.audioChunkCount} > 0`,
-      sql`${proctoringSessions.videoChunkCount} > 0`,
+      eq(proctoringSessions.cameraAvailable, true),
+      eq(proctoringSessions.microphoneAvailable, true),
+      or(
+        and(
+          eq(proctoringSessions.status, "completed"),
+          sql`${proctoringSessions.audioChunkCount} > 0`,
+          sql`${proctoringSessions.videoChunkCount} > 0`,
+        ),
+        and(
+          eq(proctoringSessions.status, "failed"),
+          sql`${proctoringSessions.failureReason} LIKE ${`${PROCTORING_UPLOAD_FAILURE_PREFIX}%`}`,
+        ),
+      )!,
     ];
     if (links.childId !== undefined) conditions.push(eq(proctoringSessions.childId, links.childId));
     if (links.scholarshipId !== undefined) conditions.push(eq(proctoringSessions.scholarshipId, links.scholarshipId));
@@ -3069,96 +3078,171 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId, sessionId = Number(req.params.id), sequence = Number(req.params.sequence), track = req.params.track;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     if (!["audio", "video"].includes(track) || !Number.isInteger(sequence) || sequence < 0 || sequence > 1_000_000 || !Buffer.isBuffer(req.body) || !req.body.length || !isSafeProctoringMime(track, req.get("content-type") ?? "")) return res.status(400).json({ message: "Invalid recording chunk." });
-    const [session] = await db.select().from(proctoringSessions).where(and(eq(proctoringSessions.id, sessionId), eq(proctoringSessions.ownerUserId, userId)));
-    if (!session || session.status !== "running") return res.status(409).json({ message: "Recording session is not active." });
-    const [existing] = await db.select().from(proctoringMediaChunks).where(and(eq(proctoringMediaChunks.sessionId, sessionId), eq(proctoringMediaChunks.track, track as any), eq(proctoringMediaChunks.sequence, sequence)));
-    if (existing) return res.json({ chunk: { id: existing.id, track, sequence, byteLength: existing.byteLength }, idempotent: true });
-    const contentType = req.get("content-type")!.split(";")[0], objectKey = `private/proctoring/${sessionId}/${track}/${sequence}`;
+    // Every upload attempt gets an isolated key. If App Storage completes after
+    // our deadline, that unindexed object cannot overwrite evidence committed
+    // by a successful retry for the same track/sequence.
+    const contentType = req.get("content-type")!.split(";")[0];
+    const objectKey = `private/proctoring/${sessionId}/${track}/${sequence}-${randomBytes(12).toString("hex")}`;
     try {
-      const storageClient = new ObjectStorageClient();
-      const uploaded = await storageClient.uploadFromBytes(objectKey, req.body, { compress: false });
-      if (!uploaded.ok) throw new Error(uploaded.error.message);
-      const [chunk] = await db.insert(proctoringMediaChunks)
-        .values({ sessionId, track: track as any, sequence, objectKey, contentType, byteLength: req.body.length })
-        .onConflictDoNothing()
-        .returning();
-      if (!chunk) {
-        const [racedChunk] = await db.select().from(proctoringMediaChunks).where(and(
+      const result = await db.transaction(async tx => {
+        // Chunk writes and finalization lock the same row. Holding the lock
+        // through private storage persistence ensures finalize cannot snapshot
+        // while an already accepted upload is still in flight.
+        await tx.execute(sql`SELECT id FROM proctoring_sessions WHERE id = ${sessionId} AND owner_user_id = ${userId} FOR UPDATE`);
+        const [active] = await tx.select().from(proctoringSessions).where(and(
+          eq(proctoringSessions.id, sessionId),
+          eq(proctoringSessions.ownerUserId, userId),
+        ));
+        if (!active || active.status !== "running") {
+          throw Object.assign(new Error("Recording session is not active."), { statusCode: 409 });
+        }
+        const [existing] = await tx.select().from(proctoringMediaChunks).where(and(
           eq(proctoringMediaChunks.sessionId, sessionId),
           eq(proctoringMediaChunks.track, track as any),
           eq(proctoringMediaChunks.sequence, sequence),
         ));
-        if (racedChunk) return res.json({ chunk: { id: racedChunk.id, track, sequence, byteLength: racedChunk.byteLength }, idempotent: true });
-        throw new Error("Recording chunk index could not be created.");
+        if (existing) {
+          return { chunk: existing, idempotent: true, session: active };
+        }
+        const markUploadFailure = async (error: unknown) => {
+          const message = error instanceof Error ? error.message : "private storage unavailable";
+          const [failed] = await tx.update(proctoringSessions).set({
+            failureReason: `${PROCTORING_UPLOAD_FAILURE_PREFIX} ${message.slice(0, 400)}`,
+            updatedAt: new Date(),
+          }).where(and(eq(proctoringSessions.id, sessionId), eq(proctoringSessions.status, "running"))).returning();
+          return { uploadError: true as const, session: failed ?? active };
+        };
+        try {
+          const storageClient = new ObjectStorageClient();
+          let uploadTimeout: ReturnType<typeof setTimeout> | undefined;
+          const uploaded = await Promise.race([
+            storageClient.uploadFromBytes(objectKey, req.body, { compress: false }),
+            new Promise<never>((_, reject) => {
+              uploadTimeout = setTimeout(
+                () => reject(new Error("Private recording storage timed out.")),
+                PROCTORING_STORAGE_TIMEOUT_MS,
+              );
+            }),
+          ]).finally(() => {
+            if (uploadTimeout) clearTimeout(uploadTimeout);
+          });
+          if (!uploaded.ok) return await markUploadFailure(new Error(uploaded.error.message));
+        } catch (error) {
+          return await markUploadFailure(error);
+        }
+        try {
+          // A nested transaction creates a savepoint. If indexing fails, the
+          // outer locked transaction remains usable to commit the server-only
+          // failure marker before finalization can proceed.
+          return await tx.transaction(async mediaTx => {
+            const [chunk] = await mediaTx.insert(proctoringMediaChunks)
+              .values({ sessionId, track: track as any, sequence, objectKey, contentType, byteLength: req.body.length })
+              .returning();
+            const isAudio = track === "audio";
+            const [updated] = await mediaTx.update(proctoringSessions).set({
+              lastHeartbeatAt: new Date(),
+              totalBytes: sql`${proctoringSessions.totalBytes} + ${req.body.length}`,
+              chunkCount: sql`${proctoringSessions.chunkCount} + 1`,
+              audioBytes: sql`${proctoringSessions.audioBytes} + ${isAudio ? req.body.length : 0}`,
+              videoBytes: sql`${proctoringSessions.videoBytes} + ${isAudio ? 0 : req.body.length}`,
+              audioChunkCount: sql`${proctoringSessions.audioChunkCount} + ${isAudio ? 1 : 0}`,
+              videoChunkCount: sql`${proctoringSessions.videoChunkCount} + ${isAudio ? 0 : 1}`,
+              updatedAt: new Date(),
+            }).where(and(eq(proctoringSessions.id, sessionId), eq(proctoringSessions.status, "running"))).returning();
+            if (!updated) throw Object.assign(new Error("Recording session is not active."), { statusCode: 409 });
+            return { chunk, idempotent: false as const, session: updated };
+          });
+        } catch (error) {
+          return await markUploadFailure(error);
+        }
+      });
+      if ("uploadError" in result) {
+        return res.status(503).json({ message: "Private recording storage is temporarily unavailable. Retrying upload is safe." });
       }
-      const isAudio = track === "audio";
-      const [updated] = await db.update(proctoringSessions).set({
-        lastHeartbeatAt: new Date(),
-        totalBytes: sql`${proctoringSessions.totalBytes} + ${req.body.length}`,
-        chunkCount: sql`${proctoringSessions.chunkCount} + 1`,
-        audioBytes: sql`${proctoringSessions.audioBytes} + ${isAudio ? req.body.length : 0}`,
-        videoBytes: sql`${proctoringSessions.videoBytes} + ${isAudio ? 0 : req.body.length}`,
-        audioChunkCount: sql`${proctoringSessions.audioChunkCount} + ${isAudio ? 1 : 0}`,
-        videoChunkCount: sql`${proctoringSessions.videoChunkCount} + ${isAudio ? 0 : 1}`,
-        updatedAt: new Date(),
-      }).where(eq(proctoringSessions.id, sessionId)).returning();
-      res.status(201).json({ chunk: { id: chunk.id, track, sequence, byteLength: chunk.byteLength }, session: proctoringSummary(updated) });
+      res.status(result.idempotent ? 200 : 201).json({
+        chunk: { id: result.chunk.id, track, sequence, byteLength: result.chunk.byteLength },
+        session: proctoringSummary(result.session),
+        ...(result.idempotent ? { idempotent: true } : {}),
+      });
     } catch (e: any) {
-      await failProctoring(sessionId, "Private recording storage is unavailable.");
-      res.status(503).json({ message: "Private recording storage is unavailable; recording was marked failed." });
+      if (e?.statusCode === 409) return res.status(409).json({ message: e.message });
+      res.status(503).json({ message: "Private recording storage is temporarily unavailable. Retrying upload is safe." });
     }
   });
 
   app.post("/api/proctoring/sessions/:id/finalize", async (req, res) => {
     const userId = (req.session as any)?.userId, id = Number(req.params.id);
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const [session] = await db.select().from(proctoringSessions).where(and(eq(proctoringSessions.id, id), eq(proctoringSessions.ownerUserId, userId)));
     const requestedStatus = parseProctoringFinalStatus(req.body?.status);
     if (!requestedStatus) return res.status(400).json({ message: "A valid final recording status is required." });
-    if (!session) return res.status(404).json({ message: "Recording session not found." });
-    if (session.status === requestedStatus && ["completed", "interrupted", "failed"].includes(session.status)) {
-      return res.json({ session: proctoringSummary(session), idempotent: true });
-    }
-    if (!["ready", "running"].includes(session.status)) return res.status(409).json({ message: "Recording session cannot be finalized." });
-    const now = new Date();
-    const durationSeconds = session.startedAt
-      ? Math.max(0, Math.floor((now.getTime() - new Date(session.startedAt).getTime()) / 1000))
-      : 0;
-    const secondsSinceHeartbeat = session.lastHeartbeatAt
-      ? Math.max(0, Math.floor((now.getTime() - new Date(session.lastHeartbeatAt).getTime()) / 1000))
-      : null;
-    const hasBothTracks = canCompleteProctoring(session.audioChunkCount, session.videoChunkCount);
-    const hasCoverage = hasSustainedProctoringCoverage({
-      durationSeconds,
-      audioChunkCount: session.audioChunkCount,
-      videoChunkCount: session.videoChunkCount,
-      heartbeatCount: session.heartbeatCount,
-      secondsSinceHeartbeat,
-    });
-    const chunkTimeline = requestedStatus === "completed"
-      ? await db.select({
+    try {
+      const outcome = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT id FROM proctoring_sessions WHERE id = ${id} AND owner_user_id = ${userId} FOR UPDATE`);
+        const [session] = await tx.select().from(proctoringSessions).where(and(eq(proctoringSessions.id, id), eq(proctoringSessions.ownerUserId, userId)));
+        if (!session) return { statusCode: 404, body: { message: "Recording session not found." } };
+        if (session.status === requestedStatus && ["completed", "interrupted", "failed"].includes(session.status)) {
+          return { statusCode: 200, body: { session: proctoringSummary(session), idempotent: true } };
+        }
+        if (!["ready", "running"].includes(session.status)) {
+          return { statusCode: 409, body: { message: "Recording session cannot be finalized." } };
+        }
+        const now = new Date();
+        const durationSeconds = session.startedAt
+          ? Math.max(0, Math.floor((now.getTime() - new Date(session.startedAt).getTime()) / 1000))
+          : 0;
+        const secondsSinceHeartbeat = session.lastHeartbeatAt
+          ? Math.max(0, Math.floor((now.getTime() - new Date(session.lastHeartbeatAt).getTime()) / 1000))
+          : null;
+        const chunkTimeline = await tx.select({
           track: proctoringMediaChunks.track,
+          byteLength: proctoringMediaChunks.byteLength,
           createdAt: proctoringMediaChunks.createdAt,
-        }).from(proctoringMediaChunks).where(eq(proctoringMediaChunks.sessionId, id))
-      : [];
-    const startedAtMs = session.startedAt ? new Date(session.startedAt).getTime() : Number.NaN;
-    const audioTimelineCovered = hasContinuousChunkTimeline(startedAtMs, now.getTime(), chunkTimeline.filter(chunk => chunk.track === "audio").map(chunk => new Date(chunk.createdAt).getTime()));
-    const videoTimelineCovered = hasContinuousChunkTimeline(startedAtMs, now.getTime(), chunkTimeline.filter(chunk => chunk.track === "video").map(chunk => new Date(chunk.createdAt).getTime()));
-    if (requestedStatus === "completed" && (!hasBothTracks || !hasCoverage || !audioTimelineCovered || !videoTimelineCovered)) {
-      await db.update(proctoringSessions).set({
-        status: "failed",
-        completedAt: now,
-        durationSeconds,
-        failureReason: "Recording coverage was incomplete for the assessment interval.",
-        updatedAt: now,
-      }).where(eq(proctoringSessions.id, id));
-      return res.status(409).json({ message: "The recording did not continuously cover the assessment. It was marked incomplete." });
+        }).from(proctoringMediaChunks).where(eq(proctoringMediaChunks.sessionId, id));
+        const mediaTotals = chunkTimeline.reduce((value, chunk) => {
+          value.totalBytes += chunk.byteLength;
+          value.chunkCount += 1;
+          if (chunk.track === "audio") {
+            value.audioBytes += chunk.byteLength;
+            value.audioChunkCount += 1;
+          } else {
+            value.videoBytes += chunk.byteLength;
+            value.videoChunkCount += 1;
+          }
+          return value;
+        }, { totalBytes: 0, chunkCount: 0, audioBytes: 0, videoBytes: 0, audioChunkCount: 0, videoChunkCount: 0 });
+        const hasBothTracks = canCompleteProctoring(mediaTotals.audioChunkCount, mediaTotals.videoChunkCount);
+        const hasCoverage = hasSustainedProctoringCoverage({
+          durationSeconds,
+          audioChunkCount: mediaTotals.audioChunkCount,
+          videoChunkCount: mediaTotals.videoChunkCount,
+          heartbeatCount: session.heartbeatCount,
+          secondsSinceHeartbeat,
+        });
+        const startedAtMs = session.startedAt ? new Date(session.startedAt).getTime() : Number.NaN;
+        const audioTimelineCovered = hasContinuousChunkTimeline(startedAtMs, now.getTime(), chunkTimeline.filter(chunk => chunk.track === "audio").map(chunk => new Date(chunk.createdAt).getTime()));
+        const videoTimelineCovered = hasContinuousChunkTimeline(startedAtMs, now.getTime(), chunkTimeline.filter(chunk => chunk.track === "video").map(chunk => new Date(chunk.createdAt).getTime()));
+        if (requestedStatus === "completed" && (!hasBothTracks || !hasCoverage || !audioTimelineCovered || !videoTimelineCovered)) {
+          await tx.update(proctoringSessions).set({
+            status: "failed", completedAt: now, durationSeconds, ...mediaTotals,
+            failureReason: "Recording coverage was incomplete for the assessment interval.", updatedAt: now,
+          }).where(eq(proctoringSessions.id, id));
+          return { statusCode: 409, body: { message: "The recording did not continuously cover the assessment. It was marked incomplete." } };
+        }
+        const serverUploadFailure = requestedStatus === "failed" && session.failureReason?.startsWith(PROCTORING_UPLOAD_FAILURE_PREFIX)
+          ? session.failureReason
+          : null;
+        const failureReason = requestedStatus === "completed"
+          ? null
+          : serverUploadFailure || String(req.body?.failureReason || (requestedStatus === "failed" ? "Recording failed." : "Recording was interrupted.")).slice(0, 500);
+        const [updated] = await tx.update(proctoringSessions).set({
+          status: requestedStatus, completedAt: now, durationSeconds, ...mediaTotals, failureReason, updatedAt: now,
+        }).where(eq(proctoringSessions.id, id)).returning();
+        return { statusCode: 200, body: { session: proctoringSummary(updated) } };
+      });
+      res.status(outcome.statusCode).json(outcome.body);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "Recording session could not be finalized." });
     }
-    const failureReason = requestedStatus === "completed" ? null : String(req.body?.failureReason || (requestedStatus === "failed" ? "Recording failed." : "Recording was interrupted.")).slice(0, 500);
-    const [updated] = await db.update(proctoringSessions).set({
-      status: requestedStatus, completedAt: now, durationSeconds, failureReason, updatedAt: now,
-    }).where(eq(proctoringSessions.id, id)).returning();
-    res.json({ session: proctoringSummary(updated) });
   });
 
   const requireProctoringAdmin = async (req: Request, res: Response) => {
@@ -3350,16 +3434,45 @@ export async function registerRoutes(
       if (!requireBackToSchoolLaunch(res)) return;
       const childId = Number(req.params.childId);
       const attempt = await storage.getBackToSchoolAttempt(childId, guardian.userId);
-      if (!attempt || attempt.status !== "started") return res.status(409).json({ message: "There is no active spelling-bee attempt to submit." });
-      const proctoring = await completedLinkedProctoring(req.body?.proctoringSessionId, guardian.userId, "kiddies", {
+      if (!attempt) return res.status(409).json({ message: "There is no spelling-bee attempt to submit." });
+      const proctoring = await finalizedLinkedProctoring(req.body?.proctoringSessionId, guardian.userId, "kiddies", {
         childId, backToSchoolAttemptId: attempt.id,
       });
-      if (!proctoring) return res.status(403).json({ message: "A completed camera and microphone recording linked to this attempt is required before submission." });
+      if (!proctoring) return res.status(403).json({ message: "A finalized recording session linked to this attempt is required before submission." });
+      const completedAttemptResponse = async (completedAttempt: any) => {
+        const programme = await storage.getBackToSchoolProgramme(guardian.userId);
+        const entry = programme.find(item => item.id === childId);
+        const score = Number(completedAttempt.score || 0);
+        const percentage = Number(completedAttempt.percentage || 0);
+        const awardAmount = Number(entry?.award?.awardAmount || 0);
+        return {
+          attempt: completedAttempt,
+          award: entry?.award ?? null,
+          score,
+          totalQuestions: Array.isArray(completedAttempt.questionIds) ? completedAttempt.questionIds.length : 0,
+          percentage,
+          awardAmount,
+          awardStatus: entry?.award?.status ?? (awardAmount > 0 ? "recommended" : "not_eligible"),
+          expired: completedAttempt.status === "expired",
+        };
+      };
+      if (attempt.status === "completed" || attempt.status === "expired") {
+        return res.json({ ...await completedAttemptResponse(attempt), idempotent: true });
+      }
+      if (attempt.status !== "started") return res.status(409).json({ message: "There is no active spelling-bee attempt to submit." });
       if (Date.now() > new Date(attempt.startedAt).getTime() + BACK_TO_SCHOOL_CBT_MINUTES * 60_000) {
-        const expired = await storage.completeBackToSchoolAttempt({
-          childId, guardianUserId: guardian.userId, score: 0, percentage: 0, awardAmount: 0, expired: true,
-        });
-        return res.json({ ...expired, score: 0, totalQuestions: 0, percentage: 0, awardAmount: 0, awardStatus: "not_eligible", expired: true });
+        try {
+          const expired = await storage.completeBackToSchoolAttempt({
+            childId, guardianUserId: guardian.userId, score: 0, percentage: 0, awardAmount: 0, expired: true,
+          });
+          return res.json({ ...expired, score: 0, totalQuestions: 0, percentage: 0, awardAmount: 0, awardStatus: "not_eligible", expired: true });
+        } catch (error) {
+          const latest = await storage.getBackToSchoolAttempt(childId, guardian.userId);
+          if (latest?.status === "completed" || latest?.status === "expired") {
+            return res.json({ ...await completedAttemptResponse(latest), idempotent: true });
+          }
+          throw error;
+        }
       }
       const questionIds = Array.isArray(attempt.questionIds) ? attempt.questionIds.map(String) : [];
       const answers = req.body?.answers;
@@ -3370,7 +3483,16 @@ export async function registerRoutes(
       }, 0);
       const percentage = questionIds.length ? Math.round((score / questionIds.length) * 10000) / 100 : 0;
       const awardAmount = getBackToSchoolAward(percentage);
-      const result = await storage.completeBackToSchoolAttempt({ childId, guardianUserId: guardian.userId, score, percentage, awardAmount });
+      let result;
+      try {
+        result = await storage.completeBackToSchoolAttempt({ childId, guardianUserId: guardian.userId, score, percentage, awardAmount });
+      } catch (error) {
+        const latest = await storage.getBackToSchoolAttempt(childId, guardian.userId);
+        if (latest?.status === "completed" || latest?.status === "expired") {
+          return res.json({ ...await completedAttemptResponse(latest), idempotent: true });
+        }
+        throw error;
+      }
       res.json({ ...result, score, totalQuestions: questionIds.length, percentage, awardAmount, awardStatus: awardAmount > 0 ? "recommended" : "not_eligible" });
     } catch (e: any) { res.status(500).json({ message: e.message || "Unable to submit spelling bee" }); }
   });
@@ -12987,9 +13109,25 @@ export async function registerRoutes(
         if (!["student", "masters"].includes(type)) return res.status(400).json({ message: "Invalid type" });
 
         const record = await storage.getScholarship(userId, type);
-        if (!record || record.status !== "test_in_progress") return res.status(400).json({ message: "No active test found" });
-        const proctoring = await completedLinkedProctoring(req.body?.proctoringSessionId, userId, type, { scholarshipId: record.id });
-        if (!proctoring) return res.status(403).json({ message: "A completed camera and microphone recording linked to this test is required before submission." });
+        if (!record) return res.status(400).json({ message: "No scholarship test found" });
+        const proctoring = await finalizedLinkedProctoring(req.body?.proctoringSessionId, userId, type, { scholarshipId: record.id });
+        if (!proctoring) return res.status(403).json({ message: "A finalized recording session linked to this test is required before submission." });
+        if (record.status === "passed" || record.status === "failed") {
+          const verbalScore = Number(record.verbalScore || 0);
+          const quantScore = Number(record.quantScore || 0);
+          const totalScore = verbalScore + quantScore;
+          const testPct = (totalScore / 30) * 100;
+          const waecPct = parseFloat(record.waecPercentage ?? "0");
+          const aggregatePct = (waecPct + testPct) / 2;
+          const passed = record.status === "passed";
+          return res.json({
+            verbalScore, quantScore, totalScore, waecScore: waecPct,
+            testScore: testPct, aggregateScore: aggregatePct, passed,
+            prizeAmount: passed ? Number(record.prizeAmount || (type === "masters" ? 250 : 100)) : 0,
+            idempotent: true,
+          });
+        }
+        if (record.status !== "test_in_progress") return res.status(400).json({ message: "No active test found" });
 
         const td = record.testData as any;
         const allQuestions = [...VERBAL_QUESTIONS, ...QUANT_QUESTIONS];
@@ -13015,13 +13153,38 @@ export async function registerRoutes(
         const passed = aggregatePct >= 70;
         const prizeAmount = type === "masters" ? 250 : 100;
 
-        const updated = await storage.updateScholarship(record.id, {
+        const [updated] = await db.update(scholarships).set({
           status: passed ? "passed" : "failed",
           verbalScore, quantScore,
           testCompletedAt: new Date(),
           testData: { ...td, answers: answerMap } as any,
           ...(passed ? { prizeAmount: prizeAmount.toFixed(2) } : {}),
-        });
+          updatedAt: new Date(),
+        }).where(and(
+          eq(scholarships.id, record.id),
+          eq(scholarships.userId, userId),
+          eq(scholarships.type, type),
+          eq(scholarships.status, "test_in_progress"),
+        )).returning();
+        if (!updated) {
+          const settled = await storage.getScholarship(userId, type);
+          if (settled?.status === "passed" || settled?.status === "failed") {
+            const settledVerbal = Number(settled.verbalScore || 0);
+            const settledQuant = Number(settled.quantScore || 0);
+            const settledTotal = settledVerbal + settledQuant;
+            const settledTestPct = (settledTotal / 30) * 100;
+            const settledWaecPct = parseFloat(settled.waecPercentage ?? "0");
+            return res.json({
+              verbalScore: settledVerbal, quantScore: settledQuant, totalScore: settledTotal,
+              waecScore: settledWaecPct, testScore: settledTestPct,
+              aggregateScore: (settledWaecPct + settledTestPct) / 2,
+              passed: settled.status === "passed",
+              prizeAmount: settled.status === "passed" ? Number(settled.prizeAmount || (type === "masters" ? 250 : 100)) : 0,
+              idempotent: true,
+            });
+          }
+          return res.status(409).json({ message: "This test submission is already being processed. Please retry." });
+        }
         if (passed) {
           try {
             const notif = await storage.createNotification({

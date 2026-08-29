@@ -11,6 +11,8 @@ import {
 test("accepts only approved recording MIME types for the matching track", () => {
   assert.equal(isSafeProctoringMime("video", "video/webm;codecs=vp8,opus"), true);
   assert.equal(isSafeProctoringMime("audio", "audio/webm;codecs=opus"), true);
+  assert.equal(isSafeProctoringMime("video", "video/mp4;codecs=avc1.42E01E"), true);
+  assert.equal(isSafeProctoringMime("audio", "audio/mp4"), true);
   assert.equal(isSafeProctoringMime("audio", "video/webm"), false);
   assert.equal(isSafeProctoringMime("video", "text/html"), false);
 });

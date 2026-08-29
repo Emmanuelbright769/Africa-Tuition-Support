@@ -113,11 +113,23 @@ export default function BackToSchoolSection() {
     onError: (error: any) => toast({ title: "Could not start assessment", description: error.message, variant: "destructive" }),
   });
   const submitCbt = useMutation({
-    mutationFn: async () => normalize(await (await apiRequest("POST", `/api/back-to-school/children/${activeChild?.id}/cbt/submit`, { answers, proctoringSessionId: proctoring.sessionId })).json()),
+    mutationFn: async () => normalize(await (await apiRequest(
+      "POST",
+      `/api/back-to-school/children/${activeChild?.id}/cbt/submit`,
+      { answers, proctoringSessionId: proctoring.sessionId },
+      undefined,
+      { timeoutMs: 30_000 },
+    )).json()),
     onSuccess: (data: any) => { setResult(data); setSession(null); refresh(); },
     onError: (error: any) => toast({ title: "Assessment could not be submitted", description: error.message, variant: "destructive" }),
   });
-  const finishCbt = async () => { const uploaded = await proctoring.finalize("completed"); if (uploaded) submitCbt.mutate(); else toast({ title: "Assessment not submitted", description: "A recording upload failed. Please contact support before retrying.", variant: "destructive" }); };
+  const finishCbt = async () => {
+    const recordingComplete = await proctoring.finalize("completed");
+    if (!recordingComplete) {
+      toast({ title: "Recording marked incomplete", description: "Your answers will still be submitted. Staff can see that the recording upload was interrupted.", variant: "destructive" });
+    }
+    submitCbt.mutate();
+  };
   const leaveCbt = async () => { await proctoring.finalize("interrupted"); setSession(null); };
 
   useEffect(() => {

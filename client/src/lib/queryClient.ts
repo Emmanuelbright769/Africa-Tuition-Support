@@ -32,13 +32,27 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
   additionalHeaders?: HeadersInit,
+  options?: { timeoutMs?: number },
 ): Promise<Response> {
-  const res = await fetch(url, {
-    method,
-    headers: { ...(data ? { "Content-Type": "application/json" } : {}), ...additionalHeaders },
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-  });
+  const controller = options?.timeoutMs ? new AbortController() : undefined;
+  const timeout = options?.timeoutMs
+    ? window.setTimeout(() => controller?.abort(), options.timeoutMs)
+    : undefined;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: { ...(data ? { "Content-Type": "application/json" } : {}), ...additionalHeaders },
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: "include",
+      signal: controller?.signal,
+    });
+  } catch (error) {
+    if (controller?.signal.aborted) throw new Error("The request took too long. Please try again.");
+    throw error;
+  } finally {
+    if (timeout !== undefined) window.clearTimeout(timeout);
+  }
 
   await throwIfResNotOk(res);
   return res;

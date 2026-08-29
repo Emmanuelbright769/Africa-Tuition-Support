@@ -217,6 +217,7 @@ export default function ScholarshipPortal() {
   const [testPhase, setTestPhase] = useState<TestPhase>("verbal");
   const [showFeedback, setShowFeedback] = useState<{ selected: number; correct: number } | null>(null);
   const [result, setResult] = useState<TestResult | null>(null);
+  const [submissionError, setSubmissionError] = useState("");
   const [verbalsComplete, setVerbalsComplete] = useState(false);
 
   const questionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -696,6 +697,7 @@ export default function ScholarshipPortal() {
       setShuffleMap(newShuffleMap);
       setCurrentIdx(0);
       setAnswers({});
+      setSubmissionError("");
       setLiveScore({ verbal: 0, quant: 0 });
       setTestPhase("verbal");
       setShowFeedback(null);
@@ -717,19 +719,22 @@ export default function ScholarshipPortal() {
     if (!scholarshipType) return;
     const allQs = [...verbalQs, ...quantQs];
     const answerPayload = allQs.map(q => ({ questionId: q.id, selectedIndex: answers[q.id] ?? -1 }));
+    setSubmissionError("");
     try {
       const recordingUploaded = await proctoring.finalize("completed");
-      if (!recordingUploaded) throw new Error("Your recording could not be fully uploaded, so the test was not marked complete.");
+      if (!recordingUploaded) {
+        toast({ title: "Recording marked incomplete", description: "Your answers are still being submitted. Staff can see that the recording upload was interrupted.", variant: "destructive" });
+      }
       const data = await (await apiRequest("POST", "/api/scholarship/submit-test", {
          type: scholarshipType, answers: answerPayload, proctoringSessionId: proctoring.sessionId,
-      })).json() as TestResult;
+      }, undefined, { timeoutMs: 30_000 })).json() as TestResult;
       clearTimers();
+      setSubmissionError("");
       setResult(data);
       setStep("result");
     } catch (e: any) {
       toast({ title: "Submission failed", description: e.message, variant: "destructive" });
-      autoSubmitRef.current = false;
-      setTestPhase("submitting");
+      setSubmissionError(e.message || "Your answers could not be submitted. Please try again.");
     }
   }
 
@@ -787,9 +792,19 @@ export default function ScholarshipPortal() {
           <ProctoringStatusBar cameraActive={proctoring.cameraActive} microphoneActive={proctoring.microphoneActive} status={proctoring.status} />
           <div className="flex min-h-[80vh] items-center justify-center">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center text-white">
-            <Loader2 className="w-14 h-14 animate-spin text-indigo-400 mx-auto mb-5" />
-            <h2 className="text-2xl font-bold mb-2">Submitting your answers…</h2>
-            <p className="text-indigo-300">Calculating your score, please wait.</p>
+            {submissionError ? (
+              <>
+                <h2 className="text-2xl font-bold mb-2">Submission needs another try</h2>
+                <p className="mx-auto max-w-md text-red-200">{submissionError}</p>
+                <Button className="mt-6 bg-indigo-500 hover:bg-indigo-400" onClick={() => void submitTest()}>Retry submission</Button>
+              </>
+            ) : (
+              <>
+                <Loader2 className="w-14 h-14 animate-spin text-indigo-400 mx-auto mb-5" />
+                <h2 className="text-2xl font-bold mb-2">Submitting your answers…</h2>
+                <p className="text-indigo-300">Calculating your score, please wait.</p>
+              </>
+            )}
           </motion.div>
           </div>
         </div>

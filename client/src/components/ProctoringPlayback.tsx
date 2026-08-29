@@ -14,12 +14,14 @@ export function ProctoringPlayback({ sessionId, track }: { sessionId: string | n
         const descriptors = listed?.data ?? listed;
         const chunks = Array.isArray(descriptors) ? descriptors : descriptors?.chunks || [];
         if (!chunks.length) { setState("empty"); return; }
-        const blobs = await Promise.all(chunks.sort((a: any, b: any) => Number(a.sequence) - Number(b.sequence)).map(async (chunk: any) => {
+        const ordered = [...chunks].sort((a: any, b: any) => Number(a.sequence) - Number(b.sequence));
+        const blobs = await Promise.all(ordered.map(async (chunk: any) => {
           const response = await fetch(`/api/admin/proctoring/sessions/${sessionId}/chunks/${track}/${chunk.sequence}`, { credentials: "include" });
           if (!response.ok) throw new Error();
           return response.blob();
         }));
-        objectUrl = URL.createObjectURL(new Blob(blobs, { type: track === "audio" ? "audio/webm" : "video/webm" }));
+        const contentType = String(ordered[0]?.contentType || blobs[0]?.type || (track === "audio" ? "audio/webm" : "video/webm")).split(";")[0];
+        objectUrl = URL.createObjectURL(new Blob(blobs, { type: contentType }));
         setUrl(objectUrl); setState("ready");
       } catch { setState("error"); }
     })();

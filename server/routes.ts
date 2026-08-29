@@ -36,7 +36,7 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers, proctoringSessions, proctoringMediaChunks, proctoringPlaybackAudits, scholarships } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, walletCreditClaims, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers, proctoringSessions, proctoringMediaChunks, proctoringPlaybackAudits, scholarships } from "@shared/schema";
 import { BANK_TRANSFER_FEE_RATE, calculateBankTransferQuote } from "@shared/bankTransferPricing";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
@@ -4185,41 +4185,124 @@ export async function registerRoutes(
 
   // ── Trade Market — shared bank/card credit helper ─────────────────────────
   // Reference format encodes plan days: TRADE-SQUAD-{uid}-{planDays}-{ts} / TRADE-KORA-{uid}-{planDays}-{ts}
+  function parseTradeDepositPlanDays(txRef: string): number {
+    const planDays = Number(txRef.split("-")[3]);
+    return [60, 90, 120].includes(planDays) ? planDays : 120;
+  }
+
   async function creditTradeWallet(
-    userId: number, gross: number, walletType: string, txRef: string,
-    planDays: number, pending?: { id: number; amountUsd: string; status: string },
-  ): Promise<{ userCredit: number; affiliateCut: number }> {
+    userId: number, gross: number, walletType: "squad_trade" | "korapay_trade", txRef: string,
+    planDays: number, pending: { id: number; amountUsd: string; status: string },
+  ): Promise<{ credited: boolean; userCredit: number; affiliateCut: number }> {
+    if (!Number.isFinite(gross) || gross <= 0) throw new Error("Trade deposit amount must be positive.");
+    if (!pending?.id) throw new Error("A server-created Trade Market payment request is required.");
     const affiliateCut = parseFloat((gross * 0.05).toFixed(6));
     const userCredit   = parseFloat((gross * 0.95).toFixed(6));
-    // Read pre-deposit wallet state to determine if this is an initial deposit or a mid-cycle top-up
-    const preWallet = await storage.getOrCreateTradeWallet(userId);
-    const isBankTopUp = !preWallet.roiComplete && (preWallet.lossDayNumbers?.length ?? 0) > 0;
-    const tx = await storage.createTradeTransaction({
-      userId, type: isBankTopUp ? "topup" : "deposit", walletType,
-      amountUsd: gross.toFixed(6), feeUsd: "0.000000",
-      reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
-      netAmount: userCredit.toFixed(6), txHash: txRef, status: "completed",
-      note: `Trade deposit via ${walletType} (${txRef}) — 5% affiliate pool, 95% credited`,
+    const lossDays = generateLossDays(planDays);
+
+    const result = await db.transaction(async (txDb) => {
+      await txDb.execute(sql`
+        SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-deposit"}), ${userId})
+      `);
+
+      const [deposit] = await txDb.select().from(walletDeposits)
+        .where(and(
+          eq(walletDeposits.id, pending.id),
+          eq(walletDeposits.userId, userId),
+          eq(walletDeposits.txHash, txRef),
+          eq(walletDeposits.walletType, walletType),
+        ))
+        .for("update");
+      if (!deposit) throw new Error("No matching Trade Market payment request exists.");
+      if (deposit.status === "completed") return { credited: false, isBankTopUp: false, txId: 0 };
+      if (!["pending", "confirmed"].includes(deposit.status)) {
+        throw new Error("This Trade Market payment is not eligible for credit.");
+      }
+      if (Number(deposit.amountUsd) !== Number(gross.toFixed(2))) {
+        throw new Error("The settled payment amount does not match this Trade Market request.");
+      }
+
+      const [claim] = await txDb.insert(walletCreditClaims).values({
+        provider: walletType,
+        reference: txRef.trim().toLowerCase(),
+        userId,
+        depositId: deposit.id,
+      }).onConflictDoNothing().returning({ id: walletCreditClaims.id });
+      if (!claim) return { credited: false, isBankTopUp: false, txId: 0 };
+
+      await txDb.update(walletDeposits)
+        .set({ status: "crediting" })
+        .where(eq(walletDeposits.id, deposit.id));
+
+      await txDb.insert(tradeWallets).values({ userId, tradeBalance: "0.000000" }).onConflictDoNothing();
+      const [preWallet] = await txDb.select().from(tradeWallets)
+        .where(eq(tradeWallets.userId, userId))
+        .for("update");
+      if (!preWallet) throw new Error("Unable to prepare Trade Market wallet.");
+
+      const isBankTopUp = !preWallet.roiComplete && (preWallet.lossDayNumbers?.length ?? 0) > 0;
+      const [tradeTx] = await txDb.insert(tradeTransactions).values({
+        userId, type: isBankTopUp ? "topup" : "deposit", walletType,
+        amountUsd: gross.toFixed(6), feeUsd: "0.000000",
+        reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
+        netAmount: userCredit.toFixed(6), txHash: txRef, status: "completed",
+        note: `Trade deposit via ${walletType} (${txRef}) — 5% affiliate pool, 95% credited`,
+      }).returning({ id: tradeTransactions.id });
+
+      const walletUpdate: any = {
+        tradeBalance: sql`${tradeWallets.tradeBalance} + ${userCredit.toFixed(6)}::decimal`,
+        totalInvested: preWallet.roiComplete
+          ? userCredit.toFixed(6)
+          : sql`${tradeWallets.totalInvested} + ${userCredit.toFixed(6)}::decimal`,
+        lockedPrincipal: preWallet.roiComplete
+          ? userCredit.toFixed(6)
+          : sql`${tradeWallets.lockedPrincipal} + ${userCredit.toFixed(6)}::decimal`,
+        tradingPlanDays: planDays,
+        cycleStartedAt: new Date(),
+        updatedAt: new Date(),
+      };
+      if (preWallet.roiComplete) {
+        Object.assign(walletUpdate, {
+          roiComplete: false,
+          earlyExitCompleted: false,
+          totalBotEarnings: "0.000000",
+          tradingDayNumber: 0,
+          lossDayNumbers: lossDays,
+        });
+      } else if ((preWallet.lossDayNumbers?.length ?? 0) === 0) {
+        walletUpdate.lossDayNumbers = lossDays;
+      } else if ((preWallet.tradingDayNumber ?? 0) > 0) {
+        Object.assign(walletUpdate, {
+          tradingDayNumber: 0,
+          lossDayNumbers: lossDays,
+          totalBotEarnings: "0.000000",
+          earlyExitCompleted: false,
+        });
+      }
+      await txDb.update(tradeWallets)
+        .set(walletUpdate)
+        .where(eq(tradeWallets.userId, userId));
+
+      const [affiliateResult] = await txDb.select({ total: count() })
+        .from(users)
+        .where(eq(users.role, "affiliate"));
+      const affCount = Number(affiliateResult?.total ?? 0);
+      const perAff = affCount > 0 ? affiliateCut / affCount : 0;
+      await txDb.insert(affiliateTradeShares).values({
+        tradeTransactionId: tradeTx.id,
+        totalPoolAmount: affiliateCut.toFixed(6),
+        affiliateCount: affCount,
+        perAffiliateAmount: perAff.toFixed(6),
+        sourceType: "trade",
+      });
+
+      await txDb.update(walletDeposits)
+        .set({ status: "completed" })
+        .where(eq(walletDeposits.id, deposit.id));
+      return { credited: true, isBankTopUp, txId: tradeTx.id };
     });
-    await storage.updateTradeBalance(userId, userCredit.toFixed(6));
-    await storage.addToTotalInvested(userId, userCredit.toFixed(6));
-    const postWallet = await storage.getOrCreateTradeWallet(userId);
-    if (postWallet.roiComplete) {
-      await storage.resetRoiForNewCycle(userId);
-      await storage.assignLossDays(userId, generateLossDays(planDays));
-    } else if ((postWallet.lossDayNumbers?.length ?? 0) === 0) {
-      await storage.assignLossDays(userId, generateLossDays(planDays));
-    } else if ((postWallet.tradingDayNumber ?? 0) > 0) {
-      await storage.resetTradingDayForTopUp(userId, generateLossDays(planDays));
-    }
-    await storage.setTradingPlanDays(userId, planDays);
-    await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
-    const affCount = await storage.getAffiliateCount();
-    const perAff   = affCount > 0 ? affiliateCut / affCount : 0;
-    await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affCount, perAff.toFixed(6));
-    if (pending) await storage.updateWalletDeposit(pending.id, { status: "completed" });
-    // Stamp cycle_started_at so per-cycle deposit count & earnings are accurate
-    await db.execute(sql`UPDATE trade_wallets SET cycle_started_at = NOW() WHERE user_id = ${userId}`);
+
+    if (!result.credited) return { credited: false, userCredit, affiliateCut };
     const notif = await storage.createNotification({
       userId, type: "deposit", title: "Trade Wallet Funded ✓",
       message: `$${userCredit.toFixed(2)} credited to your Trade Wallet (95%) · $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
@@ -4232,10 +4315,11 @@ export async function registerRoutes(
         name: `${u.firstName} ${u.lastName}`, email: u.email,
         amount: gross.toFixed(2), credited: userCredit.toFixed(2),
         method: walletType, txHash: txRef, userId,
-        type: isBankTopUp ? "topup" : "deposit",
+        type: result.isBankTopUp ? "topup" : "deposit",
       }).catch(() => {});
     }).catch(() => {});
-    return { userCredit, affiliateCut };
+    invalidateCacheKey(`wallet_deposits:${userId}`);
+    return { credited: true, userCredit, affiliateCut };
   }
 
   // ── Trade Market — Squad initiate ─────────────────────────────────────────
@@ -4295,6 +4379,7 @@ export async function registerRoutes(
       const sqBase = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
       const deposits = await storage.getWalletDepositsByUser(userId);
       const existing = deposits.find((d: any) => d.txHash === transactionRef && d.walletType === "squad_trade");
+      if (!existing) return res.status(404).json({ message: "No matching Trade Market payment request exists for this account." });
       if (existing && existing.status === "completed") return res.status(400).json({ message: "This payment has already been credited to your trade wallet." });
       const verRes = await fetch(`${sqBase}/transaction/verify/${encodeURIComponent(transactionRef)}`, {
         headers: { Authorization: `Bearer ${secretKey}` },
@@ -4302,11 +4387,14 @@ export async function registerRoutes(
       const verData = await verRes.json() as any;
       if (!verData.success || verData.data?.transaction_status !== "Success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again." });
       const rates = await getUsdNgnRates();
-      const gross = parseFloat(existing?.amountUsd ?? (verData.data.transaction_amount / Math.round(rates.buying * 100)).toFixed(2));
-      // Parse plan days from reference: TRADE-SQUAD-{uid}-{planDays}-{ts}
-      const sqRefParts = transactionRef.split("-");
-      const sqPlanDays = [60, 90, 120].includes(Number(sqRefParts[3])) ? Number(sqRefParts[3]) : 120;
-      const { userCredit } = await creditTradeWallet(userId, gross, "squad_trade", transactionRef, sqPlanDays, existing ? { id: existing.id, amountUsd: existing.amountUsd, status: existing.status } : undefined);
+      const gross = parseFloat(existing.amountUsd);
+      const expectedKobo = Math.round(gross * Math.round(rates.buying * 100));
+      if (Number(verData.data?.transaction_amount) !== expectedKobo) {
+        return res.status(400).json({ message: "The settled payment amount does not match this Trade Market request." });
+      }
+      const sqPlanDays = parseTradeDepositPlanDays(transactionRef);
+      const { credited, userCredit } = await creditTradeWallet(userId, gross, "squad_trade", transactionRef, sqPlanDays, existing);
+      if (!credited) return res.status(409).json({ message: "This payment has already been credited to your trade wallet." });
       res.json({ message: `$${userCredit.toFixed(2)} has been credited to your Trade Wallet`, amountUsd: userCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4381,6 +4469,7 @@ export async function registerRoutes(
       if (!secretKey) return res.status(500).json({ message: "Korapay not configured" });
       const deposits = await storage.getWalletDepositsByUser(userId);
       const existing = deposits.find((d: any) => d.txHash === reference && d.walletType === "korapay_trade");
+      if (!existing) return res.status(404).json({ message: "No matching Trade Market payment request exists for this account." });
       if (existing && existing.status === "completed") return res.status(400).json({ message: "This payment has already been credited to your trade wallet." });
       const verRes = await fetch(`${KORA_BASE}/charges/${encodeURIComponent(reference)}`, {
         headers: { "Authorization": `Bearer ${secretKey}` },
@@ -4389,11 +4478,20 @@ export async function registerRoutes(
       const verData = await verRes.json() as any;
       if (!verData.status || verData.data?.status !== "success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again." });
       const rates = await getUsdNgnRates();
-      const gross = parseFloat(existing?.amountUsd ?? (verData.data.amount / rates.buying).toFixed(2));
-      // Parse plan days from reference: TRADE-KORA-{uid}-{planDays}-{ts}
-      const krRefParts = reference.split("-");
-      const krPlanDays = [60, 90, 120].includes(Number(krRefParts[3])) ? Number(krRefParts[3]) : 120;
-      const { userCredit } = await creditTradeWallet(userId, gross, "korapay_trade", reference, krPlanDays, existing ? { id: existing.id, amountUsd: existing.amountUsd, status: existing.status } : undefined);
+      const gross = parseFloat(existing.amountUsd);
+      const metadataUserId = Number(verData.data?.metadata?.userId);
+      const metadataAmount = Number(verData.data?.metadata?.amountUsd);
+      const expectedNgn = Math.round(gross * rates.buying);
+      if (
+        metadataUserId !== userId ||
+        metadataAmount !== Number(existing.amountUsd) ||
+        Number(verData.data?.amount) !== expectedNgn
+      ) {
+        return res.status(400).json({ message: "Payment ownership or amount does not match this Trade Market request." });
+      }
+      const krPlanDays = parseTradeDepositPlanDays(reference);
+      const { credited, userCredit } = await creditTradeWallet(userId, gross, "korapay_trade", reference, krPlanDays, existing);
+      if (!credited) return res.status(409).json({ message: "This payment has already been credited to your trade wallet." });
       res.json({ message: `$${userCredit.toFixed(2)} has been credited to your Trade Wallet`, amountUsd: userCredit });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -8686,7 +8784,11 @@ export async function registerRoutes(
         const squadRow = await squadPool.query("SELECT * FROM wallet_deposits WHERE tx_hash=$1 LIMIT 1", [ref]);
         await squadPool.end();
         const allDeposits = squadRow.rows[0] ?? null;
-        if (allDeposits && allDeposits.wallet_type === "squad" && allDeposits.status !== "completed") {
+        if (
+          allDeposits &&
+          ["squad", "squad_trade"].includes(allDeposits.wallet_type) &&
+          allDeposits.status !== "completed"
+        ) {
           const secretKey = process.env.SQUAD_SECRET_KEY ?? "";
           const isLive = secretKey.startsWith("sk_");
           const baseUrl = isLive ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
@@ -8705,8 +8807,19 @@ export async function registerRoutes(
               res.sendStatus(200);
               return;
             }
-            // Credit using shared helper (95% user, 5% affiliate pool) — same as Korapay
-            await creditWalletWithSplit(userId, wkGross, "squad", ref, { id: allDeposits.id, amountUsd: allDeposits.amount_usd ?? allDeposits.amountUsd, status: allDeposits.status });
+            if (allDeposits.wallet_type === "squad_trade") {
+              await creditTradeWallet(
+                userId,
+                wkGross,
+                "squad_trade",
+                ref,
+                parseTradeDepositPlanDays(ref),
+                { id: allDeposits.id, amountUsd: allDeposits.amount_usd, status: allDeposits.status },
+              );
+            } else {
+              // Credit using shared helper (95% user, 5% affiliate pool) — same as Korapay
+              await creditWalletWithSplit(userId, wkGross, "squad", ref, { id: allDeposits.id, amountUsd: allDeposits.amount_usd ?? allDeposits.amountUsd, status: allDeposits.status });
+            }
           }
         }
       }
@@ -8947,7 +9060,17 @@ export async function registerRoutes(
           }
           if (dep.status !== "completed") {
             const gross = parseFloat(dep.amount_usd);
-            if (dep.wallet_type === "exchange_korapay" || ref.startsWith("TSIA-EXKORA-")) {
+            if (dep.wallet_type === "korapay_trade") {
+              console.log(`[KORAPAY WEBHOOK] Trade funding: crediting user ${dep.user_id} $${gross} to Trade Wallet for ref ${ref}`);
+              await creditTradeWallet(
+                dep.user_id,
+                gross,
+                "korapay_trade",
+                ref,
+                parseTradeDepositPlanDays(ref),
+                { id: dep.id, amountUsd: dep.amount_usd, status: dep.status },
+              );
+            } else if (dep.wallet_type === "exchange_korapay" || ref.startsWith("TSIA-EXKORA-")) {
               // Exchange market funding — credit exchange balance directly
               console.log(`[KORAPAY WEBHOOK] Exchange funding: crediting user ${dep.user_id} $${gross} to exchangeBalance for ref ${ref}`);
               await storage.updateExchangeBalance(dep.user_id, gross);
@@ -11958,7 +12081,9 @@ export async function registerRoutes(
   async function runDepositReverify() {
     try {
       const pending = await storage.getPendingWalletDeposits();
-      const fiat = pending.filter((d: any) => d.walletType === "korapay" || d.walletType === "squad");
+      const fiat = pending.filter((d: any) =>
+        ["korapay", "squad", "korapay_trade", "squad_trade"].includes(d.walletType),
+      );
       if (fiat.length === 0) return;
       console.log(`[DEPOSIT-REVERIFY] Checking ${fiat.length} pending fiat deposit(s)…`);
       const koraSecret  = process.env.KORAPAY_SECRET_KEY ?? "";
@@ -11976,7 +12101,7 @@ export async function registerRoutes(
         try {
           let confirmed = false;
           let gatewayStatus = "unknown";
-          if (dep.walletType === "korapay" && koraSecret) {
+          if ((dep.walletType === "korapay" || dep.walletType === "korapay_trade") && koraSecret) {
             const r = await fetch(`${KORA_BASE}/charges/${encodeURIComponent(txHash)}`, {
               headers: { Authorization: `Bearer ${koraSecret}` },
               signal: AbortSignal.timeout(10000),
@@ -11984,7 +12109,7 @@ export async function registerRoutes(
             const d = await r.json() as any;
             gatewayStatus = d.data?.status ?? (d.status === false ? "api_error" : "unknown");
             confirmed = d.status === true && d.data?.status === "success";
-          } else if (dep.walletType === "squad" && squadSecret) {
+          } else if ((dep.walletType === "squad" || dep.walletType === "squad_trade") && squadSecret) {
             const r = await fetch(`${squadBase}/transaction/verify/${encodeURIComponent(txHash)}`, {
               headers: { Authorization: `Bearer ${squadSecret}` },
               signal: AbortSignal.timeout(10000),
@@ -11995,7 +12120,18 @@ export async function registerRoutes(
           }
           if (confirmed) {
             console.log(`[DEPOSIT-REVERIFY] ✓ Crediting user ${userId} $${gross} for ${dep.walletType} ref ${txHash}`);
-            await creditWalletWithSplit(userId, gross, dep.walletType, txHash, { id: depId, amountUsd: String(gross), status: "pending" });
+            if (dep.walletType === "korapay_trade" || dep.walletType === "squad_trade") {
+              await creditTradeWallet(
+                userId,
+                gross,
+                dep.walletType,
+                txHash,
+                parseTradeDepositPlanDays(txHash),
+                { id: depId, amountUsd: String(gross), status: "pending" },
+              );
+            } else {
+              await creditWalletWithSplit(userId, gross, dep.walletType, txHash, { id: depId, amountUsd: String(gross), status: "pending" });
+            }
           } else {
             console.log(`[DEPOSIT-REVERIFY] ✗ Deposit ${depId} not confirmed yet — gateway status: ${gatewayStatus} (ref: ${txHash})`);
           }

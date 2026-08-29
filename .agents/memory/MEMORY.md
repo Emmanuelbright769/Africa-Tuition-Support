@@ -9,3 +9,4 @@
 - [App Storage client startup](app-storage-client-startup.md) — create the object-storage client at request time so a missing bucket cannot crash the whole server.
 - [Trade active-session lock](trade-active-session-lock.md) — freeze wallet funding, payouts, and address changes while a bot trade is active; keep deactivation available.
 - [Monthly account billing](monthly-account-billing.md) — charge only the current $2 monthly cycle; missed months are waived and never accumulate.
+- [Trade deposit routing](trade-deposit-routing.md) — gateway callbacks and retries must credit the persisted wallet target atomically, never default Trade deposits to SwiftHub.

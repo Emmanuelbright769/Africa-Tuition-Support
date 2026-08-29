@@ -843,16 +843,18 @@ export default function WalletPage() {
                 const amt = parseFloat(tx.amount);
                 const fee = parseFloat(tx.fee ?? "0");
                 const isCredit = amt > 0;
+                const isAccountCredit = tx.paymentMethod === "admin"
+                  && (tx.type === "admin_credit" || tx.type === "admin_adjustment");
                 const typeLabel: Record<string,string> = {
                   deposit: "Deposit", withdrawal: "Withdrawal", transfer: "Transfer",
                   bill: "Bill Payment", trade_transfer: "Trade Fund", loan: "Loan",
-                  admin_credit: "Admin Credit", admin_adjustment: "Admin Adj.",
+                  admin_credit: "Wallet Credit", admin_adjustment: "Credit Alert",
                   verification_fee: "Verification Fee", sponsorship_credit: "Sponsorship",
                   vat_deduction: "VAT",
                 };
                 const methodLabel: Record<string,string> = {
                   squad: "Bank Card", paystack: "Card / Bank", wallet: "Wallet",
-                  bank_transfer: "Bank Transfer", admin: "Admin", crypto: "Crypto",
+                  bank_transfer: "Bank Transfer", admin: "Wallet", crypto: "Crypto",
                 };
                 return (
                   <div key={tx.id} data-testid={`tx-row-${tx.id}`} className="bg-card rounded-2xl px-4 py-3 border">
@@ -862,8 +864,8 @@ export default function WalletPage() {
                           {isCredit ? <ArrowDownLeft className="w-4 h-4 text-tsia-green" /> : <ArrowUpRight className="w-4 h-4 text-red-500" />}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-semibold text-sm">{typeLabel[tx.type] ?? tx.type}</p>
-                          <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">{tx.description}</p>
+                          <p className="font-semibold text-sm">{isAccountCredit ? "Credit Alert" : (typeLabel[tx.type] ?? tx.type)}</p>
+                          <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">{isAccountCredit ? "Funds added to your wallet" : tx.description}</p>
                           <p className="text-[10px] text-muted-foreground">{methodLabel[tx.paymentMethod ?? ""] ?? tx.paymentMethod ?? "Wallet"} · {new Date(tx.createdAt).toLocaleDateString()}</p>
                         </div>
                       </div>

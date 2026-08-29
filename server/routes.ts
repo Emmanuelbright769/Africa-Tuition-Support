@@ -6998,8 +6998,8 @@ export async function registerRoutes(
         const adminAdjustmentReferralResult = await creditReferrerCommissionOnce(targetId, newBal, "personal wallet activation");
         if (!adminAdjustmentReferralResult.credited) console.log(`[REFERRAL] No admin-adjusted wallet activation commission credited for user ${targetId}`);
       }
-      // Record as admin adjustment transaction
-      await storage.createTransaction({ userId: targetId, type: "admin_adjustment", amount: newBal.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin adjustment: ${note}` : "Admin wallet balance adjustment" });
+      // Keep internal audit details in adminAuditLogs; user-facing history uses a neutral label.
+      await storage.createTransaction({ userId: targetId, type: "admin_adjustment", amount: newBal.toFixed(2), fee: "0.00", paymentMethod: "admin", description: "Credit Alert" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Updated", message: `Your TSIA wallet balance has been updated to $${newBal.toFixed(2)} by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
       pushToUser(targetId, "notification", notif);
       await writeAdminAudit({
@@ -7028,7 +7028,8 @@ export async function registerRoutes(
       invalidateCacheKey(`wallet:${targetId}`);
       // Auto-activate wallet if balance now meets $2 minimum
       if (!wallet.activated && parseFloat(newBal) > 2) await storage.activateWallet(targetId);
-      await storage.createTransaction({ userId: targetId, type: "admin_credit", amount: credit.toFixed(2), fee: "0.00", paymentMethod: "admin", description: note ? `Admin credit: ${note}` : "Admin credit" });
+      // Keep the admin's reason private in the audit trail; user-facing history uses a neutral label.
+      await storage.createTransaction({ userId: targetId, type: "admin_credit", amount: credit.toFixed(2), fee: "0.00", paymentMethod: "admin", description: "Credit Alert" });
       const notif = await storage.createNotification({ userId: targetId, type: "wallet_credit", title: "Wallet Credited ✓", message: `$${credit.toFixed(2)} has been added to your wallet by admin${note ? `: ${note}` : "."}`, data: {}, isRead: false });
       pushToUser(targetId, "notification", notif);
       res.json({ success: true, credited: credit.toFixed(2), newBalance: newBal });

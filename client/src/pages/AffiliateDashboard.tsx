@@ -655,6 +655,17 @@ export default function AffiliateDashboard() {
   const [tradePSKoraUrl, setTradePSKoraUrl]           = useState("");
   const tradePSKoraPollRef = useRef<ReturnType<typeof setInterval>|null>(null);
 
+  useEffect(() => {
+    const openFintechWallet = () => {
+      setActiveSection("fintech");
+      const url = new URL(window.location.href);
+      url.searchParams.set("section", "fintech");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    };
+    window.addEventListener("tsia:open-fintech-wallet", openFintechWallet);
+    return () => window.removeEventListener("tsia:open-fintech-wallet", openFintechWallet);
+  }, []);
+
   // Trade balance visibility (persisted)
   const [tradeBalanceHidden, setTradeBalanceHidden] = useState<boolean>(() => {
     try { return localStorage.getItem("tsia_trade_balance_hidden") === "true"; } catch { return false; }

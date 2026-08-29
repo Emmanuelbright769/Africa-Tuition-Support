@@ -9,6 +9,7 @@ import TradingSignals from "./trade/TradingSignals";
 import BotLiveView from "./trade/BotLiveView";
 import ManualTrading from "./trade/ManualTrading";
 import TradeWalletView from "./trade/TradeWalletView";
+import TradeModeWalletView, { TradeWalletMode } from "./trade/TradeModeWalletView";
 import P2PExchange from "./trade/P2PExchange";
 import TradeHistoryView from "./trade/TradeHistoryView";
 
@@ -50,6 +51,7 @@ export default function TradeMarketSection({
   const [tab, setTab]       = useState<Tab>("home");
   const [more, setMore]     = useState(false);
   const [splash, setSplash] = useState(true);
+  const [modeWallet, setModeWallet] = useState<TradeWalletMode | null>(null);
 
   const isExtra = EXTRA_TABS.some(t => t.id === tab);
 
@@ -67,8 +69,16 @@ export default function TradeMarketSection({
 
   useEffect(() => {
     const openWallet = () => goTab("wallet");
+    const openModeWallet = (event: Event) => {
+      const requested = (event as CustomEvent).detail?.mode as TradeWalletMode | undefined;
+      if (requested === "manual" || requested === "signals" || requested === "bot") setModeWallet(requested);
+    };
     window.addEventListener("tsia:open-trade-wallet", openWallet);
-    return () => window.removeEventListener("tsia:open-trade-wallet", openWallet);
+    window.addEventListener("tsia:open-trade-mode-wallet", openModeWallet);
+    return () => {
+      window.removeEventListener("tsia:open-trade-wallet", openWallet);
+      window.removeEventListener("tsia:open-trade-mode-wallet", openModeWallet);
+    };
   }, []);
 
   // We keep `children` always mounted to prevent blank flash on return.
@@ -150,6 +160,22 @@ export default function TradeMarketSection({
 
       {/* Splash screen overlay */}
       {splash && <TradeSplashScreen onDone={() => setSplash(false)} />}
+
+      <AnimatePresence>
+        {modeWallet && (
+          <TradeModeWalletView
+            mode={modeWallet}
+            onClose={() => setModeWallet(null)}
+            tradeSessionActive={tradeSessionActive}
+            onDeposit={onDeposit}
+            onWithdraw={onWithdraw}
+            onFund={onFund}
+            onConnect={onConnect}
+            onReinvest={onReinvest}
+            onBankDeposit={onBankDeposit}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ── More drawer ── */}
       <AnimatePresence>

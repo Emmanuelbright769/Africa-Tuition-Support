@@ -286,7 +286,7 @@ export default function ManualTrading({ tradeBalance }: { tradeBalance: number }
           <p className="text-sm text-muted-foreground">Trade real instruments. Win or lose — it's your call.</p>
         </div>
         <button
-          onClick={() => window.dispatchEvent(new Event("tsia:open-trade-wallet"))}
+          onClick={() => window.dispatchEvent(new CustomEvent("tsia:open-trade-mode-wallet", { detail: { mode: "manual" } }))}
           className="shrink-0 rounded-2xl border border-tsia-gold/30 bg-tsia-gold/10 px-3 py-2 text-right text-tsia-gold"
           data-testid="manual-trading-wallet"
         >

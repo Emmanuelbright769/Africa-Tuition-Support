@@ -15,6 +15,7 @@ import {
   TrendingUp,
   XCircle,
   Zap,
+  WalletCards,
 } from "lucide-react";
 import { apiRequest, parseApiError, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -238,6 +239,13 @@ export default function BotLiveView() {
       <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#07111f] p-10 text-center text-white shadow-2xl">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,.18),transparent_45%)]" />
         <div className="relative">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("tsia:open-trade-mode-wallet", { detail: { mode: "bot" } }))}
+            className="absolute right-0 top-0 flex min-h-10 items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 text-xs font-bold text-emerald-300 transition-colors hover:bg-emerald-400/20"
+            data-testid="itera-bot-wallet-inactive"
+          >
+            <WalletCards className="h-4 w-4" /> Itera Wallet
+          </button>
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-400/20 bg-emerald-400/10">
             <Bot className="h-8 w-8 text-emerald-400" />
           </div>
@@ -254,7 +262,7 @@ export default function BotLiveView() {
 
   return (
     <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#050b14] text-white shadow-[0_28px_90px_rgba(2,6,23,.5)]" data-testid="itera-live-workspace">
-      <div className="flex flex-col gap-3 border-b border-white/10 bg-[#0a1322] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex flex-col gap-3 border-b border-white/10 bg-[#0a1322] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 shadow-lg shadow-emerald-500/20">
             <Bot className="h-5 w-5" />
@@ -267,9 +275,18 @@ export default function BotLiveView() {
             <p className="text-[11px] text-slate-500">Automated multi-market execution · Session pair rotates daily</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-slate-400">
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin text-emerald-400" : ""}`} />
-          Updated {new Date(data.lastUpdated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("tsia:open-trade-mode-wallet", { detail: { mode: "bot" } }))}
+            className="flex min-h-10 items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 text-xs font-bold text-emerald-300 transition-colors hover:bg-emerald-400/20"
+            data-testid="itera-bot-wallet"
+          >
+            <WalletCards className="h-4 w-4" /> Wallet
+          </button>
+          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin text-emerald-400" : ""}`} />
+            <span className="hidden sm:inline">Updated {new Date(data.lastUpdated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+          </div>
         </div>
       </div>
 

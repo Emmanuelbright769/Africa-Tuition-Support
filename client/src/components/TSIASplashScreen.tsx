@@ -9,7 +9,7 @@ interface TSIASplashScreenProps {
 
 export default function TSIASplashScreen({
   onComplete,
-  minimumDuration = 1500,
+  minimumDuration = 3000,
 }: TSIASplashScreenProps) {
   const [exiting, setExiting] = useState(false);
 

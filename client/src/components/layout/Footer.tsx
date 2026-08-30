@@ -1,4 +1,5 @@
 import { Logo } from "@/components/ui/Logo";
+import { Link } from "wouter";
 
 export function Footer() {
   return (
@@ -19,29 +20,29 @@ export function Footer() {
         <div>
           <h4 className="font-semibold text-white mb-4">Platform</h4>
           <ul className="space-y-2 text-sm text-slate-400">
-            <li><a href="/#how-it-works" className="hover:text-tsia-gold transition-colors">How it works</a></li>
-            <li><a href="/#plans" className="hover:text-tsia-gold transition-colors">Pricing &amp; plans</a></li>
-            <li><a href="/leadership" className="hover:text-tsia-gold transition-colors">Leadership cohorts</a></li>
-            <li><a href="/affiliate-signup" className="hover:text-tsia-gold transition-colors">Affiliate programme</a></li>
-            <li><a href="/tenancy" className="hover:text-tsia-gold transition-colors">Tenancy portal</a></li>
+            <li><Link href="/#how-it-works" className="hover:text-tsia-gold transition-colors">How it works</Link></li>
+            <li><Link href="/#plans" className="hover:text-tsia-gold transition-colors">Pricing &amp; plans</Link></li>
+            <li><Link href="/leadership" className="hover:text-tsia-gold transition-colors">Leadership cohorts</Link></li>
+            <li><Link href="/affiliate-signup" className="hover:text-tsia-gold transition-colors">Affiliate programme</Link></li>
+            <li><Link href="/tenancy" className="hover:text-tsia-gold transition-colors">Tenancy portal</Link></li>
           </ul>
         </div>
 
         <div>
           <h4 className="font-semibold text-white mb-4">Company</h4>
           <ul className="space-y-2 text-sm text-slate-400">
-            <li><a href="/about" className="hover:text-tsia-gold transition-colors">About TSIA</a></li>
-            <li><a href="/contact" className="hover:text-tsia-gold transition-colors">Contact us</a></li>
-            <li><a href="/leadership" className="hover:text-tsia-gold transition-colors">Partners</a></li>
+            <li><Link href="/about" className="hover:text-tsia-gold transition-colors">About TSIA</Link></li>
+            <li><Link href="/contact" className="hover:text-tsia-gold transition-colors">Contact us</Link></li>
+            <li><Link href="/leadership" className="hover:text-tsia-gold transition-colors">Partners</Link></li>
           </ul>
         </div>
 
         <div>
           <h4 className="font-semibold text-white mb-4">Legal</h4>
           <ul className="space-y-2 text-sm text-slate-400">
-            <li><a href="/terms" className="hover:text-tsia-gold transition-colors">Terms &amp; Conditions</a></li>
-            <li><a href="/terms#privacy" className="hover:text-tsia-gold transition-colors">Privacy Policy</a></li>
-            <li><a href="/terms#verification" className="hover:text-tsia-gold transition-colors">Verification Policy</a></li>
+            <li><Link href="/terms" className="hover:text-tsia-gold transition-colors">Terms &amp; Conditions</Link></li>
+            <li><Link href="/terms#privacy" className="hover:text-tsia-gold transition-colors">Privacy Policy</Link></li>
+            <li><Link href="/terms#verification" className="hover:text-tsia-gold transition-colors">Verification Policy</Link></li>
           </ul>
           <div className="mt-5 inline-flex items-center gap-1.5 bg-tsia-green/10 border border-tsia-green/20 rounded-full px-3 py-1.5 text-xs font-medium text-tsia-green">
             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">

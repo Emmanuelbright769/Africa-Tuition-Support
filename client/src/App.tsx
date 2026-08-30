@@ -29,6 +29,8 @@ import UserProfile from "@/pages/UserProfile";
 import PromoLanding from "@/pages/PromoLanding";
 import ScholarshipPortal from "@/pages/ScholarshipPortal";
 import { AiAssistant } from "@/components/AiAssistant";
+import AppLoadingExperience from "@/components/AppLoadingExperience";
+import "@/components/app-loading.css";
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -166,8 +168,10 @@ function App() {
                 <Toaster />
                 <KycGate />
                 <MonthlyBillingGate>
-                  <Router />
-                  <ConditionalAiAssistant />
+                  <AppLoadingExperience>
+                    <Router />
+                    <ConditionalAiAssistant />
+                  </AppLoadingExperience>
                 </MonthlyBillingGate>
               </TooltipProvider>
             </AuthProvider>

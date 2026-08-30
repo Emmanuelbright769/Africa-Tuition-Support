@@ -10,8 +10,12 @@ import { sendEmail, sendTradeWindowOpenEmail, sendTradeWindowCloseEmail } from "
 import { pushToUser } from "./realtime";
 import { processCurrentMonthlyBilling, reconcileMonthlyBilling } from "./monthlyBilling";
 import { creditVerifiedDepositAtomic } from "./walletBalance";
+import { creditTradeDepositAtomic, recordDepositOutcomeAtomic } from "./depositCredits";
+import { enqueueFinancialEvent, processFinancialEventOutbox } from "./financialNotifications";
 import {
   TSIA_BEP20_ADDRESS,
+  hasFinalBscSuccess,
+  hasFinalTronSuccess,
   validateCanonicalUsdtTransfer,
 } from "./cryptoDepositPolicy";
 
@@ -224,6 +228,54 @@ async function runMigrations() {
     await db.execute(sql`
       ALTER TABLE co_affiliates
         ADD COLUMN IF NOT EXISTS withdrawn_amount DECIMAL(14,6) NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE affiliate_trade_shares
+        ADD COLUMN IF NOT EXISTS transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL
+    `);
+    await db.execute(sql`
+      ALTER TABLE wallet_deposits
+        ADD COLUMN IF NOT EXISTS metadata JSONB,
+        ADD COLUMN IF NOT EXISTS failure_reason TEXT,
+        ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    `);
+    await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS financial_event_key TEXT`);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS notifications_financial_event_key_uq
+      ON notifications (financial_event_key)
+      WHERE financial_event_key IS NOT NULL
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS financial_events (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        event_key TEXT NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        event_type TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS financial_event_outbox (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        financial_event_id INTEGER NOT NULL REFERENCES financial_events(id) ON DELETE CASCADE,
+        delivery_type TEXT NOT NULL CHECK (delivery_type IN ('user_email','admin_email','in_app')),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','delivered','failed')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        available_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        claimed_at TIMESTAMP,
+        claimed_by TEXT,
+        delivered_at TIMESTAMP,
+        last_error TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT financial_event_outbox_event_delivery_uq UNIQUE (financial_event_id, delivery_type)
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS financial_event_outbox_ready_idx
+      ON financial_event_outbox (status, available_at, id)
     `);
     await db.execute(sql`
       ALTER TABLE trade_wallets
@@ -699,18 +751,24 @@ async function startCryptoDepositVerifierJob() {
   const INTERVAL_MS  = 5 * 60 * 1000;
   const GRACE_MS     = 10 * 60 * 1000;
 
-  async function verifyTron(txHash: string, expectedUsd: number): Promise<{ ok: boolean; reason?: string }> {
+  type ChainVerification =
+    | { status: "verified" }
+    | { status: "pending"; reason: string }
+    | { status: "invalid"; reason: string };
+
+  async function verifyTron(txHash: string, expectedUsd: number): Promise<ChainVerification> {
     try {
       const r = await fetch(`https://apilist.tronscanapi.com/api/transaction-info?hash=${encodeURIComponent(txHash)}`, {
         signal: AbortSignal.timeout(15000),
       });
-      if (!r.ok) return { ok: false, reason: `tronscan http ${r.status}` };
+      if (!r.ok) return { status: "pending", reason: `TronScan temporarily returned HTTP ${r.status}` };
       const d: any = await r.json();
-      if (!d || Object.keys(d).length === 0) return { ok: false, reason: "tx not found on TRON" };
-      if (d.contractRet && d.contractRet !== "SUCCESS") return { ok: false, reason: `tx status: ${d.contractRet}` };
+      if (!d || Object.keys(d).length === 0) return { status: "pending", reason: "transaction not found on TRON yet" };
+      if (d.contractRet && d.contractRet !== "SUCCESS") return { status: "invalid", reason: `transaction status is ${d.contractRet}` };
+      if (!hasFinalTronSuccess(d)) return { status: "pending", reason: "TRON transaction is not yet explicitly confirmed and final" };
       const transfer = d.tokenTransferInfo;
-      if (!transfer) return { ok: false, reason: "no token transfer in this tx" };
-      return validateCanonicalUsdtTransfer({
+      if (!transfer) return { status: "invalid", reason: "transaction does not contain a token transfer" };
+      const validated = validateCanonicalUsdtTransfer({
         network: "trc20",
         recipient: String(transfer.to_address || ""),
         contract: String(transfer.contract_address || transfer.contractAddress || ""),
@@ -719,29 +777,33 @@ async function startCryptoDepositVerifierJob() {
         decimals: parseInt(transfer.decimals || "6", 10) || 6,
         expectedUsd,
       });
+      return validated.ok ? { status: "verified" } : { status: "invalid", reason: validated.reason };
     } catch (e: any) {
-      return { ok: false, reason: `tron api error: ${e?.message ?? "network"}` };
+      return { status: "pending", reason: "TRON verification service is temporarily unavailable" };
     }
   }
 
-  async function verifyBsc(txHash: string, expectedUsd: number): Promise<{ ok: boolean; reason?: string }> {
+  async function verifyBsc(txHash: string, expectedUsd: number): Promise<ChainVerification> {
     try {
       const apiKey = process.env.BSCSCAN_API_KEY ? `&apikey=${process.env.BSCSCAN_API_KEY}` : "";
       // Step 1 — receipt status
       const rs = await fetch(`https://api.bscscan.com/api?module=transaction&action=gettxreceiptstatus&txhash=${encodeURIComponent(txHash)}${apiKey}`, {
         signal: AbortSignal.timeout(15000),
       });
+      if (!rs.ok) return { status: "pending", reason: `BscScan temporarily returned HTTP ${rs.status}` };
       const ds: any = await rs.json();
-      if (ds?.result?.status !== "1") return { ok: false, reason: "tx failed or not found on BSC" };
+      if (!ds?.result) return { status: "pending", reason: "transaction not found on BSC yet" };
+      if (ds.result.status !== "1") return { status: "invalid", reason: "transaction failed on BSC" };
       // Step 2 — list token transfers TO our address & match this hash
       const rt = await fetch(`https://api.bscscan.com/api?module=account&action=tokentx&address=${TSIA_BEP20_ADDRESS}&startblock=0&endblock=99999999&sort=desc${apiKey}`, {
         signal: AbortSignal.timeout(15000),
       });
+      if (!rt.ok) return { status: "pending", reason: `BscScan transfer lookup temporarily returned HTTP ${rt.status}` };
       const dt: any = await rt.json();
-      if (!Array.isArray(dt?.result)) return { ok: false, reason: "could not fetch token transfers" };
-      const tx = dt.result.find((t: any) => String(t.hash || "").toLowerCase() === txHash.toLowerCase());
-      if (!tx) return { ok: false, reason: "tx not found among our address inflows" };
-      return validateCanonicalUsdtTransfer({
+      if (!Array.isArray(dt?.result)) return { status: "pending", reason: "BSC token transfers are temporarily unavailable" };
+      const sameHash = dt.result.filter((t: any) => String(t.hash || "").toLowerCase() === txHash.toLowerCase());
+      if (!sameHash.length) return { status: "invalid", reason: "transaction is not an incoming transfer to TSIA" };
+      const canonical = sameHash.find((tx: any) => validateCanonicalUsdtTransfer({
         network: "bep20",
         recipient: String(tx.to || ""),
         contract: String(tx.contractAddress || ""),
@@ -749,10 +811,72 @@ async function startCryptoDepositVerifierJob() {
         rawAmount: String(tx.value || "0"),
         decimals: parseInt(tx.tokenDecimal || "18", 10) || 18,
         expectedUsd,
-      });
+      }).ok);
+      if (!canonical) return { status: "invalid", reason: "transaction does not contain the exact canonical USDT transfer" };
+      if (!hasFinalBscSuccess(canonical)) return { status: "pending", reason: "BSC transaction has not reached required confirmations" };
+      return { status: "verified" };
     } catch (e: any) {
-      return { ok: false, reason: `bsc api error: ${e?.message ?? "network"}` };
+      return { status: "pending", reason: "BSC verification service is temporarily unavailable" };
     }
+  }
+
+  async function enqueueCryptoOutcome(
+    dep: any,
+    status: "rejected" | "expired_unverified" | "manual_review",
+    reason: string,
+  ) {
+    const user = await storage.getUser(dep.userId);
+    if (!user) return;
+    const network = String(dep.walletType).includes("bep20") ? "BEP20" : "TRC20";
+    const isRejected = status === "rejected";
+    const isExpired = status === "expired_unverified";
+    const title = isRejected
+      ? "Crypto Deposit Rejected"
+      : isExpired
+        ? "Crypto Deposit Verification Expired"
+        : "Crypto Deposit Needs Manual Review";
+    await recordDepositOutcomeAtomic({
+      depositId: dep.id,
+      userId: dep.userId,
+      status,
+      reason,
+      event: {
+        eventKey: `crypto-deposit:${dep.id}:${status}`,
+        userId: dep.userId,
+        eventType: isRejected ? "deposit_rejected" : isExpired ? "deposit_expired" : "deposit_manual_review",
+        payload: {
+        userEmail: user.email,
+        userFirstName: user.firstName,
+        receipt: {
+          title,
+          status: "pending",
+          amount: `$${Number(dep.amountUsd).toFixed(2)}`,
+          reference: String(dep.txHash),
+          rows: [
+            { label: "Network", value: network },
+            { label: "Destination", value: String(dep.walletType).startsWith("trade_") ? "Trade Market Wallet" : "TSIA SwiftWallet" },
+            { label: "Outcome", value: reason, color: "red" },
+            { label: "Wallet credit", value: "$0.00", color: "red" },
+          ],
+          footerNote: "No funds were credited. Contact support if the blockchain transaction is valid.",
+        },
+        inApp: {
+          title,
+          message: `${reason}. No funds were credited.`,
+          data: { depositId: dep.id, txHash: dep.txHash, status },
+        },
+        },
+      },
+    });
+  }
+
+  async function markCryptoFinalizationForReview(dep: any, error: unknown) {
+    const reason = "The blockchain transfer was confirmed, but wallet finalization could not be completed safely";
+    await enqueueCryptoOutcome(dep, "manual_review", reason);
+    console.error(
+      `[CRYPTO-VERIFY] Deposit #${dep.id} moved to manual review after finalization failure:`,
+      error instanceof Error ? error.message : "unknown error",
+    );
   }
 
   const run = async () => {
@@ -761,74 +885,86 @@ async function startCryptoDepositVerifierJob() {
       if (candidates.length === 0) return;
       const now = Date.now();
       for (const dep of candidates) {
+        try {
         const createdMs = new Date(dep.createdAt as any).getTime();
         const age = now - createdMs;
+        if (age >= 48 * 60 * 60 * 1000) {
+          await enqueueCryptoOutcome(dep, "expired_unverified", "No authoritative on-chain confirmation was found within 48 hours");
+          continue;
+        }
         if (age < GRACE_MS) continue; // wait for tx confirmations
         const wt = String(dep.walletType || "").toLowerCase();
+        const network = wt.includes("bep20") ? "bep20" : wt.includes("trc20") ? "trc20" : null;
         const expected = parseFloat(dep.amountUsd as any);
-        if (!isFinite(expected) || expected <= 0) continue;
+        if (!network || !isFinite(expected) || expected <= 0 || !dep.txHash) continue;
 
-        let result: { ok: boolean; reason?: string };
-        if (wt === "trc20") result = await verifyTron(dep.txHash, expected);
-        else if (wt === "bep20") result = await verifyBsc(dep.txHash, expected);
-        else continue;
+        const result = network === "trc20"
+          ? await verifyTron(dep.txHash, expected)
+          : await verifyBsc(dep.txHash, expected);
 
-        if (result.ok) {
+        if (result.status === "verified") {
           const affiliateCut = parseFloat((expected * 0.05).toFixed(2));
           const userCredit = parseFloat((expected - affiliateCut).toFixed(2));
-          const credited = await creditVerifiedDepositAtomic({
-            depositId: dep.id,
-            userId: dep.userId,
-            userCredit,
-            fee: affiliateCut,
-            provider: wt,
-            reference: String(dep.txHash),
-            description: `Verified crypto deposit (${String(dep.txHash).slice(0, 12)}…) — $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
-            finalStatus: "verified",
-          });
+          const isTradeDeposit = wt === "trade_trc20" || wt === "trade_bep20";
+          if (isTradeDeposit) {
+            let tradeCredit;
+            try {
+              tradeCredit = await creditTradeDepositAtomic({
+                depositId: dep.id,
+                userId: dep.userId,
+                gross: expected,
+                target: wt,
+                reference: String(dep.txHash),
+                planDays: Number((dep.metadata as any)?.tradingPlanDays ?? 120),
+                finalStatus: "verified",
+              });
+            } catch (error) {
+              await markCryptoFinalizationForReview(dep, error);
+              continue;
+            }
+            console.log(tradeCredit.credited
+              ? `[CRYPTO-VERIFY] ✓ Trade deposit #${dep.id} (${network}) verified and credited.`
+              : `[CRYPTO-VERIFY] Trade deposit #${dep.id} was already credited.`);
+            continue;
+          }
+          let credited;
+          try {
+            credited = await creditVerifiedDepositAtomic({
+              depositId: dep.id,
+              userId: dep.userId,
+              userCredit,
+              fee: affiliateCut,
+              provider: network,
+              claimProvider: "crypto",
+              reference: String(dep.txHash),
+              description: `Verified crypto deposit (${String(dep.txHash).slice(0, 12)}…) — $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
+              finalStatus: "verified",
+            });
+          } catch (error) {
+            await markCryptoFinalizationForReview(dep, error);
+            continue;
+          }
           if (!credited.credited || !credited.balance) {
             console.log(`[CRYPTO-VERIFY] Deposit #${dep.id} already credited — skipping.`);
             continue;
           }
           const billing = await reconcileMonthlyBilling(dep.userId, new Date(), { recordAttempt: true });
           const newBalance = billing.chargedNow ? billing.walletBalance.toFixed(2) : credited.balance;
-          if (!credited.activated && parseFloat(credited.balance) >= 5) {
-            try { await storage.updateWalletActivation?.(dep.userId, true); } catch {}
-          }
-          try {
-            const affCount = await storage.getAffiliateCount();
-            const perAff = affCount > 0 ? affiliateCut / affCount : 0;
-            if (credited.transactionId) {
-              await storage.recordAffiliateTradeShare(credited.transactionId, affiliateCut.toFixed(6), affCount, perAff.toFixed(6));
-            }
-          } catch {}
-          const notif = await storage.createNotification({
-            userId: dep.userId,
-            type: "deposit",
-            title: "Crypto Deposit Verified ✓",
-            message: `$${userCredit.toFixed(2)} was credited after on-chain verification. New balance: $${newBalance}.`,
-            data: { depositId: dep.id, txHash: dep.txHash, newBalance },
-            isRead: false,
-          } as any);
-          try { pushToUser(dep.userId, "notification", notif); } catch {}
           try { pushToUser(dep.userId, "wallet:updated", { balance: newBalance }); } catch {}
           console.log(`[CRYPTO-VERIFY] ✓ Deposit #${dep.id} (${wt}) verified and credited — $${userCredit.toFixed(2)}`);
-        } else {
+        } else if (result.status === "invalid") {
           try {
-            await storage.updateWalletDeposit(dep.id, { status: "rejected" } as any);
-            const notif = await storage.createNotification({
-              userId: dep.userId,
-              type: "deposit",
-              title: "Crypto Deposit Not Verified",
-              message: `We could not verify your ${wt.toUpperCase()} deposit on-chain (${result.reason}). No funds were credited. Contact support if you believe this is a mistake.`,
-              data: { depositId: dep.id, reason: result.reason, txHash: dep.txHash },
-              isRead: false,
-            } as any);
-            try { pushToUser(dep.userId, "notification", notif); } catch {}
+            await enqueueCryptoOutcome(dep, "rejected", result.reason);
             console.warn(`[CRYPTO-VERIFY] ✗ Deposit #${dep.id} (${wt}) REJECTED — ${result.reason}`);
           } catch (revErr: any) {
             console.error(`[CRYPTO-VERIFY] Failed to reject deposit #${dep.id}:`, revErr?.message ?? revErr);
           }
+        } else console.log(`[CRYPTO-VERIFY] Deposit #${dep.id} remains pending — ${result.reason}`);
+        } catch (candidateError: any) {
+          console.error(
+            `[CRYPTO-VERIFY] Candidate #${dep.id} failed independently:`,
+            candidateError?.message ?? candidateError,
+          );
         }
       }
     } catch (e: any) {
@@ -838,6 +974,21 @@ async function startCryptoDepositVerifierJob() {
 
   setInterval(run, INTERVAL_MS);
   console.log("[CRYPTO-VERIFY] Background on-chain verifier started — checks pending crypto deposits every 5 min");
+}
+
+async function startFinancialNotificationJob() {
+  const workerId = `financial-outbox-${process.pid}`;
+  const run = async () => {
+    try {
+      const result = await processFinancialEventOutbox(workerId, 30);
+      if (result.claimed) console.log(`[FINANCIAL-OUTBOX] Delivered ${result.delivered}/${result.claimed}; deferred ${result.retried}.`);
+    } catch (error) {
+      console.error("[FINANCIAL-OUTBOX] Worker error:", error instanceof Error ? error.message : "unknown");
+    }
+  };
+  await run();
+  setInterval(run, 30_000);
+  console.log("[FINANCIAL-OUTBOX] Durable receipt and notification worker started.");
 }
 
 async function startMonthlyBillingJob() {
@@ -869,6 +1020,7 @@ async function startMonthlyBillingJob() {
   startWalletFundPurgeJob();
   startTradeWindowBroadcastJob();
   startCryptoDepositVerifierJob();
+  startFinancialNotificationJob();
   startIdentityVerificationReviewJob();
   startMonthlyBillingJob();
 

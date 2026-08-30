@@ -2,6 +2,23 @@ export const TSIA_TRC20_ADDRESS = "TGwtyWAmBkcQiuD4CFavKr8ySTJ8zFt9Mj";
 export const TSIA_BEP20_ADDRESS = "0x37d325aec8d4d0f8f103b9173dbb2ab732c85977";
 export const TRON_USDT_CONTRACT = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj";
 export const BSC_USDT_CONTRACT = "0x55d398326f99059ff775485246999027b3197955";
+export const BSC_MIN_CONFIRMATIONS = 12;
+
+export function hasFinalTronSuccess(input: { contractRet?: unknown; confirmed?: unknown }): boolean {
+  return input.contractRet === "SUCCESS" && input.confirmed === true;
+}
+
+export function hasFinalBscSuccess(input: {
+  confirmations?: unknown;
+  isError?: unknown;
+  txreceipt_status?: unknown;
+}, minimumConfirmations = BSC_MIN_CONFIRMATIONS): boolean {
+  const confirmations = Number(input.confirmations);
+  return Number.isFinite(confirmations)
+    && confirmations >= minimumConfirmations
+    && (input.isError === undefined || String(input.isError) === "0")
+    && (input.txreceipt_status === undefined || String(input.txreceipt_status) === "1");
+}
 
 export function validateCanonicalUsdtTransfer(input: {
   network: "trc20" | "bep20";

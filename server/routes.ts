@@ -36,7 +36,7 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, walletCreditClaims, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, platformSettings, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers, proctoringSessions, proctoringMediaChunks, proctoringPlaybackAudits, scholarships } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, walletCreditClaims, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, platformSettings, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers, proctoringSessions, proctoringMediaChunks, proctoringPlaybackAudits, scholarships, financialEvents, financialEventOutbox } from "@shared/schema";
 import { BANK_TRANSFER_FEE_RATE, calculateBankTransferQuote } from "@shared/bankTransferPricing";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
@@ -51,6 +51,20 @@ import { canCompleteProctoring, hasContinuousChunkTimeline, hasSustainedProctori
 import { reconcileMonthlyBilling } from "./monthlyBilling";
 import { isMonthlyBillingAllowedRequest, type MonthlyBillingStatus } from "@shared/monthlyBillingPolicy";
 import { creditVerifiedDepositAtomic } from "./walletBalance";
+import {
+  createCryptoDepositIntentAtomic,
+  createTradeDepositIntentAtomic,
+  cancelTradeDepositIntentAtomic,
+  CryptoDepositIntentConflictError,
+  TradeTopUpLimitError,
+  creditExchangeDepositAtomic,
+  creditTradeDepositAtomic,
+  transferExchangeToSwiftAtomic,
+  transferSwiftToExchangeAtomic,
+  transferSwiftToTradeAtomic,
+  recordDepositOutcomeAtomic,
+} from "./depositCredits";
+import { enqueueFinancialEvent } from "./financialNotifications";
 
 const PgSession = pgSession(session);
 
@@ -2311,6 +2325,78 @@ export async function registerRoutes(
     res.json(txns);
   });
 
+  app.get("/api/financial-receipts", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const sessionUser = await storage.getUser(sessionUserId);
+      if (!sessionUser) return res.status(401).json({ message: "Account not found" });
+      const requestedAll = req.query.scope === "all";
+      if (requestedAll && sessionUser.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+      const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 50));
+      const events = await db.select().from(financialEvents)
+        .where(requestedAll ? sql`TRUE` : eq(financialEvents.userId, sessionUserId))
+        .orderBy(desc(financialEvents.createdAt))
+        .limit(limit);
+      const ids = events.map(event => event.id);
+      const deliveries = ids.length
+        ? await db.select().from(financialEventOutbox).where(inArray(financialEventOutbox.financialEventId, ids))
+        : [];
+      res.json(events.map(event => {
+        const payload = event.payload as any;
+        return {
+          eventKey: event.eventKey,
+          eventType: event.eventType,
+          userId: event.userId,
+          createdAt: event.createdAt,
+          receipt: payload?.receipt,
+          deliveries: deliveries
+            .filter(delivery => delivery.financialEventId === event.id)
+            .map(delivery => ({
+              type: delivery.deliveryType,
+              status: delivery.status,
+              attempts: delivery.attempts,
+              deliveredAt: delivery.deliveredAt,
+            })),
+        };
+      }));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/financial-receipts/:eventKey", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
+      const [event] = await db.select().from(financialEvents)
+        .where(eq(financialEvents.eventKey, req.params.eventKey))
+        .limit(1);
+      if (!event) return res.status(404).json({ message: "Receipt not found" });
+      const sessionUser = await storage.getUser(sessionUserId);
+      if (event.userId !== sessionUserId && sessionUser?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const deliveries = await db.select().from(financialEventOutbox)
+        .where(eq(financialEventOutbox.financialEventId, event.id));
+      res.json({
+        eventKey: event.eventKey,
+        eventType: event.eventType,
+        userId: event.userId,
+        createdAt: event.createdAt,
+        receipt: (event.payload as any)?.receipt,
+        deliveries: deliveries.map(delivery => ({
+          type: delivery.deliveryType,
+          status: delivery.status,
+          attempts: delivery.attempts,
+          deliveredAt: delivery.deliveredAt,
+        })),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ── CRYPTO WITHDRAWAL OTP REQUEST ──────────────────────────────────────────
   app.post("/api/fintech/crypto-withdraw/request-otp", async (req, res) => {
     try {
@@ -4105,8 +4191,8 @@ export async function registerRoutes(
 
   app.post("/api/trade/deposit", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const userId = await requireWalletFundingIdentity(req, res);
+      if (!userId) return;
       if (await isTradeSessionActive(userId)) {
         return res.status(403).json({ message: "Deposits are disabled during an active trade session. Please wait until the current session ends." });
       }
@@ -4124,102 +4210,34 @@ export async function registerRoutes(
       if (!["trc20", "bep20"].includes(walletType)) {
         return res.status(400).json({ message: "walletType must be trc20 or bep20." });
       }
-      // Determine if this is an initial deposit or a mid-cycle top-up.
-      // Initial deposit: no loss schedule yet, OR the previous cycle just completed.
-      // Top-up: cycle is actively running (schedule exists, not roi-complete).
-      const preDepositWallet = await storage.getOrCreateTradeWallet(userId);
-      const isCryptoTopUp = !preDepositWallet.roiComplete && (preDepositWallet.lossDayNumbers?.length ?? 0) > 0;
-
-      // Enforce 3 top-up limit per cycle — only for mid-cycle top-ups, not the initial deposit
-      if (isCryptoTopUp) {
-        const depositLimitRow = await db.execute(sql`
-          SELECT COUNT(*) AS cnt FROM trade_transactions
-          WHERE user_id = ${userId} AND type = 'topup' AND status = 'completed'
-          AND created_at >= COALESCE(
-            (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
-            '1970-01-01'::timestamptz
-          )
-        `);
-        if (parseInt((depositLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) {
-          return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots. Re-invest your earnings after your cycle completes to continue." });
-        }
+      const normalizedHash = String(txHash ?? "").trim();
+      if (!normalizedHash || normalizedHash.length < 16) {
+        return res.status(400).json({ message: "A valid blockchain transaction hash is required." });
       }
-
-      // Allocations on deposit — 5% affiliate pool only; no reserve fund on direct crypto deposits
-      const reserveCut   = 0;
-      const affiliateCut = parseFloat((amount * 0.05).toFixed(6));
-      const userCredit   = parseFloat((amount * 0.95).toFixed(6));
-
-      const tx = await storage.createTradeTransaction({
+      const target = walletType === "trc20" ? "trade_trc20" : "trade_bep20";
+      const deposit = await createCryptoDepositIntentAtomic({
         userId,
-        type: isCryptoTopUp ? "topup" : "deposit",
-        walletType,
-        amountUsd: amount.toFixed(6),
-        feeUsd: "0.000000",
-        reserveFundDeduction: "0.000000",
-        affiliateShareDeduction: affiliateCut.toFixed(6),
-        netAmount: userCredit.toFixed(6),
-        txHash: txHash || null,
-        status: "completed",
-        note: `Deposit via ${walletType.toUpperCase()} — 5% affiliate pool, 95% credited`,
+        amount,
+        reference: normalizedHash,
+        target,
+        metadata: { tradingPlanDays, brokerId: depositBrokerId ?? null },
+        destination: "Trade Market Wallet",
       });
-
-      await storage.updateTradeBalance(userId, userCredit.toFixed(6));
-      await storage.addToTotalInvested(userId, userCredit.toFixed(6));
-      // Cycle management on top-up
-      const postDepositWallet = await storage.getOrCreateTradeWallet(userId);
-      if (postDepositWallet.roiComplete) {
-        // Completed cycle — full reset for a fresh cycle
-        await storage.resetRoiForNewCycle(userId);
-        await storage.assignLossDays(userId, generateLossDays(tradingPlanDays));
-      } else if ((postDepositWallet.lossDayNumbers?.length ?? 0) === 0) {
-        // First deposit ever — assign the loss schedule for the chosen plan
-        await storage.assignLossDays(userId, generateLossDays(tradingPlanDays));
-      } else if ((postDepositWallet.tradingDayNumber ?? 0) > 0) {
-        // Mid-cycle top-up: reset day counter so the new deposit starts a fresh cycle
-        await storage.resetTradingDayForTopUp(userId, generateLossDays(tradingPlanDays));
-      }
-      // Store chosen trading plan
-      await storage.setTradingPlanDays(userId, tradingPlanDays);
-      // Track locked principal (net amount in trade balance from this deposit — capital is locked)
-      await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
-
-      // Route 5% affiliate pool (no reserve fund on direct trade deposits)
-      const affiliateCount = await storage.getAffiliateCount();
-      const perAffiliate   = affiliateCount > 0 ? affiliateCut / affiliateCount : 0;
-      await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affiliateCount, perAffiliate.toFixed(6));
-
-      // Stamp cycle_started_at so per-cycle deposit count & earnings are accurate
-      await db.execute(sql`UPDATE trade_wallets SET cycle_started_at = NOW() WHERE user_id = ${userId}`);
-      const wallet = await storage.getOrCreateTradeWallet(userId);
-      res.json({
-        transaction: tx,
-        newBalance: wallet.tradeBalance,
-        breakdown: {
-          deposited: amount,
-          reserveFund: 0,
-          affiliatePool: affiliateCut,
-          creditedToYou: userCredit,
-        },
-        message: "Deposit confirmed. 95% credited, 5% affiliate pool.",
+      res.status(202).json({
+        deposit,
+        pending: true,
+        message: "Deposit submitted for on-chain verification. Your Trade Wallet will be credited only after TSIA receives and verifies the USDT transfer.",
       });
-      // Notify admin of confirmed crypto deposit (fire-and-forget)
-      storage.getUser(userId).then(u => {
-        if (u) sendAdminTradeDepositEmail({
-          name: `${u.firstName} ${u.lastName}`, email: u.email,
-          amount: amount.toFixed(2), credited: userCredit.toFixed(2),
-          method: walletType, txHash: txHash || undefined, userId,
-          type: isCryptoTopUp ? "topup" : "deposit",
-        }).catch(() => {});
-      }).catch(() => {});
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      res.status(e instanceof CryptoDepositIntentConflictError || e instanceof TradeTopUpLimitError ? 409 : 500).json({ message: e.message });
+    }
   });
 
   // ── Fund Trade Wallet from SwiftWallet balance ────────────────────────
   app.post("/api/trade/fund-from-wallet", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const userId = await requireWalletFundingIdentity(req, res);
+      if (!userId) return;
       if (await isTradeSessionActive(userId)) {
         return res.status(403).json({ message: "Top-ups are disabled during an active trade session. Please wait until the current session ends before funding your trade wallet." });
       }
@@ -4253,83 +4271,17 @@ export async function registerRoutes(
       if (amount > TRADE_MARKET.MAX_DEPOSIT) {
         return res.status(400).json({ message: `Maximum deposit is $${TRADE_MARKET.MAX_DEPOSIT}.` });
       }
-      // Check personal wallet balance
-      const personalWallet = await storage.getOrCreateWallet(userId);
-      const balance = parseFloat(personalWallet.balance);
-      if (balance < amount) {
-        return res.status(400).json({ message: `Insufficient personal wallet balance. Available: $${balance.toFixed(2)}.` });
-      }
-      // Deduct from personal wallet
-      await storage.updateWalletBalance(userId, (balance - amount).toFixed(2));
-      // Allocations — 5% affiliate pool only; no reserve fund on wallet-to-trade top-ups
-      const reserveCut    = 0;
-      const affiliateCut  = parseFloat((amount * 0.05).toFixed(6));
-      const userCredit    = parseFloat((amount - affiliateCut).toFixed(6)); // 95%
-      // Credit trade wallet
-      const tx = await storage.createTradeTransaction({
-        userId,
-        type: isFwTopUp ? "topup" : "deposit",
-        walletType: "trc20",
-        amountUsd: amount.toFixed(6),
-        feeUsd: "0.000000",
-        reserveFundDeduction: "0.000000",
-        affiliateShareDeduction: affiliateCut.toFixed(6),
-        netAmount: userCredit.toFixed(6),
-        txHash: `INTERNAL-${userId}-${Date.now()}`,
-        status: "completed",
-        note: `Funded from SwiftWallet — 5% affiliate pool, 95% credited to trade wallet`,
-      });
-      await storage.updateTradeBalance(userId, userCredit.toFixed(6));
-      await storage.addToTotalInvested(userId, userCredit.toFixed(6));
-      // Cycle management on top-up
-      const fwPostWallet = await storage.getOrCreateTradeWallet(userId);
-      if (fwPostWallet.roiComplete) {
-        // Completed cycle — full reset for a fresh cycle
-        await storage.resetRoiForNewCycle(userId);
-        await storage.assignLossDays(userId, generateLossDays(fwTradingPlanDays));
-      } else if ((fwPostWallet.lossDayNumbers?.length ?? 0) === 0) {
-        // First top-up — assign loss schedule for chosen plan
-        await storage.assignLossDays(userId, generateLossDays(fwTradingPlanDays));
-      } else if ((fwPostWallet.tradingDayNumber ?? 0) > 0) {
-        // Mid-cycle top-up: reset day counter so the new deposit starts a fresh cycle
-        await storage.resetTradingDayForTopUp(userId, generateLossDays(fwTradingPlanDays));
-      }
-      // Store chosen trading plan
-      await storage.setTradingPlanDays(userId, fwTradingPlanDays);
-      // Track locked principal (net amount in trade balance — capital is locked)
-      await storage.addToLockedPrincipal(userId, userCredit.toFixed(6));
-      // Route 5% affiliate cut to co-affiliate pool (no reserve fund on wallet top-ups)
-      const affCountFw  = await storage.getAffiliateCount();
-      const perAffFw    = affCountFw > 0 ? affiliateCut / affCountFw : 0;
-      await storage.recordAffiliateTradeShare(tx.id, affiliateCut.toFixed(6), affCountFw, perAffFw.toFixed(6));
-      // Log transaction in personal wallet history
-      const platformFee = affiliateCut;
-      await storage.createTransaction({
-        userId,
-        type: "trade_transfer",
-        amount: (-amount).toFixed(2),
-        fee: platformFee.toFixed(2),
-        paymentMethod: "wallet",
-        description: `Trade Wallet funding — $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
-      });
-      // Stamp cycle_started_at so per-cycle deposit count & earnings are accurate
-      await db.execute(sql`UPDATE trade_wallets SET cycle_started_at = NOW() WHERE user_id = ${userId}`);
-      const tradeWallet = await storage.getOrCreateTradeWallet(userId);
+      const transfer = await transferSwiftToTradeAtomic({ userId, gross: amount, planDays: fwTradingPlanDays });
       res.json({
-        message: `$${userCredit.toFixed(2)} credited to your Trade Wallet (95% of $${amount.toFixed(2)} — 5% affiliate pool)`,
-        newTradeBalance: tradeWallet.tradeBalance,
-        breakdown: { deposited: amount, reserveFund: 0, affiliatePool: affiliateCut, creditedToYou: userCredit },
+        message: `$${transfer.userCredit.toFixed(2)} credited to your Trade Wallet (95% of $${amount.toFixed(2)} — 5% affiliate pool)`,
+        reference: transfer.reference,
+        newTradeBalance: transfer.tradeBalance,
+        breakdown: { deposited: amount, reserveFund: 0, affiliatePool: transfer.affiliateCut, creditedToYou: transfer.userCredit },
       });
-      // Notify admin of SwiftWallet → Trade deposit (fire-and-forget)
-      storage.getUser(userId).then(u => {
-        if (u) sendAdminTradeDepositEmail({
-          name: `${u.firstName} ${u.lastName}`, email: u.email,
-          amount: amount.toFixed(2), credited: userCredit.toFixed(2),
-          method: "SwiftWallet (internal transfer)", userId,
-          type: isFwTopUp ? "topup" : "wallet_fund",
-        }).catch(() => {});
-      }).catch(() => {});
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      const status = String(e?.message).includes("Insufficient") ? 409 : 500;
+      res.status(status).json({ message: e.message });
+    }
   });
 
   // ── Transfer trade earnings → SwiftWallet (no fee, instant) ──────────
@@ -4393,158 +4345,70 @@ export async function registerRoutes(
     return [60, 90, 120].includes(planDays) ? planDays : 120;
   }
 
+  async function recordLegacySquadManualReview(
+    deposit: { id: number; amountUsd: string; txHash: string | null; walletType: string },
+    userId: number,
+  ) {
+    const user = await storage.getUser(userId);
+    if (!user) throw new Error("Deposit user not found");
+    const reason = "Original Squad settlement amount is unavailable";
+    await recordDepositOutcomeAtomic({
+      depositId: deposit.id,
+      userId,
+      status: "manual_review",
+      reason,
+      event: {
+        eventKey: `fiat-deposit:${deposit.walletType}:${String(deposit.txHash).toLowerCase()}:manual_review`,
+        userId,
+        eventType: "deposit_manual_review",
+        payload: {
+          userEmail: user.email,
+          userFirstName: user.firstName,
+          adminEmail: ADMIN_EMAIL,
+          receipt: {
+            title: "Deposit Requires Review",
+            status: "pending",
+            amount: `$${Number(deposit.amountUsd).toFixed(2)}`,
+            reference: String(deposit.txHash),
+            rows: [
+              { label: "Provider", value: "Squad" },
+              { label: "Wallet credit", value: "$0.00", color: "red" },
+              { label: "Next step", value: "TSIA operations review" },
+            ],
+            footerNote: "No funds were credited because the original settlement evidence is incomplete.",
+          },
+          inApp: {
+            title: "Deposit Under Review",
+            message: `${reason}. No funds were credited.`,
+            data: { depositId: deposit.id, reference: deposit.txHash, status: "manual_review" },
+          },
+        },
+      },
+    });
+  }
+
   async function creditTradeWallet(
     userId: number, gross: number, walletType: "squad_trade" | "korapay_trade", txRef: string,
     planDays: number, pending: { id: number; amountUsd: string; status: string },
   ): Promise<{ credited: boolean; userCredit: number; affiliateCut: number }> {
-    if (!Number.isFinite(gross) || gross <= 0) throw new Error("Trade deposit amount must be positive.");
-    if (!pending?.id) throw new Error("A server-created Trade Market payment request is required.");
-    const affiliateCut = parseFloat((gross * 0.05).toFixed(6));
-    const userCredit   = parseFloat((gross * 0.95).toFixed(6));
-    const lossDays = generateLossDays(planDays);
-
-    const result = await db.transaction(async (txDb) => {
-      await txDb.execute(sql`
-        SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-deposit"}), ${userId})
-      `);
-
-      const [deposit] = await txDb.select().from(walletDeposits)
-        .where(and(
-          eq(walletDeposits.id, pending.id),
-          eq(walletDeposits.userId, userId),
-          eq(walletDeposits.txHash, txRef),
-          eq(walletDeposits.walletType, walletType),
-        ))
-        .for("update");
-      if (!deposit) throw new Error("No matching Trade Market payment request exists.");
-      if (deposit.status === "completed") return { credited: false, isBankTopUp: false, txId: 0 };
-      if (!["pending", "confirmed"].includes(deposit.status)) {
-        throw new Error("This Trade Market payment is not eligible for credit.");
-      }
-      if (Number(deposit.amountUsd) !== Number(gross.toFixed(2))) {
-        throw new Error("The settled payment amount does not match this Trade Market request.");
-      }
-
-      const [claim] = await txDb.insert(walletCreditClaims).values({
-        provider: walletType,
-        reference: txRef.trim().toLowerCase(),
-        userId,
-        depositId: deposit.id,
-      }).onConflictDoNothing().returning({ id: walletCreditClaims.id });
-      if (!claim) return { credited: false, isBankTopUp: false, txId: 0 };
-
-      await txDb.update(walletDeposits)
-        .set({ status: "crediting" })
-        .where(eq(walletDeposits.id, deposit.id));
-
-      await txDb.insert(tradeWallets).values({ userId, tradeBalance: "0.000000" }).onConflictDoNothing();
-      const [preWallet] = await txDb.select().from(tradeWallets)
-        .where(eq(tradeWallets.userId, userId))
-        .for("update");
-      if (!preWallet) throw new Error("Unable to prepare Trade Market wallet.");
-
-      const isBankTopUp = !preWallet.roiComplete && (preWallet.lossDayNumbers?.length ?? 0) > 0;
-      const [tradeTx] = await txDb.insert(tradeTransactions).values({
-        userId, type: isBankTopUp ? "topup" : "deposit", walletType,
-        amountUsd: gross.toFixed(6), feeUsd: "0.000000",
-        reserveFundDeduction: "0.000000", affiliateShareDeduction: affiliateCut.toFixed(6),
-        netAmount: userCredit.toFixed(6), txHash: txRef, status: "completed",
-        note: `Trade deposit via ${walletType} (${txRef}) — 5% affiliate pool, 95% credited`,
-      }).returning({ id: tradeTransactions.id });
-
-      const walletUpdate: any = {
-        tradeBalance: sql`${tradeWallets.tradeBalance} + ${userCredit.toFixed(6)}::decimal`,
-        totalInvested: preWallet.roiComplete
-          ? userCredit.toFixed(6)
-          : sql`${tradeWallets.totalInvested} + ${userCredit.toFixed(6)}::decimal`,
-        lockedPrincipal: preWallet.roiComplete
-          ? userCredit.toFixed(6)
-          : sql`${tradeWallets.lockedPrincipal} + ${userCredit.toFixed(6)}::decimal`,
-        tradingPlanDays: planDays,
-        cycleStartedAt: new Date(),
-        updatedAt: new Date(),
-      };
-      if (preWallet.roiComplete) {
-        Object.assign(walletUpdate, {
-          roiComplete: false,
-          earlyExitCompleted: false,
-          totalBotEarnings: "0.000000",
-          tradingDayNumber: 0,
-          lossDayNumbers: lossDays,
-        });
-      } else if ((preWallet.lossDayNumbers?.length ?? 0) === 0) {
-        walletUpdate.lossDayNumbers = lossDays;
-      } else if ((preWallet.tradingDayNumber ?? 0) > 0) {
-        Object.assign(walletUpdate, {
-          tradingDayNumber: 0,
-          lossDayNumbers: lossDays,
-          totalBotEarnings: "0.000000",
-          earlyExitCompleted: false,
-        });
-      }
-      await txDb.update(tradeWallets)
-        .set(walletUpdate)
-        .where(eq(tradeWallets.userId, userId));
-
-      const [affiliateResult] = await txDb.select({ total: count() })
-        .from(users)
-        .where(eq(users.role, "affiliate"));
-      const affCount = Number(affiliateResult?.total ?? 0);
-      const perAff = affCount > 0 ? affiliateCut / affCount : 0;
-      await txDb.insert(affiliateTradeShares).values({
-        tradeTransactionId: tradeTx.id,
-        totalPoolAmount: affiliateCut.toFixed(6),
-        affiliateCount: affCount,
-        perAffiliateAmount: perAff.toFixed(6),
-        sourceType: "trade",
-      });
-
-      await txDb.update(walletDeposits)
-        .set({ status: "completed" })
-        .where(eq(walletDeposits.id, deposit.id));
-      return { credited: true, isBankTopUp, txId: tradeTx.id };
+    const result = await creditTradeDepositAtomic({
+      depositId: pending.id,
+      userId,
+      gross,
+      target: walletType,
+      reference: txRef,
+      planDays,
     });
-
-    if (!result.credited) return { credited: false, userCredit, affiliateCut };
-    const notif = await storage.createNotification({
-      userId, type: "deposit", title: "Trade Wallet Funded ✓",
-      message: `$${userCredit.toFixed(2)} credited to your Trade Wallet (95%) · $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
-      data: { reference: txRef }, isRead: false,
-    });
-    pushToUser(userId, "notification", notif);
-    // Notify admin of every confirmed trade deposit
-    storage.getUser(userId).then(u => {
-      if (u) sendAdminTradeDepositEmail({
-        name: `${u.firstName} ${u.lastName}`, email: u.email,
-        amount: gross.toFixed(2), credited: userCredit.toFixed(2),
-        method: walletType, txHash: txRef, userId,
-        type: result.isBankTopUp ? "topup" : "deposit",
-      }).catch(() => {});
-    }).catch(() => {});
     invalidateCacheKey(`wallet_deposits:${userId}`);
-    return { credited: true, userCredit, affiliateCut };
+    return { credited: result.credited, userCredit: result.userCredit, affiliateCut: result.affiliateCut };
   }
 
   // ── Trade Market — Squad initiate ─────────────────────────────────────────
   app.post("/api/trade/squad/initiate", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const userId = await requireWalletFundingIdentity(req, res);
+      if (!userId) return;
       if (await isTradeSessionActive(userId)) return res.status(403).json({ message: "Deposits are disabled during an active trade session." });
-      // Only enforce the 3-slot limit for mid-cycle top-ups, not initial deposits
-      const sqPreWallet = await storage.getOrCreateTradeWallet(userId);
-      const isSqTopUp = !sqPreWallet.roiComplete && (sqPreWallet.lossDayNumbers?.length ?? 0) > 0;
-      if (isSqTopUp) {
-        const tdLimitRow = await db.execute(sql`
-          SELECT COUNT(*) AS cnt FROM trade_transactions
-          WHERE user_id = ${userId} AND type = 'topup' AND status = 'completed'
-          AND created_at >= COALESCE(
-            (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
-            '1970-01-01'::timestamptz
-          )
-        `);
-        if (parseInt((tdLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots." });
-      }
       const { amountUsd, brokerId: sqBrokerId, tradingPlanDays: rawSqPlan } = req.body;
       const amount = parseFloat(amountUsd);
       const sqBroker = TRADE_BROKERS.find(b => b.id === sqBrokerId);
@@ -4561,9 +4425,14 @@ export async function registerRoutes(
       const amountKobo = Math.round(amount * Math.round(rates.buying * 100));
       // Encode plan days in ref so verify can recover it without extra DB fields
       const transactionRef = `TRADE-SQUAD-${userId}-${sqPlanDays}-${Date.now()}`;
-      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: transactionRef, walletType: "squad_trade", status: "pending" });
+      await createTradeDepositIntentAtomic({
+        userId, amount, reference: transactionRef, target: "squad_trade",
+        metadata: { expectedKobo: amountKobo, tradingPlanDays: sqPlanDays },
+      });
       res.json({ transactionRef, amountKobo, amountNgn: (amount * rates.buying).toFixed(2), publicKey, email: user.email, firstName: user.firstName, lastName: user.lastName });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      res.status(e instanceof TradeTopUpLimitError ? 400 : 500).json({ message: e.message });
+    }
   });
 
   // ── Trade Market — Squad verify & credit trade wallet ─────────────────────
@@ -4589,9 +4458,12 @@ export async function registerRoutes(
       });
       const verData = await verRes.json() as any;
       if (!verData.success || verData.data?.transaction_status !== "Success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again." });
-      const rates = await getUsdNgnRates();
       const gross = parseFloat(existing.amountUsd);
-      const expectedKobo = Math.round(gross * Math.round(rates.buying * 100));
+      const expectedKobo = Number((existing.metadata as any)?.expectedKobo);
+      if (!(expectedKobo > 0)) {
+        await recordLegacySquadManualReview(existing, userId);
+        return res.status(409).json({ message: "This legacy payment requires operations review before it can be credited." });
+      }
       if (Number(verData.data?.transaction_amount) !== expectedKobo) {
         return res.status(400).json({ message: "The settled payment amount does not match this Trade Market request." });
       }
@@ -4605,23 +4477,9 @@ export async function registerRoutes(
   // ── Trade Market — KoraPay initiate ───────────────────────────────────────
   app.post("/api/trade/korapay/initiate", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const userId = await requireWalletFundingIdentity(req, res);
+      if (!userId) return;
       if (await isTradeSessionActive(userId)) return res.status(403).json({ message: "Deposits are disabled during an active trade session." });
-      // Only enforce the 3-slot limit for mid-cycle top-ups, not initial deposits
-      const krPreWallet = await storage.getOrCreateTradeWallet(userId);
-      const isKrTopUp = !krPreWallet.roiComplete && (krPreWallet.lossDayNumbers?.length ?? 0) > 0;
-      if (isKrTopUp) {
-        const tkLimitRow = await db.execute(sql`
-          SELECT COUNT(*) AS cnt FROM trade_transactions
-          WHERE user_id = ${userId} AND type = 'topup' AND status = 'completed'
-          AND created_at >= COALESCE(
-            (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
-            '1970-01-01'::timestamptz
-          )
-        `);
-        if (parseInt((tkLimitRow.rows[0] as any)?.cnt ?? "0", 10) >= 3) return res.status(400).json({ message: "Top-up limit reached. You've used all 3 top-up slots." });
-      }
       const { amountUsd, brokerId: krBrokerId, tradingPlanDays: rawKrPlan } = req.body;
       const amount = parseFloat(amountUsd);
       const krBroker = TRADE_BROKERS.find(b => b.id === krBrokerId);
@@ -4637,25 +4495,36 @@ export async function registerRoutes(
       const amountNgn = Math.round(amount * rates.buying);
       // Encode plan days in ref: TRADE-KORA-{uid}-{planDays}-{ts}
       const reference = `TRADE-KORA-${userId}-${krPlanDays}-${Date.now()}`;
+      const intent = await createTradeDepositIntentAtomic({
+        userId, amount, reference, target: "korapay_trade",
+        metadata: { expectedNgn: amountNgn, tradingPlanDays: krPlanDays },
+      });
       const notifUrl = `${req.protocol}://${req.get("host")}/api/webhook/korapay`;
       const redirectUrl = `${req.protocol}://${req.get("host")}/student-dashboard`;
-      const koraRes = await fetch(`${KORA_BASE}/charges/initialize`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: amountNgn, currency: "NGN", reference,
-          notification_url: notifUrl, redirect_url: redirectUrl,
-          customer: { name: `${user.firstName} ${user.lastName}`, email: user.email },
-          channels: ["card", "bank_transfer", "pay_with_bank"],
-          metadata: { userId, amountUsd: amount.toFixed(2), tradingPlanDays: krPlanDays, platform: "TSIA-Trade" },
-        }),
-        signal: AbortSignal.timeout(12000),
-      });
-      const koraData = await koraRes.json() as any;
-      if (!koraData.status) return res.status(502).json({ message: koraData.message ?? "Could not initiate payment" });
-      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "korapay_trade", status: "pending" });
+      let koraData: any;
+      try {
+        const koraRes = await fetch(`${KORA_BASE}/charges/initialize`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${secretKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: amountNgn, currency: "NGN", reference,
+            notification_url: notifUrl, redirect_url: redirectUrl,
+            customer: { name: `${user.firstName} ${user.lastName}`, email: user.email },
+            channels: ["card", "bank_transfer", "pay_with_bank"],
+            metadata: { userId, amountUsd: amount.toFixed(2), tradingPlanDays: krPlanDays, platform: "TSIA-Trade" },
+          }),
+          signal: AbortSignal.timeout(12000),
+        });
+        koraData = await koraRes.json();
+        if (!koraData.status) throw new Error(koraData.message ?? "Could not initiate payment");
+      } catch (error) {
+        await cancelTradeDepositIntentAtomic(intent.id, "Korapay initialization failed");
+        throw error;
+      }
       res.json({ checkoutUrl: koraData.data.checkout_url, reference, amountNgn });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      res.status(e instanceof TradeTopUpLimitError ? 400 : 500).json({ message: e.message });
+    }
   });
 
   // ── Trade Market — KoraPay verify & credit trade wallet ───────────────────
@@ -4680,15 +4549,16 @@ export async function registerRoutes(
       });
       const verData = await verRes.json() as any;
       if (!verData.status || verData.data?.status !== "success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again." });
-      const rates = await getUsdNgnRates();
       const gross = parseFloat(existing.amountUsd);
       const metadataUserId = Number(verData.data?.metadata?.userId);
       const metadataAmount = Number(verData.data?.metadata?.amountUsd);
-      const expectedNgn = Math.round(gross * rates.buying);
+      const expectedNgn = Number((existing.metadata as any)?.expectedNgn)
+        || Math.round(gross * (await getUsdNgnRates()).buying);
       if (
         metadataUserId !== userId ||
         metadataAmount !== Number(existing.amountUsd) ||
-        Number(verData.data?.amount) !== expectedNgn
+        Number(verData.data?.amount) !== expectedNgn ||
+        String(verData.data?.currency).toUpperCase() !== "NGN"
       ) {
         return res.status(400).json({ message: "Payment ownership or amount does not match this Trade Market request." });
       }
@@ -7342,7 +7212,13 @@ export async function registerRoutes(
       const admin = await storage.getUser(sessionUserId);
       if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
       const rows = await db
-        .select({ id: walletDeposits.id, userId: walletDeposits.userId, amountUsd: walletDeposits.amountUsd, txHash: walletDeposits.txHash, walletType: walletDeposits.walletType, status: walletDeposits.status, createdAt: walletDeposits.createdAt, userEmail: users.email, userName: sql<string>`${users.firstName} || ' ' || ${users.lastName}` })
+        .select({
+          id: walletDeposits.id, userId: walletDeposits.userId, amountUsd: walletDeposits.amountUsd,
+          txHash: walletDeposits.txHash, walletType: walletDeposits.walletType, status: walletDeposits.status,
+          metadata: walletDeposits.metadata, failureReason: walletDeposits.failureReason,
+          verifiedAt: walletDeposits.verifiedAt, createdAt: walletDeposits.createdAt, updatedAt: walletDeposits.updatedAt,
+          userEmail: users.email, userName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+        })
         .from(walletDeposits)
         .innerJoin(users, eq(walletDeposits.userId, users.id))
         .orderBy(desc(walletDeposits.createdAt));
@@ -7357,22 +7233,9 @@ export async function registerRoutes(
       if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
       const admin = await storage.getUser(sessionUserId);
       if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-      const depId = parseInt(req.params.id);
-      if (isNaN(depId)) return res.status(400).json({ message: "Invalid deposit ID" });
-      // Fetch by id using raw pool
-      const { Pool: FcPool } = await import("pg");
-      const fcPool = new FcPool({ connectionString: process.env.DATABASE_URL });
-      const fcRow = await fcPool.query("SELECT * FROM wallet_deposits WHERE id=$1 LIMIT 1", [depId]);
-      await fcPool.end();
-      const dep = fcRow.rows[0];
-      if (!dep) return res.status(404).json({ message: "Deposit not found" });
-      if (dep.status === "completed") return res.status(400).json({ message: "Already credited" });
-      const userId = dep.user_id;
-      const gross  = parseFloat(dep.amount_usd);
-      const txHash = dep.tx_hash;
-      await creditWalletWithSplit(userId, gross, dep.wallet_type ?? "manual", txHash ?? `admin-credit-${depId}`, { id: depId, amountUsd: dep.amount_usd, status: dep.status });
-      console.log(`[ADMIN] Force-credited deposit #${depId} — user ${userId} $${gross}`);
-      res.json({ message: `$${gross.toFixed(2)} credited to user #${userId}` });
+      return res.status(410).json({
+        message: "Force-crediting deposit claims has been removed. Reconcile this record against the payment provider or blockchain; use the separate audited manual credit tool only for an approved adjustment.",
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -8997,7 +8860,10 @@ export async function registerRoutes(
       const amountKobo = Math.round(amount * USD_TO_KOBO);
       const transactionRef = `TSIA-${userId}-${Date.now()}`;
       // Save pending deposit record
-      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: transactionRef, walletType: "squad", status: "pending" });
+      await storage.createWalletDeposit({
+        userId, amountUsd: amount.toFixed(2), txHash: transactionRef, walletType: "squad", status: "pending",
+        metadata: { expectedKobo: amountKobo },
+      });
       sendAdminDepositEmail({
         name: `${user.firstName} ${user.lastName}`,
         email: user.email,
@@ -9039,8 +8905,11 @@ export async function registerRoutes(
       }
       // Amount in kobo → USD
       const amountKoboFromSquad = data.data?.transaction_amount ?? 0;
-      const rates = await getUsdNgnRates();
-      const expectedKobo = Math.round(parseFloat(existing.amountUsd) * Math.round(rates.buying * 100));
+      const expectedKobo = Number((existing.metadata as any)?.expectedKobo);
+      if (!(expectedKobo > 0)) {
+        await recordLegacySquadManualReview(existing, userId);
+        return res.status(409).json({ message: "This legacy payment requires operations review before it can be credited." });
+      }
       if (Number(amountKoboFromSquad) !== expectedKobo) {
         return res.status(400).json({ message: "The settled payment amount does not match this funding request." });
       }
@@ -9060,16 +8929,18 @@ export async function registerRoutes(
       // ── Signature validation — use raw body so HMAC matches what Squad sent ──
       const squadSecret = process.env.SQUAD_SECRET_KEY ?? "";
       const encryptedBodyHeader = req.headers["x-squad-encrypted-body"] as string | undefined;
-      if (encryptedBodyHeader && squadSecret) {
-        const { createHmac } = await import("crypto");
-        const rawBody = (req as any).rawBody?.toString() ?? JSON.stringify(req.body);
-        const computed = createHmac("sha512", squadSecret)
-          .update(rawBody)
-          .digest("hex");
-        if (computed !== encryptedBodyHeader) {
-          // Log but do NOT block — we re-verify with Squad's API before crediting anyway
-          console.warn("[WEBHOOK/Squad] Signature mismatch — proceeding to gateway re-verify");
-        }
+      if (!squadSecret) return res.sendStatus(503);
+      if (!encryptedBodyHeader) return res.sendStatus(401);
+      const { createHmac } = await import("crypto");
+      const rawBody = (req as any).rawBody?.toString() ?? JSON.stringify(req.body);
+      const computed = createHmac("sha512", squadSecret).update(rawBody).digest("hex");
+      const supplied = encryptedBodyHeader.trim().toLowerCase();
+      if (
+        supplied.length !== computed.length ||
+        !timingSafeEqual(Buffer.from(computed, "utf8"), Buffer.from(supplied, "utf8"))
+      ) {
+        console.warn("[WEBHOOK/Squad] Invalid signature — request rejected");
+        return res.sendStatus(401);
       }
       // ── Squad webhook structure: { Event, TransactionRef, Body } ─────────
       // FIX: Squad sends "charge_successful" (docs confirm) not "charge_completed"
@@ -9099,9 +8970,8 @@ export async function registerRoutes(
             // raw Pool rows are snake_case — use user_id and amount_usd
             const userId = allDeposits.user_id ?? allDeposits.userId;
             const wkGross = parseFloat(allDeposits.amount_usd ?? allDeposits.amountUsd);
-            const rates = await getUsdNgnRates();
-            const expectedKobo = Math.round(wkGross * Math.round(rates.buying * 100));
-            if (Number(verData.data?.transaction_amount) !== expectedKobo) {
+             const expectedKobo = Number(allDeposits.metadata?.expectedKobo);
+            if (!(expectedKobo > 0) || Number(verData.data?.transaction_amount) !== expectedKobo) {
               console.warn(`[SQUAD WEBHOOK] Amount mismatch for ${ref} — skipping credit.`);
               res.sendStatus(200);
               return;
@@ -9200,7 +9070,10 @@ export async function registerRoutes(
       const koraData = await koraRes.json() as any;
       if (!koraData.status) return res.status(502).json({ message: koraData.message ?? "Could not initiate Korapay payment" });
       // Save pending deposit
-      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "korapay", status: "pending" });
+      await storage.createWalletDeposit({
+        userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "korapay", status: "pending",
+        metadata: { expectedNgn: amountNgn },
+      });
       sendAdminDepositEmail({ name: `${user.firstName} ${user.lastName}`, email: user.email, amount: amount.toFixed(2), txHash: reference, walletType: "korapay", userId })
         .catch((err: any) => console.error("[EMAIL] Korapay deposit notify failed:", err?.message ?? err));
       res.json({ checkoutUrl: koraData.data.checkout_url, reference, amountNgn });
@@ -9232,8 +9105,16 @@ export async function registerRoutes(
       }
       const metadataUserId = Number(verData.data?.metadata?.userId);
       const metadataAmount = Number(verData.data?.metadata?.amountUsd);
-      if (metadataUserId !== userId || metadataAmount !== Number(existing.amountUsd)) {
+      if (
+        metadataUserId !== userId ||
+        metadataAmount !== Number(existing.amountUsd) ||
+        String(verData.data?.currency).toUpperCase() !== "NGN"
+      ) {
         return res.status(400).json({ message: "Payment ownership or amount does not match this funding request." });
+      }
+      const expectedNgn = Number((existing.metadata as any)?.expectedNgn);
+      if (!expectedNgn || Number(verData.data?.amount) !== expectedNgn) {
+        return res.status(400).json({ message: "The settled payment amount does not match this funding request." });
       }
       const gross = parseFloat(existing.amountUsd);
       await creditWalletWithSplit(userId, gross, "korapay", reference, existing);
@@ -9326,15 +9207,19 @@ export async function registerRoutes(
       // ── Signature validation — Korapay sends x-korapay-signature (HMAC-SHA512 of raw body) ──
       const koraSecret = process.env.KORAPAY_SECRET_KEY ?? "";
       const sigHeader = req.headers["x-korapay-signature"] as string | undefined;
-      if (sigHeader && koraSecret) {
-        const { createHmac } = await import("crypto");
-        const rawBody = (req as any).rawBody;
-        const payload = rawBody ? rawBody.toString() : JSON.stringify(req.body);
-        const computed = createHmac("sha512", koraSecret).update(payload).digest("hex");
-        if (computed !== sigHeader) {
-          console.error("[WEBHOOK/Korapay] Signature mismatch — ignoring request");
-          return res.sendStatus(200); // Return 200 so Korapay stops retrying; just don't process
-        }
+      if (!koraSecret) return res.sendStatus(503);
+      if (!sigHeader) return res.sendStatus(401);
+      const { createHmac } = await import("crypto");
+      if (!req.body?.data) return res.sendStatus(400);
+      const signedData = JSON.stringify(req.body.data);
+      const computed = createHmac("sha256", koraSecret).update(signedData).digest("hex");
+      const supplied = sigHeader.trim().toLowerCase();
+      if (
+        supplied.length !== computed.length ||
+        !timingSafeEqual(Buffer.from(computed, "utf8"), Buffer.from(supplied, "utf8"))
+      ) {
+        console.error("[WEBHOOK/Korapay] Invalid signature — request rejected");
+        return res.sendStatus(401);
       }
 
       const { event, data } = req.body;
@@ -9350,12 +9235,21 @@ export async function registerRoutes(
 
         if (dep) {
           // ── Normal path: deposit record found ──────────────────────────────
-          const metadataUserId = data.metadata?.userId == null ? dep.user_id : Number(data.metadata.userId);
-          const metadataAmount = data.metadata?.amountUsd == null ? Number(dep.amount_usd) : Number(data.metadata.amountUsd);
+          const metadataUserId = Number(data.metadata?.userId);
+          const metadataAmount = Number(data.metadata?.amountUsd);
           if (metadataUserId !== Number(dep.user_id) || metadataAmount !== Number(dep.amount_usd)) {
             console.warn(`[KORAPAY WEBHOOK] Ownership or amount mismatch for ${ref} — skipping credit.`);
             res.sendStatus(200);
             return;
+          }
+          const expectedNgn = Number(dep.metadata?.expectedNgn);
+          if (
+            !expectedNgn ||
+            Number(data.amount) !== expectedNgn ||
+            String(data.currency).toUpperCase() !== "NGN"
+          ) {
+            console.warn(`[KORAPAY WEBHOOK] Settled amount mismatch for ${ref} — skipping credit.`);
+            return res.sendStatus(200);
           }
           if (dep.status !== "completed") {
             const gross = parseFloat(dep.amount_usd);
@@ -9370,19 +9264,7 @@ export async function registerRoutes(
                 { id: dep.id, amountUsd: dep.amount_usd, status: dep.status },
               );
             } else if (dep.wallet_type === "exchange_korapay" || ref.startsWith("TSIA-EXKORA-")) {
-              // Exchange market funding — credit exchange balance directly
-              console.log(`[KORAPAY WEBHOOK] Exchange funding: crediting user ${dep.user_id} $${gross} to exchangeBalance for ref ${ref}`);
-              await storage.updateExchangeBalance(dep.user_id, gross);
-              const { Pool: _P } = await import("pg");
-              const _pool = new _P({ connectionString: process.env.DATABASE_URL });
-              await _pool.query("UPDATE wallet_deposits SET status='completed' WHERE tx_hash=$1", [ref]);
-              await _pool.end();
-              await storage.createNotification({
-                userId: dep.user_id, type: "wallet_credit",
-                title: "Exchange Account Funded ✓",
-                message: `$${gross.toFixed(2)} added to your Exchange account via card/bank payment.`,
-                data: { amount: gross, reference: ref }, isRead: false,
-              });
+              await creditExchangeDepositAtomic({ depositId: dep.id, userId: dep.user_id, gross, reference: ref });
             } else {
               console.log(`[KORAPAY WEBHOOK] Crediting user ${dep.user_id} $${gross} for ref ${ref}`);
               await creditWalletWithSplit(dep.user_id, gross, "korapay", ref, { id: dep.id, amountUsd: dep.amount_usd, status: dep.status });
@@ -9440,21 +9322,6 @@ export async function registerRoutes(
         await creditReferrerCommissionOnce(userId, gross, "personal wallet activation");
       } catch { /* non-critical */ }
     }
-    // Route 5% to co-affiliate pool
-    try {
-      const affCount = await storage.getAffiliateCount();
-      const perAff = affCount > 0 ? affiliateCut / affCount : 0;
-      if (creditedWallet.transactionId) {
-        await storage.recordAffiliateTradeShare(creditedWallet.transactionId, affiliateCut.toFixed(6), affCount, perAff.toFixed(6));
-      }
-    } catch { /* non-critical */ }
-    try {
-      const notif = await storage.createNotification({ userId, type: "deposit", title: "Wallet Funded ✓", message: `$${userCredit.toFixed(2)} credited to your TSIA SwiftWallet (5% affiliate pool: $${affiliateCut.toFixed(2)})`, data: { ref }, isRead: false });
-      pushToUser(userId, "notification", notif);
-    } catch (notifErr: any) { console.error(`[CREDIT] Notification failed (non-critical) for user ${userId}:`, notifErr?.message); }
-    const u = await storage.getUser(userId);
-    if (u) sendAdminDepositConfirmedEmail({ name: `${u.firstName} ${u.lastName}`, email: u.email, gross: gross.toFixed(2), credited: userCredit.toFixed(2), reserveCut: "0.00", affiliateCut: affiliateCut.toFixed(2), newBalance: newBal, walletType: method, txHash: ref, userId })
-      .catch((err: any) => console.error(`[EMAIL] ${method} deposit email failed:`, err?.message ?? err));
     return true;
   }
 
@@ -9489,7 +9356,10 @@ export async function registerRoutes(
       const data = await response.json() as any;
       if (!data.status) return res.status(400).json({ message: data.message || "Could not initialize payment" });
       // Store pending deposit record
-      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "paystack", status: "pending" });
+      await storage.createWalletDeposit({
+        userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "paystack", status: "pending",
+        metadata: { expectedKobo: amountKobo },
+      });
       sendAdminDepositEmail({
         name: `${user.firstName} ${user.lastName}`,
         email: user.email,
@@ -9526,6 +9396,15 @@ export async function registerRoutes(
       if (Number(data.data.metadata?.userId) !== userId || Number(data.data.metadata?.amountUsd) !== Number(existing.amountUsd)) {
         return res.status(400).json({ message: "Payment ownership or amount does not match this funding request." });
       }
+      const expectedKobo = Number((existing.metadata as any)?.expectedKobo);
+      if (
+        !expectedKobo ||
+        Number(data.data.amount) !== expectedKobo ||
+        String(data.data.currency).toUpperCase() !== "NGN" ||
+        String(data.data.reference) !== reference
+      ) {
+        return res.status(400).json({ message: "The settled payment details do not match this funding request." });
+      }
       const psGross = parseFloat(existing.amountUsd);
       const psUserCredit = parseFloat((psGross * 0.95).toFixed(2));
       const credited = await creditWalletWithSplit(
@@ -9546,21 +9425,24 @@ export async function registerRoutes(
     const { amountUsd, txHash, walletType } = req.body;
     const amount = parseFloat(amountUsd);
     if (!amount || amount < ECOMMERCE.MIN_DEPOSIT) return res.status(400).json({ message: `Minimum deposit is above $${ECOMMERCE.MIN_DEPOSIT}` });
-    if (!txHash || txHash.trim().length < 10) return res.status(400).json({ message: "Valid transaction hash is required" });
+    const network = String(walletType || "").toLowerCase();
+    if (!["trc20", "bep20"].includes(network)) return res.status(400).json({ message: "walletType must be trc20 or bep20" });
+    if (!txHash || txHash.trim().length < 16) return res.status(400).json({ message: "Valid transaction hash is required" });
     try {
-      // ── IDEMPOTENCY: reject if this txHash was already credited ───────────
-      const existingDeposits = await storage.getWalletDepositsByUser(userId);
-      const alreadyProcessed = existingDeposits.find((d: any) => d.txHash === txHash.trim());
-      if (alreadyProcessed) {
-        return res.status(400).json({ message: "This transaction hash has already been submitted and credited to your wallet. Each transaction can only be used once." });
-      }
+      const normalizedHash = txHash.trim();
       // Crypto is never credited from caller-supplied data. It remains pending
       // until the background verifier confirms the chain, recipient, and amount.
-      const deposit = await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: txHash.trim(), walletType: walletType || "trc20", status: "pending" });
-      const notif = await storage.createNotification({ userId, type: "deposit", title: "Crypto Deposit Submitted", message: `Your ${String(walletType || "trc20").toUpperCase()} deposit is being verified on-chain. It will be credited only after the transaction, recipient, and amount are confirmed.`, data: { depositId: deposit.id }, isRead: false });
-      pushToUser(userId, "notification", notif);
+      const deposit = await createCryptoDepositIntentAtomic({
+        userId,
+        amount,
+        reference: normalizedHash,
+        target: network as "trc20" | "bep20",
+        destination: "TSIA SwiftWallet",
+      });
       res.status(202).json({ deposit, pending: true, message: "Crypto deposit submitted for on-chain verification. No funds have been credited yet." });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      res.status(e instanceof CryptoDepositIntentConflictError ? 409 : 500).json({ message: e.message });
+    }
   });
 
   app.get("/api/wallet/deposits", async (req, res) => {
@@ -12381,12 +12263,13 @@ export async function registerRoutes(
     try {
       const pending = await storage.getPendingWalletDeposits();
       const fiat = pending.filter((d: any) =>
-        ["korapay", "squad", "korapay_trade", "squad_trade"].includes(d.walletType),
+        ["korapay", "squad", "paystack", "korapay_trade", "squad_trade", "exchange_korapay"].includes(d.walletType),
       );
       if (fiat.length === 0) return;
       console.log(`[DEPOSIT-REVERIFY] Checking ${fiat.length} pending fiat deposit(s)…`);
       const koraSecret  = process.env.KORAPAY_SECRET_KEY ?? "";
       const squadSecret = process.env.SQUAD_SECRET_KEY ?? "";
+      const paystackSecret = process.env.PAYSTACK_SECRET_KEY ?? "";
       const squadBase   = squadSecret.startsWith("sk_") ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
       for (const dep of fiat) {
         const userId  = (dep as any).user_id ?? dep.userId;
@@ -12400,14 +12283,23 @@ export async function registerRoutes(
         try {
           let confirmed = false;
           let gatewayStatus = "unknown";
-          if ((dep.walletType === "korapay" || dep.walletType === "korapay_trade") && koraSecret) {
+          if (["korapay", "korapay_trade", "exchange_korapay"].includes(dep.walletType) && koraSecret) {
             const r = await fetch(`${KORA_BASE}/charges/${encodeURIComponent(txHash)}`, {
               headers: { Authorization: `Bearer ${koraSecret}` },
               signal: AbortSignal.timeout(10000),
             });
             const d = await r.json() as any;
             gatewayStatus = d.data?.status ?? (d.status === false ? "api_error" : "unknown");
-            confirmed = d.status === true && d.data?.status === "success";
+            const metadataUserId = Number(d.data?.metadata?.userId);
+            const metadataAmount = Number(d.data?.metadata?.amountUsd);
+            const expectedNgn = Number((dep.metadata as any)?.expectedNgn);
+            confirmed = d.status === true
+              && d.data?.status === "success"
+              && metadataUserId === Number(userId)
+              && metadataAmount === Number(gross)
+              && expectedNgn > 0
+              && Number(d.data?.amount) === expectedNgn
+              && String(d.data?.currency).toUpperCase() === "NGN";
           } else if ((dep.walletType === "squad" || dep.walletType === "squad_trade") && squadSecret) {
             const r = await fetch(`${squadBase}/transaction/verify/${encodeURIComponent(txHash)}`, {
               headers: { Authorization: `Bearer ${squadSecret}` },
@@ -12415,7 +12307,28 @@ export async function registerRoutes(
             });
             const d = await r.json() as any;
             gatewayStatus = d.data?.transaction_status ?? (d.success === false ? d.message ?? "api_error" : "unknown");
-            confirmed = d.success === true && d.data?.transaction_status === "Success";
+            const expectedKobo = Number((dep.metadata as any)?.expectedKobo);
+            if (!(expectedKobo > 0)) gatewayStatus = "missing_expected_amount";
+            confirmed = expectedKobo > 0
+              && d.success === true
+              && d.data?.transaction_status === "Success"
+              && Number(d.data?.transaction_amount) === expectedKobo;
+          } else if (dep.walletType === "paystack" && paystackSecret) {
+            const r = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(txHash)}`, {
+              headers: { Authorization: `Bearer ${paystackSecret}` },
+              signal: AbortSignal.timeout(10000),
+            });
+            const d = await r.json() as any;
+            gatewayStatus = d.data?.status ?? (d.status === false ? d.message ?? "api_error" : "unknown");
+            const expectedKobo = Number((dep.metadata as any)?.expectedKobo);
+            confirmed = d.status === true
+              && d.data?.status === "success"
+              && Number(d.data?.metadata?.userId) === Number(userId)
+              && Number(d.data?.metadata?.amountUsd) === Number(gross)
+              && expectedKobo > 0
+              && Number(d.data?.amount) === expectedKobo
+              && String(d.data?.currency).toUpperCase() === "NGN"
+              && String(d.data?.reference) === String(txHash);
           }
           if (confirmed) {
             console.log(`[DEPOSIT-REVERIFY] ✓ Crediting user ${userId} $${gross} for ${dep.walletType} ref ${txHash}`);
@@ -12428,11 +12341,59 @@ export async function registerRoutes(
                 parseTradeDepositPlanDays(txHash),
                 { id: depId, amountUsd: String(gross), status: "pending" },
               );
+            } else if (dep.walletType === "exchange_korapay") {
+              await creditExchangeDepositAtomic({ depositId: depId, userId, gross, reference: txHash });
             } else {
               await creditWalletWithSplit(userId, gross, dep.walletType, txHash, { id: depId, amountUsd: String(gross), status: "pending" });
             }
           } else {
             console.log(`[DEPOSIT-REVERIFY] ✗ Deposit ${depId} not confirmed yet — gateway status: ${gatewayStatus} (ref: ${txHash})`);
+            const ageMs = Date.now() - new Date(dep.createdAt as any).getTime();
+            const terminalFailure = ["failed", "cancelled", "abandoned", "reversed", "expired"].includes(String(gatewayStatus).toLowerCase());
+            const missingAmountEvidence = gatewayStatus === "missing_expected_amount";
+            if (terminalFailure || missingAmountEvidence || ageMs >= 48 * 60 * 60 * 1000) {
+              const status = terminalFailure ? "rejected" : "manual_review";
+              const reason = terminalFailure
+                ? `Payment provider reported ${gatewayStatus}`
+                : `Payment remains unresolved after 48 hours (last provider status: ${gatewayStatus})`;
+              const user = await storage.getUser(userId);
+              if (user) {
+                await recordDepositOutcomeAtomic({
+                  depositId: depId,
+                  userId,
+                  status,
+                  reason,
+                  event: {
+                    eventKey: `fiat-deposit:${dep.walletType}:${String(txHash).toLowerCase()}:${status}`,
+                    userId,
+                    eventType: status === "rejected" ? "deposit_rejected" : "deposit_manual_review",
+                    payload: {
+                    userEmail: user.email,
+                    userFirstName: user.firstName,
+                    adminEmail: ADMIN_EMAIL,
+                    receipt: {
+                      title: status === "rejected" ? "Deposit Rejected" : "Deposit Requires Review",
+                      status: "pending",
+                      amount: `$${gross.toFixed(2)}`,
+                      reference: txHash,
+                      rows: [
+                        { label: "Destination", value: dep.walletType },
+                        { label: "Provider status", value: gatewayStatus },
+                        { label: "Wallet credit", value: "$0.00", color: "red" },
+                        { label: "Next step", value: status === "rejected" ? "Start a new payment" : "TSIA operations review" },
+                      ],
+                      footerNote: "No funds were credited without authoritative provider confirmation.",
+                    },
+                    inApp: {
+                      title: status === "rejected" ? "Deposit Not Completed" : "Deposit Under Review",
+                      message: reason,
+                      data: { depositId: depId, reference: txHash, status },
+                    },
+                    },
+                  },
+                });
+              }
+            }
           }
         } catch (err: any) {
           console.error(`[DEPOSIT-REVERIFY] Error checking deposit ${depId} (${txHash}):`, err.message ?? err);
@@ -13264,8 +13225,8 @@ export async function registerRoutes(
   // ── Fund exchange account via Korapay (direct card/bank payment) ────────────
   app.post("/api/exchange/korapay/initiate", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const userId = await requireWalletFundingIdentity(req, res);
+      if (!userId) return;
       const { amountUsd } = req.body;
       const amount = parseFloat(amountUsd);
       if (!amount || amount < 10) return res.status(400).json({ message: "Minimum funding amount is $10." });
@@ -13295,7 +13256,10 @@ export async function registerRoutes(
       });
       const koraData = await koraRes.json() as any;
       if (!koraData.status) return res.status(502).json({ message: koraData.message ?? "Could not initiate payment" });
-      await storage.createWalletDeposit({ userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "exchange_korapay", status: "pending" });
+      await storage.createWalletDeposit({
+        userId, amountUsd: amount.toFixed(2), txHash: reference, walletType: "exchange_korapay", status: "pending",
+        metadata: { expectedNgn: amountNgn },
+      });
       res.json({ checkoutUrl: koraData.data.checkout_url, reference, amountNgn });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -13322,23 +13286,28 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Payment not confirmed yet. Please wait a moment and try again." });
       }
       const gross = parseFloat(existing.amountUsd ?? "0");
-      const updated = await storage.updateExchangeBalance(userId, gross);
-      await storage.updateWalletDeposit(existing.id, { status: "completed" });
-      await storage.createNotification({
-        userId, type: "wallet_credit",
-        title: "Exchange Account Funded ✓",
-        message: `$${gross.toFixed(2)} successfully added to your Exchange account via card/bank payment.`,
-        data: { amount: gross, reference }, isRead: false,
-      });
-      res.json({ success: true, exchangeBalance: parseFloat(updated.exchangeBalance ?? "0") });
+      const metadataUserId = Number(verData.data?.metadata?.userId);
+      const metadataAmount = Number(verData.data?.metadata?.amountUsd);
+      const expectedNgn = Number((existing.metadata as any)?.expectedNgn);
+      if (
+        metadataUserId !== userId ||
+        metadataAmount !== Number(existing.amountUsd) ||
+        !expectedNgn ||
+        Number(verData.data?.amount) !== expectedNgn ||
+        String(verData.data?.currency).toUpperCase() !== "NGN"
+      ) {
+        return res.status(400).json({ message: "Payment ownership or amount does not match this Exchange request." });
+      }
+      const credited = await creditExchangeDepositAtomic({ depositId: existing.id, userId, gross, reference });
+      res.json({ success: true, exchangeBalance: credited.exchangeBalance ? parseFloat(credited.exchangeBalance) : null });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ── Fund exchange account from Swift wallet ──────────────────────────────────
   app.post("/api/exchange/fund", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const userId = await requireWalletFundingIdentity(req, res);
+      if (!userId) return;
 
       const { amount: amountRaw } = req.body;
       const amount = parseFloat(amountRaw);
@@ -13346,74 +13315,29 @@ export async function registerRoutes(
       if (amount < 10) return res.status(400).json({ message: "Minimum funding amount is $10." });
       if (amount > 1200) return res.status(400).json({ message: "Maximum funding amount is $1,200." });
 
-      const wallet = await storage.getOrCreateWallet(userId);
-      const swiftBalance = parseFloat(wallet.balance);
-      if (swiftBalance < amount) return res.status(400).json({ message: `Insufficient Swift wallet balance. You have $${swiftBalance.toFixed(2)}.` });
-
-      // Deduct from Swift wallet
-      await storage.updateWalletBalance(userId, (swiftBalance - amount).toFixed(2));
-      // Credit exchange balance
-      const updated = await storage.updateExchangeBalance(userId, amount);
-
-      // Notification
-      await storage.createNotification({
-        userId, type: "wallet_credit",
-        title: "Exchange Account Funded ✓",
-        message: `$${amount.toFixed(2)} transferred from your Swift wallet to your Exchange account.`,
-        data: { amount }, isRead: false,
-      });
-
-      res.json({ success: true, exchangeBalance: parseFloat(updated.exchangeBalance ?? "0"), swiftBalance: swiftBalance - amount });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+      const result = await transferSwiftToExchangeAtomic({ userId, amount });
+      res.json({ success: true, ...result });
+    } catch (e: any) {
+      res.status(/insufficient|verification/i.test(e.message) ? 400 : 500).json({ message: e.message });
+    }
   });
 
   // ── Withdraw from exchange account → Swift wallet (no fee, instant) ──────────
   app.post("/api/exchange/withdraw", async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const userId = await requireWalletFundingIdentity(req, res);
+      if (!userId) return;
 
       const { amount: amountRaw } = req.body;
       const amount = parseFloat(amountRaw);
       if (isNaN(amount) || amount <= 0) return res.status(400).json({ message: "Invalid amount." });
       if (amount < 2) return res.status(400).json({ message: "Minimum withdrawal is $2." });
 
-      const tw = await storage.getOrCreateTradeWallet(userId);
-      const exchangeBal = parseFloat(tw.exchangeBalance ?? "0");
-      if (amount > exchangeBal) {
-        return res.status(400).json({ message: `Insufficient exchange balance. Available: $${exchangeBal.toFixed(2)}.` });
-      }
-
-      // Deduct from exchange balance
-      const updated = await storage.updateExchangeBalance(userId, -amount);
-
-      // Credit Swift wallet in full (no fee, same as trade → wallet transfer)
-      const personalWallet = await storage.getOrCreateWallet(userId);
-      const newPersonalBal = (parseFloat(personalWallet.balance) + amount).toFixed(2);
-      await storage.updateWalletBalance(userId, newPersonalBal);
-      if (!personalWallet.activated && parseFloat(newPersonalBal) > 2) await storage.activateWallet(userId);
-
-      await storage.createTransaction({
-        userId, type: "deposit", amount: amount.toFixed(2), fee: "0.00",
-        paymentMethod: "internal",
-        description: `Exchange account withdrawal — $${amount.toFixed(2)} credited to Swift wallet in full (no fee)`,
-      });
-
-      const notif = await storage.createNotification({
-        userId, type: "wallet_credit",
-        title: "Exchange Withdrawal ✓",
-        message: `$${amount.toFixed(2)} moved from your Exchange account to your Swift wallet with no fee.`,
-        data: { amount }, isRead: false,
-      });
-      pushToUser(userId, "notification", notif);
-
-      res.json({
-        success: true,
-        exchangeBalance: parseFloat(updated.exchangeBalance ?? "0"),
-        swiftBalance: parseFloat(newPersonalBal),
-        withdrawn: amount.toFixed(2),
-      });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+      const result = await transferExchangeToSwiftAtomic({ userId, amount });
+      res.json({ success: true, ...result, withdrawn: amount.toFixed(2) });
+    } catch (e: any) {
+      res.status(/insufficient|verification/i.test(e.message) ? 400 : 500).json({ message: e.message });
+    }
   });
 
   app.post("/api/exchange/order", async (req, res) => {

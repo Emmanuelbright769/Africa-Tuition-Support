@@ -1705,7 +1705,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getWalletDepositByTxHash(txHash: string): Promise<WalletDeposit | null> {
-    const [d] = await db.select().from(walletDeposits).where(eq(walletDeposits.txHash, txHash)).limit(1);
+    const normalized = txHash.trim().toLowerCase();
+    const [d] = await db.select().from(walletDeposits)
+      .where(sql`LOWER(TRIM(${walletDeposits.txHash})) = ${normalized}`)
+      .limit(1);
     return d ?? null;
   }
 
@@ -1725,12 +1728,10 @@ export class DatabaseStorage implements IStorage {
   // ── Crypto deposits needing on-chain verification ─────────────────────────
   // Returns uncredited TRC20/BEP20 submissions awaiting on-chain verification.
   async getCryptoDepositsNeedingVerification(): Promise<WalletDeposit[]> {
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
     const rows = await db.select().from(walletDeposits)
       .where(and(
         eq(walletDeposits.status, "pending"),
-        sql`LOWER(${walletDeposits.walletType}) IN ('trc20','bep20')`,
-        sql`${walletDeposits.createdAt} > ${cutoff}`,
+        sql`LOWER(${walletDeposits.walletType}) IN ('trc20','bep20','trade_trc20','trade_bep20')`,
       ))
       .orderBy(desc(walletDeposits.createdAt));
     return rows;

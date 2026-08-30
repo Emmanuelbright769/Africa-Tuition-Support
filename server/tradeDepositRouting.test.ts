@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+const depositCredits = readFileSync(new URL("./depositCredits.ts", import.meta.url), "utf8");
 const dashboard = readFileSync(
   new URL("../client/src/pages/AffiliateDashboard.tsx", import.meta.url),
   "utf8",
@@ -21,12 +22,34 @@ test("Trade Market payment credit is wallet-targeted and replay protected", () =
   const helper = routes.slice(helperStart, helperEnd);
 
   assert.notEqual(helperStart, -1);
-  assert.match(helper, /eq\(walletDeposits\.walletType,\s*walletType\)/);
-  assert.match(helper, /insert\(walletCreditClaims\)/);
-  assert.match(helper, /onConflictDoNothing\(\)/);
-  assert.match(helper, /insert\(tradeTransactions\)/);
-  assert.match(helper, /update\(tradeWallets\)/);
+  assert.match(helper, /creditTradeDepositAtomic\(/);
+  assert.match(depositCredits, /deposit\.walletType !== input\.target/);
+  assert.match(depositCredits, /insert\(walletCreditClaims\)/);
+  assert.match(depositCredits, /onConflictDoNothing\(\)/);
+  assert.match(depositCredits, /insert\(tradeTransactions\)/);
+  assert.match(depositCredits, /update\(tradeWallets\)/);
   assert.doesNotMatch(helper, /updateWalletBalance/);
+});
+
+test("direct Trade crypto submissions remain pending until the on-chain verifier credits them", () => {
+  const start = routes.indexOf('app.post("/api/trade/deposit"');
+  const end = routes.indexOf("// ── Fund Trade Wallet", start);
+  const handler = routes.slice(start, end);
+  assert.match(handler, /createCryptoDepositIntentAtomic\(/);
+  assert.match(depositCredits, /status:\s*"pending"/);
+  assert.match(handler, /trade_trc20/);
+  assert.match(handler, /trade_bep20/);
+  assert.match(handler, /res\.status\(202\)/);
+  assert.doesNotMatch(handler, /updateTradeBalance/);
+  assert.doesNotMatch(handler, /status:\s*"completed"/);
+});
+
+test("provider webhooks require cryptographic signatures", () => {
+  assert.match(routes, /if \(!encryptedBodyHeader\) return res\.sendStatus\(401\)/);
+  assert.match(routes, /if \(!sigHeader\) return res\.sendStatus\(401\)/);
+  assert.match(routes, /timingSafeEqual/);
+  assert.match(routes, /createHmac\("sha256", koraSecret\)\.update\(signedData\)/);
+  assert.match(routes, /JSON\.stringify\(req\.body\.data\)/);
 });
 
 test("provider webhooks route Trade Market deposits to the Trade Wallet", () => {
@@ -53,4 +76,15 @@ test("automatic pending-deposit recheck includes Trade Market payments", () => {
   assert.match(job, /"squad_trade"/);
   assert.match(job, /creditTradeWallet\(/);
   assert.match(job, /creditWalletWithSplit\(/);
+  assert.match(job, /"paystack"/);
+  assert.match(job, /expectedKobo/);
+  assert.doesNotMatch(job, /!expectedKobo\s*\|\|/);
+  assert.match(job, /missing_expected_amount/);
+});
+
+test("SwiftWallet and Exchange transfers use atomic conditional debits", () => {
+  assert.match(routes, /transferSwiftToExchangeAtomic\(\{ userId, amount \}\)/);
+  assert.match(routes, /transferExchangeToSwiftAtomic\(\{ userId, amount \}\)/);
+  assert.match(depositCredits, /wallets\.balance} >=/);
+  assert.match(depositCredits, /tradeWallets\.exchangeBalance} >=/);
 });

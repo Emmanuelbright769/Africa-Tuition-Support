@@ -346,6 +346,7 @@ export const tradeReserveFund = pgTable("trade_reserve_fund", {
 export const affiliateTradeShares = pgTable("affiliate_trade_shares", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   tradeTransactionId: integer("trade_transaction_id"),
+  transactionId: integer("transaction_id").references(() => transactions.id, { onDelete: "set null" }),
   totalPoolAmount: decimal("total_pool_amount", { precision: 16, scale: 6 }).notNull(),
   affiliateCount: integer("affiliate_count").notNull().default(0),
   perAffiliateAmount: decimal("per_affiliate_amount", { precision: 16, scale: 6 }).notNull().default("0.000000"),
@@ -806,7 +807,11 @@ export const walletDeposits = pgTable("wallet_deposits", {
   txHash:     text("tx_hash"),
   walletType: text("wallet_type").notNull().default("trc20"),
   status:     text("status").notNull().default("pending"),
+  metadata:   jsonb("metadata"),
+  failureReason: text("failure_reason"),
+  verifiedAt: timestamp("verified_at"),
   createdAt:  timestamp("created_at").defaultNow().notNull(),
+  updatedAt:  timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const walletCreditClaims = pgTable("wallet_credit_claims", {
@@ -971,17 +976,49 @@ export const notificationTypeEnum = pgEnum("notification_type", [
 export const notifications = pgTable("notifications", {
   id:        integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId:    integer("user_id").notNull().references(() => users.id),
+  financialEventKey: text("financial_event_key"),
   type:      notificationTypeEnum("type").notNull(),
   title:     text("title").notNull(),
   message:   text("message").notNull(),
   data:      jsonb("data"),
   isRead:    boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  financialEventKeyUnique: uniqueIndex("notifications_financial_event_key_uq").on(table.financialEventKey),
+}));
 
-export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ createdAt: true });
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+export const financialEvents = pgTable("financial_events", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  eventKey: text("event_key").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  eventType: text("event_type").notNull(),
+  payload: jsonb("payload").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  eventKeyUnique: uniqueIndex("financial_events_event_key_uq").on(table.eventKey),
+}));
+
+export const financialEventOutbox = pgTable("financial_event_outbox", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  financialEventId: integer("financial_event_id").notNull().references(() => financialEvents.id, { onDelete: "cascade" }),
+  deliveryType: text("delivery_type").notNull(),
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  availableAt: timestamp("available_at").defaultNow().notNull(),
+  claimedAt: timestamp("claimed_at"),
+  claimedBy: text("claimed_by"),
+  deliveredAt: timestamp("delivered_at"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  eventDeliveryUnique: uniqueIndex("financial_event_outbox_event_delivery_uq").on(table.financialEventId, table.deliveryType),
+}));
+export type FinancialEvent = typeof financialEvents.$inferSelect;
+export type FinancialEventOutbox = typeof financialEventOutbox.$inferSelect;
 
 // ─── CALL SESSIONS (WebRTC signaling via polling) ─────────────────────────────
 export const callStatusEnum = pgEnum("call_status", ["ringing","active","ended","rejected"]);

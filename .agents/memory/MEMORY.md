@@ -11,3 +11,4 @@
 - [Monthly account billing](monthly-account-billing.md) — charge only the current $2 monthly cycle; missed months are waived and never accumulate.
 - [Trade deposit routing](trade-deposit-routing.md) — gateway callbacks and retries must credit the persisted wallet target atomically, never default Trade deposits to SwiftHub.
 - [Proctoring upload immutability](proctoring-upload-immutability.md) — storage timeouts do not cancel writes; isolate attempts and serialize media indexing with finalization.
+- [Financial credit proof](financial-credit-proof.md) — wallet credits require immutable provider/on-chain proof; all effects and receipts are replay-safe and transactionally coupled.

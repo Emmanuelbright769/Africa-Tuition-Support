@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BSC_USDT_CONTRACT,
+  hasFinalBscSuccess,
+  hasFinalTronSuccess,
   TRON_USDT_CONTRACT,
   TSIA_BEP20_ADDRESS,
   TSIA_TRC20_ADDRESS,
@@ -38,4 +40,14 @@ test("crypto verification accepts only canonical USDT and the exact submitted am
     decimals: 18,
     expectedUsd: 5,
   }).ok, false);
+});
+
+test("crypto verification requires explicit successful chain finality", () => {
+  assert.equal(hasFinalTronSuccess({ contractRet: "SUCCESS", confirmed: true }), true);
+  assert.equal(hasFinalTronSuccess({ contractRet: "SUCCESS" }), false);
+  assert.equal(hasFinalTronSuccess({ contractRet: "REVERT", confirmed: true }), false);
+
+  assert.equal(hasFinalBscSuccess({ confirmations: "12", isError: "0", txreceipt_status: "1" }), true);
+  assert.equal(hasFinalBscSuccess({ confirmations: "11", isError: "0", txreceipt_status: "1" }), false);
+  assert.equal(hasFinalBscSuccess({ confirmations: "20", isError: "1", txreceipt_status: "1" }), false);
 });

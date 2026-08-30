@@ -27,6 +27,15 @@ test("monthly billing is atomic and a missed month never accumulates into arrear
       INSERT INTO wallets (user_id, balance, activated, cashback_balance, lien_amount)
       VALUES (${userId}, '1.99', TRUE, '0.00', '0.00')
     `);
+    await db.execute(sql`
+      INSERT INTO identity_verifications (
+        user_id, document_country, document_type, provider, provider_status,
+        status, liveness_status, verified_at, expires_at
+      ) VALUES (
+        ${userId}, 'NG', 'nin', 'test-fixture', 'VERIFIED',
+        'verified', 'verified', NOW(), NOW() + INTERVAL '1 year'
+      )
+    `);
 
     const september = new Date("2026-09-01T00:05:00+01:00");
     const restricted = await reconcileMonthlyBilling(userId, september);
@@ -148,10 +157,20 @@ test("monthly billing is atomic and a missed month never accumulates into arrear
   } finally {
     if (userId !== null) {
       await db.execute(sql`DELETE FROM notifications WHERE user_id = ${userId}`);
+      await db.execute(sql`
+        DELETE FROM financial_event_outbox
+        WHERE financial_event_id IN (SELECT id FROM financial_events WHERE user_id = ${userId})
+      `);
+      await db.execute(sql`DELETE FROM financial_events WHERE user_id = ${userId}`);
+      await db.execute(sql`
+        DELETE FROM affiliate_trade_shares
+        WHERE transaction_id IN (SELECT id FROM transactions WHERE user_id = ${userId})
+      `);
       await db.execute(sql`DELETE FROM transactions WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM monthly_billing_cycles WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM wallet_credit_claims WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM wallet_deposits WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM identity_verifications WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM wallets WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
     }

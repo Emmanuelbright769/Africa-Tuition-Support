@@ -1210,10 +1210,16 @@ export default function AffiliateDashboard() {
   const depositMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/trade/deposit", { amountUsd: parseFloat(depositAmt), walletType: depositWallet, txHash: depositTxHash, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
-      return res.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Deposit could not be submitted");
+      return data;
     },
     onSuccess: (data) => {
-      toast({ title: "Deposit Confirmed ✓", description: `$${parseFloat(data.breakdown.creditedToYou).toFixed(2)} credited to your trade wallet.` });
+      toast({
+        title: data.pending ? "Verification in progress" : "Deposit Confirmed ✓",
+        description: data.message,
+        className: data.pending ? "border-amber-500" : "border-tsia-green",
+      });
       setDepositOpen(false); setDepositAmt(""); setDepositTxHash("");
       refetchTradeWallet(); refetchTradeTxs();
     },

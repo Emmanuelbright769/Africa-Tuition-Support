@@ -54,7 +54,6 @@ export default function TradeWalletView({
   const cycleComplete    = roiComplete || tradingDayNumber >= planDays;
   const earlyExitQuote   = getTradeEarlyExitQuote(tradeBalance, lockedPrincipal);
   const canEarlyExit     = tradeBalance > 0 && lockedPrincipal > 0 && !wallet?.earlyExitCompleted && !cycleComplete;
-  const earlyExitLocked  = controlsLocked || !!wallet?.botActivatedAt;
 
   // ── ROI bar ──────────────────────────────────────────────────────────────────
   // Use `roiComplete` (server-set flag) as the ONLY gate for "cap reached".
@@ -79,6 +78,7 @@ export default function TradeWalletView({
     return (ukDay >= 1 && ukDay <= 5 && ukHour >= 13) || (ukDay >= 2 && ukDay <= 6 && ukHour < 1);
   })();
   const controlsLocked = tradeSessionActive || wallet?.tradeSessionActive === true || localSessionActive;
+  const earlyExitLocked  = controlsLocked || !!wallet?.botActivatedAt;
   const lockedSublabel = "Locked during active trade";
 
   // Top-up tracking — clamp display to avoid showing "11/3"

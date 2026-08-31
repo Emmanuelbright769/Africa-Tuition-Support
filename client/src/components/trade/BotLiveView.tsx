@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type PointerEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Activity,
@@ -75,6 +75,8 @@ function formatPrice(value: number | null | undefined) {
 }
 
 function LiveChart({ candles, currentPrice }: { candles: Candle[]; currentPrice: number }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const geometry = useMemo(() => {
     const usable = candles.filter(c => c.high > 0 && c.low > 0).slice(-64);
     if (usable.length < 2) return null;
@@ -105,11 +107,32 @@ function LiveChart({ candles, currentPrice }: { candles: Candle[]; currentPrice:
 
   const { usable, min, max, width, height, chartRight, chartTop, chartBottom, priceY, step, x, linePoints } = geometry;
   const lastY = priceY(currentPrice || usable[usable.length - 1].close);
+  const activeIndex = hoveredIndex ?? selectedIndex;
+  const activeCandle = activeIndex === null ? null : usable[activeIndex] ?? null;
+  const candleIndexAtPointer = (event: PointerEvent<SVGSVGElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const chartX = Math.max(0, Math.min(chartRight, ((event.clientX - bounds.left) / bounds.width) * width));
+    return Math.max(0, Math.min(usable.length - 1, Math.round((chartX - step / 2) / step)));
+  };
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#07111f]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_65%_25%,rgba(16,185,129,.08),transparent_35%)]" />
-      <svg viewBox={`0 0 ${width} ${height}`} className="relative h-[320px] w-full sm:h-[390px]" preserveAspectRatio="none" role="img" aria-label="Live Itera market chart">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="relative h-[320px] w-full cursor-crosshair touch-none sm:h-[390px]"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Live Itera market chart. Move across the chart to inspect candle values."
+        data-testid="itera-live-chart"
+        onPointerMove={event => setHoveredIndex(candleIndexAtPointer(event))}
+        onPointerDown={event => {
+          const index = candleIndexAtPointer(event);
+          setHoveredIndex(index);
+          setSelectedIndex(index);
+        }}
+        onPointerLeave={() => setHoveredIndex(null)}
+      >
         <defs>
           <linearGradient id="itera-line-glow" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#10b981" stopOpacity="0.24" />
@@ -170,10 +193,33 @@ function LiveChart({ candles, currentPrice }: { candles: Candle[]; currentPrice:
         <line x1="0" y1={lastY} x2={chartRight} y2={lastY} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="7 5" />
         <rect x="910" y={lastY - 13} width="87" height="26" rx="5" fill="#d97706" />
         <text x="953" y={lastY + 5} fill="white" fontSize="14" fontWeight="700" textAnchor="middle">{formatPrice(currentPrice)}</text>
+        {activeCandle && activeIndex !== null && (
+          <>
+            <line x1={x(activeIndex)} y1={chartTop} x2={x(activeIndex)} y2={chartBottom} stroke="#f8fafc" strokeWidth="1" strokeDasharray="3 4" opacity="0.65" />
+            <circle cx={x(activeIndex)} cy={priceY(activeCandle.close)} r="4" fill="#f8fafc" stroke="#10b981" strokeWidth="2" />
+          </>
+        )}
       </svg>
       <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-emerald-400/20 bg-slate-950/80 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-emerald-300 backdrop-blur">
         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live feed
       </div>
+      {activeCandle && (
+        <div
+          className="pointer-events-none absolute top-4 z-10 min-w-32 rounded-xl border border-white/10 bg-slate-950/95 px-3 py-2 text-[10px] shadow-xl backdrop-blur"
+          style={{ left: `${Math.min(72, Math.max(4, ((activeIndex ?? 0) / Math.max(usable.length - 1, 1)) * 86))}%` }}
+          data-testid="itera-candle-tooltip"
+        >
+          <p className="mb-1 font-bold text-emerald-300">
+            {new Date(activeCandle.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-slate-300">
+            <span>O {formatPrice(activeCandle.open)}</span>
+            <span>H {formatPrice(activeCandle.high)}</span>
+            <span>L {formatPrice(activeCandle.low)}</span>
+            <span>C {formatPrice(activeCandle.close)}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -181,10 +227,20 @@ function LiveChart({ candles, currentPrice }: { candles: Candle[]; currentPrice:
 export default function BotLiveView() {
   const { toast } = useToast();
   const [timeframe, setTimeframe] = useState<Timeframe>("5m");
-  const positionKey = `/api/trade/bot-position?timeframe=${timeframe}`;
-  const { data, isLoading, isFetching, error } = useQuery<BotPosition>({
-    queryKey: [positionKey],
+  const { data, isLoading, isFetching, error, refetch } = useQuery<BotPosition>({
+    queryKey: ["/api/trade/bot-position", timeframe],
+    queryFn: async () => {
+      const response = await fetch(`/api/trade/bot-position?timeframe=${timeframe}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
+      return response.json();
+    },
     refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+    refetchOnMount: "always",
+    staleTime: 0,
   });
 
   const invalidateLivePosition = () => queryClient.invalidateQueries({
@@ -284,8 +340,16 @@ export default function BotLiveView() {
             <WalletCards className="h-4 w-4" /> Wallet
           </button>
           <div className="flex items-center gap-2 text-[11px] text-slate-400">
-            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin text-emerald-400" : ""}`} />
-            <span className="hidden sm:inline">Updated {new Date(data.lastUpdated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="flex min-h-8 items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-white/5"
+              aria-label="Refresh live market data"
+              data-testid="itera-refresh-live-data"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin text-emerald-400" : ""}`} />
+              <span className="hidden sm:inline">Updated {new Date(data.lastUpdated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -348,6 +412,8 @@ export default function BotLiveView() {
                 <button
                   key={option}
                   onClick={() => setTimeframe(option)}
+                  type="button"
+                  aria-pressed={timeframe === option}
                   className={`rounded-lg px-3 py-2 text-[11px] font-black transition-colors ${timeframe === option ? "bg-emerald-500 text-white" : "text-slate-500 hover:bg-white/5 hover:text-white"}`}
                   data-testid={`itera-timeframe-${option}`}
                 >

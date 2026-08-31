@@ -142,7 +142,7 @@ function getIteraMarketForSession(userId: number, activatedAt: Date) {
 }
 
 async function getTradeMarketPrices() {
-  if (Date.now() - priceCache.ts < 15000 && priceCache.data.length) return priceCache.data;
+  if (Date.now() - priceCache.ts < 5000 && priceCache.data.length) return priceCache.data;
   const data = await Promise.all(TRADE_SYMBOLS.map(async s => {
     try {
       const q: any = await yf.quote(s.symbol);
@@ -159,7 +159,7 @@ async function getTradeMarketPrices() {
 async function getIteraCandles(symbol: string, interval: "1m" | "5m" | "15m" | "1h", currentPrice: number) {
   const cacheKey = `${symbol}:${interval}`;
   const cached = iteraChartCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < 15000) return cached.candles;
+  if (cached && Date.now() - cached.ts < 5000) return cached.candles;
   const intervalMs = interval === "1m" ? 60_000 : interval === "15m" ? 900_000 : interval === "1h" ? 3_600_000 : 300_000;
   try {
     const chart: any = await yf.chart(symbol, {
@@ -5148,6 +5148,8 @@ export async function registerRoutes(
   });
   app.get("/api/trade/bot-position", async (req, res) => {
     try {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
       const uid = (req.session as any)?.userId;
       if (!uid) return res.status(401).json({ message: "Not authenticated" });
       const { tradeWallets } = await import("@shared/schema");

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Logo } from "@/components/ui/Logo";
+import splashLogo from "@assets/Tuition_Support_Initiative_for_Africa_20260311_104012_0000_1788210276637.png";
 
 interface TSIASplashScreenProps {
   onComplete: () => void;
@@ -9,7 +9,7 @@ interface TSIASplashScreenProps {
 
 export default function TSIASplashScreen({
   onComplete,
-  minimumDuration = 3000,
+  minimumDuration = 5000,
 }: TSIASplashScreenProps) {
   const [exiting, setExiting] = useState(false);
 
@@ -44,7 +44,11 @@ export default function TSIASplashScreen({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
             >
-              <Logo variant="full" forceDark height={76} className="tsia-splash__logo" />
+              <img
+                src={splashLogo}
+                alt="TSIA - Tuition Support Initiative for Africa"
+                className="tsia-splash__logo"
+              />
             </motion.div>
 
             <motion.div

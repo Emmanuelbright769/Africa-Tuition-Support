@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import splashLogo from "@assets/Tuition_Support_Initiative_for_Africa_20260311_104012_0000_1788210276637.png";
+
+const splashLogo = "/tsia-splash-logo.png";
 
 interface TSIASplashScreenProps {
   onComplete: () => void;
@@ -12,15 +13,25 @@ export default function TSIASplashScreen({
   minimumDuration = 5000,
 }: TSIASplashScreenProps) {
   const [exiting, setExiting] = useState(false);
+  const [logoReady, setLogoReady] = useState(false);
 
   useEffect(() => {
+    // Do not start the visible-duration countdown until the logo has decoded.
+    // The splash logo is deliberately pre-sized for mobile so this is quick
+    // even on a slower connection.
+    const fallbackTimer = window.setTimeout(() => setLogoReady(true), 10_000);
+    return () => window.clearTimeout(fallbackTimer);
+  }, []);
+
+  useEffect(() => {
+    if (!logoReady) return;
     const exitTimer = window.setTimeout(() => setExiting(true), minimumDuration);
     const completeTimer = window.setTimeout(onComplete, minimumDuration + 430);
     return () => {
       window.clearTimeout(exitTimer);
       window.clearTimeout(completeTimer);
     };
-  }, [minimumDuration, onComplete]);
+  }, [logoReady, minimumDuration, onComplete]);
 
   return (
     <AnimatePresence>
@@ -48,6 +59,8 @@ export default function TSIASplashScreen({
                 src={splashLogo}
                 alt="TSIA - Tuition Support Initiative for Africa"
                 className="tsia-splash__logo"
+                onLoad={() => setLogoReady(true)}
+                onError={() => setLogoReady(true)}
               />
             </motion.div>
 

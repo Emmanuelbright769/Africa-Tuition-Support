@@ -27,6 +27,7 @@ interface TradeMarketSectionProps {
   onConnect: () => void;
   onReinvest: () => void;
   onBankDeposit: () => void;
+  onEarlyExit: () => void;
 }
 
 const PRIMARY_TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
@@ -46,7 +47,7 @@ const EXTRA_TABS: { id: Tab; label: string; desc: string; Icon: React.ElementTyp
 const COMPONENT_TABS = new Set<Tab>(["wallet", "signals", "botlive", "manual", "history", "p2p"]);
 
 export default function TradeMarketSection({
-  children, tradeBalance, tradeTransactions, tradeSessionActive, onDeposit, onWithdraw, onFund, onConnect, onReinvest, onBankDeposit,
+  children, tradeBalance, tradeTransactions, tradeSessionActive, onDeposit, onWithdraw, onFund, onConnect, onReinvest, onBankDeposit, onEarlyExit,
 }: TradeMarketSectionProps) {
   const [tab, setTab]       = useState<Tab>("home");
   const [more, setMore]     = useState(false);
@@ -117,6 +118,7 @@ export default function TradeMarketSection({
                 onDeposit={onDeposit} onWithdraw={onWithdraw}
                 onFund={onFund} onConnect={onConnect} onReinvest={onReinvest}
                 onBankDeposit={onBankDeposit}
+                onEarlyExit={onEarlyExit}
               />
             </motion.div>
           )}

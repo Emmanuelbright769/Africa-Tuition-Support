@@ -36,7 +36,7 @@ import pgSession from "connect-pg-simple";
 import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
-import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, walletCreditClaims, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, platformSettings, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers, proctoringSessions, proctoringMediaChunks, proctoringPlaybackAudits, scholarships, financialEvents, financialEventOutbox } from "@shared/schema";
+import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, walletCreditClaims, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, signalTrades, manualTrades, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, platformSettings, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers, proctoringSessions, proctoringMediaChunks, proctoringPlaybackAudits, scholarships, financialEvents, financialEventOutbox } from "@shared/schema";
 import { BANK_TRANSFER_FEE_RATE, calculateBankTransferQuote } from "@shared/bankTransferPricing";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
@@ -62,6 +62,7 @@ import {
   transferExchangeToSwiftAtomic,
   transferSwiftToExchangeAtomic,
   transferSwiftToTradeAtomic,
+  settleTradeEarlyExitAtomic,
   recordDepositOutcomeAtomic,
 } from "./depositCredits";
 import { enqueueFinancialEvent } from "./financialNotifications";
@@ -4338,6 +4339,28 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  app.post("/api/trade/early-exit", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      if (await isTradeSessionActive(userId)) {
+        return res.status(403).json({ message: "Early exit is disabled during an active trade session. End the session before closing your Trade Market account." });
+      }
+      const settlement = await settleTradeEarlyExitAtomic(userId);
+      res.json({
+        success: true,
+        settlement,
+        message: `$${settlement.payout.toFixed(2)} was credited to your SwiftWallet. Your previous Trade Market cycle is fully closed.`,
+      });
+    } catch (e: any) {
+      const message = e?.message || "Unable to complete Trade Market early exit";
+      const status = message.includes("identity verification") ? 403
+        : message.includes("already") || message.includes("changed") ? 409
+        : 400;
+      res.status(status).json({ message });
+    }
+  });
+
   // ── Trade Market — shared bank/card credit helper ─────────────────────────
   // Reference format encodes plan days: TRADE-SQUAD-{uid}-{planDays}-{ts} / TRADE-KORA-{uid}-{planDays}-{ts}
   function parseTradeDepositPlanDays(txRef: string): number {
@@ -4871,17 +4894,33 @@ export async function registerRoutes(
       const isBeforeOpen = ukHour < 13 && !(ukDay >= 2 && ukDay <= 6 && ukHour < 1);
       if (isWeekend) return res.status(400).json({ message: "The market is closed on weekends. Trading resumes Monday at 1:00 PM GMT." });
       if (isBeforeOpen) return res.status(400).json({ message: "The activation window opens at 1:00 PM GMT (Mon–Fri)." });
-      const wallet = await storage.getOrCreateTradeWallet(userId);
-      if (wallet.botLocked) return res.status(403).json({ message: "Your bot access has been suspended by the platform. Please contact support to restore access." });
-      const activatePlanDays = wallet.tradingPlanDays && [60, 90, 120].includes(wallet.tradingPlanDays) ? wallet.tradingPlanDays : 120;
-      if (wallet.roiComplete) return res.status(400).json({ message: `Trading cycle complete. Your ${activatePlanDays}-day trading cycle has ended. Make a new top-up to start a fresh cycle.` });
-      if ((wallet.tradingDayNumber ?? 0) >= activatePlanDays) return res.status(400).json({ message: `Trading cycle complete. Your ${activatePlanDays}-day trading cycle has ended. Make a new top-up to start a fresh cycle.` });
-      if (parseFloat(wallet.tradeBalance) <= 0) return res.status(400).json({ message: "No trade balance." });
       const now = new Date();
-      const updated = await storage.setBotActivatedAt(userId, now);
+      const updated = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${userId})`);
+        const [wallet] = await tx.select().from(tradeWallets)
+          .where(eq(tradeWallets.userId, userId))
+          .for("update");
+        if (!wallet || parseFloat(wallet.tradeBalance) <= 0 || parseFloat(wallet.lockedPrincipal ?? "0") <= 0) {
+          throw new Error("No active funded Trade Market cycle.");
+        }
+        if (wallet.botLocked) {
+          throw new Error("Your bot access has been suspended by the platform. Please contact support to restore access.");
+        }
+        if (wallet.botActivatedAt) throw new Error("A bot session is already active.");
+        const activatePlanDays = wallet.tradingPlanDays && [60, 90, 120].includes(wallet.tradingPlanDays) ? wallet.tradingPlanDays : 120;
+        if (wallet.earlyExitCompleted || wallet.roiComplete || (wallet.tradingDayNumber ?? 0) >= activatePlanDays) {
+          throw new Error(`Trading cycle complete. Your ${activatePlanDays}-day trading cycle has ended. Make a new top-up to start a fresh cycle.`);
+        }
+        const [activated] = await tx.update(tradeWallets)
+          .set({ botActivatedAt: now, updatedAt: now })
+          .where(sql`${tradeWallets.userId} = ${userId} AND ${tradeWallets.earlyExitCompleted} = false AND ${tradeWallets.botActivatedAt} IS NULL`)
+          .returning();
+        if (!activated) throw new Error("The Trade Market cycle changed before the bot could be activated.");
+        return activated;
+      });
       res.json({ botActivatedAt: updated.botActivatedAt });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      res.status(400).json({ message: err.message });
     }
   });
 
@@ -4934,6 +4973,7 @@ export async function registerRoutes(
 
         if (lossAmount <= 0) {
           await storage.incrementTradingDay(userId);
+          await storage.setBotActivatedAt(userId, null);
           return res.json({ earning: "0", elapsedHours, ratePercent: "0", newBalance: wallet.tradeBalance, totalBotEarnings: wallet.totalBotEarnings, isLossDay: true, cycleDay: currentCycleDay, cycleDays: planDays });
         }
 
@@ -5021,7 +5061,6 @@ export async function registerRoutes(
       // If already at cap, just increment the day counter (no earning, no cycle end)
       if (lockedCapital > 0 && priorEarnings >= profitTarget) {
         await storage.incrementTradingDay(userId);
-        await storage.setBotActivatedAt(userId, null);
         const cappedWallet = await storage.getOrCreateTradeWallet(userId);
         // Still check for day-limit cycle completion even when capped
         if (!cappedWallet.roiComplete && (cappedWallet.tradingDayNumber ?? 0) >= planDays) {
@@ -5036,6 +5075,7 @@ export async function registerRoutes(
           await storage.markRoiComplete(userId);
           await storage.createNotification({ userId, type: "trade", title: `🎉 ${planDays}-Day Trading Cycle Complete!`, message: `Your ${planDays}-day cycle has ended.${capEarnings > 0 ? ` $${capEarnings.toFixed(2)} in remaining earnings have been credited to your SwiftWallet.` : ""} Top up to start a fresh cycle.`, data: {}, isRead: false });
         }
+        await storage.setBotActivatedAt(userId, null);
         const finalCappedWallet = await storage.getOrCreateTradeWallet(userId);
         return res.json({ earning: "0.000000", elapsedHours, ratePercent: "0.0000", newBalance: finalCappedWallet.tradeBalance, totalBotEarnings: finalCappedWallet.totalBotEarnings, roiComplete: finalCappedWallet.roiComplete, isLossDay: false, cycleDay: currentCycleDay, cycleDays: planDays, cycleComplete: finalCappedWallet.roiComplete, capped: true });
       }
@@ -5136,15 +5176,45 @@ export async function registerRoutes(
   });
   app.get("/api/trade/signals/history", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { signalTrades } = await import("@shared/schema"); res.json(await db.select().from(signalTrades).where(eq(signalTrades.userId, uid)).orderBy(desc(signalTrades.createdAt)).limit(20)); });
   app.post("/api/trade/signals/enter", async (req, res) => {
-    const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
-    const { signalTrades, tradeWallets } = await import("@shared/schema"); const a = Number(req.body.amountUsd); if (a < 1) return res.status(400).json({ message: "Minimum trade is $1" });
-    const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); if (!w || Number(w.tradeBalance) < a) return res.status(400).json({ message: "Insufficient trade balance" });
-    await db.update(tradeWallets).set({ tradeBalance: (Number(w.tradeBalance) - a).toFixed(6) }).where(eq(tradeWallets.userId, uid));
-    const [t] = await db.insert(signalTrades).values({ userId: uid, symbol: req.body.symbol, symbolLabel: req.body.symbolLabel, direction: req.body.direction, entryPrice: String(req.body.entryPrice), amountUsd: String(a), confidence: Number(req.body.confidence), timeframe: req.body.timeframe }).returning();
-    res.json({ id: t.id, message: "Position opened" });
+    try {
+      const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
+      const a = Number(req.body.amountUsd); if (!Number.isFinite(a) || a < 1) return res.status(400).json({ message: "Minimum trade is $1" });
+      const t = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${uid})`);
+        const [w] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)).for("update");
+        if (!w || w.earlyExitCompleted || Number(w.lockedPrincipal) <= 0) throw new Error("Start a new Trade Market cycle before opening a position");
+        const [debited] = await tx.update(tradeWallets).set({
+          tradeBalance: sql`${tradeWallets.tradeBalance} - ${a.toFixed(6)}::decimal`,
+        }).where(sql`${tradeWallets.userId} = ${uid} AND ${tradeWallets.tradeBalance} >= ${a.toFixed(6)}::decimal`).returning();
+        if (!debited) throw new Error("Insufficient trade balance");
+        const [opened] = await tx.insert(signalTrades).values({ userId: uid, symbol: req.body.symbol, symbolLabel: req.body.symbolLabel, direction: req.body.direction, entryPrice: String(req.body.entryPrice), amountUsd: String(a), confidence: Number(req.body.confidence), timeframe: req.body.timeframe }).returning();
+        return opened;
+      });
+      res.json({ id: t.id, message: "Position opened" });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.post("/api/trade/signals/resolve/:id", async (req, res) => {
-    const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { signalTrades, tradeWallets } = await import("@shared/schema"); const [t] = await db.select().from(signalTrades).where(and(eq(signalTrades.id, Number(req.params.id)), eq(signalTrades.userId, uid))); if (!t || t.status !== "open") return res.status(404).json({ message: "Trade not found" }); const q: any = await yf.quote(t.symbol); const exit = Number(q.regularMarketPrice ?? t.entryPrice); const pct = (exit - Number(t.entryPrice)) / Number(t.entryPrice) * (t.direction === "long" ? 1 : -1); const pnl = Number(t.amountUsd) * pct; const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); await db.update(signalTrades).set({ exitPrice: String(exit), pnlPct: String(pct * 100), pnlUsd: String(pnl), status: pnl >= 0 ? "won" : "lost", resolvedAt: new Date() }).where(eq(signalTrades.id, t.id)); if (w) await db.update(tradeWallets).set({ tradeBalance: (Number(w.tradeBalance) + Number(t.amountUsd) + pnl).toFixed(6) }).where(eq(tradeWallets.userId, uid)); res.json({ pnlUsd: pnl, pnlPct: pct * 100, exitPrice: exit, status: pnl >= 0 ? "won" : "lost" });
+    try {
+      const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
+      const [snapshot] = await db.select().from(signalTrades).where(and(eq(signalTrades.id, Number(req.params.id)), eq(signalTrades.userId, uid)));
+      if (!snapshot || snapshot.status !== "open") return res.status(404).json({ message: "Trade not found" });
+      const q: any = await yf.quote(snapshot.symbol);
+      const exit = Number(q.regularMarketPrice ?? snapshot.entryPrice);
+      const result = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${uid})`);
+        const [t] = await tx.select().from(signalTrades).where(and(eq(signalTrades.id, snapshot.id), eq(signalTrades.userId, uid))).for("update");
+        if (!t || t.status !== "open") throw new Error("Trade not found or already resolved");
+        const pct = (exit - Number(t.entryPrice)) / Number(t.entryPrice) * (t.direction === "long" ? 1 : -1);
+        const pnl = Number(t.amountUsd) * pct;
+        const returnAmount = Math.max(0, Number(t.amountUsd) + pnl);
+        await tx.update(signalTrades).set({ exitPrice: String(exit), pnlPct: String(pct * 100), pnlUsd: String(pnl), status: pnl >= 0 ? "won" : "lost", resolvedAt: new Date() }).where(eq(signalTrades.id, t.id));
+        const [w] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)).for("update");
+        if (!w || w.earlyExitCompleted) throw new Error("This position belongs to a closed Trade Market cycle");
+        await tx.update(tradeWallets).set({ tradeBalance: sql`${tradeWallets.tradeBalance} + ${returnAmount.toFixed(6)}::decimal` }).where(eq(tradeWallets.userId, uid));
+        return { pnl, pct };
+      });
+      res.json({ pnlUsd: result.pnl, pnlPct: result.pct * 100, exitPrice: exit, status: result.pnl >= 0 ? "won" : "lost" });
+    } catch (e: any) { res.status(409).json({ message: e.message }); }
   });
   app.get("/api/trade/bot-position", async (req, res) => {
     try {
@@ -5224,28 +5294,47 @@ export async function registerRoutes(
   });
   app.get("/api/trade/manual/positions", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { manualTrades } = await import("@shared/schema"); res.json(await db.select().from(manualTrades).where(eq(manualTrades.userId, uid)).orderBy(desc(manualTrades.createdAt)).limit(20)); });
   app.post("/api/trade/manual/open", async (req, res) => {
-    const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
-    const { manualTrades, tradeWallets } = await import("@shared/schema"); const margin = Number(req.body.marginUsd), leverage = Number(req.body.leverage || 1); if (margin < 1 || leverage < 1 || leverage > 10) return res.status(400).json({ message: "Invalid order parameters" }); const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)); if (!w || Number(w.tradeBalance) < margin) return res.status(400).json({ message: "Insufficient trade balance" }); const q: any = await yf.quote(req.body.symbol); const entry = Number(q.regularMarketPrice || 0); await db.update(tradeWallets).set({ tradeBalance: (Number(w.tradeBalance) - margin).toFixed(6) }).where(eq(tradeWallets.userId, uid)); const [trade] = await db.insert(manualTrades).values({ userId: uid, symbol: req.body.symbol, symbolLabel: req.body.symbolLabel || req.body.symbol, direction: req.body.direction === "short" ? "short" : "long", leverage, marginUsd: String(margin), sizeUsd: String(margin * leverage), entryPrice: String(entry), stopLossPrice: req.body.stopLossPrice ? String(req.body.stopLossPrice) : null, takeProfitPrice: req.body.takeProfitPrice ? String(req.body.takeProfitPrice) : null }).returning(); res.json(trade);
+    try {
+      const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
+      const margin = Number(req.body.marginUsd), leverage = Number(req.body.leverage || 1); if (!Number.isFinite(margin) || margin < 1 || leverage < 1 || leverage > 10) return res.status(400).json({ message: "Invalid order parameters" });
+      const q: any = await yf.quote(req.body.symbol); const entry = Number(q.regularMarketPrice || 0);
+      const trade = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${uid})`);
+        const [w] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)).for("update");
+        if (!w || w.earlyExitCompleted || Number(w.lockedPrincipal) <= 0) throw new Error("Start a new Trade Market cycle before opening a position");
+        const [debited] = await tx.update(tradeWallets).set({ tradeBalance: sql`${tradeWallets.tradeBalance} - ${margin.toFixed(6)}::decimal` }).where(sql`${tradeWallets.userId} = ${uid} AND ${tradeWallets.tradeBalance} >= ${margin.toFixed(6)}::decimal`).returning();
+        if (!debited) throw new Error("Insufficient trade balance");
+        const [opened] = await tx.insert(manualTrades).values({ userId: uid, symbol: req.body.symbol, symbolLabel: req.body.symbolLabel || req.body.symbol, direction: req.body.direction === "short" ? "short" : "long", leverage, marginUsd: String(margin), sizeUsd: String(margin * leverage), entryPrice: String(entry), stopLossPrice: req.body.stopLossPrice ? String(req.body.stopLossPrice) : null, takeProfitPrice: req.body.takeProfitPrice ? String(req.body.takeProfitPrice) : null }).returning();
+        return opened;
+      });
+      res.json(trade);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.post("/api/trade/manual/close/:id", async (req, res) => {
     try {
       const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
-      const { manualTrades, tradeWallets } = await import("@shared/schema");
-      const [trade] = await db.select().from(manualTrades).where(and(eq(manualTrades.id, Number(req.params.id)), eq(manualTrades.userId, uid)));
-      if (!trade || trade.status !== "open") return res.status(404).json({ message: "Position not found or already closed" });
-      const q: any = await yf.quote(trade.symbol);
-      const exitPrice = Number(q.regularMarketPrice ?? trade.entryPrice);
-      const pricePct = (exitPrice - Number(trade.entryPrice)) / Number(trade.entryPrice);
-      const pnlPct = trade.direction === "long" ? pricePct : -pricePct;
-      const pnlUsd = Number(trade.sizeUsd) * pnlPct;
-      const returnAmt = Math.max(0, Number(trade.marginUsd) + pnlUsd); // liquidation floor = 0
-      await db.update(manualTrades).set({
-        exitPrice: String(exitPrice), pnlUsd: String(pnlUsd), pnlPct: String(pnlPct * 100),
-        status: pnlUsd >= 0 ? "won" : "lost", closedAt: new Date()
-      }).where(eq(manualTrades.id, trade.id));
-      const [w] = await db.select().from(tradeWallets).where(eq(tradeWallets.userId, uid));
-      if (w) await db.update(tradeWallets).set({ tradeBalance: (Number(w.tradeBalance) + returnAmt).toFixed(6) }).where(eq(tradeWallets.userId, uid));
-      res.json({ pnlUsd, pnlPct: pnlPct * 100, exitPrice, returnAmt, status: pnlUsd >= 0 ? "won" : "lost" });
+      const [snapshot] = await db.select().from(manualTrades).where(and(eq(manualTrades.id, Number(req.params.id)), eq(manualTrades.userId, uid)));
+      if (!snapshot || snapshot.status !== "open") return res.status(404).json({ message: "Position not found or already closed" });
+      const q: any = await yf.quote(snapshot.symbol);
+      const exitPrice = Number(q.regularMarketPrice ?? snapshot.entryPrice);
+      const result = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${uid})`);
+        const [trade] = await tx.select().from(manualTrades).where(and(eq(manualTrades.id, snapshot.id), eq(manualTrades.userId, uid))).for("update");
+        if (!trade || trade.status !== "open") throw new Error("Position not found or already closed");
+        const pricePct = (exitPrice - Number(trade.entryPrice)) / Number(trade.entryPrice);
+        const pnlPct = trade.direction === "long" ? pricePct : -pricePct;
+        const pnlUsd = Number(trade.sizeUsd) * pnlPct;
+        const returnAmt = Math.max(0, Number(trade.marginUsd) + pnlUsd);
+        await tx.update(manualTrades).set({
+          exitPrice: String(exitPrice), pnlUsd: String(pnlUsd), pnlPct: String(pnlPct * 100),
+          status: pnlUsd >= 0 ? "won" : "lost", closedAt: new Date()
+        }).where(eq(manualTrades.id, trade.id));
+        const [w] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)).for("update");
+        if (!w || w.earlyExitCompleted) throw new Error("This position belongs to a closed Trade Market cycle");
+        await tx.update(tradeWallets).set({ tradeBalance: sql`${tradeWallets.tradeBalance} + ${returnAmt.toFixed(6)}::decimal` }).where(eq(tradeWallets.userId, uid));
+        return { pnlUsd, pnlPct, returnAmt };
+      });
+      res.json({ pnlUsd: result.pnlUsd, pnlPct: result.pnlPct * 100, exitPrice, returnAmt: result.returnAmt, status: result.pnlUsd >= 0 ? "won" : "lost" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

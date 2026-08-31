@@ -5,6 +5,8 @@ import {
   tradeWallets,
   transactions,
   users,
+  manualTrades,
+  signalTrades,
   walletCreditClaims,
   walletDeposits,
   wallets,
@@ -16,6 +18,11 @@ import {
   type EnqueueFinancialEventInput,
 } from "./financialNotifications";
 import { acquireWalletUserLock } from "./walletBalance";
+import {
+  formatTradeMoneyMicros,
+  getTradeEarlyExitQuote,
+  parseTradeMoneyMicros,
+} from "@shared/tradeWithdrawalPolicy";
 
 export type TradeDepositTarget =
   | "squad_trade"
@@ -350,8 +357,17 @@ export async function creditTradeDepositAtomic(input: {
       cycleStartedAt: topUp ? (wallet.cycleStartedAt ?? new Date()) : new Date(),
       updatedAt: new Date(),
     };
-    if (wallet.roiComplete) {
-      Object.assign(update, { roiComplete: false, earlyExitCompleted: false, totalBotEarnings: "0.000000", tradingDayNumber: 0, lossDayNumbers: lossDays });
+    if (wallet.roiComplete || wallet.earlyExitCompleted) {
+      Object.assign(update, {
+        totalInvested: userCredit.toFixed(6),
+        lockedPrincipal: userCredit.toFixed(6),
+        roiComplete: false,
+        earlyExitCompleted: false,
+        totalBotEarnings: "0.000000",
+        tradingDayNumber: 0,
+        lossDayNumbers: lossDays,
+        botActivatedAt: null,
+      });
     } else if ((wallet.lossDayNumbers?.length ?? 0) === 0) {
       update.lossDayNumbers = lossDays;
     } else if ((wallet.tradingDayNumber ?? 0) > 0) {
@@ -518,7 +534,16 @@ export async function transferSwiftToTradeAtomic(input: {
       cycleStartedAt: topUp ? (wallet.cycleStartedAt ?? new Date()) : new Date(),
       updatedAt: new Date(),
     };
-    if (wallet.roiComplete) Object.assign(update, { roiComplete: false, earlyExitCompleted: false, totalBotEarnings: "0.000000", tradingDayNumber: 0, lossDayNumbers: lossDays });
+    if (wallet.roiComplete || wallet.earlyExitCompleted) Object.assign(update, {
+      totalInvested: userCredit.toFixed(6),
+      lockedPrincipal: userCredit.toFixed(6),
+      roiComplete: false,
+      earlyExitCompleted: false,
+      totalBotEarnings: "0.000000",
+      tradingDayNumber: 0,
+      lossDayNumbers: lossDays,
+      botActivatedAt: null,
+    });
     else if (!(wallet.lossDayNumbers?.length)) update.lossDayNumbers = lossDays;
     else if ((wallet.tradingDayNumber ?? 0) > 0) Object.assign(update, { tradingDayNumber: 0, lossDayNumbers: lossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false });
     const [updated] = await tx.update(tradeWallets).set(update).where(eq(tradeWallets.userId, input.userId)).returning();
@@ -564,6 +589,155 @@ export async function transferSwiftToTradeAtomic(input: {
       },
     });
     return { reference, userCredit, affiliateCut, tradeBalance: updated.tradeBalance };
+  });
+}
+
+export async function settleTradeEarlyExitAtomic(userId: number) {
+  return db.transaction(async (tx) => {
+    await acquireWalletUserLock(tx, userId);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${userId})`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-deposit"}), ${userId})`);
+    await requireVerifiedIdentity(tx, userId);
+
+    await tx.insert(wallets).values({
+      userId,
+      balance: "0.00",
+      activated: false,
+      cashbackBalance: "0.00",
+      lienAmount: "0.00",
+    }).onConflictDoNothing();
+    await tx.insert(tradeWallets).values({ userId, tradeBalance: "0.000000" }).onConflictDoNothing();
+
+    const [wallet] = await tx.select().from(tradeWallets)
+      .where(eq(tradeWallets.userId, userId))
+      .for("update");
+    if (!wallet) throw new Error("Trade Market account not found");
+    if (wallet.earlyExitCompleted) throw new Error("This Trade Market cycle has already been closed");
+
+    const balanceMicros = parseTradeMoneyMicros(wallet.tradeBalance);
+    const lockedPrincipalMicros = parseTradeMoneyMicros(wallet.lockedPrincipal);
+    if (balanceMicros <= 0n || lockedPrincipalMicros <= 0n) {
+      throw new Error("There is no active Trade Market cycle to close");
+    }
+    if (wallet.roiComplete || (wallet.tradingDayNumber ?? 0) >= (wallet.tradingPlanDays ?? 120)) {
+      throw new Error("This trading cycle has already completed and is not eligible for early exit");
+    }
+    if (wallet.botActivatedAt) {
+      throw new Error("Complete the current bot session before using early exit");
+    }
+
+    const [openManual] = await tx.select({ id: manualTrades.id }).from(manualTrades)
+      .where(sql`${manualTrades.userId} = ${userId} AND ${manualTrades.status} = 'open'`)
+      .limit(1);
+    const [openSignal] = await tx.select({ id: signalTrades.id }).from(signalTrades)
+      .where(sql`${signalTrades.userId} = ${userId} AND ${signalTrades.status} = 'open'`)
+      .limit(1);
+    if (openManual || openSignal) {
+      throw new Error("Close all open Manual Trading and Trading Signal positions before using early exit");
+    }
+
+    const previewQuote = getTradeEarlyExitQuote(wallet.tradeBalance, wallet.lockedPrincipal);
+    const payoutMicros = BigInt(Math.round(previewQuote.payout * 100)) * 10_000n;
+    const forfeitedMicros = balanceMicros - payoutMicros;
+    const exactBalance = formatTradeMoneyMicros(balanceMicros);
+    const exactForfeited = formatTradeMoneyMicros(forfeitedMicros);
+    const quote = {
+      ...previewQuote,
+      forfeited: Number(exactForfeited),
+      forfeitedExact: exactForfeited,
+    };
+    if (quote.payout <= 0) throw new Error("There is no early-exit payout available");
+    const reference = `TRADE-EARLY-EXIT-${userId}-${Date.now()}`;
+
+    const [closed] = await tx.update(tradeWallets).set({
+      tradeBalance: "0.000000",
+      totalBotEarnings: "0.000000",
+      totalInvested: "0.000000",
+      roiComplete: false,
+      lockedPrincipal: "0.000000",
+      botActivatedAt: null,
+      tradingDayNumber: 0,
+      lossDayNumbers: [],
+      cycleStartedAt: null,
+      earlyExitCompleted: true,
+      updatedAt: new Date(),
+    }).where(sql`${tradeWallets.userId} = ${userId} AND ${tradeWallets.earlyExitCompleted} = FALSE`).returning();
+    if (!closed) throw new Error("This Trade Market cycle has already been closed");
+
+    const [tradeTx] = await tx.insert(tradeTransactions).values({
+      userId,
+      type: "withdraw_exchange",
+      walletType: null,
+      amountUsd: exactBalance,
+      feeUsd: exactForfeited,
+      reserveFundDeduction: "0.000000",
+      affiliateShareDeduction: "0.000000",
+      netAmount: quote.payout.toFixed(2),
+      txHash: reference,
+      status: "completed",
+      note: `Final early exit — 50% capital ($${quote.capitalPayout.toFixed(2)}) + 50% realised profit ($${quote.profitPayout.toFixed(2)}) paid to SwiftWallet; $${quote.forfeited.toFixed(2)} forfeited; Trade Market cycle closed`,
+    }).returning({ id: tradeTransactions.id });
+
+    const [swiftWallet] = await tx.update(wallets).set({
+      balance: sql`${wallets.balance} + ${quote.payout.toFixed(2)}::decimal`,
+      activated: sql`${wallets.activated} OR (${wallets.balance} + ${quote.payout.toFixed(2)}::decimal > 2)`,
+    }).where(eq(wallets.userId, userId)).returning({ balance: wallets.balance });
+    if (!swiftWallet) throw new Error("Unable to credit SwiftWallet");
+
+    const [swiftTx] = await tx.insert(transactions).values({
+      userId,
+      type: "deposit",
+      amount: quote.payout.toFixed(2),
+      fee: "0.00",
+      paymentMethod: "internal",
+      description: `Trade Market final early-exit settlement (${reference})`,
+    }).returning({ id: transactions.id });
+
+    const [user] = await tx.select({
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    }).from(users).where(eq(users.id, userId));
+    if (!user) throw new Error("Trade Market account owner not found");
+
+    await enqueueFinancialEventInTransaction(tx as any, {
+      eventKey: `trade-early-exit:${reference.toLowerCase()}:completed`,
+      userId,
+      eventType: "trade_early_exit_completed",
+      payload: {
+        userEmail: user.email,
+        userFirstName: user.firstName,
+        adminEmail: ADMIN_EMAIL,
+        receipt: {
+          title: "Trade Market Early Exit Receipt",
+          status: "success",
+          amount: `$${quote.payout.toFixed(2)}`,
+          amountLabel: "Final amount credited to SwiftWallet",
+          reference,
+          rows: [
+            { label: "Account", value: `${user.firstName} ${user.lastName}` },
+            { label: "50% of capital", value: `$${quote.capitalPayout.toFixed(2)}` },
+            { label: "50% of realised profit", value: `$${quote.profitPayout.toFixed(2)}` },
+            { label: "Forfeited on closure", value: `$${quote.forfeited.toFixed(2)}` },
+            { label: "Trade Market status", value: "Cycle closed", color: "green" },
+          ],
+          footerNote: "This was a final early exit. The previous Trade Market cycle has been closed and cannot receive another payout.",
+        },
+        inApp: {
+          title: "Trade Market Account Closed ✓",
+          message: `$${quote.payout.toFixed(2)} was credited to your SwiftWallet. Your previous trade cycle is now fully closed.`,
+          data: { reference, tradeTransactionId: tradeTx.id, transactionId: swiftTx.id },
+        },
+      },
+    });
+
+    return {
+      reference,
+      ...quote,
+      balanceExact: exactBalance,
+      swiftBalance: swiftWallet.balance,
+      tradeTransactionId: tradeTx.id,
+    };
   });
 }
 

@@ -36,7 +36,7 @@ import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADING_PLANS, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
-import { getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
+import { getTradeEarlyExitQuote, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend,
@@ -610,6 +610,8 @@ export default function AffiliateDashboard() {
   const [trustFundWithdrawOpen, setTrustFundWithdrawOpen] = useState(false);
   const [depositOpen, setDepositOpen]   = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [earlyExitOpen, setEarlyExitOpen] = useState(false);
+  const [earlyExitAccepted, setEarlyExitAccepted] = useState(false);
   const [connectOpen, setConnectOpen]   = useState(false);
   const [chartSymbol, setChartSymbol] = useState("BINANCE:BTCUSDT");
   const [loanAmount, setLoanAmount] = useState("");
@@ -1240,6 +1242,32 @@ export default function AffiliateDashboard() {
     onError: (err: any) => toast({ title: "Transfer Failed", description: err.message, variant: "destructive" }),
   });
 
+  const earlyExitMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/trade/early-exit", {});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Trade Market Cycle Closed ✓",
+        description: data.message,
+        className: "border-tsia-green",
+      });
+      setEarlyExitOpen(false);
+      setEarlyExitAccepted(false);
+      refetchTradeWallet();
+      refetchTradeTxs();
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
+    },
+    onError: (err: any) => toast({
+      title: "Early Exit Failed",
+      description: err.message,
+      variant: "destructive",
+    }),
+  });
+
   const withdrawMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/trade/withdraw", {
@@ -1391,6 +1419,7 @@ export default function AffiliateDashboard() {
   // The ordinary withdrawable balance is realised profit only. Any future
   // early-exit settlement must be a separate, explicit action.
   const withdrawableAmt = getTradeProfitWithdrawable(tradeBalance, lockedPrincipal);
+  const earlyExitQuote = getTradeEarlyExitQuote(tradeBalance, lockedPrincipal);
   // Progress toward earnings cap (informational — not a withdrawal gate)
   // profitCapPct is the profit portion (0.70 / 0.80 / 1.00).
   // Target = capital × (1 + profitCapPct): earn 100% ON TOP of capital = need $198 back on a $99 deposit.
@@ -1724,6 +1753,7 @@ export default function AffiliateDashboard() {
                   onConnect={() => setConnectOpen(true)}
                   onReinvest={() => setReinvestOpen(true)}
                   onBankDeposit={() => { stopTradePSKoraPoll(); setTradePSStep("broker"); setTradePSAmt(""); setTradePSKoraRef(""); setTradePSKoraUrl(""); setTradePSDepositOpen(true); }}
+                  onEarlyExit={() => { setEarlyExitAccepted(false); setEarlyExitOpen(true); }}
                 >
                 <motion.div variants={itemVariants} data-trade-anchor="home" style={{ scrollMarginTop: "5rem" }}>
                   <div className="trade-market-hero mb-6 overflow-hidden rounded-[2rem] border border-white/60 p-6 shadow-[0_24px_70px_rgba(26,64,46,.14)] backdrop-blur-xl sm:p-9 dark:border-white/10">
@@ -3846,6 +3876,67 @@ export default function AffiliateDashboard() {
             <Button variant="outline" onClick={() => setDepositOpen(false)}>Cancel</Button>
             <Button onClick={() => depositMutation.mutate()} disabled={depositMutation.isPending || !depositAmt || parseFloat(depositAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT)} className="bg-green-600 hover:bg-green-700 text-white" data-testid="button-confirm-deposit">
               {depositMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />} Confirm Deposit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={earlyExitOpen} onOpenChange={open => {
+        setEarlyExitOpen(open);
+        if (!open) setEarlyExitAccepted(false);
+      }}>
+        <DialogContent className="max-w-sm" data-testid="dialog-trade-early-exit">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600">
+              <AlertTriangle className="h-5 w-5" /> Final Trade Market Exit
+            </DialogTitle>
+            <DialogDescription>
+              This closes your current trading cycle completely. If you return someday, you will fund a brand-new cycle.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2 rounded-xl border border-border bg-muted/30 p-4 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">50% of available capital</span>
+                <strong>${earlyExitQuote.capitalPayout.toFixed(2)}</strong>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">50% of realised profit</span>
+                <strong>${earlyExitQuote.profitPayout.toFixed(2)}</strong>
+              </div>
+              <div className="flex justify-between gap-3 border-t border-border pt-2 text-tsia-green">
+                <span className="font-semibold">Credited to SwiftWallet</span>
+                <strong>${earlyExitQuote.payout.toFixed(2)}</strong>
+              </div>
+              <div className="flex justify-between gap-3 text-rose-600">
+                <span>Forfeited when cycle closes</span>
+                <strong>${earlyExitQuote.forfeited.toFixed(2)}</strong>
+              </div>
+            </div>
+            <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs leading-relaxed text-rose-800 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">
+              The unpaid balance will not remain locked and will not be paid later. Your Trade Market balance, capital, earnings, and cycle progress will all reset to zero.
+            </div>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border p-3 text-xs">
+              <input
+                type="checkbox"
+                checked={earlyExitAccepted}
+                onChange={event => setEarlyExitAccepted(event.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-rose-600"
+                data-testid="checkbox-confirm-trade-early-exit"
+              />
+              <span>I understand this is final and I forfeit the unpaid half of my current capital and profit.</span>
+            </label>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEarlyExitOpen(false)}>Keep Trading</Button>
+            <Button
+              onClick={() => earlyExitMutation.mutate()}
+              disabled={!earlyExitAccepted || earlyExitMutation.isPending || earlyExitQuote.payout <= 0}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+              data-testid="button-confirm-trade-early-exit"
+            >
+              {earlyExitMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Close Cycle & Receive ${earlyExitQuote.payout.toFixed(2)}
             </Button>
           </DialogFooter>
         </DialogContent>

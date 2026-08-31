@@ -5,8 +5,9 @@ import {
   Wallet, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight,
   Link2, Eye, EyeOff, TrendingUp, Shield, RefreshCw, RefreshCcw,
   CreditCard, Banknote, Lock,
+  LogOut,
 } from "lucide-react";
-import { getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
+import { getTradeEarlyExitQuote, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
 
 const MAX_TOPUPS = 3;
 
@@ -18,10 +19,11 @@ interface TradeWalletViewProps {
   onConnect: () => void;
   onReinvest: () => void;
   onBankDeposit: () => void;
+  onEarlyExit: () => void;
 }
 
 export default function TradeWalletView({
-  tradeSessionActive, onDeposit, onWithdraw, onFund, onConnect, onReinvest, onBankDeposit,
+  tradeSessionActive, onDeposit, onWithdraw, onFund, onConnect, onReinvest, onBankDeposit, onEarlyExit,
 }: TradeWalletViewProps) {
   const [hidden, setHidden] = useState(false);
   const { data: wallet, isLoading, refetch } = useQuery<any>({
@@ -50,6 +52,9 @@ export default function TradeWalletView({
   const roiComplete      = !!(wallet?.roiComplete);
   const tradingDayNumber = wallet?.tradingDayNumber ?? 0;
   const cycleComplete    = roiComplete || tradingDayNumber >= planDays;
+  const earlyExitQuote   = getTradeEarlyExitQuote(tradeBalance, lockedPrincipal);
+  const canEarlyExit     = tradeBalance > 0 && lockedPrincipal > 0 && !wallet?.earlyExitCompleted && !cycleComplete;
+  const earlyExitLocked  = controlsLocked || !!wallet?.botActivatedAt;
 
   // ── ROI bar ──────────────────────────────────────────────────────────────────
   // Use `roiComplete` (server-set flag) as the ONLY gate for "cap reached".
@@ -370,6 +375,38 @@ export default function TradeWalletView({
           <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-[9px] font-bold text-emerald-300">Edit</span>
         )}
       </motion.button>
+
+      {canEarlyExit && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4"
+          data-testid="card-trade-early-exit"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500">
+              {controlsLocked ? <Lock className="h-5 w-5 text-white" /> : <LogOut className="h-5 w-5 text-white" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-rose-300">Stop Trading & Close Cycle</p>
+              <p className="mt-0.5 text-[10px] leading-snug text-rose-200/70">
+                {earlyExitLocked
+                  ? wallet?.botActivatedAt ? "Complete the current bot session first" : lockedSublabel
+                  : `Receive $${earlyExitQuote.payout.toFixed(2)} now: 50% of capital plus 50% of realised profit. The current cycle ends permanently.`}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={earlyExitLocked ? undefined : onEarlyExit}
+            disabled={earlyExitLocked}
+            className="mt-3 w-full rounded-xl border border-rose-400/40 bg-rose-500 py-2.5 text-sm font-bold text-white transition-colors hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+            data-testid="button-open-trade-early-exit"
+          >
+            {earlyExitLocked ? "Complete Bot Session First" : "Review Final Early Exit"}
+          </button>
+        </motion.div>
+      )}
 
       {/* Re-invest card — shown when cycle is complete but slots aren't all used
           (when all 3 slots ARE used + cycle complete, the Top Up button transforms to Reinvest instead) */}

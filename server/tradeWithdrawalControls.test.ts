@@ -3,13 +3,42 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   areBankTransfersEnabled,
+  formatTradeMoneyMicros,
+  getTradeEarlyExitQuote,
   getTradeProfitWithdrawable,
+  parseTradeMoneyMicros,
 } from "@shared/tradeWithdrawalPolicy";
 
 test("ordinary Trade Market withdrawal exposes profit only", () => {
   assert.equal(getTradeProfitWithdrawable(131.71, 99), 32.71000000000001);
   assert.equal(getTradeProfitWithdrawable(99, 99), 0);
   assert.equal(getTradeProfitWithdrawable(80, 99), 0);
+});
+
+test("Trade Market early exit pays half of capital and half of realised profit", () => {
+  assert.deepEqual(getTradeEarlyExitQuote(140, 100), {
+    capital: 100,
+    realisedProfit: 40,
+    capitalPayout: 50,
+    profitPayout: 20,
+    payout: 70,
+    forfeited: 70,
+  });
+  assert.equal(getTradeEarlyExitQuote(80, 100).payout, 40);
+  assert.equal(getTradeEarlyExitQuote(80, 100).realisedProfit, 0);
+  assert.equal(getTradeEarlyExitQuote(100.01, 100.01).payout, 50);
+  assert.equal(getTradeEarlyExitQuote(100.03, 100.01).payout, 50.01);
+  assert.equal(getTradeEarlyExitQuote("100.019000", "100.019000").payout, 50);
+  assert.equal(getTradeEarlyExitQuote("100.029000", "100.019000").payout, 50);
+  assert.equal(getTradeEarlyExitQuote("100.029000", "100.019000").forfeited, 50.029);
+  const maxBalanceMicros = parseTradeMoneyMicros("9999999999.999999");
+  const maxQuote = getTradeEarlyExitQuote("9999999999.999999", "9999999999.999999");
+  const maxPayoutMicros = BigInt(Math.round(maxQuote.payout * 100)) * 10_000n;
+  assert.equal(maxQuote.payout, 4999999999.99);
+  assert.equal(
+    formatTradeMoneyMicros(maxBalanceMicros - maxPayoutMicros),
+    "5000000000.009999",
+  );
 });
 
 test("bank transfer setting is closed only by the persisted false value", () => {
@@ -60,6 +89,7 @@ test("Trade Market funding controls have server-side active-session gates", () =
     'app.post("/api/trade/deposit"',
     'app.post("/api/trade/fund-from-wallet"',
     'app.post("/api/trade/transfer-to-wallet"',
+    'app.post("/api/trade/early-exit"',
     'app.post("/api/trade/withdraw"',
     'app.post("/api/trade/squad/initiate"',
     'app.post("/api/trade/squad/verify"',
@@ -89,6 +119,27 @@ test("Trade Market wallet exposes authoritative session state and disables the f
   assert.match(walletView, /const controlsLocked =/);
   assert.match(walletView, /disabled=\{controlsLocked\}/);
   assert.match(walletView, /Locked during active trade/);
+});
+
+test("bot balance helpers keep the session marker until completion accounting finishes", () => {
+  const storage = readFileSync(new URL("./storage.ts", import.meta.url), "utf8");
+  const creditStart = storage.indexOf("async creditBotEarnings");
+  const creditEnd = storage.indexOf("async applyBotLoss", creditStart);
+  const lossEnd = storage.indexOf("async assignLossDays", creditEnd);
+  assert.doesNotMatch(storage.slice(creditStart, creditEnd), /botActivatedAt:\s*null/);
+  assert.doesNotMatch(storage.slice(creditEnd, lossEnd), /botActivatedAt:\s*null/);
+});
+
+test("bot activation is serialized with early exit and fresh cycles clear stale sessions", () => {
+  const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+  const credits = readFileSync(new URL("./depositCredits.ts", import.meta.url), "utf8");
+  const activationStart = routes.indexOf('app.post("/api/trade/bot/activate"');
+  const activationEnd = routes.indexOf('app.post("/api/trade/bot/complete"', activationStart);
+  const activation = routes.slice(activationStart, activationEnd);
+  assert.match(activation, /pg_advisory_xact_lock\(hashtext\(/);
+  assert.match(activation, /\.for\("update"\)/);
+  assert.match(activation, /earlyExitCompleted/);
+  assert.match(credits, /earlyExitCompleted:\s*false,[\s\S]{0,200}botActivatedAt:\s*null/);
 });
 
 test("disabled bank-transfer responses expose no internal shutdown metadata", () => {

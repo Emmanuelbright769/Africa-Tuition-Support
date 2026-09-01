@@ -605,6 +605,17 @@ export default function AffiliateDashboard() {
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
   const [openChatId, setOpenChatId] = useState<number | null>(null);
 
+  useEffect(() => {
+    const openPinSettings = () => {
+      try { localStorage.setItem("tsia_open_transaction_pin_settings", "1"); } catch {}
+      navHistory.current.push(activeSection);
+      setActiveSection("fintech");
+      setMenuOpen(false);
+    };
+    window.addEventListener("tsia:open-transaction-pin-settings", openPinSettings);
+    return () => window.removeEventListener("tsia:open-transaction-pin-settings", openPinSettings);
+  }, [activeSection]);
+
   const [subscribeOpen, setSubscribeOpen]               = useState(false);
   const [selectedCategory, setSelectedCategory]         = useState<number | null>(null);
   const [eliteCustomAmount, setEliteCustomAmount]       = useState("500");

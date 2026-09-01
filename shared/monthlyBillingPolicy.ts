@@ -60,6 +60,7 @@ export function isMonthlyBillingAllowedRequest(method: string, path: string): bo
 
   if (normalizedMethod === "OPTIONS") return true;
   if (normalizedPath.startsWith("/auth/")) return true;
+  if (normalizedPath.startsWith("/security/transaction-pin/")) return true;
   if (normalizedPath === "/billing/status") return true;
   if (normalizedPath.startsWith("/identity-verifications/")) return true;
   if (

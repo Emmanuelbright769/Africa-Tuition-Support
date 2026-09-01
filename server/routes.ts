@@ -173,16 +173,27 @@ async function getIteraCandles(symbol: string, interval: "1m" | "5m" | "15m" | "
       period2: new Date(),
       interval: interval as any,
     });
-    const timestamps = chart?.timestamp ?? [];
-    const quote = chart?.indicators?.quote?.[0] ?? {};
-    const candles = timestamps.map((timestamp: number, index: number) => ({
-      time: new Date(timestamp * 1000).toISOString(),
-      open: Number(quote.open?.[index] ?? 0),
-      high: Number(quote.high?.[index] ?? 0),
-      low: Number(quote.low?.[index] ?? 0),
-      close: Number(quote.close?.[index] ?? 0),
-      volume: Number(quote.volume?.[index] ?? 0),
-    })).filter((c: any) => c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0).slice(-72);
+    const candles = Array.isArray(chart?.quotes)
+      ? chart.quotes.map((quote: any) => ({
+          time: quote.date instanceof Date ? quote.date.toISOString() : new Date(quote.date).toISOString(),
+          open: Number(quote.open ?? 0),
+          high: Number(quote.high ?? 0),
+          low: Number(quote.low ?? 0),
+          close: Number(quote.close ?? 0),
+          volume: Number(quote.volume ?? 0),
+        })).filter((c: any) => c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0).slice(-72)
+      : (() => {
+          const timestamps = chart?.timestamp ?? [];
+          const quote = chart?.indicators?.quote?.[0] ?? {};
+          return timestamps.map((timestamp: number, index: number) => ({
+            time: new Date(timestamp * 1000).toISOString(),
+            open: Number(quote.open?.[index] ?? 0),
+            high: Number(quote.high?.[index] ?? 0),
+            low: Number(quote.low?.[index] ?? 0),
+            close: Number(quote.close?.[index] ?? 0),
+            volume: Number(quote.volume?.[index] ?? 0),
+          })).filter((c: any) => c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0).slice(-72);
+        })();
     if (candles.length > 1) {
       iteraChartCache.set(cacheKey, { ts: Date.now(), candles });
       return candles;
@@ -601,8 +612,8 @@ export async function registerRoutes(
           userId,
           type: "system",
           title: "Transaction PIN is now required",
-          message: "Set a 4-digit transaction PIN to authorize transfers, withdrawals, and bill payments.",
-          data: { securityNotice: "transaction_pin_required" },
+          message: "Set your 4-digit PIN before making transfers, withdrawals, or bill payments. Go to SwiftWallet, open Me, then choose Security and Transaction PIN.",
+          data: { securityNotice: "transaction_pin_required", action: "open_transaction_pin_settings" },
           isRead: false,
           financialEventKey: `transaction-pin-announcement:${userId}`,
         }).onConflictDoNothing().returning();

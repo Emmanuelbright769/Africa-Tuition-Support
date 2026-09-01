@@ -24,6 +24,13 @@ The `typeof === "function"` guard handles both environments without branching on
 **Why:** Package broke its API in v3 (installed v3.15.3). Node 20 also triggers an unsupported-runtime
 warning but works fine.
 
+## Chart response shape
+In v3, `chart()` returns `{ meta, quotes }`; each quote contains `date`, OHLC, and volume. The older raw Yahoo `timestamp` and `indicators.quote[0]` shape is not the primary SDK result.
+
+**Why:** Parsing only the raw response shape silently produced an empty candlestick chart even though the provider returned valid data.
+
+**How to apply:** Read `chart.quotes` first and optionally retain raw-shape parsing only for compatibility. Continue rejecting invalid OHLC rows rather than generating synthetic candles.
+
 ## JSE Stock Currency
 Yahoo Finance returns JSE stocks (e.g. NPN.JO, SBK.JO, MTN.JO) with currency "ZAc" (South African cents).
 To convert to USD: `(price / 100) * fx.ZAR`.

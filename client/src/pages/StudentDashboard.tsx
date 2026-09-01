@@ -348,6 +348,16 @@ export default function StudentDashboard() {
     return () => window.removeEventListener("tsia:open-chat", handler);
   }, []);
 
+  useEffect(() => {
+    const openPinSettings = () => {
+      navHistory.current.push(activeSection);
+      setActiveSection("fintech");
+      setMenuOpen(false);
+    };
+    window.addEventListener("tsia:open-transaction-pin-settings", openPinSettings);
+    return () => window.removeEventListener("tsia:open-transaction-pin-settings", openPinSettings);
+  }, [activeSection]);
+
   // Live countdown for closed batch
   useEffect(() => {
     if (!batchStatus?.nextOpenAt) { setBatchCountdown(""); return; }

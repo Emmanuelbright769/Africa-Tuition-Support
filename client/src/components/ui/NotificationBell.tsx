@@ -49,8 +49,15 @@ function NotifItem({ n, onNavigate }: { n: Notification; onNavigate: () => void 
     if (n.type === "chat_message" && n.data?.chatId) {
       onNavigate();
       window.dispatchEvent(new CustomEvent("tsia:open-chat", { detail: { chatId: n.data.chatId } }));
+    } else if (n.data?.action === "open_transaction_pin_settings" || n.data?.securityNotice === "transaction_pin_required") {
+      try { localStorage.setItem("tsia_open_transaction_pin_settings", "1"); } catch {}
+      onNavigate();
+      window.dispatchEvent(new Event("tsia:open-transaction-pin-settings"));
     }
   };
+  const isActionable = (n.type === "chat_message" && n.data?.chatId)
+    || n.data?.action === "open_transaction_pin_settings"
+    || n.data?.securityNotice === "transaction_pin_required";
 
   return (
     <div
@@ -59,7 +66,7 @@ function NotifItem({ n, onNavigate }: { n: Notification; onNavigate: () => void 
         "flex gap-4 px-5 py-4 border-l-4 transition-colors",
         meta.accent,
         !n.isRead ? "bg-primary/5" : "bg-transparent",
-        n.type === "chat_message" && n.data?.chatId ? "cursor-pointer hover:bg-muted/50" : ""
+        isActionable ? "cursor-pointer hover:bg-muted/50" : ""
       )}
       data-testid={`notif-item-${n.id}`}
     >
@@ -128,6 +135,15 @@ function NotifItem({ n, onNavigate }: { n: Notification; onNavigate: () => void 
               ) : (
                 <><ChevronDown className="w-3 h-3" /> View</>
               )}
+            </button>
+          )}
+          {n.data?.securityNotice === "transaction_pin_required" && (
+            <button
+              type="button"
+              onClick={(event) => { event.stopPropagation(); handleClick(); }}
+              className="rounded-full bg-tsia-green px-3 py-1 text-xs font-bold text-white hover:bg-tsia-green/90"
+            >
+              Open PIN settings
             </button>
           )}
         </div>

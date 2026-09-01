@@ -8,7 +8,7 @@ import {
   type IChartApi,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { RefreshCw } from "lucide-react";
+import { BarChart3, RefreshCw } from "lucide-react";
 
 export type MarketChartTimeframe = "1m" | "5m" | "15m" | "1h";
 
@@ -103,12 +103,12 @@ export default function MarketChart({
 
     const nextChart = createChart(host, {
       width: host.clientWidth,
-      height: 360,
-      layout: { background: { type: ColorType.Solid, color: "#07111f" }, textColor: "#94a3b8", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
-      grid: { vertLines: { color: "rgba(148, 163, 184, 0.08)" }, horzLines: { color: "rgba(148, 163, 184, 0.08)" } },
-      rightPriceScale: { borderColor: "rgba(148, 163, 184, 0.16)" },
-      timeScale: { borderColor: "rgba(148, 163, 184, 0.16)", timeVisible: true, secondsVisible: timeframe === "1m" },
-      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "rgba(226,232,240,.42)", labelBackgroundColor: "#334155" }, horzLine: { color: "rgba(226,232,240,.42)", labelBackgroundColor: "#334155" } },
+      height: 400,
+      layout: { background: { type: ColorType.Solid, color: "#09131a" }, textColor: "#82929a", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
+      grid: { vertLines: { color: "rgba(130, 146, 154, 0.07)" }, horzLines: { color: "rgba(130, 146, 154, 0.07)" } },
+      rightPriceScale: { borderColor: "rgba(130, 146, 154, 0.18)", textColor: "#82929a", scaleMargins: { top: 0.08, bottom: 0.2 } },
+      timeScale: { borderColor: "rgba(130, 146, 154, 0.18)", timeVisible: true, secondsVisible: timeframe === "1m", rightOffset: 4, barSpacing: 8 },
+      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "rgba(215,182,106,.6)", labelBackgroundColor: "#8a7342" }, horzLine: { color: "rgba(215,182,106,.6)", labelBackgroundColor: "#8a7342" } },
       handleScroll: true,
       handleScale: true,
     });
@@ -119,8 +119,8 @@ export default function MarketChart({
       .sort((a, b) => a.time - b.time)
       .filter((candle, index, values) => index === 0 || candle.time !== values[index - 1].time);
     const series = nextChart.addSeries(CandlestickSeries, {
-      upColor: "#22c55e", downColor: "#f43f5e", borderVisible: false,
-      wickUpColor: "#34d399", wickDownColor: "#fb7185",
+      upColor: "#36b37e", downColor: "#e36b75", borderVisible: false,
+      wickUpColor: "#56d39a", wickDownColor: "#f28b92",
     });
     series.setData(candles.map(candle => ({ time: candle.time, open: candle.open, high: candle.high, low: candle.low, close: candle.close })));
     if (candles.some(candle => Number.isFinite(candle.volume) && Number(candle.volume) > 0)) {
@@ -147,26 +147,28 @@ export default function MarketChart({
   const updated = formatUpdated(response?.lastUpdated);
 
   return (
-    <section className={`overflow-hidden rounded-2xl border border-white/10 bg-[#07111f] shadow-[0_18px_45px_rgba(2,6,23,.3)] ${className}`} data-testid="market-chart">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#0a1322] px-3 py-2.5 sm:px-4">
+    <section className={`overflow-hidden rounded-xl border border-foreground/10 bg-[#09131a] shadow-[0_18px_45px_rgba(2,6,23,.22)] ${className}`} data-testid="market-chart">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[.08] bg-[#0d1921] px-3 py-3 sm:px-4">
         <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${response?.stale ? "bg-amber-400" : error ? "bg-rose-400" : "bg-emerald-400"}`} />
-          <span className="text-xs font-black text-slate-100">{symbol}</span>
+          <BarChart3 className="h-4 w-4 text-[#d7b66a]" />
+          <span className={`h-1.5 w-1.5 rounded-full ${response?.stale ? "bg-amber-400" : error ? "bg-rose-400" : "bg-emerald-400"}`} />
+          <span className="text-xs font-black tracking-wide text-slate-100">{symbol}</span>
           <span className={`text-[10px] font-bold ${response?.stale ? "text-amber-300" : "text-slate-500"}`}>{response?.stale ? "Delayed feed" : updated ? `Updated ${updated}` : "Live market"}</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="flex rounded-lg border border-white/10 bg-white/[.035] p-0.5">
-            {TIMEFRAMES.map(option => <button key={option} type="button" onClick={() => changeTimeframe(option)} aria-pressed={timeframe === option} className={`rounded-md px-2.5 py-1.5 text-[10px] font-black ${timeframe === option ? "bg-emerald-500 text-white" : "text-slate-500 hover:text-white"}`}>{option}</button>)}
+             {TIMEFRAMES.map(option => <button key={option} type="button" onClick={() => changeTimeframe(option)} aria-pressed={timeframe === option} className={`rounded-md px-2.5 py-1.5 text-[10px] font-black transition-colors ${timeframe === option ? "bg-[#d7b66a] text-[#152029]" : "text-slate-500 hover:text-white"}`}>{option}</button>)}
           </div>
           <button type="button" onClick={() => void load(true)} disabled={refreshing} className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label="Refresh market chart">
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
-      <div className="relative min-h-[360px]">
-        {!loading && !error && !isEmpty && <div ref={chartHost} className="h-[360px] w-full cursor-crosshair" aria-label={`${symbol} candlestick chart. Scroll or drag to zoom and pan.`} />}
-        {(loading || error || isEmpty) && <div className="flex h-[360px] items-center justify-center px-6 text-center text-sm text-slate-400">
-          {loading ? "Loading live market candles…" : error ? <div><p className="font-semibold text-rose-300">{error}</p><button type="button" onClick={() => void load(true)} className="mt-3 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/10">Try again</button></div> : "No candle data is available for this market and timeframe."}
+       <div className="relative min-h-[400px]">
+         {!loading && !error && !isEmpty && <div ref={chartHost} className="h-[400px] w-full cursor-crosshair" aria-label={`${symbol} candlestick chart. Scroll or drag to zoom and pan.`} />}
+         {loading && <div className="absolute inset-0 flex flex-col justify-center gap-3 px-6"><div className="h-3 w-32 animate-pulse rounded bg-white/10" /><div className="h-56 animate-pulse rounded bg-white/[.025]" /><div className="h-3 w-48 animate-pulse rounded bg-white/10" /></div>}
+         {(error || isEmpty) && <div className="flex h-[400px] items-center justify-center px-6 text-center text-sm text-slate-400">
+           {error ? <div><p className="font-semibold text-rose-300">{error}</p><button type="button" onClick={() => void load(true)} className="mt-3 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/10">Try again</button></div> : "No candle data is available for this market and timeframe."}
         </div>}
       </div>
       {response?.stale && <div className="border-t border-amber-400/15 bg-amber-400/[.06] px-4 py-2 text-[10px] font-medium text-amber-200">Showing the latest available candles. The market feed is currently delayed.</div>}

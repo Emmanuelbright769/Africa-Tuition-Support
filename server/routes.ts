@@ -41,6 +41,7 @@ import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY
 import { BANK_TRANSFER_FEE_RATE, calculateBankTransferQuote } from "@shared/bankTransferPricing";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
+import { databaseUrl } from "./databaseUrl";
 import { eq, desc, ne, and, sql, or, ilike, asc, count, inArray, lt } from "drizzle-orm";
 import YahooFinance from "yahoo-finance2";
 import { doesVerifiedNameMatch, hashVerifiedName } from "./identityVerificationSecurity";
@@ -374,9 +375,9 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new pg.Pool({ connectionString: databaseUrl });
   const fundsLockPool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: databaseUrl,
     max: 8,
     connectionTimeoutMillis: 5000,
   });
@@ -8831,7 +8832,7 @@ export async function registerRoutes(
       if ((Event === "charge_successful" || Event === "charge_completed") && txStatus === "Success" && ref) {
         // Find the pending deposit by txHash — use raw Pool query for reliability
         const { Pool: SquadPool } = await import("pg");
-        const squadPool = new SquadPool({ connectionString: process.env.DATABASE_URL });
+        const squadPool = new SquadPool({ connectionString: databaseUrl });
         const squadRow = await squadPool.query("SELECT * FROM wallet_deposits WHERE tx_hash=$1 LIMIT 1", [ref]);
         await squadPool.end();
         const allDeposits = squadRow.rows[0] ?? null;
@@ -9109,7 +9110,7 @@ export async function registerRoutes(
         if (!ref) { res.sendStatus(200); return; }
 
         const { Pool } = await import("pg");
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+        const pool = new Pool({ connectionString: databaseUrl });
         const row = await pool.query("SELECT * FROM wallet_deposits WHERE tx_hash=$1 LIMIT 1", [ref]);
         await pool.end();
         const dep = row.rows[0];

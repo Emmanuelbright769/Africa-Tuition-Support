@@ -216,11 +216,11 @@ export async function settleOverdueTradeBotSession(
 }
 
 const DUPLICATE_BURST_REVIEW_CASES = [
-  { userId: 1, rows: 15, firstDay: 1, lastDay: 15, fingerprint: "38e236cb866e08e14384c85732041d06", canonicalId: 3723, expectedHashOwnerId: null, expectedBalance: 684.174351, correctedEarnings: 26.314351, lienIncrease: 0, sessionAt: "2026-08-31T12:00:35.843Z", cycleStartedAt: "2026-08-29T23:38:17.735Z", baseline: [780.446375, 774.25, 181.111978, 6, 60, false, false, 0] },
-  { userId: 2, rows: 15, firstDay: 84, lastDay: 98, fingerprint: "17fb86920cf63ad1fc59bba7ebf81d69", canonicalId: 3833, expectedHashOwnerId: 3899, expectedBalance: 133.164499, correctedEarnings: 99, lienIncrease: 0, sessionAt: "2026-08-31T12:10:45.270Z", cycleStartedAt: "2026-04-22T12:07:42.418Z", baseline: [124.942945, 99, 134.248741, 82, 120, false, false, 0] },
-  { userId: 60, rows: 11, firstDay: 19, lastDay: 29, fingerprint: "553e1f3aeba0860eaf9aa9aed793c280", canonicalId: 3695, expectedHashOwnerId: null, expectedBalance: 106.079961, correctedEarnings: 18.472889, lienIncrease: 0, sessionAt: "2026-08-31T12:03:58.152Z", cycleStartedAt: "2026-08-04T08:49:19.416Z", baseline: [114.598962, 93.75, 35.672634, 29, 120, false, false, 0] },
-  { userId: 649, rows: 52, firstDay: 30, lastDay: 81, fingerprint: "eddf1e3733a5e58edcc448557231c837", canonicalId: 3741, expectedHashOwnerId: null, expectedBalance: 71.832059, correctedEarnings: 34.083558, lienIncrease: 0, sessionAt: "2026-08-31T12:02:54.913Z", cycleStartedAt: "2026-07-22T09:17:16.710Z", baseline: [78.717896, 63.8115, 75.8607, 31, 90, false, true, 0] },
-  { userId: 741, rows: 69, firstDay: 10, lastDay: 78, fingerprint: "ec6cb1ca5b76f94f7c6e59141eac2522", canonicalId: 3706, expectedHashOwnerId: null, expectedBalance: 71.911693, correctedEarnings: 24.430774, lienIncrease: 74.67, sessionAt: "2026-08-31T12:21:22.067Z", cycleStartedAt: "2026-08-18T19:49:13.468Z", baseline: [154.13014, 146.585, 44.563183, 11, 90, false, false, 47.04] },
+  { userId: 1, rows: 16, firstDay: 1, lastDay: 16, fingerprint: "c28ec5c4bb15dda5b501482509c80d66", canonicalId: 3723, expectedHashOwnerId: 3954, expectedBalance: 684.174351, correctedEarnings: 26.314351, lienIncrease: 0, sessionAt: "2026-08-31T12:00:35.843Z", expectedSessionAt: null, cycleStartedAt: "2026-08-29T23:38:17.735Z", baseline: [823.10423, 774.25, 288.769833, 16, 60, false, false, 0] },
+  { userId: 2, rows: 15, firstDay: 84, lastDay: 98, fingerprint: "334087cd7cb53b95f36b9e5a7383ab66", canonicalId: 3833, expectedHashOwnerId: 3953, expectedBalance: 133.164499, correctedEarnings: 99, lienIncrease: 0, sessionAt: "2026-08-31T12:10:45.270Z", expectedSessionAt: null, cycleStartedAt: "2026-04-22T12:07:42.418Z", baseline: [164.942945, 99, 173.248741, 98, 120, false, false, 0] },
+  { userId: 60, rows: 11, firstDay: 19, lastDay: 29, fingerprint: "553e1f3aeba0860eaf9aa9aed793c280", canonicalId: 3695, expectedHashOwnerId: null, expectedBalance: 106.079961, correctedEarnings: 18.472889, lienIncrease: 0, sessionAt: "2026-08-31T12:03:58.152Z", expectedSessionAt: "2026-08-31T12:03:58.152Z", cycleStartedAt: "2026-08-04T08:49:19.416Z", baseline: [114.598962, 93.75, 35.672634, 29, 120, false, false, 0] },
+  { userId: 649, rows: 52, firstDay: 30, lastDay: 81, fingerprint: "eddf1e3733a5e58edcc448557231c837", canonicalId: 3741, expectedHashOwnerId: null, expectedBalance: 71.832059, correctedEarnings: 34.083558, lienIncrease: 0, sessionAt: "2026-08-31T12:02:54.913Z", expectedSessionAt: "2026-08-31T12:02:54.913Z", cycleStartedAt: "2026-07-22T09:17:16.710Z", baseline: [78.717896, 63.8115, 75.8607, 30, 90, false, true, 0] },
+  { userId: 741, rows: 69, firstDay: 10, lastDay: 78, fingerprint: "ec6cb1ca5b76f94f7c6e59141eac2522", canonicalId: 3706, expectedHashOwnerId: null, expectedBalance: 71.911693, correctedEarnings: 24.430774, lienIncrease: 74.67, sessionAt: "2026-08-31T12:21:22.067Z", expectedSessionAt: "2026-08-31T12:21:22.067Z", cycleStartedAt: "2026-08-18T19:49:13.468Z", baseline: [154.13014, 146.585, 77.563183, 20, 90, false, false, 47.04] },
 ] as const;
 
 /**
@@ -318,7 +318,7 @@ export async function reconcileDuplicateBurstAccounts(): Promise<number> {
 
       const [expectedBalance, expectedPrincipal, expectedEarnings, expectedDay, expectedPlan, expectedRoi, expectedExit, expectedLien] = reviewCase.baseline;
       const currentSession = wallet.botActivatedAt?.toISOString() ?? null;
-      const expectedSession = reviewCase.userId === 2 ? null : reviewCase.sessionAt;
+      const expectedSession = reviewCase.expectedSessionAt;
       if (
         Number(wallet.tradeBalance) !== expectedBalance
         || Number(wallet.lockedPrincipal) !== expectedPrincipal

@@ -8,7 +8,7 @@ TSIA is a full-stack education fintech platform that manages student sponsorship
 - **Generate Drizzle migrations:** `drizzle-kit generate:pg`
 - **Push Drizzle schema to DB:** `drizzle-kit push:pg`
 - **Environment Variables:**
-    - `DATABASE_URL`: PostgreSQL connection string
+    - `EXTERNAL_DATABASE_URL`: External PostgreSQL connection string used by this project
     - `JWT_SECRET`: Secret for JWTs
     - `OTP_SECRET`: Secret for OTP generation
     - `PAYSTACK_SECRET_KEY`: Paystack API secret key

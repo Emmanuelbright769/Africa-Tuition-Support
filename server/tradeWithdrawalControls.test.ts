@@ -178,6 +178,20 @@ test("admin Trade wallet adjustments are atomic and cannot count as bot profit",
   assert.doesNotMatch(adjustmentRoute, /type: "bot_earning"/);
 });
 
+test("startup reconciliation rebuilds cached profit counters from canonical evidence", () => {
+  const serverIndex = readFileSync("server/index.ts", "utf8");
+  const reconciliation = serverIndex.slice(
+    serverIndex.indexOf("Reconcile cumulative bot-profit counters"),
+    serverIndex.indexOf("Fix roi_complete"),
+  );
+
+  assert.match(reconciliation, /SET total_bot_earnings = COALESCE/);
+  assert.match(reconciliation, /canonicalBotProfitPredicate\("t"\)/);
+  assert.match(reconciliation, /RETURNING tw\.user_id/);
+  assert.doesNotMatch(reconciliation, /trade_balance\s*=/);
+  assert.doesNotMatch(reconciliation, /locked_principal\s*=/);
+});
+
 test("exchange-rate save remains clickable and validates its audit reason on click", () => {
   const dashboard = readFileSync(
     new URL("../client/src/pages/AdminDashboard.tsx", import.meta.url),

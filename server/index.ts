@@ -439,6 +439,36 @@ async function runMigrations() {
       )
     `);
 
+    // ── Reconcile cumulative bot-profit counters from canonical ledger rows ───
+    // total_bot_earnings is a cache of realised profit, never a source of truth.
+    // Rebuild it for every funded wallet so withdrawals and old counter resets
+    // cannot make the progress bar move backward or under-report prior earnings.
+    const profitCounterRepair = await db.execute(sql`
+      UPDATE trade_wallets tw
+      SET total_bot_earnings = COALESCE((
+        SELECT SUM(t.amount_usd::numeric)
+        FROM trade_transactions t
+        WHERE t.user_id = tw.user_id
+          AND t.created_at >= COALESCE(tw.cycle_started_at, '1970-01-01'::timestamptz)
+          AND ${canonicalBotProfitPredicate("t")}
+      ), 0)::decimal,
+      updated_at = NOW()
+      WHERE tw.locked_principal::numeric > 0
+        AND ABS(
+          tw.total_bot_earnings::numeric - COALESCE((
+            SELECT SUM(t.amount_usd::numeric)
+            FROM trade_transactions t
+            WHERE t.user_id = tw.user_id
+              AND t.created_at >= COALESCE(tw.cycle_started_at, '1970-01-01'::timestamptz)
+              AND ${canonicalBotProfitPredicate("t")}
+          ), 0)
+        ) > 0.000001
+      RETURNING tw.user_id
+    `);
+    if (profitCounterRepair.rows.length > 0) {
+      console.log(`[MIGRATE] Reconciled cumulative bot-profit counters for ${profitCounterRepair.rows.length} funded wallet(s)`);
+    }
+
     // ── Fix roi_complete: SET true for users whose bot-session earnings ≥ profit target ─
     // profitTarget = lockedPrincipal × (1 + profitCapPct):
     //   60-day → ×1.70, 90-day → ×1.80, 120-day → ×2.00

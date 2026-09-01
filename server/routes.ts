@@ -5139,11 +5139,55 @@ export async function registerRoutes(
   app.get("/api/trade/signals", async (req, res) => {
     if (!(req.session as any)?.userId) return res.status(401).json({ message: "Not authenticated" });
     if (Date.now() - signalCache.ts < 60000 && signalCache.signals.length) return res.json(signalCache.signals);
-    const prices = priceCache.data.length && Date.now() - priceCache.ts < 15000 ? priceCache.data : await (async () => { const r = await fetch(`${req.protocol}://${req.get("host")}/api/trade/market-prices`, { headers: { cookie: req.headers.cookie ?? "" } }); return r.json(); })();
-    signalCache.signals = Array.from({ length: 4 }, (_, i) => { const p = prices[Math.floor(Math.random() * prices.length)]; const pct = Number(p.changePct || 0); const direction = pct > .3 ? "long" : pct < -.3 ? "short" : Math.random() > .5 ? "long" : "short"; const timeframe = (["5m", "15m", "1h"] as const)[i % 3]; return { id: `${Date.now()}-${i}`, ...p, direction, entryPrice: p.price, confidence: Math.min(92, 55 + Math.floor(Math.abs(pct) * 10 + Math.random() * 20)), timeframe, expiresAt: new Date(Date.now() + ({ "5m": 5, "15m": 15, "1h": 60 }[timeframe]) * 60000).toISOString() }; });
+    const validPrices = (await getTradeMarketPrices()).filter((market: any) => Number(market.price) > 0);
+    if (!validPrices.length) return res.status(503).json({ message: "Live signal prices are temporarily unavailable." });
+    signalCache.signals = Array.from({ length: Math.min(4, validPrices.length) }, (_, i) => {
+      const p = validPrices[(Math.floor(Date.now() / 60000) + i * 7) % validPrices.length];
+      const pct = Number(p.changePct || 0);
+      const direction = pct >= 0 ? "long" : "short";
+      const timeframe = (["5m", "15m", "1h"] as const)[i % 3];
+      return {
+        id: `${Date.now()}-${i}`,
+        ...p,
+        direction,
+        entryPrice: Number(p.price),
+        confidence: Math.min(92, 58 + Math.floor(Math.abs(pct) * 8) + i * 3),
+        timeframe,
+        expiresAt: new Date(Date.now() + ({ "5m": 5, "15m": 15, "1h": 60 }[timeframe]) * 60000).toISOString(),
+      };
+    });
     signalCache.ts = Date.now(); res.json(signalCache.signals);
   });
-  app.get("/api/trade/signals/history", async (req, res) => { const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" }); const { signalTrades } = await import("@shared/schema"); res.json(await db.select().from(signalTrades).where(eq(signalTrades.userId, uid)).orderBy(desc(signalTrades.createdAt)).limit(20)); });
+  app.get("/api/trade/signals/history", async (req, res) => {
+    const uid = (req.session as any)?.userId;
+    if (!uid) return res.status(401).json({ message: "Not authenticated" });
+    const trades = await db.select().from(signalTrades)
+      .where(eq(signalTrades.userId, uid))
+      .orderBy(desc(signalTrades.createdAt))
+      .limit(20);
+    const enriched = await Promise.all(trades.map(async trade => {
+      if (trade.status !== "open") return trade;
+      try {
+        const quote: any = await yf.quote(trade.symbol);
+        const currentPrice = Number(quote.regularMarketPrice ?? 0);
+        const entryPrice = Number(trade.entryPrice);
+        const amount = Number(trade.amountUsd);
+        if (!(currentPrice > 0) || !(entryPrice > 0) || !(amount >= 0)) return trade;
+        const move = (currentPrice - entryPrice) / entryPrice * (trade.direction === "long" ? 1 : -1);
+        return {
+          ...trade,
+          currentPrice,
+          unrealizedPnlUsd: amount * move,
+          unrealizedPnlPct: move * 100,
+          estimatedReturnUsd: Math.max(0, amount + amount * move),
+        };
+      } catch {
+        return trade;
+      }
+    }));
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(enriched);
+  });
   app.post("/api/trade/signals/enter", async (req, res) => {
     try {
       const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
@@ -5169,25 +5213,112 @@ export async function registerRoutes(
       res.json({ id: t.id, message: "Position opened" });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.post("/api/trade/signals/resolve/:id", async (req, res) => {
+  const resolveSignalTrade = async (req: Request, res: Response) => {
     try {
-      const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
-      const [snapshot] = await db.select().from(signalTrades).where(and(eq(signalTrades.id, Number(req.params.id)), eq(signalTrades.userId, uid)));
+      const uid = (req.session as any)?.userId;
+      if (!uid) return res.status(401).json({ message: "Not authenticated" });
+      const tradeId = Number(req.params.id);
+      if (!Number.isInteger(tradeId) || tradeId <= 0) return res.status(400).json({ message: "Invalid signal trade" });
+      const [snapshot] = await db.select().from(signalTrades)
+        .where(and(eq(signalTrades.id, tradeId), eq(signalTrades.userId, uid)));
       if (!snapshot || snapshot.status !== "open") return res.status(404).json({ message: "Trade not found" });
       const q: any = await yf.quote(snapshot.symbol);
-      const exit = Number(q.regularMarketPrice ?? snapshot.entryPrice);
+      const exit = Number(q.regularMarketPrice ?? 0);
+      if (!(exit > 0)) return res.status(503).json({ message: "The market price is temporarily unavailable. Try again shortly." });
       const result = await db.transaction(async tx => {
-        const [t] = await tx.select().from(signalTrades).where(and(eq(signalTrades.id, snapshot.id), eq(signalTrades.userId, uid))).for("update");
+        const [t] = await tx.select().from(signalTrades)
+          .where(and(eq(signalTrades.id, snapshot.id), eq(signalTrades.userId, uid)))
+          .for("update");
         if (!t || t.status !== "open") throw new Error("Trade not found or already resolved");
         const pct = (exit - Number(t.entryPrice)) / Number(t.entryPrice) * (t.direction === "long" ? 1 : -1);
         const pnl = Number(t.amountUsd) * pct;
         const returnAmount = Math.max(0, Number(t.amountUsd) + pnl);
-        await tx.update(signalTrades).set({ exitPrice: String(exit), pnlPct: String(pct * 100), pnlUsd: String(pnl), status: pnl >= 0 ? "won" : "lost", resolvedAt: new Date() }).where(eq(signalTrades.id, t.id));
-        if (returnAmount > 0) await creditServiceWalletInTransaction(tx, { userId: uid, serviceType: "signals", amount: returnAmount, reference: `signal-resolve-${t.id}`, kind: "position_resolved", metadata: { pnl } });
+        await tx.update(signalTrades).set({
+          exitPrice: String(exit),
+          pnlPct: String(pct * 100),
+          pnlUsd: String(pnl),
+          status: pnl >= 0 ? "won" : "lost",
+          resolvedAt: new Date(),
+        }).where(eq(signalTrades.id, t.id));
+        if (returnAmount > 0) {
+          await creditServiceWalletInTransaction(tx, {
+            userId: uid,
+            serviceType: "signals",
+            amount: returnAmount,
+            reference: `signal-resolve-${t.id}`,
+            kind: "position_resolved",
+            metadata: { pnl },
+          });
+        }
         return { pnl, pct };
       });
       res.json({ pnlUsd: result.pnl, pnlPct: result.pct * 100, exitPrice: exit, status: result.pnl >= 0 ? "won" : "lost" });
     } catch (e: any) { res.status(409).json({ message: e.message }); }
+  };
+  app.post("/api/trade/signals/resolve/:id", resolveSignalTrade);
+  app.post("/api/trade/signals/close/:id", resolveSignalTrade);
+  app.post("/api/trade/signals/add/:id", async (req, res) => {
+    try {
+      const uid = (req.session as any)?.userId;
+      if (!uid) return res.status(401).json({ message: "Not authenticated" });
+      const tradeId = Number(req.params.id);
+      const amount = Number(req.body?.amountUsd);
+      const idempotencyKey = String(req.body?.idempotencyKey ?? "").trim();
+      if (!Number.isInteger(tradeId) || tradeId <= 0) return res.status(400).json({ message: "Invalid signal trade" });
+      if (!Number.isFinite(amount) || amount < 1 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-8) {
+        return res.status(400).json({ message: "Add at least $1.00 using no more than two decimal places." });
+      }
+      if (!/^[A-Za-z0-9_-]{12,120}$/.test(idempotencyKey)) {
+        return res.status(400).json({ message: "A valid idempotency key is required." });
+      }
+      const reference = `signal-add-${tradeId}-${uid}-${idempotencyKey}`;
+      const [snapshot] = await db.select().from(signalTrades)
+        .where(and(eq(signalTrades.id, tradeId), eq(signalTrades.userId, uid)));
+      if (!snapshot || snapshot.status !== "open") return res.status(404).json({ message: "Trade not found" });
+      const quote: any = await yf.quote(snapshot.symbol);
+      const currentPrice = Number(quote.regularMarketPrice ?? 0);
+      if (!(currentPrice > 0)) {
+        return res.status(503).json({ message: "The market price is temporarily unavailable. Try again shortly." });
+      }
+      const result = await db.transaction(async tx => {
+        const [trade] = await tx.select().from(signalTrades)
+          .where(and(eq(signalTrades.id, tradeId), eq(signalTrades.userId, uid)))
+          .for("update");
+        if (!trade || trade.status !== "open") throw new Error("Trade not found or already closed");
+        const prior = await tx.execute(sql`SELECT id FROM service_wallet_transactions
+          WHERE service_type = 'signals' AND user_id = ${uid} AND reference = ${reference} LIMIT 1`);
+        if ((prior.rows ?? []).length) return { trade, duplicate: true };
+        const previousAmount = Number(trade.amountUsd);
+        const previousEntry = Number(trade.entryPrice);
+        if (!(currentPrice > 0) || !(previousAmount > 0) || !(previousEntry > 0)) {
+          throw new Error("The market price is temporarily unavailable. Try again shortly.");
+        }
+        await debitServiceWalletInTransaction(tx, {
+          userId: uid,
+          serviceType: "signals",
+          amount,
+          reference,
+          kind: "position_add_margin",
+          metadata: { signalTradeId: trade.id, addedAmountUsd: amount, executionPrice: currentPrice },
+        });
+        const totalAmount = previousAmount + amount;
+        const totalUnits = previousAmount / previousEntry + amount / currentPrice;
+        const weightedEntry = totalAmount / totalUnits;
+        const [updated] = await tx.update(signalTrades).set({
+          amountUsd: totalAmount.toFixed(6),
+          entryPrice: weightedEntry.toFixed(8),
+        }).where(eq(signalTrades.id, trade.id)).returning();
+        return { trade: updated, duplicate: false };
+      });
+      res.json({
+        id: result.trade.id,
+        amountUsd: result.trade.amountUsd,
+        entryPrice: result.trade.entryPrice,
+        duplicate: result.duplicate,
+      });
+    } catch (e: any) {
+      res.status(e?.message?.includes("temporarily unavailable") ? 503 : 409).json({ message: e.message });
+    }
   });
   app.get("/api/trade/bot-position", async (req, res) => {
     try {

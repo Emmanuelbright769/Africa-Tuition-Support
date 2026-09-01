@@ -700,7 +700,7 @@ export async function sendBotEarningsEmail(to: string, firstName: string, earnin
     <div style="background:#f0f8f4;border-radius:16px;padding:20px 24px;margin:0 0 24px;">
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
-          <td style="color:#4a5e50;font-size:14px;padding-bottom:10px;">Earnings (2% daily return)</td>
+          <td style="color:#4a5e50;font-size:14px;padding-bottom:10px;">Session earnings</td>
           <td style="color:#1a6b3c;font-weight:900;font-size:20px;text-align:right;">+$${earning}</td>
         </tr>
         <tr>
@@ -1785,7 +1785,7 @@ export async function sendTradeWindowOpenEmail(to: string, firstName: string): P
     <p style="color:#4a5e50;font-size:15px;margin:0 0 20px;">Hi ${firstName}, the Itera Trading BOT weekly market window has just opened.</p>
     <div style="background:#f0f8f4;border-left:4px solid #1a6b3c;border-radius:12px;padding:18px 22px;margin:0 0 24px;">
       <p style="color:#1a6b3c;font-weight:800;font-size:15px;margin:0 0 6px;">⏰ Window: Monday 12:30 PM GMT → Friday 12:30 PM GMT</p>
-      <p style="color:#4a5e50;font-size:13px;margin:0;">Activate your bot every working day during this window to capture the daily 2% target return and keep compounding your Trade Wallet.</p>
+      <p style="color:#4a5e50;font-size:13px;margin:0;">Activate your bot every working day during this window to continue your selected trading cycle.</p>
     </div>
     <div style="background:#fffbf0;border:1px solid #f0d070;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
       <p style="color:#92400e;font-size:13px;margin:0;"><strong>Reminder:</strong> The bot can only be activated within the active window. Once Friday 12:30 PM GMT hits, activations close until Monday.</p>

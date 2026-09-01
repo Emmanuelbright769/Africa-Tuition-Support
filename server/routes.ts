@@ -5,6 +5,7 @@ import { type Server } from "http";
 import { scryptSync, randomBytes, timingSafeEqual, createHash } from "crypto";
 import { storage } from "./storage";
 import { completeTradeBotSessionAtomic, settleOverdueTradeBotSession } from "./tradeBotCompletion";
+import { getPrivateTradeProgress } from "./tradeRoiProgress";
 import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import { getCached, setCached, invalidateCacheKey, invalidateCachePrefix } from "./cache";
 import {
@@ -4071,10 +4072,17 @@ export async function registerRoutes(
       `);
       const cm = (cycleMetrics.rows[0] as any) ?? {};
       const depositCount         = parseInt(cm.deposit_count ?? "0", 10);
+      const privateProgress = getPrivateTradeProgress(
+        Number(wallet.tradeBalance),
+        Number(wallet.lockedPrincipal),
+        wallet.tradingPlanDays ?? 120,
+      );
       res.json({
         ...wallet,
         depositCount,
         currentCycleEarnings: wallet.totalBotEarnings,
+        earningsProgressPct: privateProgress.progressPct,
+        cycleTargetReached: wallet.roiComplete || privateProgress.targetReached,
         tradeSessionActive: await isTradeSessionActive(userId),
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -11278,7 +11286,7 @@ export async function registerRoutes(
             userId,
             type: "bot_reminder",
             title: "Bot Activation Window Open",
-            message: "It's 1:00 PM GMT! Your Itera Trading BOT activation window is now open. Go to Trade Market → activate your bot to start today's 2% trades.",
+            message: "It's 1:00 PM GMT! Your Itera Trading BOT activation window is now open. Go to Trade Market to activate today's session.",
             data: { ukHour, ukMinute },
             isRead: false,
           });

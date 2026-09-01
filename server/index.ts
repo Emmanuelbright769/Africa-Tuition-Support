@@ -733,7 +733,7 @@ async function startTradeWindowBroadcastJob() {
         ? "🟢 Trade Market Window OPEN"
         : "🔴 Trade Market Window CLOSED";
       const message = kind === "open"
-        ? "The Itera Trading BOT weekly window is now OPEN (Mon 12:30 PM → Fri 12:30 PM GMT). Activate your bot daily to capture the 2% return."
+        ? "The Itera Trading BOT weekly window is now OPEN (Mon 12:30 PM → Fri 12:30 PM GMT). Activate your bot daily to continue your selected trading cycle."
         : "The Itera Trading BOT weekly window is now CLOSED. The market reopens Monday at 12:30 PM GMT.";
 
       let sent = 0;

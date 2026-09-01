@@ -36,7 +36,7 @@ import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADING_PLANS, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
-import { getTradeEarlyExitQuote, getTradeProfitWithdrawable, getTradeRoiProgress } from "@shared/tradeWithdrawalPolicy";
+import { getTradeEarlyExitQuote, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend,
@@ -764,20 +764,18 @@ export default function AffiliateDashboard() {
         const hrs = data.elapsedHours ? `${data.elapsedHours}h` : "12h";
         if (data.isLossDay) {
           const lossStr = `$${Math.abs(parseFloat(data.earning)).toFixed(4)}`;
-          const pct     = data.ratePercent ?? "";
           toast({
             title: "Bot Session — Market Loss",
-            description: `Today's market conditions resulted in a loss of ${lossStr} (${pct}) after ${hrs} of trading. This reflects real market volatility.`,
+            description: `Today's market conditions resulted in a loss of ${lossStr} after ${hrs} of trading. This reflects real market volatility.`,
             variant: "destructive",
           });
         } else {
           const earnStr = `$${parseFloat(data.earning).toFixed(4)}`;
-          const pct     = data.ratePercent ? `${data.ratePercent}%` : "2%";
           toast({
             title: isAutoOff ? "Bot Session Complete — Earnings Credited!" : "Bot Stopped",
             description: isAutoOff
-              ? `${earnStr} (${pct} for ${hrs} of trading) has been added to your Trade Wallet.`
-              : `Session ended after ${hrs}. ${earnStr} (${pct}) credited to your Trade Wallet.`,
+              ? `${earnStr} earned during ${hrs} of trading has been added to your Trade Wallet.`
+              : `Session ended after ${hrs}. ${earnStr} credited to your Trade Wallet.`,
             className: "border-tsia-green",
           });
         }
@@ -1420,14 +1418,8 @@ export default function AffiliateDashboard() {
   // early-exit settlement must be a separate, explicit action.
   const withdrawableAmt = getTradeProfitWithdrawable(tradeBalance, lockedPrincipal);
   const earlyExitQuote = getTradeEarlyExitQuote(tradeBalance, lockedPrincipal);
-  const roiProgress = getTradeRoiProgress(tradeBalance, lockedPrincipal, planDaysFromWallet);
-  const {
-    profitTarget,
-    netRoiPct,
-    progressPct: returnPct,
-    remainingToCap,
-    capReached,
-  } = roiProgress;
+  const returnPct = Math.max(0, Math.min(100, Number((tradeWallet as any)?.earningsProgressPct) || 0));
+  const cycleTargetReached = !!(tradeWallet as any)?.cycleTargetReached || roiComplete;
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);
 
@@ -1821,7 +1813,7 @@ export default function AffiliateDashboard() {
                               <Timer className="w-5 h-5 text-green-200 shrink-0" />
                               <div>
                                 <p className="text-sm font-semibold">Bot is running — auto-off in {botHoursLeft}h {botMinsLeft}m</p>
-                                <p className="text-xs text-green-200 mt-0.5">Executing {(activePlanConfig.dailyRate * 100).toFixed(0)}% daily trades using arithmetic algorithm strategy ({activePlanConfig.label})</p>
+                                <p className="text-xs text-green-200 mt-0.5">Executing the arithmetic algorithm strategy for your {activePlanConfig.label} cycle</p>
                               </div>
                             </div>
                           ) : isWeekendClosed ? (
@@ -1988,25 +1980,25 @@ export default function AffiliateDashboard() {
                               </div>
                             </div>
                           </div>
-                          {/* Earnings progress toward 100% cap */}
+                          {/* Earnings progress toward the selected cycle's private target */}
                           {lockedPrincipal > 0 && (
                             <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-2">
                               <div className="flex items-center justify-between mb-1">
                                 <p className="text-[10px] text-muted-foreground font-medium">Earnings Progress</p>
-                                <p className={`text-[10px] font-bold ${capReached ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-blue-400"}`}>
-                                  {tradeBalanceHidden ? "••••" : capReached
-                                    ? `${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap reached ✓`
-                                    : `${netRoiPct.toFixed(1)}% ROI · ${returnPct.toFixed(1)}% of cap`}
+                                <p className={`text-[10px] font-bold ${cycleTargetReached ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-blue-400"}`}>
+                                  {tradeBalanceHidden ? "••••" : cycleTargetReached
+                                    ? "Cycle target reached ✓"
+                                    : `$${withdrawableAmt.toFixed(2)} earned`}
                                 </p>
                               </div>
                               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all duration-500 ${capReached ? "bg-emerald-500" : "bg-blue-500"}`}
+                                <div className={`h-full rounded-full transition-all duration-500 ${cycleTargetReached ? "bg-emerald-500" : "bg-blue-500"}`}
                                   style={{ width: `${returnPct}%` }} />
                               </div>
                               <p className="text-[9px] text-muted-foreground mt-0.5">
-                                  {tradeBalanceHidden ? "••••" : capReached
-                                  ? `${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap reached — bot runs until Day ${planDaysFromWallet} · $${withdrawableAmt.toFixed(2)} available to withdraw`
-                                    : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — $${remainingToCap.toFixed(2)} remaining to ${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap`}
+                                  {tradeBalanceHidden ? "••••" : cycleTargetReached
+                                  ? `Cycle earnings target reached — bot runs until Day ${planDaysFromWallet} · $${withdrawableAmt.toFixed(2)} currently available`
+                                  : `${activePlanConfig.label} · Progress updates with realised cycle results`}
                               </p>
                             </div>
                           )}
@@ -2041,7 +2033,7 @@ export default function AffiliateDashboard() {
                           )}
                         </div>
                       </div>
-                      <p className="text-xs text-muted-foreground">+{(activePlanConfig.dailyRate * 100).toFixed(0)}% / session</p>
+                      <p className="text-xs text-muted-foreground">{activePlanConfig.label}</p>
                     </div>
                     {/* Trading Cycle Progress bar */}
                     {totalInvested > 0 && (
@@ -2062,8 +2054,8 @@ export default function AffiliateDashboard() {
                           {cycleTimeComplete
                             ? `Cycle complete. Earnings sent to SwiftWallet. Top up to start a new ${planDaysFromWallet}-day cycle.`
                             : roiComplete
-                              ? `Profit cap reached — bot continues running until Day ${planDaysFromWallet} (${planDaysFromWallet - tradingDayNumber} session${planDaysFromWallet - tradingDayNumber !== 1 ? "s" : ""} left).`
-                              : `${planDaysFromWallet - tradingDayNumber} trading session${planDaysFromWallet - tradingDayNumber !== 1 ? "s" : ""} remaining in this cycle (${activePlanConfig.rateLabel}).`}
+                              ? `Cycle earnings target reached — bot continues running until Day ${planDaysFromWallet} (${planDaysFromWallet - tradingDayNumber} session${planDaysFromWallet - tradingDayNumber !== 1 ? "s" : ""} left).`
+                              : `${planDaysFromWallet - tradingDayNumber} trading session${planDaysFromWallet - tradingDayNumber !== 1 ? "s" : ""} remaining in this cycle.`}
                         </p>
                       </div>
                     )}
@@ -3553,7 +3545,7 @@ export default function AffiliateDashboard() {
               </div>
             </div>
             <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2.5 text-xs text-blue-700 dark:text-blue-300">
-              ℹ Your earning cycle will reset from Day 1 using your current plan. Earnings cap resets to 100% of the new principal.
+              ℹ Your earning cycle will reset from Day 1 using your current plan and the new locked principal.
             </div>
             {withdrawableAmt < 2 && (
               <p className="text-xs text-red-500 font-semibold text-center">You need at least $2 in withdrawable earnings to re-invest.</p>
@@ -3604,7 +3596,7 @@ export default function AffiliateDashboard() {
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-600" /> Choose Trading Plan</DialogTitle>
-                <DialogDescription>Select your cycle length — earnings cap at the plan's promised return on your capital.</DialogDescription>
+                <DialogDescription>Select your preferred cycle length and market-volatility profile.</DialogDescription>
               </DialogHeader>
               <div className="py-2 space-y-2">
                 {TRADING_PLANS.map(plan => (
@@ -3617,7 +3609,7 @@ export default function AffiliateDashboard() {
                       </p>
                       <p className="text-xs text-muted-foreground">{plan.description}</p>
                     </div>
-                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 shrink-0">{plan.rateLabel}</span>
+                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 shrink-0">{plan.days} days</span>
                   </button>
                 ))}
               </div>
@@ -3710,7 +3702,7 @@ export default function AffiliateDashboard() {
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-600" /> Choose Trading Plan</DialogTitle>
-                <DialogDescription>Select your cycle length — shorter plans yield more daily profit but carry higher market volatility. Earnings cap at 100% of your deposited capital.</DialogDescription>
+                <DialogDescription>Select your preferred cycle length and market-volatility profile.</DialogDescription>
               </DialogHeader>
               {totalInvested > 0 && !roiComplete && (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 flex items-start gap-2 text-xs">
@@ -3746,8 +3738,8 @@ export default function AffiliateDashboard() {
                       <p className="text-xs text-muted-foreground">{plan.description}</p>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{plan.rateLabel}</span>
-                      <span className="text-[10px] text-muted-foreground">up to {(plan.lossMax * 100).toFixed(0)}% max loss/day</span>
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{plan.days} days</span>
+                      <span className="text-[10px] text-muted-foreground">Cycle profile</span>
                     </div>
                   </button>
                 ))}
@@ -3793,7 +3785,7 @@ export default function AffiliateDashboard() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><ArrowDownLeft className="w-5 h-5 text-blue-600" /> Fund Trade Wallet</DialogTitle>
                 <DialogDescription>
-                  <strong>{selectedBroker?.name ?? "Exchange"}</strong> · <strong>{TRADING_PLANS.find(p => p.days === selectedTradingPlan)?.label ?? "120-Day Classic"}</strong> ({TRADING_PLANS.find(p => p.days === selectedTradingPlan)?.rateLabel ?? "2% daily"})
+                  <strong>{selectedBroker?.name ?? "Exchange"}</strong> · <strong>{TRADING_PLANS.find(p => p.days === selectedTradingPlan)?.label ?? "120-Day Classic"}</strong>
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
@@ -4290,7 +4282,7 @@ export default function AffiliateDashboard() {
                 iconBg: "bg-purple-100 dark:bg-purple-900/40",
                 iconColor: "text-purple-600",
                 title: "Activate the Trading BOT Daily at 1PM",
-                body: "The AI Trading BOT must be manually activated every working day at 1:00 PM for it to execute trades that day. The bot runs for up to 12 hours — the longer it trades, the more it earns. Daily profit rate varies by plan: 4% (60-day), 3% (90-day), or 2% (120-day). Your cycle tracks your total trading days.",
+                body: "The AI Trading BOT must be manually activated every working day at 1:00 PM for it to execute trades that day. The bot runs for up to 12 hours, and your selected cycle tracks the completed trading days and realised results.",
               },
             ];
             const s = steps[walkthroughStep];

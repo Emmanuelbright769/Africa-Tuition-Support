@@ -287,8 +287,8 @@ export default function TermsAndConditions() {
               <Clause num="8.1" title="Nature of Investment">
                 <p>The TSIA trade market connects users to third-party licensed brokers (Binance, Exness, OctaFX, Bybit, XM Group, eToro, and IQ Option). Trading activities involve significant financial risk. <strong>Past performance does not guarantee future results.</strong> You may lose some or all of your invested capital.</p>
               </Clause>
-              <Clause num="8.2" title="AI Bot Target ROI">
-                <p>TSIA's Itera Trading BOT targets a 2% daily return with an overall 100% ROI target. This is a target, not a guarantee. Market conditions can result in lower or negative returns on individual sessions.</p>
+              <Clause num="8.2" title="AI Bot Trading Results">
+                <p>TSIA's Itera Trading BOT operates according to the selected trading cycle. Returns are not guaranteed, and market conditions can result in lower or negative results on individual sessions.</p>
               </Clause>
               <Clause num="8.3" title="Bot Window">
                 <p>The Itera Trading BOT is active from <strong>1:00 PM GMT to 1:00 AM GMT</strong> on standard working days. You must manually activate your bot session within this window. Sessions started outside this window will not generate returns.</p>

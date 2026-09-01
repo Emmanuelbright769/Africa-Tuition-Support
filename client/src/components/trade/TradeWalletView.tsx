@@ -7,7 +7,7 @@ import {
   CreditCard, Banknote, Lock,
   LogOut,
 } from "lucide-react";
-import { getTradeEarlyExitQuote, getTradeProfitWithdrawable, getTradeRoiProgress } from "@shared/tradeWithdrawalPolicy";
+import { getTradeEarlyExitQuote, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
 
 const MAX_TOPUPS = 3;
 
@@ -42,13 +42,13 @@ export default function TradeWalletView({
   const withdrawable    = getTradeProfitWithdrawable(tradeBalance, lockedPrincipal);
 
   const planDays        = wallet?.tradingPlanDays ?? 120;
-  const roiProgress     = getTradeRoiProgress(tradeBalance, lockedPrincipal, planDays);
-  const { profitCapPct, profitTarget, netRoiPct, progressPct, remainingToCap, capReached } = roiProgress;
+  const progressPct     = Math.max(0, Math.min(100, Number(wallet?.earningsProgressPct) || 0));
 
   // Cycle state — must be declared BEFORE the ROI bar calculations that depend on them
   const roiComplete      = !!(wallet?.roiComplete);
   const tradingDayNumber = wallet?.tradingDayNumber ?? 0;
-  const cycleComplete    = roiComplete || tradingDayNumber >= planDays;
+  const cycleComplete    = tradingDayNumber >= planDays;
+  const cycleTargetReached = !!wallet?.cycleTargetReached || roiComplete;
   const earlyExitQuote   = getTradeEarlyExitQuote(tradeBalance, lockedPrincipal);
   const canEarlyExit     = tradeBalance > 0 && lockedPrincipal > 0 && !wallet?.earlyExitCompleted && !cycleComplete;
 
@@ -263,17 +263,15 @@ export default function TradeWalletView({
           </div>
         </div>
 
-        {/* ROI progress */}
+        {/* Cycle earnings progress */}
         {lockedPrincipal > 0 && (
           <div className="mt-4">
             <div className="flex items-center justify-between text-[10px]">
               <span className="text-slate-300 flex items-center gap-1 font-medium">
-                <TrendingUp className="h-3 w-3" /> ROI Progress
+                <TrendingUp className="h-3 w-3" /> Cycle Earnings Progress
               </span>
-              <span className={`font-bold ${capReached ? "text-tsia-gold" : "text-white/90"}`}>
-                {capReached
-                  ? `${(profitCapPct * 100).toFixed(0)}% cap reached ✓`
-                  : `${netRoiPct.toFixed(1)}% ROI · ${progressPct.toFixed(1)}% of cap`}
+              <span className={`font-bold ${cycleTargetReached ? "text-tsia-gold" : "text-white/90"}`}>
+                {cycleTargetReached ? "Cycle target reached ✓" : `${fmt(withdrawable)} earned`}
               </span>
             </div>
             <div className="mt-1.5 h-2 rounded-full bg-white/10">
@@ -281,16 +279,16 @@ export default function TradeWalletView({
                 initial={{ width: 0 }}
                 animate={{ width: `${progressPct}%` }}
                 transition={{ duration: 1, ease: "easeOut" }}
-                className={`h-full rounded-full ${capReached ? "bg-tsia-gold" : "bg-tsia-green"}`}
+                className={`h-full rounded-full ${cycleTargetReached ? "bg-tsia-gold" : "bg-tsia-green"}`}
               />
             </div>
             <div className="mt-1.5 flex items-center justify-between text-[10px]">
               <span className="text-slate-400">
-                {capReached
+                {cycleTargetReached
                   ? withdrawable > 0
-                    ? `$${withdrawable.toFixed(2)} available to withdraw`
-                    : "Earnings fully withdrawn"
-                  : `$${remainingToCap.toFixed(2)} remaining to ${(profitCapPct * 100).toFixed(0)}% cap`}
+                      ? `$${withdrawable.toFixed(2)} available to withdraw`
+                      : "Earnings fully withdrawn"
+                  : "Progress updates with realised cycle results"}
               </span>
               <span className="text-slate-400">
                 Day {Math.min(tradingDayNumber, planDays)}/{planDays}

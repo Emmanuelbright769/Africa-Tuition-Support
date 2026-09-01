@@ -7,42 +7,6 @@ export function getTradeProfitWithdrawable(
   return Math.max(0, balance - locked);
 }
 
-export type TradeRoiProgress = {
-  netProfit: number;
-  netRoiPct: number;
-  profitCapPct: number;
-  profitTarget: number;
-  progressPct: number;
-  remainingToCap: number;
-  capReached: boolean;
-};
-
-export function getTradeRoiProgress(
-  tradeBalance: number,
-  lockedPrincipal: number,
-  planDays: number,
-): TradeRoiProgress {
-  const locked = Number.isFinite(lockedPrincipal) ? Math.max(0, lockedPrincipal) : 0;
-  const netProfit = getTradeProfitWithdrawable(tradeBalance, locked);
-  const profitCapPct = planDays === 60 ? 0.70 : planDays === 90 ? 0.80 : 1.00;
-  const profitTarget = locked * profitCapPct;
-  const netRoiPct = locked > 0 ? (netProfit / locked) * 100 : 0;
-  const progressPct = profitTarget > 0
-    ? Math.min(100, (netProfit / profitTarget) * 100)
-    : 0;
-  const remainingToCap = Math.max(0, profitTarget - netProfit);
-
-  return {
-    netProfit,
-    netRoiPct,
-    profitCapPct,
-    profitTarget,
-    progressPct,
-    remainingToCap,
-    capReached: profitTarget > 0 && netProfit >= profitTarget,
-  };
-}
-
 export type TradeEarlyExitQuote = {
   capital: number;
   realisedProfit: number;

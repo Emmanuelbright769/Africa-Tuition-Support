@@ -28,7 +28,6 @@ export type BotCompletionResult = {
   completed: boolean;
   earning?: string;
   elapsedHours?: string;
-  ratePercent?: string;
   newBalance?: string;
   totalBotEarnings?: string;
   isLossDay?: boolean;
@@ -190,7 +189,7 @@ export async function completeTradeBotSessionAtomic(userId: number, now = new Da
       data: { cycleDay, sessionHash, cycleComplete }, isRead: false,
     });
     return {
-      completed: true, earning: amount.toFixed(6), elapsedHours, ratePercent: (rate * 100).toFixed(4),
+      completed: true, earning: amount.toFixed(6), elapsedHours,
       newBalance: updated.tradeBalance, totalBotEarnings: updated.totalBotEarnings,
       isLossDay, cycleDay, cycleDays: planDays, cycleComplete, capped,
     };

@@ -523,9 +523,9 @@ export const TRADE_MARKET = {
 } as const;
 
 export const TRADING_PLANS = [
-  { days: 60,  dailyRate: 0.04, profitCapPct: 0.70, label: "60-Day Sprint",   rateLabel: "4% daily", lossMin: 0.010, lossMax: 0.040, description: "70% total return · Higher daily returns, higher volatility" },
-  { days: 90,  dailyRate: 0.03, profitCapPct: 0.80, label: "90-Day Standard", rateLabel: "3% daily", lossMin: 0.008, lossMax: 0.030, description: "80% total return · Balanced returns with moderate risk" },
-  { days: 120, dailyRate: 0.02, profitCapPct: 1.00, label: "120-Day Classic", rateLabel: "2% daily", lossMin: 0.005, lossMax: 0.020, description: "100% total return · Lower daily returns, lower risk (recommended)" },
+  { days: 60, label: "60-Day Sprint", description: "Shorter cycle · Higher market volatility" },
+  { days: 90, label: "90-Day Standard", description: "Balanced cycle · Moderate market volatility" },
+  { days: 120, label: "120-Day Classic", description: "Longer cycle · Lower market volatility (recommended)" },
 ] as const;
 
 export type TradingPlanDays = 60 | 90 | 120;

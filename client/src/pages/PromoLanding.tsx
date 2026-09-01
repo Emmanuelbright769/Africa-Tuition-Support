@@ -57,7 +57,7 @@ const KB: KBEntry[] = [
   },
   {
     patterns: [/affiliate|refer|commission|referral.*code|my.*code|share.*code|earn.*refer|how.*affiliate/i],
-    response: `**TSIA Affiliate Programme — Earn by Referring Students**\n\n**How it works:**\n1. Sign up at **/affiliate-signup** (free)\n2. Get your unique referral code (e.g. TSIA-EMM0001)\n3. Share your referral link with students\n4. Earn commission when they verify and pay fees\n\n**Affiliate Dashboard includes:**\n📈 Global Trade Market (AI bot, 2% daily ROI)\n💎 Co-Affiliate Trust Fund (lifetime profit sharing)\n💼 Business Loans\n🏠 Tenancy Programme management\n🛍️ TS-Mart Online Stores marketplace\n✈️ Glide Africa (hotel, car, flight bookings)\n💬 Community Forum & real-time chat\n\n👉 Go to **/affiliate-signup** to join!`,
+    response: `**TSIA Affiliate Programme — Earn by Referring Students**\n\n**How it works:**\n1. Sign up at **/affiliate-signup** (free)\n2. Get your unique referral code (e.g. TSIA-EMM0001)\n3. Share your referral link with students\n4. Earn commission when they verify and pay fees\n\n**Affiliate Dashboard includes:**\n📈 Global Trade Market (AI-powered trading cycles)\n💎 Co-Affiliate Trust Fund (lifetime profit sharing)\n💼 Business Loans\n🏠 Tenancy Programme management\n🛍️ TS-Mart Online Stores marketplace\n✈️ Glide Africa (hotel, car, flight bookings)\n💬 Community Forum & real-time chat\n\n👉 Go to **/affiliate-signup** to join!`,
   },
   {
     patterns: [/student.*loan|loan.*student|borrow.*student|education.*loan|how.*borrow/i],
@@ -65,7 +65,7 @@ const KB: KBEntry[] = [
   },
   {
     patterns: [/trade|invest|roi|return|bot|daily.*profit|profit.*daily|crypto|usdt|trc20|bep20|trade.*market|ai.*bot/i],
-    response: `**TSIA Global Trade Market — AI-Powered Investing**\n\n📈 **Target ROI:** 2% daily profit via AI trading bot\n⏰ **BOT Window:** 1PM – 1AM GMT on working days\n💼 **Deposit Methods:** USDT via TRC20 (TRON) or BEP20 (BNB Chain)\n\n**Fee Structure on Deposit:**\n• 75% → your trade wallet\n• 20% → strategic reserve fund\n• 5% → affiliate commission pool\n\n**Withdrawal Fees:**\n• Exchange withdrawal: 5% + 5% affiliate pool\n• Bank withdrawal: 8% + 5% affiliate pool\n\n**Minimum:** $10 deposit | $5 withdrawal\n**Broker Partners:** Binance, Exness, OctaFX, Bybit, XM Group, eToro, IQ Option\n\n🔒 20% of all deposits go into a **Strategic Reserve Fund** protecting all investors.\n\nAccess via **Affiliate Dashboard → Trade Market**`,
+    response: `**TSIA Global Trade Market — AI-Powered Investing**\n\n📈 **Trading Cycles:** choose a cycle length and track realised results in your Trade Wallet\n⏰ **BOT Window:** 1PM – 1AM GMT on working days\n💼 **Deposit Methods:** USDT via TRC20 (TRON) or BEP20 (BNB Chain)\n\n**Fee Structure on Deposit:**\n• 75% → your trade wallet\n• 20% → strategic reserve fund\n• 5% → affiliate commission pool\n\n**Withdrawal Fees:**\n• Exchange withdrawal: 5% + 5% affiliate pool\n• Bank withdrawal: 8% + 5% affiliate pool\n\n**Minimum:** $10 deposit | $5 withdrawal\n**Broker Partners:** Binance, Exness, OctaFX, Bybit, XM Group, eToro, IQ Option\n\n🔒 20% of all deposits go into a **Strategic Reserve Fund** protecting all investors.\n\nAccess via **Affiliate Dashboard → Trade Market**`,
   },
   {
     patterns: [/co.?affiliate|trust.*fund|initiator|lifetime.*profit|invest.*lifetime|starter|growth|elite|fund.*invest/i],
@@ -925,7 +925,7 @@ export default function PromoLanding() {
               {
                 icon: TrendingUp, color: "bg-purple-100 dark:bg-purple-900/30 text-purple-600",
                 title: "AI-Powered Trade Market",
-                desc: "Deposit USDT and activate the AI trading bot. Target 2% daily returns during the 1PM–1AM GMT trading window. Choose from 7 verified broker partners.",
+                desc: "Deposit USDT, choose a trading cycle, and activate the AI trading bot during the 1PM–1AM GMT trading window. Choose from 7 verified broker partners.",
               },
               {
                 icon: Users, color: "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600",

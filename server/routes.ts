@@ -40,6 +40,7 @@ import pg from "pg";
 import multer from "multer";
 import { VERBAL_QUESTIONS, QUANT_QUESTIONS, pickQuestions } from "./questions";
 import { calculateWaecPercentage, getPayoutTier, CURRENCY_RATES, WAEC_COMPULSORY_SUBJECTS, WAEC_ELECTIVE_SUBJECTS, WAEC_GRADE_WEIGHTS, WAEC_GRADE_KEYS, generateAffiliateCode, getCoAffiliatePricing, getMilestoneProgress, CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADE_BROKERS, ECOMMERCE, getEliteSharePercentage, calculateStudentLoanLimit, calculateAffiliateLoanLimit, calculateLoanByDays, QCE, getCoAffiliateTransactionRate, users, loans, transactions, tradeTransactions, orders, orderTracking, wallets, verifications, identityVerifications, coAffiliates, walletDeposits, walletCreditClaims, forumPosts, forumTopics, disbursements, notifications, billPayments, tradeWallets, signalTrades, manualTrades, exchangeHoldings, exchangeOrders, exchangeWatchlist, withdrawalRequests, fileUploads, sponsorshipPlans, platformSettings, adminAuditLogs, adminManualCreditGuards, affiliateTradeShares, products, walletTransfers, proctoringSessions, proctoringMediaChunks, proctoringPlaybackAudits, scholarships, financialEvents, financialEventOutbox } from "@shared/schema";
+import { createServiceDepositIntentAtomic, creditServiceDepositAtomic, creditServiceWalletInTransaction, debitServiceWalletInTransaction, getOrCreateServiceWalletAtomic, isServiceWalletType, transferServiceToSwiftWalletAtomic, transferSwiftToServiceWalletAtomic } from "./serviceWallets";
 import { BANK_TRANSFER_FEE_RATE, calculateBankTransferQuote } from "@shared/bankTransferPricing";
 import { getAllQuotes, getQuote, getHistory } from "./exchangeService";
 import { db } from "./db";
@@ -2042,6 +2043,100 @@ export async function registerRoutes(
     res.json(result);
   });
 
+  // Service balances are deliberately separate from Trade Market's bot wallet.
+  app.get("/api/service-wallets/:type", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    const type = String(req.params.type);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!isServiceWalletType(type)) return res.status(400).json({ message: "Unknown service wallet" });
+    try {
+      const wallet = await getOrCreateServiceWalletAtomic(userId, type);
+      res.json({
+        id: wallet.id,
+        walletType: wallet.service_type,
+        balance: wallet.balance,
+        createdAt: wallet.created_at,
+        updatedAt: wallet.updated_at,
+      });
+    }
+    catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/service-wallets/:type/transactions", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    const type = String(req.params.type);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!isServiceWalletType(type)) return res.status(400).json({ message: "Unknown service wallet" });
+    try {
+      const result: any = await db.execute(sql`SELECT id, amount, reference, kind, metadata, created_at
+        FROM service_wallet_transactions
+        WHERE user_id = ${userId} AND service_type = ${type} ORDER BY created_at DESC LIMIT 100`);
+      res.json((result.rows ?? []).map((entry: any) => ({
+        id: entry.id,
+        amount: entry.amount,
+        reference: entry.reference,
+        type: entry.kind,
+        description: entry.kind,
+        metadata: entry.metadata,
+        createdAt: entry.created_at,
+      })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/service-wallets/:type/transfer-from-swift", async (req, res) => {
+    const userId = (req.session as any)?.userId; const type = String(req.params.type); const amount = Number(req.body?.amountUsd);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!isServiceWalletType(type)) return res.status(400).json({ message: "Unknown service wallet" });
+    try {
+      const reference = `SWIFT-${type}-${userId}-${Date.now()}`;
+      res.json({ reference, ...(await transferSwiftToServiceWalletAtomic({ userId, serviceType: type, amount, reference })) });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.post("/api/service-wallets/:type/transfer-to-swift", async (req, res) => {
+    const userId = (req.session as any)?.userId; const type = String(req.params.type); const amount = Number(req.body?.amountUsd);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!isServiceWalletType(type)) return res.status(400).json({ message: "Unknown service wallet" });
+    try {
+      const reference = `${type}-SWIFT-${userId}-${Date.now()}`;
+      res.json({ reference, ...(await transferServiceToSwiftWalletAtomic({ userId, serviceType: type, amount, reference })) });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.post("/api/service-wallets/:type/korapay/initiate", async (req, res) => {
+    const userId = (req.session as any)?.userId; const type = String(req.params.type); const amount = Number(req.body?.amountUsd);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!isServiceWalletType(type)) return res.status(400).json({ message: "Unknown service wallet" });
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ message: "Amount must be positive" });
+    try {
+      const key = process.env.KORAPAY_SECRET_KEY; if (!key) return res.status(500).json({ message: "Korapay not configured" });
+      const user = await storage.getUser(userId); if (!user) return res.status(404).json({ message: "User not found" });
+      const amountNgn = Math.round(amount * (await getUsdNgnRates()).buying);
+      const reference = `SERVICE-${type}-${userId}-${Date.now()}`;
+      await createServiceDepositIntentAtomic({ userId, serviceType: type, amount, reference, metadata: { userId, amountUsd: amount.toFixed(2), expectedNgn: amountNgn, serviceType: type } });
+      const response = await fetch(`${KORA_BASE}/charges/initialize`, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ amount: amountNgn, currency: "NGN", reference, notification_url: `${req.protocol}://${req.get("host")}/api/webhook/korapay`, customer: { name: `${user.firstName} ${user.lastName}`, email: user.email }, metadata: { userId, amountUsd: amount.toFixed(2), serviceType: type } }) });
+      const data: any = await response.json(); if (!data.status) throw new Error(data.message ?? "Could not initiate payment");
+      res.json({ reference, amountNgn, checkoutUrl: data.data.checkout_url });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.post("/api/service-wallets/:type/korapay/verify", async (req, res) => {
+    const userId = (req.session as any)?.userId; const type = String(req.params.type); const reference = String(req.body?.reference ?? "");
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!isServiceWalletType(type) || !reference) return res.status(400).json({ message: "Invalid service wallet payment" });
+    try {
+      const key = process.env.KORAPAY_SECRET_KEY; if (!key) return res.status(500).json({ message: "Korapay not configured" });
+      const verified: any = await (await fetch(`${KORA_BASE}/charges/${encodeURIComponent(reference)}`, { headers: { Authorization: `Bearer ${key}` } })).json();
+      const data = verified.data;
+      if (!verified.status || data?.status !== "success" || Number(data?.metadata?.userId) !== userId || data?.metadata?.serviceType !== type || String(data?.currency).toUpperCase() !== "NGN") return res.status(400).json({ message: "Payment verification failed" });
+      const intentResult: any = await db.execute(sql`SELECT amount_usd, metadata FROM wallet_deposits
+        WHERE user_id = ${userId} AND tx_hash = ${reference} AND wallet_type = ${`service_${type}_korapay`} LIMIT 1`);
+      const intent = intentResult.rows?.[0];
+      const amount = Number(data.metadata.amountUsd);
+      if (!intent || Number(intent.amount_usd) !== Number(amount.toFixed(2)) ||
+          Number((intent.metadata as any)?.expectedNgn) !== Number(data?.amount)) {
+        return res.status(400).json({ message: "Payment amount does not match the service wallet intent" });
+      }
+      const credited = await creditServiceDepositAtomic({ userId, serviceType: type, amount, reference });
+      res.json(credited);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
   // ── GET /api/wallet/balances — book balance, available balance, pending, trade ──
   app.get("/api/wallet/balances", async (req, res) => {
     try {
@@ -2053,7 +2148,7 @@ export async function registerRoutes(
       const confirmedBalance = parseFloat(wallet.balance);
 
       // Pending crypto deposits (submitted but awaiting admin approval)
-      const allDeposits = await storage.getUserWalletDeposits(userId);
+      const allDeposits = await storage.getWalletDepositsByUser(userId);
       const pendingDeposits = allDeposits.filter((d: any) => d.status === "pending");
       const pendingAmount = pendingDeposits.reduce((sum: number, d: any) => sum + parseFloat(d.amountUsd), 0);
       const failedDeposits = allDeposits.filter((d: any) => d.status === "rejected");
@@ -4984,15 +5079,22 @@ export async function registerRoutes(
     try {
       const uid = (req.session as any)?.userId; if (!uid) return res.status(401).json({ message: "Not authenticated" });
       const a = Number(req.body.amountUsd); if (!Number.isFinite(a) || a < 1) return res.status(400).json({ message: "Minimum trade is $1" });
+      const trustedSignal = signalCache.signals.find((signal: any) => signal.id === req.body.id);
+      if (!trustedSignal || new Date(trustedSignal.expiresAt).getTime() <= Date.now()) {
+        return res.status(400).json({ message: "This signal is invalid or has expired. Refresh signals and try again." });
+      }
       const t = await db.transaction(async tx => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${uid})`);
-        const [w] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)).for("update");
-        if (!w || w.earlyExitCompleted || Number(w.lockedPrincipal) <= 0) throw new Error("Start a new Trade Market cycle before opening a position");
-        const [debited] = await tx.update(tradeWallets).set({
-          tradeBalance: sql`${tradeWallets.tradeBalance} - ${a.toFixed(6)}::decimal`,
-        }).where(sql`${tradeWallets.userId} = ${uid} AND ${tradeWallets.tradeBalance} >= ${a.toFixed(6)}::decimal`).returning();
-        if (!debited) throw new Error("Insufficient trade balance");
-        const [opened] = await tx.insert(signalTrades).values({ userId: uid, symbol: req.body.symbol, symbolLabel: req.body.symbolLabel, direction: req.body.direction, entryPrice: String(req.body.entryPrice), amountUsd: String(a), confidence: Number(req.body.confidence), timeframe: req.body.timeframe }).returning();
+        await debitServiceWalletInTransaction(tx, { userId: uid, serviceType: "signals", amount: a, reference: `signal-open-${uid}-${Date.now()}`, kind: "position_open" });
+        const [opened] = await tx.insert(signalTrades).values({
+          userId: uid,
+          symbol: trustedSignal.symbol,
+          symbolLabel: trustedSignal.symbolLabel ?? trustedSignal.label ?? trustedSignal.symbol,
+          direction: trustedSignal.direction,
+          entryPrice: String(trustedSignal.entryPrice),
+          amountUsd: String(a),
+          confidence: Number(trustedSignal.confidence),
+          timeframe: trustedSignal.timeframe,
+        }).returning();
         return opened;
       });
       res.json({ id: t.id, message: "Position opened" });
@@ -5006,16 +5108,13 @@ export async function registerRoutes(
       const q: any = await yf.quote(snapshot.symbol);
       const exit = Number(q.regularMarketPrice ?? snapshot.entryPrice);
       const result = await db.transaction(async tx => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${uid})`);
         const [t] = await tx.select().from(signalTrades).where(and(eq(signalTrades.id, snapshot.id), eq(signalTrades.userId, uid))).for("update");
         if (!t || t.status !== "open") throw new Error("Trade not found or already resolved");
         const pct = (exit - Number(t.entryPrice)) / Number(t.entryPrice) * (t.direction === "long" ? 1 : -1);
         const pnl = Number(t.amountUsd) * pct;
         const returnAmount = Math.max(0, Number(t.amountUsd) + pnl);
         await tx.update(signalTrades).set({ exitPrice: String(exit), pnlPct: String(pct * 100), pnlUsd: String(pnl), status: pnl >= 0 ? "won" : "lost", resolvedAt: new Date() }).where(eq(signalTrades.id, t.id));
-        const [w] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)).for("update");
-        if (!w || w.earlyExitCompleted) throw new Error("This position belongs to a closed Trade Market cycle");
-        await tx.update(tradeWallets).set({ tradeBalance: sql`${tradeWallets.tradeBalance} + ${returnAmount.toFixed(6)}::decimal` }).where(eq(tradeWallets.userId, uid));
+        if (returnAmount > 0) await creditServiceWalletInTransaction(tx, { userId: uid, serviceType: "signals", amount: returnAmount, reference: `signal-resolve-${t.id}`, kind: "position_resolved", metadata: { pnl } });
         return { pnl, pct };
       });
       res.json({ pnlUsd: result.pnl, pnlPct: result.pct * 100, exitPrice: exit, status: result.pnl >= 0 ? "won" : "lost" });
@@ -5104,11 +5203,7 @@ export async function registerRoutes(
       const margin = Number(req.body.marginUsd), leverage = Number(req.body.leverage || 1); if (!Number.isFinite(margin) || margin < 1 || leverage < 1 || leverage > 10) return res.status(400).json({ message: "Invalid order parameters" });
       const q: any = await yf.quote(req.body.symbol); const entry = Number(q.regularMarketPrice || 0);
       const trade = await db.transaction(async tx => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${uid})`);
-        const [w] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)).for("update");
-        if (!w || w.earlyExitCompleted || Number(w.lockedPrincipal) <= 0) throw new Error("Start a new Trade Market cycle before opening a position");
-        const [debited] = await tx.update(tradeWallets).set({ tradeBalance: sql`${tradeWallets.tradeBalance} - ${margin.toFixed(6)}::decimal` }).where(sql`${tradeWallets.userId} = ${uid} AND ${tradeWallets.tradeBalance} >= ${margin.toFixed(6)}::decimal`).returning();
-        if (!debited) throw new Error("Insufficient trade balance");
+        await debitServiceWalletInTransaction(tx, { userId: uid, serviceType: "manual", amount: margin, reference: `manual-open-${uid}-${Date.now()}`, kind: "position_open" });
         const [opened] = await tx.insert(manualTrades).values({ userId: uid, symbol: req.body.symbol, symbolLabel: req.body.symbolLabel || req.body.symbol, direction: req.body.direction === "short" ? "short" : "long", leverage, marginUsd: String(margin), sizeUsd: String(margin * leverage), entryPrice: String(entry), stopLossPrice: req.body.stopLossPrice ? String(req.body.stopLossPrice) : null, takeProfitPrice: req.body.takeProfitPrice ? String(req.body.takeProfitPrice) : null }).returning();
         return opened;
       });
@@ -5123,7 +5218,6 @@ export async function registerRoutes(
       const q: any = await yf.quote(snapshot.symbol);
       const exitPrice = Number(q.regularMarketPrice ?? snapshot.entryPrice);
       const result = await db.transaction(async tx => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${uid})`);
         const [trade] = await tx.select().from(manualTrades).where(and(eq(manualTrades.id, snapshot.id), eq(manualTrades.userId, uid))).for("update");
         if (!trade || trade.status !== "open") throw new Error("Position not found or already closed");
         const pricePct = (exitPrice - Number(trade.entryPrice)) / Number(trade.entryPrice);
@@ -5134,9 +5228,7 @@ export async function registerRoutes(
           exitPrice: String(exitPrice), pnlUsd: String(pnlUsd), pnlPct: String(pnlPct * 100),
           status: pnlUsd >= 0 ? "won" : "lost", closedAt: new Date()
         }).where(eq(manualTrades.id, trade.id));
-        const [w] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, uid)).for("update");
-        if (!w || w.earlyExitCompleted) throw new Error("This position belongs to a closed Trade Market cycle");
-        await tx.update(tradeWallets).set({ tradeBalance: sql`${tradeWallets.tradeBalance} + ${returnAmt.toFixed(6)}::decimal` }).where(eq(tradeWallets.userId, uid));
+        if (returnAmt > 0) await creditServiceWalletInTransaction(tx, { userId: uid, serviceType: "manual", amount: returnAmt, reference: `manual-close-${trade.id}`, kind: "position_closed", metadata: { pnlUsd } });
         return { pnlUsd, pnlPct, returnAmt };
       });
       res.json({ pnlUsd: result.pnlUsd, pnlPct: result.pnlPct * 100, exitPrice, returnAmt: result.returnAmt, status: result.pnlUsd >= 0 ? "won" : "lost" });
@@ -9164,6 +9256,13 @@ export async function registerRoutes(
               );
             } else if (dep.wallet_type === "exchange_korapay" || ref.startsWith("TSIA-EXKORA-")) {
               await creditExchangeDepositAtomic({ depositId: dep.id, userId: dep.user_id, gross, reference: ref });
+            } else if (/^service_(manual|signals|tsmart)_korapay$/.test(dep.wallet_type)) {
+              const serviceType = dep.wallet_type.match(/^service_(manual|signals|tsmart)_korapay$/)?.[1];
+              if (!serviceType || data.metadata?.serviceType !== serviceType) {
+                console.warn(`[KORAPAY WEBHOOK] Service wallet metadata mismatch for ${ref} — skipping credit.`);
+                return res.sendStatus(200);
+              }
+              await creditServiceDepositAtomic({ userId: dep.user_id, serviceType: serviceType as any, amount: gross, reference: ref });
             } else {
               console.log(`[KORAPAY WEBHOOK] Crediting user ${dep.user_id} $${gross} for ref ${ref}`);
               await creditWalletWithSplit(dep.user_id, gross, "korapay", ref, { id: dep.id, amountUsd: dep.amount_usd, status: dep.status });
@@ -10971,23 +11070,21 @@ export async function registerRoutes(
       const commissionAmount = +(totalAmount * ECOMMERCE.COMMISSION_RATE).toFixed(2);
       const sellerReceives = +(totalAmount - commissionAmount).toFixed(2);
 
-      // Deduct from buyer wallet — funds held in escrow until delivery confirmed
-      const buyerWallet = await storage.getOrCreateWallet(userId);
-      if (!buyerWallet.activated) return res.status(403).json({ message: "Activate your wallet before placing marketplace orders." });
-      if (parseFloat(buyerWallet.balance) < totalAmount) return res.status(400).json({ message: `Insufficient wallet balance. Need $${totalAmount.toFixed(2)}` });
-      await storage.updateWalletBalance(userId, (parseFloat(buyerWallet.balance) - totalAmount).toFixed(2));
-
-      // NOTE: Seller wallet NOT credited yet — funds stay in platform escrow until buyer confirms receipt
-
-      // Update stock
-      const newStock = prod.stock - qty;
-      await storage.updateProduct(prod.id, { stock: newStock, ...(newStock === 0 ? { status: "sold" } : {}) });
-
-      // Create order record (escrowReleased=false, status=pending)
-      const order = await storage.createOrder({ buyerId: userId, sellerId: prod.sellerId, productId: prod.id, quantity: qty, unitPrice: unitPrice.toFixed(2), totalAmount: totalAmount.toFixed(2), commissionRate: ECOMMERCE.COMMISSION_RATE.toFixed(4), commissionAmount: commissionAmount.toFixed(2), sellerReceives: sellerReceives.toFixed(2), status: "pending", escrowReleased: false, deliveryAddress: deliveryAddress || null, note: note || null });
-
-      // Auto-add first tracking entry
-      await storage.createOrderTracking({ orderId: order.id, statusLabel: "Order Placed", description: `Payment of $${totalAmount.toFixed(2)} held in TSIA escrow. Awaiting seller confirmation.` });
+      // The TS-Mart escrow and its wallet debit are one transaction.  TS-Mart
+      // must never read or mutate the general SwiftWallet balance.
+      const order = await db.transaction(async tx => {
+        const lockedProduct: any = (await tx.execute(sql`SELECT * FROM products WHERE id = ${prod.id} FOR UPDATE`)).rows?.[0];
+        if (!lockedProduct || lockedProduct.status !== "active" || Number(lockedProduct.stock) < qty) throw new Error("Product is no longer available in the requested quantity");
+        await debitServiceWalletInTransaction(tx, { userId, serviceType: "tsmart", amount: totalAmount, reference: `tsmart-order-debit-${userId}-${prod.id}-${Date.now()}`, kind: "escrow_hold", metadata: { productId: prod.id, quantity: qty } });
+        const stockResult: any = await tx.execute(sql`UPDATE products SET stock = stock - ${qty},
+          status = CASE WHEN stock - ${qty} = 0 THEN 'sold' ELSE status END WHERE id = ${prod.id} AND stock >= ${qty} RETURNING stock`);
+        if (!stockResult.rows?.[0]) throw new Error("Product is no longer available in the requested quantity");
+        const result: any = await tx.execute(sql`INSERT INTO orders (buyer_id, seller_id, product_id, quantity, unit_price, total_amount, commission_rate, commission_amount, seller_receives, status, escrow_released, delivery_address, note)
+          VALUES (${userId}, ${prod.sellerId}, ${prod.id}, ${qty}, ${unitPrice.toFixed(2)}, ${totalAmount.toFixed(2)}, ${ECOMMERCE.COMMISSION_RATE.toFixed(4)}, ${commissionAmount.toFixed(2)}, ${sellerReceives.toFixed(2)}, 'pending', FALSE, ${deliveryAddress || null}, ${note || null}) RETURNING *`);
+        const created = result.rows?.[0]; if (!created) throw new Error("Unable to create order");
+        await tx.execute(sql`INSERT INTO order_tracking (order_id, status_label, description) VALUES (${created.id}, 'Order Placed', ${`Payment of $${totalAmount.toFixed(2)} held in TSIA escrow. Awaiting seller confirmation.`})`);
+        return created;
+      });
 
       // Notify buyer and seller
       try {
@@ -11062,7 +11159,17 @@ export async function registerRoutes(
       if (!allowedTransitions[existing.status]?.includes(status)) {
         return res.status(400).json({ message: `Order cannot move from ${existing.status} to ${status}.` });
       }
-      const order = await storage.updateOrderStatus(parseInt(req.params.id), status, trackingNumber ? { trackingNumber } : undefined);
+      const order = status === "cancelled"
+        ? await db.transaction(async tx => {
+          const current: any = (await tx.execute(sql`SELECT * FROM orders WHERE id = ${parseInt(req.params.id)} FOR UPDATE`)).rows?.[0];
+          if (!current || current.seller_id !== userId || !["pending", "confirmed"].includes(current.status) || current.escrow_released) throw new Error("Order cannot be cancelled");
+          const updated: any = (await tx.execute(sql`UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = ${current.id} AND status IN ('pending', 'confirmed') AND escrow_released = FALSE RETURNING *`)).rows?.[0];
+          if (!updated) throw new Error("Order cancellation was already processed");
+          await creditServiceWalletInTransaction(tx, { userId: current.buyer_id, serviceType: "tsmart", amount: Number(current.total_amount), reference: `tsmart-order-refund-${current.id}`, kind: "escrow_refund", metadata: { orderId: current.id } });
+          await tx.execute(sql`UPDATE products SET stock = stock + ${current.quantity}, status = 'active' WHERE id = ${current.product_id}`);
+          return updated;
+        })
+        : await storage.updateOrderStatus(parseInt(req.params.id), status, trackingNumber ? { trackingNumber } : undefined);
       // Add tracking entry
       const labelMap: Record<string, string> = { confirmed: "Confirmed by Seller", shipped: "Shipped", cancelled: "Cancelled" };
       const descMap: Record<string, string> = {
@@ -11101,14 +11208,17 @@ export async function registerRoutes(
       const commissionAmount = parseFloat(order.commissionAmount);
       const totalAmount = parseFloat(order.totalAmount);
 
-      // Release escrow: credit seller wallet
-      const sellerWallet = await storage.getOrCreateWallet(order.sellerId);
-      await storage.updateWalletBalance(order.sellerId, (parseFloat(sellerWallet.balance) + sellerReceives).toFixed(2));
-      await storage.createTransaction({ userId: order.sellerId, type: "credit", amount: sellerReceives.toFixed(2), fee: commissionAmount.toFixed(2), paymentMethod: "escrow", description: `Sale proceeds released — Order #${order.id} (buyer confirmed receipt)` });
-
-      // Update order to delivered + escrowReleased
-      await storage.updateOrderStatus(order.id, "delivered", { escrowReleased: true });
-      await storage.createOrderTracking({ orderId: order.id, statusLabel: "Delivered", description: "Buyer confirmed receipt. Escrow released — seller has been paid." });
+      // Guard state transition and credit in the same transaction; retries
+      // cannot create a second seller proceeds entry.
+      await db.transaction(async tx => {
+        const current: any = (await tx.execute(sql`SELECT * FROM orders WHERE id = ${order.id} FOR UPDATE`)).rows?.[0];
+        if (!current || current.buyer_id !== userId || current.escrow_released || !["confirmed", "shipped"].includes(current.status)) throw new Error("Escrow is not eligible for release");
+        const released: any = (await tx.execute(sql`UPDATE orders SET status = 'delivered', escrow_released = TRUE, updated_at = NOW()
+          WHERE id = ${current.id} AND escrow_released = FALSE AND status IN ('confirmed', 'shipped') RETURNING id`)).rows?.[0];
+        if (!released) throw new Error("Escrow already released");
+        await creditServiceWalletInTransaction(tx, { userId: current.seller_id, serviceType: "tsmart", amount: Number(current.seller_receives), reference: `tsmart-order-proceeds-${current.id}`, kind: "escrow_release", metadata: { orderId: current.id, commissionAmount: Number(current.commission_amount) } });
+        await tx.execute(sql`INSERT INTO order_tracking (order_id, status_label, description) VALUES (${current.id}, 'Delivered', 'Buyer confirmed receipt. Escrow released — seller has been paid.')`);
+      });
 
       // Notify seller
       try {

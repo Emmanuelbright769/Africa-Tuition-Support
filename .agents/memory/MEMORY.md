@@ -14,3 +14,4 @@
 - [Financial credit proof](financial-credit-proof.md) — wallet credits require immutable provider/on-chain proof; all effects and receipts are replay-safe and transactionally coupled.
 - [External production database](external-production-database.md) — the live site uses EXTERNAL_DATABASE_URL; Replit production SQL queries target a different managed database.
 - [Trade cycle profit progress](trade-cycle-profit-progress.md) — progress and caps use cumulative realised profit, excluding capital and ignoring withdrawals.
+- [Service wallet isolation](service-wallet-isolation.md) — Manual, Signals, and TS-Mart use independent atomic ledgers; Itera BOT retains its protected Trade cycle wallet.

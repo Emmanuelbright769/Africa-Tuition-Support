@@ -13,6 +13,8 @@ import {
   WalletCards,
 } from "lucide-react";
 import { useLocalCurrency } from "@/contexts/LocalCurrencyContext";
+import ServiceWalletView from "@/components/ServiceWalletView";
+import { apiRequest } from "@/lib/queryClient";
 
 type MarketplaceOrder = {
   id: number;
@@ -34,7 +36,12 @@ const money = (value: number) => `$${value.toLocaleString(undefined, { minimumFr
 export default function MarketplaceWalletView({ onClose }: MarketplaceWalletViewProps) {
   const { formatAmount } = useLocalCurrency();
   const { data: wallet, isLoading: walletLoading, refetch: refetchWallet } = useQuery<any>({
-    queryKey: ["/api/wallet"],
+    queryKey: ["/api/service-wallets", "tsmart"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/service-wallets/tsmart");
+      if (!response.ok) throw new Error("Could not load TS-Mart wallet");
+      return response.json();
+    },
     refetchInterval: 30000,
   });
   const { data: purchases = [], isLoading: purchasesLoading } = useQuery<MarketplaceOrder[]>({
@@ -46,7 +53,12 @@ export default function MarketplaceWalletView({ onClose }: MarketplaceWalletView
     refetchInterval: 30000,
   });
   const { data: transactions = [] } = useQuery<any[]>({
-    queryKey: ["/api/transactions"],
+    queryKey: ["/api/service-wallets", "tsmart", "transactions"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/service-wallets/tsmart/transactions");
+      if (!response.ok) throw new Error("Could not load TS-Mart activity");
+      return response.json();
+    },
     refetchInterval: 30000,
   });
 
@@ -69,8 +81,6 @@ export default function MarketplaceWalletView({ onClose }: MarketplaceWalletView
       .map(tx => ({ id: `tx-${tx.id}`, title: tx.description || "Wallet activity", detail: tx.status || "completed", amount: tx.type === "debit" ? -Number(tx.amount || 0) : Number(tx.amount || tx.netAmount || 0), date: tx.createdAt, icon: WalletCards }));
     return [...orders, ...ledger].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).slice(0, 12);
   }, [purchases, sales, transactions]);
-
-  const openFintech = () => window.dispatchEvent(new Event("tsia:open-fintech-wallet"));
 
   return (
     <div className="fixed inset-0 z-[80] overflow-y-auto bg-[#F5F7FF]" data-testid="tsmart-wallet-screen" role="dialog" aria-modal="true" aria-label="TS-Mart wallet">
@@ -114,16 +124,9 @@ export default function MarketplaceWalletView({ onClose }: MarketplaceWalletView
             ))}
           </section>
 
-          <section className="grid grid-cols-2 gap-3">
-            <button onClick={openFintech} className="flex min-h-14 items-center gap-3 rounded-2xl bg-[#1B4FFF] px-4 text-left text-white shadow-sm transition-transform hover:-translate-y-0.5" data-testid="btn-tsmart-fund-wallet">
-              <ArrowDownToLine className="h-5 w-5" />
-              <span><strong className="block text-sm">Add funds</strong><small className="text-[10px] text-white/70">Open Fintech Hub</small></span>
-            </button>
-            <button onClick={openFintech} className="flex min-h-14 items-center gap-3 rounded-2xl border border-blue-200 bg-white px-4 text-left text-[#1B4FFF] shadow-sm transition-transform hover:-translate-y-0.5" data-testid="btn-tsmart-withdraw-wallet">
-              <ArrowUpFromLine className="h-5 w-5" />
-              <span><strong className="block text-sm">Withdraw</strong><small className="text-[10px] text-gray-400">Manage payouts</small></span>
-            </button>
-          </section>
+           <div className="rounded-2xl bg-slate-950 p-4 text-white shadow-sm">
+             <ServiceWalletView walletType="tsmart" description="Fund marketplace purchases directly, or return available funds to Swift Wallet." />
+           </div>
 
           <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
             <div className="flex items-start gap-3">

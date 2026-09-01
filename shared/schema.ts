@@ -320,6 +320,33 @@ export const tradeWallets = pgTable("trade_wallets", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Independent balances for services which must never share the Trade bot ledger.
+export const serviceWallets = pgTable("service_wallets", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  serviceType: text("service_type").notNull(),
+  balance: decimal("balance", { precision: 16, scale: 6 }).notNull().default("0.000000"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  userServiceUnique: uniqueIndex("service_wallets_user_service_uq").on(table.userId, table.serviceType),
+}));
+
+export const serviceWalletTransactions = pgTable("service_wallet_transactions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  walletId: integer("wallet_id").notNull().references(() => serviceWallets.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  serviceType: text("service_type").notNull(),
+  // Signed: credits are positive and debits are negative.
+  amount: decimal("amount", { precision: 16, scale: 6 }).notNull(),
+  reference: text("reference").notNull(),
+  kind: text("kind").notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  serviceReferenceUnique: uniqueIndex("service_wallet_transactions_service_reference_uq").on(table.serviceType, table.reference),
+}));
+
 export const tradeTransactions = pgTable("trade_transactions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").notNull().references(() => users.id),

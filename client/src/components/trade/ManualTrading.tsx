@@ -240,6 +240,8 @@ export default function ManualTrading({ tradeBalance }: { tradeBalance: number }
 
   const { data: prices = [] } = useQuery<any[]>({ queryKey: ["/api/trade/market-prices"], refetchInterval: 15000 });
   const { data: positions = [] } = useQuery<any[]>({ queryKey: ["/api/trade/manual/positions"], refetchInterval: 10000 });
+  const { data: serviceWallet } = useQuery<any>({ queryKey: ["/api/service-wallets", "manual"], queryFn: async () => (await apiRequest("GET", "/api/service-wallets/manual")).json(), refetchInterval: 15000 });
+  const walletBalance = Number(serviceWallet?.balance ?? 0);
 
   const openPos = useMutation({
     mutationFn: () => apiRequest("POST", "/api/trade/manual/open", {
@@ -252,6 +254,7 @@ export default function ManualTrading({ tradeBalance }: { tradeBalance: number }
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trade/manual/positions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/service-wallets", "manual"] });
       setMargin("10"); setStopLoss(""); setTakeProfit("");
     },
   });
@@ -261,6 +264,7 @@ export default function ManualTrading({ tradeBalance }: { tradeBalance: number }
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/trade/manual/positions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trade/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/service-wallets", "manual"] });
       setCloseConfirm(null);
       setCloseResult(data);
     },
@@ -291,7 +295,7 @@ export default function ManualTrading({ tradeBalance }: { tradeBalance: number }
           data-testid="manual-trading-wallet"
         >
           <span className="flex items-center gap-1 text-[10px] font-bold uppercase"><WalletCards className="h-3.5 w-3.5" /> Wallet</span>
-          <strong className="text-base">${tradeBalance.toFixed(2)}</strong>
+           <strong className="text-base">${walletBalance.toFixed(2)}</strong>
         </button>
       </header>
 
@@ -342,8 +346,8 @@ export default function ManualTrading({ tradeBalance }: { tradeBalance: number }
 
         {/* Margin */}
         <label className="mt-4 block text-xs font-semibold text-muted-foreground">
-          Margin (USD) · Available <span className="text-foreground">${tradeBalance.toFixed(2)}</span>
-          <input type="number" min="1" max={tradeBalance} value={margin} onChange={e => setMargin(e.target.value)}
+          Margin (USD) · Available <span className="text-foreground">${walletBalance.toFixed(2)}</span>
+          <input type="number" min="1" max={walletBalance} value={margin} onChange={e => setMargin(e.target.value)}
             className="mt-2 w-full rounded-xl border border-white/10 bg-white/10 p-3 text-lg outline-none focus:border-tsia-green/50" />
         </label>
 
@@ -386,7 +390,7 @@ export default function ManualTrading({ tradeBalance }: { tradeBalance: number }
 
         {/* Submit */}
         <button
-          disabled={openPos.isPending || Number(margin) <= 0 || Number(margin) > tradeBalance}
+          disabled={openPos.isPending || Number(margin) <= 0 || Number(margin) > walletBalance}
           onClick={() => openPos.mutate()}
           className={`mt-5 w-full rounded-2xl py-4 text-sm font-black tracking-wide transition-all
             ${direction === "long"

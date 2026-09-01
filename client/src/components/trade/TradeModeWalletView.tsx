@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { ArrowLeft, ShieldCheck, WalletCards } from "lucide-react";
 import TradeWalletView from "./TradeWalletView";
+import ServiceWalletView from "../ServiceWalletView";
 
 export type TradeWalletMode = "manual" | "signals" | "bot";
 
@@ -81,15 +82,11 @@ export default function TradeModeWalletView({
             </div>
           </div>
 
-          <TradeWalletView
-            tradeSessionActive={tradeSessionActive}
-            onDeposit={onDeposit}
-            onWithdraw={onWithdraw}
-            onFund={onFund}
-            onConnect={onConnect}
-            onReinvest={onReinvest}
-            onBankDeposit={onBankDeposit}
-          />
+          {mode === "bot" ? <TradeWalletView
+            tradeSessionActive={tradeSessionActive} onDeposit={onDeposit} onWithdraw={onWithdraw}
+            onFund={onFund} onConnect={onConnect} onReinvest={onReinvest} onBankDeposit={onBankDeposit}
+            onEarlyExit={() => {}}
+          /> : <ServiceWalletView walletType={mode} description={copy.description} />}
         </div>
       </div>
     </div>

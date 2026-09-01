@@ -334,7 +334,11 @@ export const tradeTransactions = pgTable("trade_transactions", {
   status: tradeTransactionStatusEnum("status").notNull().default("pending"),
   note: text("note"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // NULL remains permitted for legacy/imported rows. Keyed financial events
+  // use a non-NULL durable id and are unique per account.
+  userTxHashUnique: uniqueIndex("trade_transactions_user_tx_hash_unique").on(table.userId, table.txHash),
+}));
 
 export const tradeReserveFund = pgTable("trade_reserve_fund", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),

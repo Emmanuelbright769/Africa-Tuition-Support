@@ -1400,8 +1400,8 @@ export default function AffiliateDashboard() {
   const mySharePct         = myCoAff ? (parseFloat(myCoAff.sharePercentage) * 100).toFixed(8) : "0";
   const tradeBalance     = parseFloat(tradeWallet?.tradeBalance ?? "0");
   const totalInvested    = parseFloat(tradeWallet?.totalInvested ?? "0");
-  // Use transaction-computed cycle earnings (immune to admin resets of totalBotEarnings field)
-  const totalBotEarned   = parseFloat((tradeWallet as any)?.currentCycleEarnings ?? tradeWallet?.totalBotEarnings ?? "0");
+  // Wallet totalBotEarnings is atomically maintained for the current cycle.
+  const totalBotEarned   = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
   const roiComplete      = !!(tradeWallet?.roiComplete);
   const tradingDayNumber = (tradeWallet as any)?.tradingDayNumber ?? 0;
   const planDaysFromWallet: 60 | 90 | 120 = (() => {
@@ -1422,8 +1422,8 @@ export default function AffiliateDashboard() {
   const earlyExitQuote = getTradeEarlyExitQuote(tradeBalance, lockedPrincipal);
   // Progress toward earnings cap (informational — not a withdrawal gate)
   // profitCapPct is the profit portion (0.70 / 0.80 / 1.00).
-  // Target = capital × (1 + profitCapPct): earn 100% ON TOP of capital = need $198 back on a $99 deposit.
-  const profitTarget     = lockedPrincipal > 0 ? lockedPrincipal * (1 + (activePlanConfig.profitCapPct ?? 1.00)) : 0;
+  // totalBotEarned is profit only: a 100% cap on $99 is $99 of earnings.
+  const profitTarget     = lockedPrincipal > 0 ? lockedPrincipal * (activePlanConfig.profitCapPct ?? 1.00) : 0;
   const returnPct        = lockedPrincipal > 0 && profitTarget > 0 ? Math.min(100, (totalBotEarned / profitTarget) * 100) : 0;
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);

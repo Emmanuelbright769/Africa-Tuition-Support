@@ -12,6 +12,7 @@ import {
   wallets,
 } from "@shared/schema";
 import { db } from "./db";
+import { settleOverdueTradeBotSession } from "./tradeBotCompletion";
 import { ADMIN_EMAIL } from "./email";
 import {
   enqueueFinancialEventInTransaction,
@@ -290,12 +291,14 @@ export async function creditTradeDepositAtomic(input: {
   finalStatus?: "completed" | "verified";
 }) {
   if (!Number.isFinite(input.gross) || input.gross <= 0) throw new Error("Trade deposit amount must be positive");
+  await settleOverdueTradeBotSession(input.userId);
   const planDays = [60, 90, 120].includes(input.planDays) ? input.planDays : 120;
   const affiliateCut = Number((input.gross * 0.05).toFixed(6));
   const userCredit = Number((input.gross - affiliateCut).toFixed(6));
   const lossDays = lossDaysForPlan(planDays);
 
   const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${input.userId})`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-deposit"}), ${input.userId})`);
     await requireVerifiedIdentity(tx, input.userId);
 
@@ -329,6 +332,9 @@ export async function creditTradeDepositAtomic(input: {
     await tx.insert(tradeWallets).values({ userId: input.userId, tradeBalance: "0.000000" }).onConflictDoNothing();
     const [wallet] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, input.userId)).for("update");
     if (!wallet) throw new Error("Unable to prepare Trade Market wallet");
+    if (wallet.botActivatedAt) {
+      throw new Error("Trade Market funding is unavailable while a bot session is active");
+    }
     const topUp = !wallet.roiComplete && (wallet.lossDayNumbers?.length ?? 0) > 0;
     const hasReservedTopUpSlot = (deposit.metadata as any)?.topUpReservation === true;
     if (topUp && !hasReservedTopUpSlot) {
@@ -371,7 +377,7 @@ export async function creditTradeDepositAtomic(input: {
     } else if ((wallet.lossDayNumbers?.length ?? 0) === 0) {
       update.lossDayNumbers = lossDays;
     } else if ((wallet.tradingDayNumber ?? 0) > 0) {
-      Object.assign(update, { tradingDayNumber: 0, lossDayNumbers: lossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false });
+      Object.assign(update, { tradingDayNumber: 0, lossDayNumbers: lossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false, cycleStartedAt: new Date(), botActivatedAt: null });
     }
     await tx.update(tradeWallets).set(update).where(eq(tradeWallets.userId, input.userId));
 
@@ -500,12 +506,14 @@ export async function transferSwiftToTradeAtomic(input: {
   gross: number;
   planDays: number;
 }) {
+  await settleOverdueTradeBotSession(input.userId);
   const reference = `INTERNAL-TRADE-${input.userId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const affiliateCut = Number((input.gross * 0.05).toFixed(6));
   const userCredit = Number((input.gross - affiliateCut).toFixed(6));
   const lossDays = lossDaysForPlan(input.planDays);
   return db.transaction(async (tx) => {
     await acquireWalletUserLock(tx, input.userId);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${input.userId})`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-deposit"}), ${input.userId})`);
     await requireVerifiedIdentity(tx, input.userId);
     const [debited] = await tx.update(wallets).set({
@@ -515,6 +523,9 @@ export async function transferSwiftToTradeAtomic(input: {
     await tx.insert(tradeWallets).values({ userId: input.userId, tradeBalance: "0.000000" }).onConflictDoNothing();
     const [wallet] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, input.userId)).for("update");
     if (!wallet) throw new Error("Unable to prepare Trade Market wallet");
+    if (wallet.botActivatedAt) {
+      throw new Error("Trade Market funding is unavailable while a bot session is active");
+    }
     const topUp = !wallet.roiComplete && (wallet.lossDayNumbers?.length ?? 0) > 0;
     if (topUp) {
       await assertTradeTopUpCapacity(tx, input.userId, wallet.cycleStartedAt);
@@ -545,7 +556,7 @@ export async function transferSwiftToTradeAtomic(input: {
       botActivatedAt: null,
     });
     else if (!(wallet.lossDayNumbers?.length)) update.lossDayNumbers = lossDays;
-    else if ((wallet.tradingDayNumber ?? 0) > 0) Object.assign(update, { tradingDayNumber: 0, lossDayNumbers: lossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false });
+    else if ((wallet.tradingDayNumber ?? 0) > 0) Object.assign(update, { tradingDayNumber: 0, lossDayNumbers: lossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false, cycleStartedAt: new Date(), botActivatedAt: null });
     const [updated] = await tx.update(tradeWallets).set(update).where(eq(tradeWallets.userId, input.userId)).returning();
     await tx.insert(transactions).values({
       userId: input.userId, type: "trade_transfer", amount: (-input.gross).toFixed(2),

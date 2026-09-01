@@ -37,16 +37,14 @@ export default function TradeWalletView({
 
   const tradeBalance    = parseFloat(wallet?.tradeBalance ?? "0");
   const lockedPrincipal = parseFloat(wallet?.lockedPrincipal ?? "0");
-  // currentCycleEarnings is the server-computed sum of positive bot earnings
-  // since cycle_started_at — immune to wallet-field corruption or admin resets.
-  const totalEarnings   = parseFloat(wallet?.currentCycleEarnings ?? wallet?.totalBotEarnings ?? "0");
+  // Wallet totalBotEarnings is the authoritative current-cycle net amount.
+  const totalEarnings   = parseFloat(wallet?.totalBotEarnings ?? "0");
   const withdrawable    = getTradeProfitWithdrawable(tradeBalance, lockedPrincipal);
 
   const planDays        = wallet?.tradingPlanDays ?? 120;
   const profitCapPct    = planDays === 60 ? 0.70 : planDays === 90 ? 0.80 : 1.00;
-  // Profit target = capital × (1 + profitCapPct): earn the full profit ON TOP of capital.
-  // e.g. 120-day "100% total return" on $99 → need $198 in cumulative earnings, not just $99.
-  const profitTarget    = lockedPrincipal * (1 + profitCapPct);
+  // totalEarnings is profit only: a 100% cap on $99 is $99 of earnings.
+  const profitTarget    = lockedPrincipal * profitCapPct;
 
   // Cycle state — must be declared BEFORE the ROI bar calculations that depend on them
   const roiComplete      = !!(wallet?.roiComplete);

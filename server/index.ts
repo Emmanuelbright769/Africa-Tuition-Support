@@ -486,6 +486,24 @@ async function runMigrations() {
         END
     `);
 
+    // roi_complete represents a closed day-count cycle, not merely reaching
+    // the profit cap. Active funded cycles continue through their configured
+    // duration even after further earnings have been capped.
+    await db.execute(sql`
+      UPDATE trade_wallets
+      SET roi_complete = FALSE, updated_at = NOW()
+      WHERE locked_principal::numeric > 0
+        AND COALESCE(early_exit_completed, FALSE) = FALSE
+        AND trading_day_number < trading_plan_days
+        AND roi_complete = TRUE
+    `);
+    // Durable replay protection for provider/session identities. PostgreSQL
+    // still permits multiple legacy NULL hashes in this composite index.
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS trade_transactions_user_tx_hash_unique
+      ON trade_transactions (user_id, tx_hash)
+    `);
+
     console.log("[MIGRATE] cycle_started_at column and roi_complete data fix applied");
     console.log("[MIGRATE] Schema migrations applied successfully");
   } catch (e) {

@@ -2,17 +2,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { getPrivateTradeProgress } from "../server/tradeRoiProgress";
+import { isCanonicalBotProfitRecord } from "../server/tradeProfitEvidence";
 
 test("ROI progress uses cumulative realised profits, excluding current capital", () => {
   const result = getPrivateTradeProgress(133.164499, 99, 120);
 
-  assert.equal(result.progressPct, 60);
+  assert.equal(result.progressPct, 67);
   assert.equal(result.targetReached, false);
 });
 
 test("ROI progress scales net profit against each plan's private target", () => {
   const sixtyDay = getPrivateTradeProgress(169, 100, 60);
-  assert.equal(sixtyDay.progressPct, 90);
+  assert.equal(sixtyDay.progressPct, 99);
   assert.equal(sixtyDay.targetReached, false);
 
   const ninetyDay = getPrivateTradeProgress(180, 100, 90);
@@ -39,8 +40,51 @@ test("withdrawing realised earnings does not reduce cycle progress", () => {
   const beforeWithdrawal = getPrivateTradeProgress(150, 100, 90);
   const afterWithdrawal = getPrivateTradeProgress(150, 100, 90);
 
-  assert.equal(beforeWithdrawal.progressPct, 80);
-  assert.equal(afterWithdrawal.progressPct, 80);
+  assert.equal(beforeWithdrawal.progressPct, 83);
+  assert.equal(afterWithdrawal.progressPct, 83);
+});
+
+test("verified cycle profits restore the expected progress independently of withdrawable balance", () => {
+  const result = getPrivateTradeProgress(175.201435, 99, 120);
+
+  assert.equal(result.progressPct, 88);
+  assert.equal(result.targetReached, false);
+});
+
+test("only canonical completed bot sessions qualify as cumulative profit evidence", () => {
+  const canonical = {
+    userId: 2,
+    type: "bot_earning",
+    status: "completed",
+    amountUsd: 3.25,
+    txHash: "BOT-SESSION-2-2026-08-31T12:10:45.270Z",
+    createdAt: "2026-09-01T01:00:00Z",
+  };
+  assert.equal(isCanonicalBotProfitRecord(canonical), true);
+  assert.equal(isCanonicalBotProfitRecord({
+    ...canonical,
+    txHash: null,
+    createdAt: "2026-08-29T09:44:25.491Z",
+    note: "Bot session day 83/120: 12.0h → 2.0000% on $131.71",
+  }), true, "strictly formatted pre-rollout sessions remain valid evidence");
+  assert.equal(isCanonicalBotProfitRecord({ ...canonical, txHash: null }), false);
+  assert.equal(isCanonicalBotProfitRecord({ ...canonical, txHash: `${canonical.txHash}-REFERRAL` }), false);
+  assert.equal(isCanonicalBotProfitRecord({ ...canonical, status: "failed" }), false);
+  assert.equal(isCanonicalBotProfitRecord({
+    ...canonical,
+    txHash: null,
+    amountUsd: 100,
+    note: "Custom correction",
+    createdAt: "2026-08-20T00:00:00Z",
+  }), false, "an admin adjustment with an arbitrary note must not count as bot profit");
+  assert.equal(isCanonicalBotProfitRecord({
+    ...canonical,
+    type: "admin_credit",
+    txHash: null,
+    amountUsd: 100,
+    note: "Bot session day 83/120: 12.0h → 2.0000% on $131.71",
+    createdAt: "2026-08-20T00:00:00Z",
+  }), false, "admin credits remain excluded even if their note resembles a legacy session");
 });
 
 test("Trade Market interfaces do not reveal private cycle return percentages", () => {

@@ -9,4 +9,6 @@ The private profit thresholds are the original capital multiplied by the cycle's
 
 **Why:** The user explicitly confirmed that progress represents accumulated profit earned during the cycle, not the amount currently retained in the Trade wallet.
 
-**How to apply:** Keep progress, settlement caps, and reconciliation aligned to the cumulative cycle-profit accumulator. Never derive progress from current wallet balance, because withdrawals would incorrectly move the bar backward.
+Only canonical completed bot-session transactions count. Modern sessions require their user-bound session hash; narrowly formatted pre-replay-protection records provide legacy continuity. Referral commissions, admin credits, and failed/reversed rows never qualify.
+
+**How to apply:** Keep progress, settlement caps, and reconciliation aligned to the same canonical transaction-backed cumulative profit. Never derive progress from current wallet balance or a manually editable wallet counter.

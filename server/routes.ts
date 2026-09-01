@@ -6,6 +6,7 @@ import { scryptSync, randomBytes, timingSafeEqual, createHash } from "crypto";
 import { storage } from "./storage";
 import { completeTradeBotSessionAtomic, settleOverdueTradeBotSession } from "./tradeBotCompletion";
 import { getPrivateTradeProgress } from "./tradeRoiProgress";
+import { canonicalBotProfitPredicate } from "./tradeProfitEvidence";
 import { addSseClient, removeSseClient, pushToUser } from "./realtime";
 import { getCached, setCached, invalidateCacheKey, invalidateCachePrefix } from "./cache";
 import {
@@ -4062,7 +4063,10 @@ export async function registerRoutes(
         SELECT
           COUNT(*) FILTER (
             WHERE type = 'topup' AND status = 'completed'
-          ) AS deposit_count
+          ) AS deposit_count,
+          COALESCE(SUM(amount_usd::numeric) FILTER (
+            WHERE ${canonicalBotProfitPredicate()}
+          ), 0) AS cumulative_profit
         FROM trade_transactions
         WHERE user_id = ${userId}
         AND created_at >= COALESCE(
@@ -4072,15 +4076,17 @@ export async function registerRoutes(
       `);
       const cm = (cycleMetrics.rows[0] as any) ?? {};
       const depositCount         = parseInt(cm.deposit_count ?? "0", 10);
+      const cumulativeProfit     = Number(cm.cumulative_profit ?? 0);
       const privateProgress = getPrivateTradeProgress(
-        Number(wallet.totalBotEarnings),
+        cumulativeProfit,
         Number(wallet.lockedPrincipal),
         wallet.tradingPlanDays ?? 120,
       );
       res.json({
         ...wallet,
         depositCount,
-        currentCycleEarnings: wallet.totalBotEarnings,
+        totalBotEarnings: cumulativeProfit.toFixed(6),
+        currentCycleEarnings: cumulativeProfit.toFixed(6),
         earningsProgressPct: privateProgress.progressPct,
         cycleTargetReached: wallet.roiComplete || privateProgress.targetReached,
         tradeSessionActive: await isTradeSessionActive(userId),
@@ -7882,26 +7888,29 @@ export async function registerRoutes(
       const amt = parseFloat(parseFloat(amount).toFixed(6));
       const daysDelta = days !== undefined && days !== "" ? parseInt(days) : 0;
 
-      await db.execute(sql`
-        UPDATE trade_wallets
-        SET trade_balance = GREATEST(0, CAST(trade_balance AS numeric) + ${amt}),
-            locked_principal = CASE WHEN ${amt} > 0 THEN CAST(locked_principal AS numeric) + ${amt} ELSE locked_principal END,
-            trading_day_number = GREATEST(0, trading_day_number + ${daysDelta}),
-            updated_at = NOW()
-        WHERE user_id = ${targetId}
-      `);
+      await db.transaction(async (tx) => {
+        const updated = await tx.execute(sql`
+          UPDATE trade_wallets
+          SET trade_balance = GREATEST(0, CAST(trade_balance AS numeric) + ${amt}),
+              locked_principal = CASE WHEN ${amt} > 0 THEN CAST(locked_principal AS numeric) + ${amt} ELSE locked_principal END,
+              trading_day_number = GREATEST(0, trading_day_number + ${daysDelta}),
+              updated_at = NOW()
+          WHERE user_id = ${targetId}
+          RETURNING user_id
+        `);
+        if (!updated.rows.length) throw new Error("Trade wallet not found");
 
-      // Record adjustment transaction
-      await db.insert(tradeTransactions).values({
-        userId: targetId,
-        type: "bot_earning",
-        amountUsd: amt.toFixed(6),
-        feeUsd: "0",
-        reserveFundDeduction: "0",
-        affiliateShareDeduction: "0",
-        netAmount: amt.toFixed(6),
-        status: "completed",
-        note: note || `Admin balance adjustment by ${admin.firstName} ${admin.lastName}`,
+        await tx.insert(tradeTransactions).values({
+          userId: targetId,
+          type: "admin_credit",
+          amountUsd: amt.toFixed(6),
+          feeUsd: "0",
+          reserveFundDeduction: "0",
+          affiliateShareDeduction: "0",
+          netAmount: amt.toFixed(6),
+          status: "completed",
+          note: note || `Admin balance adjustment by ${admin.firstName} ${admin.lastName}`,
+        });
       });
 
       res.json({ ok: true });

@@ -162,6 +162,22 @@ test("admin lien dialog offers account lien removal", () => {
   assert.match(dashboard, /api\/admin\/wallet-liens\/\$\{releaseConfirm\.userId\}/);
 });
 
+test("admin Trade wallet adjustments are atomic and cannot count as bot profit", () => {
+  const routes = readFileSync("server/routes.ts", "utf8");
+  const schema = readFileSync("shared/schema.ts", "utf8");
+  const serverIndex = readFileSync("server/index.ts", "utf8");
+  const adjustmentRoute = routes.slice(
+    routes.indexOf('app.post("/api/admin/trade-wallets/:userId/adjust"'),
+    routes.indexOf('app.patch("/api/admin/trade-wallet/:userId"'),
+  );
+
+  assert.match(schema, /tradeTransactionTypeEnum[^\n]+admin_credit/);
+  assert.match(serverIndex, /ALTER TYPE trade_transaction_type ADD VALUE IF NOT EXISTS 'admin_credit'/);
+  assert.match(adjustmentRoute, /db\.transaction\(async \(tx\)/);
+  assert.match(adjustmentRoute, /type: "admin_credit"/);
+  assert.doesNotMatch(adjustmentRoute, /type: "bot_earning"/);
+});
+
 test("exchange-rate save remains clickable and validates its audit reason on click", () => {
   const dashboard = readFileSync(
     new URL("../client/src/pages/AdminDashboard.tsx", import.meta.url),

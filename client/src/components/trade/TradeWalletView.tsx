@@ -271,7 +271,7 @@ export default function TradeWalletView({
                 <TrendingUp className="h-3 w-3" /> Cycle Earnings Progress
               </span>
               <span className={`font-bold ${cycleTargetReached ? "text-tsia-gold" : "text-white/90"}`}>
-                {cycleTargetReached ? "Cycle target reached ✓" : `${fmt(withdrawable)} earned`}
+                {cycleTargetReached ? "Cycle target reached ✓" : `${fmt(totalEarnings)} cumulative profit`}
               </span>
             </div>
             <div className="mt-1.5 h-2 rounded-full bg-white/10">

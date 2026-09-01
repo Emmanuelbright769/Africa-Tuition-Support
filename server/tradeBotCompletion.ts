@@ -11,6 +11,7 @@ import {
   wallets,
 } from "@shared/schema";
 import { db } from "./db";
+import { canonicalBotProfitPredicate } from "./tradeProfitEvidence";
 
 const PLANS: Record<number, { dailyRate: number; lossMin: number; lossMax: number; profitCapPct: number }> = {
   60: { dailyRate: .04, lossMin: .010, lossMax: .040, profitCapPct: .70 },
@@ -75,6 +76,14 @@ export async function completeTradeBotSessionAtomic(userId: number, now = new Da
     const [setting] = await tx.select({ value: platformSettings.value }).from(platformSettings)
       .where(eq(platformSettings.key, "trade_bot_full_rate")).limit(1);
     const baseRate = planDays === 120 && setting?.value ? Number(setting.value) : config.dailyRate;
+    const cumulativeProfitResult = await tx.execute(sql`
+      SELECT COALESCE(SUM(amount_usd::numeric), 0) AS cumulative_profit
+      FROM trade_transactions
+      WHERE user_id = ${userId}
+        AND created_at >= ${wallet.cycleStartedAt ?? new Date(0)}
+        AND ${canonicalBotProfitPredicate()}
+    `);
+    const cumulativeProfit = Number((cumulativeProfitResult.rows[0] as any)?.cumulative_profit ?? 0);
 
     let amount = 0;
     let rate = 0;
@@ -109,8 +118,8 @@ export async function completeTradeBotSessionAtomic(userId: number, now = new Da
       // cycle percentage is applied to the full capital-plus-profit target:
       // 100% on $100 reaches completion at $200 of accumulated profit.
       const target = Number(wallet.lockedPrincipal) * (1 + config.profitCapPct);
-      const remaining = Math.max(0, target - Number(wallet.totalBotEarnings));
-      if (Number(wallet.lockedPrincipal) > 0 && Number(wallet.totalBotEarnings) >= target) {
+      const remaining = Math.max(0, target - cumulativeProfit);
+      if (Number(wallet.lockedPrincipal) > 0 && cumulativeProfit >= target) {
         amount = 0;
         affiliate = 0;
         referrerId = undefined;
@@ -153,7 +162,7 @@ export async function completeTradeBotSessionAtomic(userId: number, now = new Da
     const nextBalance = money(Math.max(0, balance + amount));
     // Existing cap/UI semantics are cumulative positive bot earnings. Losses
     // reduce trade balance but do not reduce the earnings-cap accumulator.
-    const nextEarnings = money(Number(wallet.totalBotEarnings) + Math.max(0, amount));
+    const nextEarnings = money(cumulativeProfit + Math.max(0, amount));
     const nextDay = (wallet.tradingDayNumber ?? 0) + 1;
     const cycleComplete = nextDay >= planDays;
     let payout = 0;

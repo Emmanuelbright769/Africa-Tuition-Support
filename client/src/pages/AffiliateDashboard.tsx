@@ -1988,7 +1988,7 @@ export default function AffiliateDashboard() {
                                 <p className={`text-[10px] font-bold ${cycleTargetReached ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-blue-400"}`}>
                                   {tradeBalanceHidden ? "••••" : cycleTargetReached
                                     ? "Cycle target reached ✓"
-                                    : `$${withdrawableAmt.toFixed(2)} earned`}
+                                    : `$${totalBotEarned.toFixed(2)} cumulative profit`}
                                 </p>
                               </div>
                               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">

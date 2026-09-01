@@ -19,9 +19,9 @@ export function getPrivateTradeProgress(
   const profitTarget = locked * (PRIVATE_CYCLE_TARGETS[planDays] ?? PRIVATE_CYCLE_TARGETS[120]);
   const exactProgress = profitTarget > 0 ? Math.min(100, (profits / profitTarget) * 100) : 0;
 
-  // The browser receives only a coarse visual step. It never receives the
-  // private target, multiplier, exact target-relative ratio, or amount left.
-  const progressPct = exactProgress >= 100 ? 100 : Math.floor(exactProgress / 10) * 10;
+  // Return a whole-number visual percentage without exposing the private
+  // target amount, multiplier, or amount remaining.
+  const progressPct = Math.round(exactProgress);
 
   return {
     progressPct,

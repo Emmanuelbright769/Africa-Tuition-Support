@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
+import { canonicalBotProfitPredicate } from "./tradeProfitEvidence";
 import { users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { sendEmail, sendTradeWindowOpenEmail, sendTradeWindowCloseEmail } from "./email";
@@ -408,6 +409,9 @@ async function runMigrations() {
 
     // ── topup type for mid-cycle top-ups (distinct from initial deposit) ──────
     await db.execute(sql`ALTER TYPE trade_transaction_type ADD VALUE IF NOT EXISTS 'topup'`);
+    // Administrative Trade-wallet adjustments are structurally distinct from
+    // bot-session profit and can never advance cycle earnings progress.
+    await db.execute(sql`ALTER TYPE trade_transaction_type ADD VALUE IF NOT EXISTS 'admin_credit'`);
 
     // ── cycle_started_at column (tracks start of current deposit cycle) ────────
     await db.execute(sql`
@@ -447,13 +451,10 @@ async function runMigrations() {
       AND tw.locked_principal::numeric > 0
       AND (
         SELECT COALESCE(SUM(t.amount_usd::numeric) FILTER (
-          WHERE t.amount_usd::numeric > 0
-          AND COALESCE(t.note, '') NOT LIKE 'Referral commission%'
-          AND COALESCE(t.note, '') NOT LIKE 'Admin balance adjustment%'
-          AND COALESCE(t.note, '') NOT LIKE 'Bot session stopped and locked by admin%'
+          WHERE ${canonicalBotProfitPredicate("t")}
         ), 0)
         FROM trade_transactions t
-        WHERE t.user_id = tw.user_id AND t.type = 'bot_earning'
+        WHERE t.user_id = tw.user_id
         AND t.created_at >= COALESCE(tw.cycle_started_at, '1970-01-01'::timestamptz)
       ) >= tw.locked_principal::numeric * CASE
           WHEN tw.trading_plan_days = 60  THEN 1.70
@@ -472,13 +473,10 @@ async function runMigrations() {
       AND tw.locked_principal::numeric > 0
       AND (
         SELECT COALESCE(SUM(t.amount_usd::numeric) FILTER (
-          WHERE t.amount_usd::numeric > 0
-          AND COALESCE(t.note, '') NOT LIKE 'Referral commission%'
-          AND COALESCE(t.note, '') NOT LIKE 'Admin balance adjustment%'
-          AND COALESCE(t.note, '') NOT LIKE 'Bot session stopped and locked by admin%'
+          WHERE ${canonicalBotProfitPredicate("t")}
         ), 0)
         FROM trade_transactions t
-        WHERE t.user_id = tw.user_id AND t.type = 'bot_earning'
+        WHERE t.user_id = tw.user_id
         AND t.created_at >= COALESCE(tw.cycle_started_at, '1970-01-01'::timestamptz)
       ) < tw.locked_principal::numeric * CASE
           WHEN tw.trading_plan_days = 60  THEN 1.70

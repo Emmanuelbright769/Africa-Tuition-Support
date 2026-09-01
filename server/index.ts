@@ -111,6 +111,15 @@ async function runMigrations() {
         ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active'
     `);
     await db.execute(sql`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS transaction_pin_hash TEXT,
+        ADD COLUMN IF NOT EXISTS transaction_pin_set_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS transaction_pin_failed_attempts INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS transaction_pin_locked_until TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS transaction_pin_announcement_seen_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS transaction_pin_announcement_notified_at TIMESTAMP
+    `);
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS admin_audit_logs (
         id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         actor_user_id INTEGER NOT NULL REFERENCES users(id),

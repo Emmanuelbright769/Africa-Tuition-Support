@@ -71,6 +71,7 @@ import {
   recordDepositOutcomeAtomic,
 } from "./depositCredits";
 import { enqueueFinancialEvent } from "./financialNotifications";
+import { hashTransactionPin, isValidTransactionPin, requireTransactionPin } from "./transactionPin";
 
 const PgSession = pgSession(session);
 
@@ -166,7 +167,6 @@ async function getIteraCandles(symbol: string, interval: "1m" | "5m" | "15m" | "
   const cacheKey = `${symbol}:${interval}`;
   const cached = iteraChartCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < 5000) return cached.candles;
-  const intervalMs = interval === "1m" ? 60_000 : interval === "15m" ? 900_000 : interval === "1h" ? 3_600_000 : 300_000;
   try {
     const chart: any = await yf.chart(symbol, {
       period1: new Date(Date.now() - 24 * 3600 * 1000),
@@ -191,25 +191,7 @@ async function getIteraCandles(symbol: string, interval: "1m" | "5m" | "15m" | "
     console.warn(`[Trade] chart fetch failed for ${symbol}:`, error instanceof Error ? error.message : error);
   }
 
-  if (!currentPrice || !Number.isFinite(currentPrice)) return [];
-  const seed = symbol.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const candles = Array.from({ length: 48 }, (_, index) => {
-    const wave = Math.sin((index + seed) * 0.72) * 0.0012 + Math.cos((index + seed) * 0.21) * 0.0007;
-    const drift = (index - 24) * 0.00008;
-    const close = currentPrice * (1 + wave + drift);
-    const previousIndex = Math.max(0, index - 1);
-    const previousWave = Math.sin((previousIndex + seed) * 0.72) * 0.0012 + Math.cos((previousIndex + seed) * 0.21) * 0.0007;
-    const open = currentPrice * (1 + previousWave + (previousIndex - 24) * 0.00008);
-    return {
-      time: new Date(Date.now() - (47 - index) * intervalMs).toISOString(),
-      open,
-      high: Math.max(open, close) * 1.0007,
-      low: Math.min(open, close) * 0.9993,
-      close,
-      volume: 0,
-    };
-  });
-  return candles;
+  return [];
 }
 
 // ── USD/NGN exchange rate in-memory cache (5-min TTL) ─────────────────────
@@ -344,7 +326,7 @@ function requireBackToSchoolIdempotencyKey(req: Request, res: Response): string 
 }
 
 function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return (100000 + (randomBytes(4).readUInt32BE(0) % 900000)).toString();
 }
 
 function hashPassword(plain: string): string {
@@ -602,6 +584,87 @@ export async function registerRoutes(
     }
     return userId;
   };
+
+  const sendTransactionPinFailure = (res: Response, result: Exclude<Awaited<ReturnType<typeof requireTransactionPin>>, { ok: true }>) =>
+    res.status(result.code === "PIN_REQUIRED" ? 403 : result.code === "PIN_LOCKED" ? 429 : 401)
+      .json({ code: result.code, message: result.message });
+
+  app.get("/api/security/transaction-pin/status", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const announcementPending = !user.transactionPinAnnouncementSeenAt;
+      if (announcementPending && !user.transactionPinAnnouncementNotifiedAt) {
+        const [notification] = await db.insert(notifications).values({
+          userId,
+          type: "system",
+          title: "Transaction PIN is now required",
+          message: "Set a 4-digit transaction PIN to authorize transfers, withdrawals, and bill payments.",
+          data: { securityNotice: "transaction_pin_required" },
+          isRead: false,
+          financialEventKey: `transaction-pin-announcement:${userId}`,
+        }).onConflictDoNothing().returning();
+        await db.update(users).set({ transactionPinAnnouncementNotifiedAt: new Date() })
+          .where(and(eq(users.id, userId), sql`${users.transactionPinAnnouncementNotifiedAt} IS NULL`));
+        if (notification) pushToUser(userId, "notification", notification);
+      }
+      res.json({
+        hasPin: !!user.transactionPinHash,
+        isLocked: !!user.transactionPinLockedUntil && user.transactionPinLockedUntil.getTime() > Date.now(),
+        announcementPending,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/security/transaction-pin/request-otp", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const code = generateOtp();
+      await storage.createOtp({ email: user.email, code, expiresAt: new Date(Date.now() + 10 * 60 * 1000), used: false });
+      await sendOtpEmail(user.email, code, false);
+      res.json({ success: true, message: "A verification code was sent to your email." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/security/transaction-pin/set", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const { pin, otpCode } = req.body ?? {};
+    if (!isValidTransactionPin(pin)) return res.status(400).json({ message: "Transaction PIN must be exactly 4 digits." });
+    if (typeof otpCode !== "string" || !/^\d{6}$/.test(otpCode)) return res.status(400).json({ message: "A valid 6-digit verification code is required." });
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const otp = await storage.getValidOtp(user.email, otpCode);
+      if (!otp) return res.status(400).json({ message: "Invalid or expired verification code." });
+      await storage.markOtpUsed(otp.id);
+      await db.update(users).set({
+        transactionPinHash: hashTransactionPin(pin),
+        transactionPinSetAt: new Date(),
+        transactionPinFailedAttempts: 0,
+        transactionPinLockedUntil: null,
+      }).where(eq(users.id, userId));
+      const notification = await storage.createNotification({
+        userId, type: "system", title: "Transaction PIN updated ✓",
+        message: "Your transaction PIN has been set and is now required for outgoing transactions.",
+        data: { securityNotice: "transaction_pin_set" }, isRead: false,
+      });
+      pushToUser(userId, "notification", notification);
+      res.json({ success: true, message: "Transaction PIN set successfully." });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/security/transaction-pin/announcement-seen", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    await db.update(users).set({ transactionPinAnnouncementSeenAt: new Date() }).where(eq(users.id, userId));
+    res.json({ success: true });
+  });
 
   app.post("/api/auth/request-otp", async (req, res) => {
     try {
@@ -2221,22 +2284,8 @@ export async function registerRoutes(
     res.status(410).json({ message: "Wallet withdrawals are no longer supported. Use Fintech Hub for all money-out flows." });
   });
 
-  // ── Transfer OTP — request code for wallet-to-wallet transfers ─────────────
-  app.post("/api/wallet/transfer-otp/request", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { amount, recipientName } = req.body;
-      if (!amount || isNaN(parseFloat(amount))) return res.status(400).json({ message: "A valid amount is required" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      await storage.createWithdrawalOtp(userId, code, "wallet_transfer");
-      await sendTransferOtpEmail(user.email, user.firstName, code, parseFloat(amount).toFixed(2), recipientName || "recipient");
-      res.json({ success: true, message: `OTP sent to ${user.email.replace(/(.{2}).+(@.+)/, "$1***$2")}` });
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
-    }
+  app.post("/api/wallet/transfer-otp/request", (_req, res) => {
+    res.status(410).json({ code: "TRANSACTION_PIN_REQUIRED", message: "Transaction OTPs are no longer used. Set and use your transaction PIN." });
   });
 
   app.post("/api/wallet/withdraw", (_req, res) => {
@@ -2497,22 +2546,8 @@ export async function registerRoutes(
     }
   });
 
-  // ── CRYPTO WITHDRAWAL OTP REQUEST ──────────────────────────────────────────
-  app.post("/api/fintech/crypto-withdraw/request-otp", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      const { amount } = req.body;
-      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) < 5)
-        return res.status(400).json({ message: "Minimum withdrawal is $5" });
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      await storage.createWithdrawalOtp(userId, code, "crypto_withdrawal");
-      await sendWithdrawalOtpEmail(user.email, user.firstName, code, parseFloat(amount).toFixed(2));
-      const masked = user.email.replace(/(.{2}).+(@.+)/, "$1***$2");
-      res.json({ success: true, message: `OTP sent to ${masked}. Check your email.` });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  app.post("/api/fintech/crypto-withdraw/request-otp", (_req, res) => {
+    res.status(410).json({ code: "TRANSACTION_PIN_REQUIRED", message: "Transaction OTPs are no longer used. Set and use your transaction PIN." });
   });
 
   // ── CRYPTO WITHDRAWAL EXECUTE ───────────────────────────────────────────────
@@ -2520,17 +2555,15 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { amount, network, address, otpCode } = req.body;
-      if (!otpCode || String(otpCode).trim().length !== 6)
-        return res.status(400).json({ message: "A valid 6-digit OTP is required" });
-      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "crypto_withdrawal");
-      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Request a new code." });
+      const { amount, network, address, transactionPin } = req.body;
       if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) < 5)
         return res.status(400).json({ message: "Minimum withdrawal is $5" });
       if (!network || !["bep20", "trc20"].includes(network))
         return res.status(400).json({ message: "Invalid network. Choose TRC20 or BEP20." });
       if (!address || String(address).trim().length < 10)
         return res.status(400).json({ message: "A valid USDT wallet address is required" });
+      const pinResult = await requireTransactionPin(userId, transactionPin);
+      if (!pinResult.ok) return sendTransactionPinFailure(res, pinResult);
       const wallet = await storage.getOrCreateWallet(userId);
       const withdrawAmt = parseFloat(amount);
       const currentBalance = parseFloat(wallet.balance);
@@ -5066,6 +5099,28 @@ export async function registerRoutes(
   app.get("/api/trade/market-prices", async (req, res) => {
     if (!(req.session as any)?.userId) return res.status(401).json({ message: "Not authenticated" });
     res.json(await getTradeMarketPrices());
+  });
+  app.get("/api/trade/market-candles", async (req, res) => {
+    if (!(req.session as any)?.userId) return res.status(401).json({ message: "Not authenticated" });
+    const symbol = String(req.query.symbol ?? "");
+    const interval = String(req.query.interval ?? "5m");
+    if (!TRADE_SYMBOLS.some(market => market.symbol === symbol)) {
+      return res.status(400).json({ message: "Unsupported market symbol" });
+    }
+    if (!["1m", "5m", "15m", "1h"].includes(interval)) {
+      return res.status(400).json({ message: "Unsupported chart timeframe" });
+    }
+    const prices = await getTradeMarketPrices();
+    const currentPrice = Number(prices.find((market: any) => market.symbol === symbol)?.price ?? 0);
+    const candles = await getIteraCandles(symbol, interval as "1m" | "5m" | "15m" | "1h", currentPrice);
+    res.setHeader("Cache-Control", "private, no-cache");
+    res.json({
+      symbol,
+      interval,
+      candles,
+      stale: candles.length < 2,
+      lastUpdated: new Date().toISOString(),
+    });
   });
   app.get("/api/trade/signals", async (req, res) => {
     if (!(req.session as any)?.userId) return res.status(401).json({ message: "Not authenticated" });
@@ -9698,16 +9753,8 @@ export async function registerRoutes(
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     // recipientId is the resolved userId; recipientRole + recipientEmail allow role-based lookup for dual-account users
-    const { recipientId, recipientEmail, recipientRole, amount, note, otpCode } = req.body;
+    const { recipientId, recipientEmail, recipientRole, amount, note, transactionPin } = req.body;
     if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid transfer details" });
-    // ── OTP verification ──────────────────────────────────────────────────────
-    if (!otpCode || String(otpCode).trim().length !== 6) {
-      return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this transfer" });
-    }
-    const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "wallet_transfer");
-    if (!otpValid) {
-      return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
-    }
     try {
       // Resolve actual recipient — prefer role-based lookup when a dual-account user picked a specific dashboard
       let resolvedId: number = recipientId;
@@ -9728,6 +9775,8 @@ export async function registerRoutes(
       if (senderBalance < amount) return res.status(400).json({ message: `Insufficient balance. You have $${senderBalance.toFixed(2)}` });
       const recipient = await storage.getUser(resolvedId);
       if (!recipient) return res.status(404).json({ message: "Recipient not found" });
+      const pinResult = await requireTransactionPin(userId, transactionPin);
+      if (!pinResult.ok) return sendTransactionPinFailure(res, pinResult);
       const sender = await storage.getUser(userId);
       const walletLabel = recipient.role === "student" ? "Student Wallet" : "Affiliate Wallet";
 
@@ -10027,7 +10076,7 @@ export async function registerRoutes(
         return res.status(503).json({ message: "Network error. Please try again later." });
       }
 
-      const { bankCode, bankName, accountNumber, accountName, amount, narration, quotedExchangeRate, quotedFeeRate } = req.body;
+      const { bankCode, bankName, accountNumber, accountName, amount, narration, quotedExchangeRate, quotedFeeRate, transactionPin } = req.body;
       if (!bankCode || !accountNumber || !accountName || !amount) {
         return res.status(400).json({ message: "bankCode, accountNumber, accountName, and amount are required" });
       }
@@ -10039,6 +10088,8 @@ export async function registerRoutes(
       if (transferAmount < MIN_TRANSFER_USD) {
         return res.status(400).json({ message: `Minimum bank transfer is $${MIN_TRANSFER_USD.toFixed(2)}.` });
       }
+      const pinResult = await requireTransactionPin(userId, transactionPin);
+      if (!pinResult.ok) return sendTransactionPinFailure(res, pinResult);
 
       const wallet = await storage.getOrCreateWallet(userId);
       const balance = parseFloat(wallet.balance);
@@ -10148,21 +10199,8 @@ export async function registerRoutes(
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
-  // ── POST /api/fintech/bill-otp/request — send OTP before any bill payment ──────
-  app.post("/api/fintech/bill-otp/request", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      await storage.createWithdrawalOtp(userId, code, "bill_payment");
-      await sendOtpEmail(user.email, code, false);
-      console.log(`[BILL-OTP] code=${code} → ${user.email}`);
-      res.json({ success: true, message: `OTP sent to ${user.email.replace(/(.{2}).+(@.+)/, "$1***$2")}` });
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
-    }
+  app.post("/api/fintech/bill-otp/request", (_req, res) => {
+    res.status(410).json({ code: "TRANSACTION_PIN_REQUIRED", message: "Transaction OTPs are no longer used. Set and use your transaction PIN." });
   });
 
   // ── POST /api/fintech/airtime — VTU.ng airtime purchase ─────────────────────
@@ -10170,13 +10208,12 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { network, phone, amount, otpCode } = req.body;
+      const { network, phone, amount, transactionPin } = req.body;
       if (!network || !phone || !amount) return res.status(400).json({ message: "network, phone, and amount required" });
-      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
-      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
-      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+      const pinResult = await requireTransactionPin(userId, transactionPin);
+      if (!pinResult.ok) return sendTransactionPinFailure(res, pinResult);
 
       const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
       // VTU.ng service_id must be lowercase: mtn, airtel, glo, 9mobile
@@ -10219,13 +10256,12 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { network, phone, amount, planLabel, planValidity, variationId, otpCode } = req.body;
+      const { network, phone, amount, planLabel, planValidity, variationId, transactionPin } = req.body;
       if (!network || !phone || !variationId) return res.status(400).json({ message: "network, phone, and variationId required" });
-      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
-      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
-      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+      const pinResult = await requireTransactionPin(userId, transactionPin);
+      if (!pinResult.ok) return sendTransactionPinFailure(res, pinResult);
 
       const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
       const serviceId = network.toLowerCase() === "etisalat" ? "9mobile" : network.toLowerCase();
@@ -10270,15 +10306,14 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { discoCode, meterType, meterNumber, amount, otpCode } = req.body;
+      const { discoCode, meterType, meterNumber, amount, transactionPin } = req.body;
       if (!discoCode || !meterType || !meterNumber || !amount) {
         return res.status(400).json({ message: "discoCode, meterType, meterNumber, and amount required" });
       }
-      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
-      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
-      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+      const pinResult = await requireTransactionPin(userId, transactionPin);
+      if (!pinResult.ok) return sendTransactionPinFailure(res, pinResult);
 
       const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
 
@@ -10326,15 +10361,14 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { serviceId, smartcardNumber, variationId, packageName, subscriptionType, amount, otpCode } = req.body;
+      const { serviceId, smartcardNumber, variationId, packageName, subscriptionType, amount, transactionPin } = req.body;
       if (!serviceId || !smartcardNumber || !variationId) {
         return res.status(400).json({ message: "serviceId, smartcardNumber, and variationId required" });
       }
-      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
-      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
-      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+      const pinResult = await requireTransactionPin(userId, transactionPin);
+      if (!pinResult.ok) return sendTransactionPinFailure(res, pinResult);
 
       const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
       const result = await vtuBuyTv(smartcardNumber, serviceId, variationId, subscriptionType, amount ? amountNgn : undefined);
@@ -10375,13 +10409,12 @@ export async function registerRoutes(
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { platform, bettingUserId, amount, otpCode } = req.body;
+      const { platform, bettingUserId, amount, transactionPin } = req.body;
       if (!platform || !bettingUserId || !amount) return res.status(400).json({ message: "platform, bettingUserId, and amount required" });
-      if (!otpCode || String(otpCode).trim().length !== 6) return res.status(400).json({ message: "A valid 6-digit OTP is required to confirm this payment" });
-      const otpValid = await storage.verifyAndConsumeWithdrawalOtp(userId, String(otpCode).trim(), "bill_payment");
-      if (!otpValid) return res.status(400).json({ message: "Invalid or expired OTP. Please request a new code and try again." });
       const amountUsd = parseFloat(amount);
       if (isNaN(amountUsd) || amountUsd <= 0) return res.status(400).json({ message: "Invalid amount" });
+      const pinResult = await requireTransactionPin(userId, transactionPin);
+      if (!pinResult.ok) return sendTransactionPinFailure(res, pinResult);
 
       const amountNgn = Math.round(amountUsd * (await getUsdNgnRates()).buying);
       // VTU.ng service_id must match exactly: Bet9ja, 1xBet, BetKing, etc.

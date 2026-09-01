@@ -32,6 +32,12 @@ export const users = pgTable("users", {
   referredBy: text("referred_by"),
   walletFundDeadline: timestamp("wallet_fund_deadline"),
   activeSessionId: text("active_session_id"),
+  transactionPinHash: text("transaction_pin_hash"),
+  transactionPinSetAt: timestamp("transaction_pin_set_at"),
+  transactionPinFailedAttempts: integer("transaction_pin_failed_attempts").notNull().default(0),
+  transactionPinLockedUntil: timestamp("transaction_pin_locked_until"),
+  transactionPinAnnouncementSeenAt: timestamp("transaction_pin_announcement_seen_at"),
+  transactionPinAnnouncementNotifiedAt: timestamp("transaction_pin_announcement_notified_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   emailRoleUnique: uniqueIndex("users_email_role_unique").on(table.email, table.role),

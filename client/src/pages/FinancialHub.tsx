@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "framer-motion";
 import { TransactionReceipt, type ReceiptRow } from "@/components/ui/TransactionReceipt";
+import { TransactionPinPrompt } from "@/components/TransactionPinPrompt";
+import { TransactionPinSettings } from "@/components/TransactionPinSettings";
 import {
   ArrowUpRight, ArrowDownLeft, RefreshCw, Receipt, Wifi, Eye, EyeOff,
   ChevronRight, ChevronLeft, ArrowLeft, ArrowRight, Send, Bell, TrendingUp, TrendingDown,
@@ -154,7 +156,7 @@ function LocalEquiv({ usd, country, ngnRate }: { usd: number; country?: string; 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SendMode = "bank" | "tsia";
-type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "tsia-otp" | "bill-otp" | "receipt" | "history" | "rates" | "crypto-withdraw" | "tx-done";
+type View = "home" | "fund" | "send" | "request" | "pay-bill" | "service" | "send-amount" | "tsia-amount" | "receipt" | "history" | "rates" | "crypto-withdraw" | "tx-done" | "security";
 
 const RATE_CURRENCIES_META = [
   { code: "usd", label: "US Dollar",           symbol: "$",   flag: "🇺🇸", defaultBuy: 1600, defaultSell: 1550 },
@@ -443,6 +445,8 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
     onDone?: () => void;
   };
   const [txDoneData, setTxDoneData] = useState<TxDoneData | null>(null);
+  const [pinPrompt, setPinPrompt] = useState<"bank" | "tsia" | "bill" | null>(null);
+  const [announcementOpen, setAnnouncementOpen] = useState(false);
 
   const showTxDone = (data: TxDoneData) => {
     setTxDoneData(data);
@@ -483,14 +487,10 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
   const [recipientRoleChoice, setRecipientRoleChoice] = useState<"student" | "affiliate">("student");
   const [memberSuggestions, setMemberSuggestions] = useState<{ id: number; firstName: string; lastName: string; email: string; role: string; isDual: boolean; roles: string[] }[]>([]);
   const [showSuggestions, setShowSuggestions]     = useState(false);
-
-  // ── Transfer OTP state ───────────────────────────────────────────────────
-  const [otpCode, setOtpCode]           = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [otpMaskedEmail, setOtpMaskedEmail] = useState("");
   const [otpResendCooldown, setOtpResendCooldown] = useState(0);
-
-  // ── Bill payment OTP state ───────────────────────────────────────────────
-  const [billOtpCode, setBillOtpCode]               = useState("");
+  const [billOtpCode, setBillOtpCode] = useState("");
   const [billOtpMaskedEmail, setBillOtpMaskedEmail] = useState("");
   const [billOtpResendCooldown, setBillOtpResendCooldown] = useState(0);
 
@@ -563,6 +563,23 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: wallet }         = useQuery<WalletData>({ queryKey: ["/api/wallet"] });
+  const { data: pinStatus } = useQuery<{ hasPin: boolean; isLocked: boolean; announcementPending: boolean }>({
+    queryKey: ["/api/security/transaction-pin/status"],
+    queryFn: () => apiRequest("GET", "/api/security/transaction-pin/status").then(r => r.json()),
+    enabled: !!user,
+  });
+  useEffect(() => { if (pinStatus?.announcementPending) setAnnouncementOpen(true); }, [pinStatus?.announcementPending]);
+  useEffect(() => {
+    const openSettings = () => { try { localStorage.removeItem("tsia_open_transaction_pin_settings"); } catch {} setBottomNav("me"); setView("security"); };
+    if (localStorage.getItem("tsia_open_transaction_pin_settings") === "1") openSettings();
+    window.addEventListener("tsia:open-transaction-pin-settings", openSettings);
+    return () => window.removeEventListener("tsia:open-transaction-pin-settings", openSettings);
+  }, []);
+  const dismissPinAnnouncement = () => {
+    setAnnouncementOpen(false);
+    apiRequest("POST", "/api/security/transaction-pin/announcement-seen").then(() =>
+      queryClient.invalidateQueries({ queryKey: ["/api/security/transaction-pin/status"] }));
+  };
   const { data: txHistory = [] } = useQuery<any[]>({ queryKey: ["/api/transactions"], enabled: !restrictedFundingOnly });
   const { data: transfers = [] } = useQuery<TransferRecord[]>({ queryKey: ["/api/wallet/transfers"], enabled: !restrictedFundingOnly });
   const { data: bills = [] }     = useQuery<BillRecord[]>({ queryKey: ["/api/wallet/bills"], enabled: !restrictedFundingOnly });
@@ -1054,7 +1071,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const sendBankMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (transactionPin: string) => {
       const res = await apiRequest("POST", "/api/fintech/bank-transfer", {
         bankCode: selectedBank!.code,
         bankName: selectedBank!.name,
@@ -1065,6 +1082,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
         gateway: bankGateway,
         quotedExchangeRate: bankTransferPricing?.exchangeRate,
         quotedFeeRate: bankTransferPricing?.feeRate,
+        transactionPin,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
@@ -1146,29 +1164,10 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
     },
   });
 
-  const requestTransferOtpMutation = useMutation({
-    mutationFn: async () => {
-      if (!tsiaUser) throw new Error("No recipient selected");
-      const res = await apiRequest("POST", "/api/wallet/transfer-otp/request", {
-        amount: parseFloat(amount),
-        recipientName: `${tsiaUser.firstName} ${tsiaUser.lastName}`.trim(),
-      });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      setOtpMaskedEmail(data.message?.replace("OTP sent to ", "") ?? "");
-      setOtpCode("");
-      setOtpResendCooldown(60);
-      setView("tsia-otp");
-    },
-    onError: (e: any) => toast({ title: "Could not send OTP", description: e.message, variant: "destructive" }),
-  });
-
   const sendTsiaMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (transactionPin: string) => {
       if (!tsiaUser) throw new Error("No recipient selected");
-      const payload: Record<string, unknown> = { recipientId: tsiaUser.id, amount: parseFloat(amount), note, otpCode };
+      const payload: Record<string, unknown> = { recipientId: tsiaUser.id, amount: parseFloat(amount), note, transactionPin };
       // If dual-account member, pass email + chosen role so backend can route to correct wallet
       if (tsiaUser.isDual && tsiaUser.email) {
         payload.recipientEmail = tsiaUser.email;
@@ -1217,7 +1216,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
       title: "TSIA Transfer",
       amount: `-$${amount}`,
       errorMessage: e.message,
-      onDone: () => setView("tsia-otp"),
+      onDone: () => setView("tsia-amount"),
       onNewTx: () => setView("send"),
       newTxLabel: "Try Again",
     }),
@@ -1236,46 +1235,29 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
     onError: (e: any) => toast({ title: "Request failed", description: e.message, variant: "destructive" }),
   });
 
-  const requestBillOtpMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedService) throw new Error("No service selected");
-      const res = await apiRequest("POST", "/api/fintech/bill-otp/request", { service: selectedService.id, amount });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      setBillOtpCode("");
-      setBillOtpMaskedEmail(data.message?.replace("OTP sent to ", "") ?? "");
-      setBillOtpResendCooldown(60);
-      setView("bill-otp");
-    },
-    onError: (e: any) => toast({ title: "Could not send OTP", description: e.message, variant: "destructive" }),
-  });
-
   const billMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (transactionPin: string) => {
       if (!selectedService) throw new Error("No service selected");
-      if (!billOtpCode || billOtpCode.length !== 6) throw new Error("A valid 6-digit OTP is required");
       let endpoint = "/api/wallet/bill";
       let payload: Record<string, any> = {};
 
       if (selectedService.id === "airtime") {
         endpoint = "/api/fintech/airtime";
-        payload = { network: selectedNetwork, phone: billRef, amount: parseFloat(amount), otpCode: billOtpCode };
+        payload = { network: selectedNetwork, phone: billRef, amount: parseFloat(amount), transactionPin };
       } else if (selectedService.id === "internet") {
         if (!selectedPlan?.variationId) throw new Error("No data plan selected");
         endpoint = "/api/fintech/data";
-        payload = { network: selectedISP, phone: billRef, amount: parseFloat(amount), variationId: selectedPlan.variationId, planLabel: selectedPlan.label, otpCode: billOtpCode };
+        payload = { network: selectedISP, phone: billRef, amount: parseFloat(amount), variationId: selectedPlan.variationId, planLabel: selectedPlan.label, transactionPin };
       } else if (selectedService.id === "electricity") {
         endpoint = "/api/fintech/electricity";
-        payload = { discoCode: selectedDisco?.id, meterType, meterNumber: billRef, amount: parseFloat(amount), otpCode: billOtpCode };
+        payload = { discoCode: selectedDisco?.id, meterType, meterNumber: billRef, amount: parseFloat(amount), transactionPin };
       } else if (selectedService.id === "cable-tv") {
         if (!selectedTvPackage) throw new Error("No TV package selected");
         endpoint = "/api/fintech/cable-tv";
-        payload = { serviceId: selectedTvProvider?.id, smartcardNumber: billRef, variationId: selectedTvPackage.variationId, packageName: selectedTvPackage.label, amount: parseFloat(amount), otpCode: billOtpCode };
+        payload = { serviceId: selectedTvProvider?.id, smartcardNumber: billRef, variationId: selectedTvPackage.variationId, packageName: selectedTvPackage.label, amount: parseFloat(amount), transactionPin };
       } else if (selectedService.id === "betting") {
         endpoint = "/api/fintech/betting";
-        payload = { platform: selectedPlatform, bettingUserId: billRef, amount: parseFloat(amount), otpCode: billOtpCode };
+        payload = { platform: selectedPlatform, bettingUserId: billRef, amount: parseFloat(amount), transactionPin };
       }
 
       const res = await apiRequest("POST", endpoint, payload);
@@ -1331,26 +1313,11 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
     onError: (e: any) => toast({ title: "Payment failed", description: e.message, variant: "destructive" }),
   });
 
-  // OTP resend countdown (transfer)
-  useEffect(() => {
-    if (otpResendCooldown <= 0) return;
-    const t = setTimeout(() => setOtpResendCooldown(c => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [otpResendCooldown]);
-
-  // OTP resend countdown (bill payment)
-  useEffect(() => {
-    if (billOtpResendCooldown <= 0) return;
-    const t = setTimeout(() => setBillOtpResendCooldown(c => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [billOtpResendCooldown]);
-
   // ── Helpers ───────────────────────────────────────────────────────────────
   const resetSend = () => {
     setAmount("0"); setNote(""); setSendMode("bank"); setBankSearch(""); setSelectedBank(null);
     setAcctNumber(""); setResolvedName(null); setResolveError(null); setResolveWarning(false);
     setTsiaEmail(""); setTsiaUser(null); setRecipientRoleChoice("student");
-    setOtpCode(""); setOtpMaskedEmail(""); setOtpResendCooldown(0);
   };
   const resetBill = () => {
     setAmount("0"); setBillRef(""); setSelectedService(null); setBillStep("details");
@@ -1362,7 +1329,6 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
     setA2cNetwork(null); setA2cAmount(""); setA2cResult(null); setA2cSubmitting(false);
     setA2cPayoutMethod("wallet"); setA2cBankName(""); setA2cAccountNumber(""); setA2cAccountName("");
     setTxResult(null);
-    setBillOtpCode(""); setBillOtpMaskedEmail(""); setBillOtpResendCooldown(0);
   };
 
   const lookupTsia = async () => {
@@ -2407,6 +2373,15 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
           </div>
         ))}
       </div>
+      <button onClick={() => setView("security")} className="w-full flex items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left hover:bg-muted/40">
+        <div className="w-9 h-9 rounded-xl bg-tsia-green/10 flex items-center justify-center"><Lock className="w-4 h-4 text-tsia-green" /></div>
+        <div className="flex-1"><p className="font-bold text-sm">Security</p><p className="text-xs text-muted-foreground">Set, change, or reset your transaction PIN</p></div><ChevronRight className="w-4 h-4 text-muted-foreground" />
+      </button>
+      <Dialog open={announcementOpen} onOpenChange={open => { if (!open) dismissPinAnnouncement(); }}>
+        <DialogContent className="sm:max-w-sm"><DialogHeader><DialogTitle>Payments now use a transaction PIN</DialogTitle><DialogDescription>All outgoing payments are protected by a 4-digit transaction PIN instead of an emailed code. Set one up now to continue sending money and paying bills.</DialogDescription></DialogHeader>
+          <div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={dismissPinAnnouncement}>Not now</Button><Button className="flex-1 bg-tsia-green text-white" onClick={() => { dismissPinAnnouncement(); setView("security"); }}>Set up PIN</Button></div>
+        </DialogContent>
+      </Dialog>
     <BottomNavBar />
     </div>
   );
@@ -2414,6 +2389,12 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
   // ═════════════════════════════════════════════════════════════════════════
   // HOME VIEW
   // ═════════════════════════════════════════════════════════════════════════
+  if (view === "security") return (
+    <div className="space-y-5 pb-[76px]">
+      <BackHeader title="Security" sub="Manage your payment security" onBack={() => setView("home")} />
+      <TransactionPinSettings onDone={() => setView("home")} />
+    </div>
+  );
   if (view === "rates") {
     const updatedAt = exchangeRatesData?.updatedAt;
     return (
@@ -4008,11 +3989,14 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
           <button onClick={() => { setView("home"); resetSend(); }} className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button className="flex-1 h-11 sm:h-12 bg-tsia-green text-white font-bold rounded-2xl"
             disabled={sendBankMutation.isPending || !pricingReady || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-            onClick={() => sendBankMutation.mutate()} data-testid="btn-send-bank">
+            onClick={() => setPinPrompt("bank")} data-testid="btn-send-bank">
             {sendBankMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Send ${fmt(amount)} via {bankGateway === "korapay" ? "Korapay" : "Squad"}
           </Button>
         </div>
+        <TransactionPinPrompt open={pinPrompt === "bank"} onOpenChange={open => !open && setPinPrompt(null)}
+          loading={sendBankMutation.isPending} onSetupRequired={() => setView("security")}
+          onSubmit={async pin => { await sendBankMutation.mutateAsync(pin); setPinPrompt(null); }} />
       </motion.div>
     </AnimatePresence>
   );
@@ -4062,12 +4046,15 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
         <div className="flex gap-3">
           <button onClick={() => { setView("home"); resetSend(); }} className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
           <Button className="flex-1 h-11 sm:h-12 bg-tsia-green text-white font-bold rounded-2xl"
-            disabled={requestTransferOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-            onClick={() => { requestTransferOtpMutation.mutate(); }} data-testid="btn-send-tsia">
-            {requestTransferOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
+            disabled={sendTsiaMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+            onClick={() => setPinPrompt("tsia")} data-testid="btn-send-tsia">
+            {sendTsiaMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
             Continue — ${fmt(amount)}
           </Button>
         </div>
+        <TransactionPinPrompt open={pinPrompt === "tsia"} onOpenChange={open => !open && setPinPrompt(null)}
+          loading={sendTsiaMutation.isPending} onSetupRequired={() => setView("security")}
+          onSubmit={async pin => { await sendTsiaMutation.mutateAsync(pin); setPinPrompt(null); }} />
       </motion.div>
     </AnimatePresence>
   );
@@ -4075,7 +4062,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
   // ═════════════════════════════════════════════════════════════════════════
   // TSIA TRANSFER — OTP confirmation screen
   // ═════════════════════════════════════════════════════════════════════════
-  if (view === "tsia-otp" && tsiaUser) return (
+  if ((view as string) === "tsia-otp" && tsiaUser) return (
     <AnimatePresence mode="wait">
       <motion.div key="tsia-otp" initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
         <BackHeader onBack={() => setView("tsia-amount")} title="Confirm Transfer" sub="Enter the code sent to your email" />
@@ -4138,11 +4125,11 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
           ) : (
             <button
               className="font-semibold text-tsia-green underline underline-offset-2"
-              onClick={() => requestTransferOtpMutation.mutate()}
-              disabled={requestTransferOtpMutation.isPending}
+              onClick={() => setPinPrompt("tsia")}
+              disabled={sendTsiaMutation.isPending}
               data-testid="btn-resend-transfer-otp"
             >
-              {requestTransferOtpMutation.isPending ? "Sending…" : "Resend code"}
+              {sendTsiaMutation.isPending ? "Processing…" : "Enter PIN"}
             </button>
           )}
         </p>
@@ -4153,7 +4140,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
           <Button
             className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
             disabled={sendTsiaMutation.isPending || otpCode.length !== 6}
-            onClick={() => { sendTsiaMutation.mutate(); }}
+            onClick={() => setPinPrompt("tsia")}
             data-testid="btn-confirm-transfer-otp"
           >
             {sendTsiaMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
@@ -4167,7 +4154,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
   // ═════════════════════════════════════════════════════════════════════════
   // BILL PAYMENT OTP CONFIRMATION
   // ═════════════════════════════════════════════════════════════════════════
-  if (view === "bill-otp" && selectedService) {
+  if ((view as string) === "bill-otp" && selectedService) {
     const serviceLabel = ({
       airtime:     "Airtime Purchase",
       internet:    "Data Bundle",
@@ -4232,11 +4219,11 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             ) : (
               <button
                 className="font-semibold text-tsia-green underline underline-offset-2"
-                onClick={() => requestBillOtpMutation.mutate()}
-                disabled={requestBillOtpMutation.isPending}
+                onClick={() => setPinPrompt("bill")}
+                disabled={billMutation.isPending}
                 data-testid="btn-resend-bill-otp"
               >
-                {requestBillOtpMutation.isPending ? "Sending…" : "Resend code"}
+                {billMutation.isPending ? "Processing…" : "Enter PIN"}
               </button>
             )}
           </p>
@@ -4249,7 +4236,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             <Button
               className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
               disabled={billMutation.isPending || billOtpCode.length !== 6}
-              onClick={() => billMutation.mutate()}
+              onClick={() => setPinPrompt("bill")}
               data-testid="btn-confirm-bill-otp"
             >
               {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
@@ -4358,6 +4345,11 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
   // ═════════════════════════════════════════════════════════════════════════
   // SERVICE FLOWS
   // ═════════════════════════════════════════════════════════════════════════
+  if (view === "service" && selectedService && pinPrompt === "bill") return (
+    <TransactionPinPrompt open onOpenChange={open => !open && setPinPrompt(null)}
+      loading={billMutation.isPending} onSetupRequired={() => setView("security")}
+      onSubmit={async pin => { await billMutation.mutateAsync(pin); setPinPrompt(null); }} />
+  );
   if (view === "service" && selectedService) {
 
     // ── SHARED BILL SUCCESS SCREEN (all services) ─────────────────────────
@@ -4531,9 +4523,9 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-amber-500 text-white font-bold rounded-2xl"
-                disabled={requestBillOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-                onClick={() => requestBillOtpMutation.mutate()} data-testid="btn-confirm-electricity">
-                {requestBillOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Zap className="w-5 h-5 mr-2" />}
+                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                onClick={() => setPinPrompt("bill")} data-testid="btn-confirm-electricity">
+                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Zap className="w-5 h-5 mr-2" />}
                 Pay ${fmt(amount)}
               </Button>
             </div>
@@ -4651,9 +4643,9 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-                disabled={requestBillOtpMutation.isPending || parseFloat(amount) > balance}
-                onClick={() => requestBillOtpMutation.mutate()} data-testid="btn-confirm-data">
-                {requestBillOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Wifi className="w-5 h-5 mr-2" />}
+                disabled={billMutation.isPending || parseFloat(amount) > balance}
+                onClick={() => setPinPrompt("bill")} data-testid="btn-confirm-data">
+                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Wifi className="w-5 h-5 mr-2" />}
                 Buy Data ${fmt(amount)}
               </Button>
             </div>
@@ -4754,10 +4746,10 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
                     data-testid="input-airtime-amount" />
                 </div>
                 <Button className="h-12 px-6 bg-tsia-green text-white font-bold rounded-2xl shadow"
-                  disabled={!canPay || requestBillOtpMutation.isPending}
-                  onClick={() => requestBillOtpMutation.mutate()}
+                  disabled={!canPay || billMutation.isPending}
+                  onClick={() => setPinPrompt("bill")}
                   data-testid="btn-confirm-airtime">
-                  {requestBillOtpMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pay"}
+                  {billMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pay"}
                 </Button>
               </div>
               {parseFloat(amount) > balance && <p className="text-xs text-red-500 mt-1.5">Insufficient wallet balance (${balance.toFixed(2)} available)</p>}
@@ -4857,9 +4849,9 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-tsia-green text-white font-bold rounded-2xl"
-                disabled={requestBillOtpMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
-                onClick={() => requestBillOtpMutation.mutate()} data-testid="btn-confirm-betting">
-                {requestBillOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Gamepad2 className="w-5 h-5 mr-2" />}
+                disabled={billMutation.isPending || parseFloat(amount) <= 0 || parseFloat(amount) > balance}
+                onClick={() => setPinPrompt("bill")} data-testid="btn-confirm-betting">
+                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Gamepad2 className="w-5 h-5 mr-2" />}
                 Fund ${fmt(amount)}
               </Button>
             </div>
@@ -4964,9 +4956,9 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             <div className="flex gap-3">
               <button onClick={() => { setView("home"); resetBill(); }} className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0"><X className="w-5 h-5 text-muted-foreground" /></button>
               <Button className="flex-1 h-12 bg-rose-600 text-white font-bold rounded-2xl"
-                disabled={requestBillOtpMutation.isPending || parseFloat(amount) > balance}
-                onClick={() => requestBillOtpMutation.mutate()} data-testid="btn-confirm-cable-tv">
-                {requestBillOtpMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Smartphone className="w-5 h-5 mr-2" />}
+                disabled={billMutation.isPending || parseFloat(amount) > balance}
+                onClick={() => setPinPrompt("bill")} data-testid="btn-confirm-cable-tv">
+                {billMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Smartphone className="w-5 h-5 mr-2" />}
                 Subscribe ${fmt(amount)}
               </Button>
             </div>
@@ -5337,24 +5329,11 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
     const maxWithdraw = balance;
     const canRequest = wdAmt >= 5 && cryptoWdAddress.trim().length >= 10 && wdAmt <= maxWithdraw && !cryptoWdSubmitting;
 
-    const requestOtp = async () => {
-      setCryptoWdSubmitting(true);
-      try {
-        const res = await apiRequest("POST", "/api/fintech/crypto-withdraw/request-otp", { amount: wdAmt });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.message);
-        toast({ title: "OTP sent", description: d.message });
-        setCryptoWdStep("otp");
-      } catch (e: any) {
-        toast({ title: "Error", description: e.message, variant: "destructive" });
-      } finally { setCryptoWdSubmitting(false); }
-    };
-
-    const confirmWithdrawal = async () => {
+    const confirmWithdrawal = async (transactionPin: string) => {
       setCryptoWdSubmitting(true);
       try {
         const res = await apiRequest("POST", "/api/fintech/crypto-withdraw", {
-          amount: wdAmt, network: cryptoWdNetwork, address: cryptoWdAddress.trim(), otpCode: cryptoWdOtp.trim(),
+          amount: wdAmt, network: cryptoWdNetwork, address: cryptoWdAddress.trim(), transactionPin,
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.message);
@@ -5408,16 +5387,22 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
       setCryptoWdStep("form"); setCryptoWdAmount(""); setCryptoWdAddress(""); setCryptoWdOtp(""); setCryptoWdResult(null);
     };
 
+    if (cryptoWdStep === "otp") return (
+      <TransactionPinPrompt open onOpenChange={open => { if (!open) setCryptoWdStep("form"); }}
+        loading={cryptoWdSubmitting} onSetupRequired={() => setView("security")}
+        onSubmit={confirmWithdrawal} />
+    );
+
     return (
       <AnimatePresence mode="wait">
         <motion.div key={`cwd-${cryptoWdStep}`} initial={{ opacity:0, x:40 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-40 }} className="space-y-5">
           <div className="flex items-center justify-between">
-            <button onClick={() => cryptoWdStep === "otp" ? setCryptoWdStep("form") : setView("home")}
+            <button onClick={() => (cryptoWdStep as string) === "otp" ? setCryptoWdStep("form") : setView("home")}
               className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
               <ArrowLeft className="w-4 h-4" />
             </button>
             <h2 className="font-black text-base">
-              {cryptoWdStep === "otp" ? "Confirm OTP" : "Withdraw via Crypto"}
+              {(cryptoWdStep as string) === "otp" ? "Confirm payment" : "Withdraw via Crypto"}
             </h2>
             <button onClick={() => { resetCryptoWd(); setView("home"); }}
               className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
@@ -5425,7 +5410,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             </button>
           </div>
 
-          {cryptoWdStep === "otp" ? (
+          {(cryptoWdStep as string) === "otp" ? (
             <div className="space-y-5">
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 text-sm text-blue-700 dark:text-blue-300">
                 A 6-digit OTP has been sent to your registered email. Enter it below to confirm your withdrawal.
@@ -5447,7 +5432,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
               </div>
               <Button className="w-full h-14 bg-tsia-green text-white font-black text-base rounded-2xl shadow-lg"
                 disabled={cryptoWdOtp.length !== 6 || cryptoWdSubmitting}
-                onClick={confirmWithdrawal} data-testid="btn-cwd-confirm">
+                onClick={() => confirmWithdrawal(cryptoWdOtp)} data-testid="btn-cwd-confirm">
                 {cryptoWdSubmitting ? <><Loader2 className="w-5 h-5 animate-spin mr-2" />Processing…</> : <><Coins className="w-5 h-5 mr-2" />Confirm Withdrawal</>}
               </Button>
             </div>
@@ -5510,9 +5495,9 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
               <Button
                 className="w-full h-14 bg-tsia-green text-white font-black text-base rounded-2xl shadow-lg disabled:opacity-50"
                 disabled={!canRequest}
-                onClick={requestOtp}
-                data-testid="btn-cwd-request-otp">
-                {cryptoWdSubmitting ? <><Loader2 className="w-5 h-5 animate-spin mr-2" />Sending OTP…</> : <><Coins className="w-5 h-5 mr-2" />Request OTP to Withdraw</>}
+                onClick={() => setCryptoWdStep("otp")}
+                data-testid="btn-cwd-continue-pin">
+                {cryptoWdSubmitting ? <><Loader2 className="w-5 h-5 animate-spin mr-2" />Processing…</> : <><Coins className="w-5 h-5 mr-2" />Continue to PIN</>}
               </Button>
 
               {wdAmt > 0 && wdAmt < 5 && <p className="text-xs text-center text-red-500">Minimum withdrawal is $5</p>}

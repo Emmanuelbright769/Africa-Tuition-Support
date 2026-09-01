@@ -2289,13 +2289,6 @@ export default function EcommerceSection({ initialOpenChatId, onBack }: { initia
             </button>
           </div>
 
-          {/* Wallet balance */}
-          <div className="rounded-2xl p-4 text-white" style={{ background: `linear-gradient(135deg, ${S.blue} 0%, ${S.blueLight} 100%)` }}>
-            <p className="text-white/70 text-xs font-semibold uppercase tracking-wide mb-1">TSIA Wallet Balance</p>
-            <p className="text-3xl font-black">${walletBalance.toFixed(2)}</p>
-            <p className="text-white/60 text-xs mt-1">{formatAmount(walletBalance)}</p>
-          </div>
-
           {/* Sub-tabs */}
           <div className="flex gap-2 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm">
             {[

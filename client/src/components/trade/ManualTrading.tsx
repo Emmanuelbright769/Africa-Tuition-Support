@@ -6,6 +6,7 @@ import {
   TrendingUp, TrendingDown, CandlestickChart, X,
   ChevronDown, Search, WalletCards,
 } from "lucide-react";
+import MarketChart from "./MarketChart";
 
 /* ─────────────────── Symbols catalogue ─────────────────── */
 type Category = "Crypto" | "Forex" | "Commodities" | "Indices" | "Stocks";
@@ -298,6 +299,8 @@ export default function ManualTrading({ tradeBalance }: { tradeBalance: number }
            <strong className="text-base">${walletBalance.toFixed(2)}</strong>
         </button>
       </header>
+
+      <MarketChart symbol={selected.s} />
 
       {/* Order Entry */}
       <motion.section

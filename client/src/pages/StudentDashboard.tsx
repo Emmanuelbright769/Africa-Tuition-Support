@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import BackToSchoolSection from "@/components/BackToSchoolSection";
 import FinancialHub from "./FinancialHub";
+import { TransactionPinAnnouncement } from "@/components/TransactionPinAnnouncement";
 import MoviesSection from "@/components/MoviesSection";
 import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import EcommerceSection from "./EcommerceSection";
@@ -467,6 +468,7 @@ export default function StudentDashboard() {
 
   return (
     <div className="min-h-screen bg-background font-sans">
+      <TransactionPinAnnouncement />
 
       {/* Navbar */}
       <nav className="bg-card border-b sticky top-0 z-40 shadow-sm">

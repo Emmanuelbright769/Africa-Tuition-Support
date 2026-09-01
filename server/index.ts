@@ -557,6 +557,16 @@ async function runMigrations() {
         AND trading_day_number < trading_plan_days
         AND roi_complete = TRUE
     `);
+    // A completed early exit atomically clears both Trade balance and locked
+    // principal. Repair legacy flags that contradict a still-funded cycle.
+    await db.execute(sql`
+      UPDATE trade_wallets
+      SET early_exit_completed = FALSE, updated_at = NOW()
+      WHERE early_exit_completed = TRUE
+        AND trade_balance::numeric > 0
+        AND locked_principal::numeric > 0
+        AND trading_day_number < trading_plan_days
+    `);
     // Durable replay protection for provider/session identities. PostgreSQL
     // still permits multiple legacy NULL hashes in this composite index.
     await db.execute(sql`

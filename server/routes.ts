@@ -4518,6 +4518,10 @@ export async function registerRoutes(
     return [60, 90, 120].includes(planDays) ? planDays : 120;
   }
 
+  function isSquadPaymentSuccessful(status: unknown): boolean {
+    return String(status ?? "").trim().toLowerCase() === "success";
+  }
+
   async function recordLegacySquadManualReview(
     deposit: { id: number; amountUsd: string; txHash: string | null; walletType: string },
     userId: number,
@@ -4630,7 +4634,7 @@ export async function registerRoutes(
         headers: { Authorization: `Bearer ${secretKey}` },
       });
       const verData = await verRes.json() as any;
-      if (!verData.success || verData.data?.transaction_status !== "Success") return res.status(400).json({ message: "Payment not confirmed yet. Please try again." });
+      if (!verData.success || !isSquadPaymentSuccessful(verData.data?.transaction_status)) return res.status(400).json({ message: "Payment not confirmed yet. Please try again." });
       const gross = parseFloat(existing.amountUsd);
       const expectedKobo = Number((existing.metadata as any)?.expectedKobo);
       if (!(expectedKobo > 0)) {
@@ -5059,11 +5063,14 @@ export async function registerRoutes(
         }
         if (wallet.botActivatedAt) throw new Error("A bot session is already active.");
         const activatePlanDays = wallet.tradingPlanDays && [60, 90, 120].includes(wallet.tradingPlanDays) ? wallet.tradingPlanDays : 120;
-        if (wallet.earlyExitCompleted || wallet.roiComplete || (wallet.tradingDayNumber ?? 0) >= activatePlanDays) {
+        const cycleCompleteByDays = (wallet.tradingDayNumber ?? 0) >= activatePlanDays;
+        if (cycleCompleteByDays) {
           throw new Error(`Trading cycle complete. Your ${activatePlanDays}-day trading cycle has ended. Make a new top-up to start a fresh cycle.`);
         }
         const [activated] = await tx.update(tradeWallets)
-          .set({ botActivatedAt: now, updatedAt: now })
+          // roiComplete is a closed-cycle marker. Repair stale flags when the
+          // authoritative day count and funded principal prove the cycle is active.
+          .set({ botActivatedAt: now, roiComplete: false, earlyExitCompleted: false, updatedAt: now })
           .where(sql`${tradeWallets.userId} = ${userId} AND ${tradeWallets.earlyExitCompleted} = false AND ${tradeWallets.botActivatedAt} IS NULL`)
           .returning();
         if (!activated) throw new Error("The Trade Market cycle changed before the bot could be activated.");
@@ -7648,17 +7655,86 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // ── Admin: Force-credit a specific pending deposit ────────────────────────
+  // ── Admin: Reconcile a Squad deposit against authoritative provider data ──
   app.post("/api/admin/deposit/:id/force-credit", async (req, res) => {
     try {
       const sessionUserId = (req.session as any)?.userId;
       if (!sessionUserId) return res.status(401).json({ message: "Not authenticated" });
       const admin = await storage.getUser(sessionUserId);
       if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-      return res.status(410).json({
-        message: "Force-crediting deposit claims has been removed. Reconcile this record against the payment provider or blockchain; use the separate audited manual credit tool only for an approved adjustment.",
+      const depositId = Number(req.params.id);
+      if (!Number.isInteger(depositId) || depositId <= 0) return res.status(400).json({ message: "Invalid deposit" });
+      const [deposit] = await db.select().from(walletDeposits).where(eq(walletDeposits.id, depositId)).limit(1);
+      if (!deposit) return res.status(404).json({ message: "Deposit not found" });
+      if (deposit.status === "completed") return res.json({ success: true, message: "This deposit is already credited." });
+      if (!["squad", "squad_trade"].includes(deposit.walletType)) {
+        return res.status(409).json({ message: "This action supports Squad records only. Use the matching provider or blockchain reconciliation path." });
+      }
+      const reference = String(deposit.txHash ?? "").trim();
+      const expectedKobo = Number((deposit.metadata as any)?.expectedKobo);
+      if (!reference || !(expectedKobo > 0)) {
+        return res.status(409).json({ message: "The original Squad reference or expected amount is unavailable. Keep this record under manual review." });
+      }
+      const secretKey = process.env.SQUAD_SECRET_KEY;
+      if (!secretKey) return res.status(500).json({ message: "Squad is not configured" });
+      const squadBase = secretKey.startsWith("sk_") ? "https://api-d.squadco.com" : "https://sandbox-api-d.squadco.com";
+      const providerResponse = await fetch(`${squadBase}/transaction/verify/${encodeURIComponent(reference)}`, {
+        headers: { Authorization: `Bearer ${secretKey}` },
+        signal: AbortSignal.timeout(12_000),
       });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+      const providerData = await providerResponse.json() as any;
+      const providerStatus = providerData.data?.transaction_status;
+      if (!providerResponse.ok || providerData.success !== true || !isSquadPaymentSuccessful(providerStatus)) {
+        return res.status(409).json({ message: `Squad has not confirmed this payment as successful (status: ${providerStatus ?? "unknown"}). No credit was applied.` });
+      }
+      if (Number(providerData.data?.transaction_amount) !== expectedKobo) {
+        return res.status(409).json({ message: "Squad confirmed a different amount than the original payment request. No credit was applied." });
+      }
+      const gross = Number(deposit.amountUsd);
+      if (!(gross > 0)) return res.status(409).json({ message: "The original deposit amount is invalid. No credit was applied." });
+      let credited = false;
+      if (deposit.walletType === "squad_trade") {
+        const result = await creditTradeDepositAtomic({
+          depositId,
+          userId: deposit.userId,
+          gross,
+          target: "squad_trade",
+          reference,
+          planDays: Number((deposit.metadata as any)?.tradingPlanDays) || parseTradeDepositPlanDays(reference),
+          providerRecoveryVerified: true,
+        });
+        credited = result.credited;
+      } else {
+        credited = await creditWalletWithSplit(
+          deposit.userId,
+          gross,
+          "squad",
+          reference,
+          { id: deposit.id, amountUsd: deposit.amountUsd, status: deposit.status },
+          true,
+        );
+      }
+      const [updatedDeposit] = await db.select().from(walletDeposits).where(eq(walletDeposits.id, depositId)).limit(1);
+      await db.insert(adminAuditLogs).values({
+        actorUserId: admin.id,
+        targetUserId: deposit.userId,
+        action: "deposit.provider_reconcile",
+        reason: "Administrator requested authoritative Squad reconciliation",
+        reference,
+        outcome: credited || updatedDeposit?.status === "completed" ? "success" : "already_processed",
+        beforeState: { status: deposit.status, walletType: deposit.walletType, amountUsd: deposit.amountUsd },
+        afterState: { status: updatedDeposit?.status, providerStatus, providerAmountKobo: expectedKobo },
+      });
+      if (!credited && updatedDeposit?.status !== "completed") {
+        return res.status(409).json({ message: "Squad confirmed the payment, but the deposit could not be credited. Check identity verification and the audit log." });
+      }
+      invalidateCacheKey(`wallet_deposits:${deposit.userId}`);
+      const netCredit = Number((gross * 0.95).toFixed(2));
+      res.json({ success: true, message: `Squad confirmed the payment. $${netCredit.toFixed(2)} was credited to the correct wallet after the standard 5% affiliate allocation.` });
+    } catch (e: any) {
+      const message = e?.name === "TimeoutError" ? "Squad did not respond in time. No credit was applied." : e.message;
+      res.status(e?.message?.includes("identity verification") ? 409 : 500).json({ message });
+    }
   });
 
   // ─── ADMIN: Withdrawal Requests ──────────────────────────────────────────────
@@ -8964,7 +9040,7 @@ export async function registerRoutes(
         headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" },
       });
       const data = await response.json() as any;
-      if (!data.success || data.data?.transaction_status !== "Success") {
+      if (!data.success || !isSquadPaymentSuccessful(data.data?.transaction_status)) {
         return res.status(400).json({ message: "Payment not confirmed yet. Please wait a moment and try again." });
       }
       const { cohort, masterCode } = await storage.createPublicSponsorCohort({
@@ -9716,7 +9792,7 @@ export async function registerRoutes(
   });
 
   // ── Shared helper: credit deposit to wallet (95% to user, 5% affiliate pool) ──
-  async function creditWalletWithSplit(userId: number, gross: number, method: string, ref: string, existingDeposit?: any) {
+  async function creditWalletWithSplit(userId: number, gross: number, method: string, ref: string, existingDeposit?: any, providerRecoveryVerified = false) {
     // Payment webhooks are allowed to finalize only deposits belonging to a
     // current provider-verified identity. Unverified legacy deposits remain
     // pending for remediation instead of activating a wallet.
@@ -9744,6 +9820,7 @@ export async function registerRoutes(
       provider: method,
       reference: ref,
       description: `Wallet funded via ${method} (${ref}) — $${userCredit.toFixed(2)} credited (95%), $${affiliateCut.toFixed(2)} affiliate pool (5%)`,
+      providerRecoveryVerified,
     });
     if (!creditedWallet.credited || !creditedWallet.balance) return false;
     const billing = await reconcileMonthlyBilling(userId, new Date(), { recordAttempt: true });
@@ -12732,7 +12809,7 @@ export async function registerRoutes(
             if (!(expectedKobo > 0)) gatewayStatus = "missing_expected_amount";
             confirmed = expectedKobo > 0
               && d.success === true
-              && d.data?.transaction_status === "Success"
+              && isSquadPaymentSuccessful(d.data?.transaction_status)
               && Number(d.data?.transaction_amount) === expectedKobo;
           } else if (dep.walletType === "paystack" && paystackSecret) {
             const r = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(txHash)}`, {

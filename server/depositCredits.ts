@@ -289,6 +289,7 @@ export async function creditTradeDepositAtomic(input: {
   reference: string;
   planDays: number;
   finalStatus?: "completed" | "verified";
+  providerRecoveryVerified?: boolean;
 }) {
   if (!Number.isFinite(input.gross) || input.gross <= 0) throw new Error("Trade deposit amount must be positive");
   await settleOverdueTradeBotSession(input.userId);
@@ -311,7 +312,9 @@ export async function creditTradeDepositAtomic(input: {
     if (["completed", "verified"].includes(deposit.status)) {
       return { credited: false, transactionId: undefined as number | undefined, topUp: false };
     }
-    if (!["pending", "confirmed"].includes(deposit.status)) {
+    const recoveryEligible = input.providerRecoveryVerified
+      && ["rejected", "manual_review"].includes(deposit.status);
+    if (!["pending", "confirmed"].includes(deposit.status) && !recoveryEligible) {
       throw new Error("Trade Market deposit is not eligible for credit");
     }
     if (Number(deposit.amountUsd) !== Number(input.gross.toFixed(2))) {

@@ -14,6 +14,7 @@
 - [Financial credit proof](financial-credit-proof.md) — wallet credits require immutable provider/on-chain proof; all effects and receipts are replay-safe and transactionally coupled.
 - [External production database](external-production-database.md) — the live site uses EXTERNAL_DATABASE_URL; Replit production SQL queries target a different managed database.
 - [Trade cycle profit progress](trade-cycle-profit-progress.md) — progress and caps use cumulative realised profit, excluding capital and ignoring withdrawals.
+- [Trade cycle lifecycle flags](trade-cycle-lifecycle-flags.md) — funded incomplete cycles remain active when stale completion flags contradict day count and locked principal.
 - [Service wallet isolation](service-wallet-isolation.md) — Manual, Signals, and TS-Mart use independent atomic ledgers; Itera BOT retains its protected Trade cycle wallet.
 - [Transaction PIN policy](transaction-pin-policy.md) — outgoing payments use a hashed 4-digit PIN; email OTP is reserved for setting or recovering the PIN.
 - [Trading chart integrity](trading-chart-integrity.md) — user-facing live charts show only allowlisted provider OHLC data; never fabricate fallback candles.

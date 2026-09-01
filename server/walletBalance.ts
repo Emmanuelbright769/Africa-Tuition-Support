@@ -71,6 +71,7 @@ export async function creditVerifiedDepositAtomic(input: {
   reference: string;
   description: string;
   finalStatus?: "completed" | "verified";
+  providerRecoveryVerified?: boolean;
 }): Promise<{ credited: boolean; balance?: string; activated?: boolean; transactionId?: number }> {
   return db.transaction(async (tx) => {
     await acquireWalletUserLock(tx, input.userId);
@@ -102,7 +103,10 @@ export async function creditVerifiedDepositAtomic(input: {
       SET status = 'crediting'
       WHERE id = ${input.depositId}
         AND user_id = ${input.userId}
-        AND status IN ('pending', 'confirmed')
+        AND (
+          status IN ('pending', 'confirmed')
+          OR (${input.providerRecoveryVerified === true} AND status IN ('rejected', 'manual_review'))
+        )
       RETURNING id
     `);
     if (rowsOf<{ id: number }>(depositResult).length === 0) {

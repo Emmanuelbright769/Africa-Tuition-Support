@@ -643,12 +643,15 @@ export async function registerRoutes(
       const otp = await storage.getValidOtp(user.email, otpCode);
       if (!otp) return res.status(400).json({ message: "Invalid or expired verification code." });
       await storage.markOtpUsed(otp.id);
-      await db.update(users).set({
-        transactionPinHash: hashTransactionPin(pin),
-        transactionPinSetAt: new Date(),
-        transactionPinFailedAttempts: 0,
-        transactionPinLockedUntil: null,
-      }).where(eq(users.id, userId));
+       await db.transaction(async tx => {
+         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"transaction-pin"}), ${userId})`);
+         await tx.update(users).set({
+           transactionPinHash: hashTransactionPin(pin),
+           transactionPinSetAt: new Date(),
+           transactionPinFailedAttempts: 0,
+           transactionPinLockedUntil: null,
+         }).where(eq(users.id, userId));
+       });
       const notification = await storage.createNotification({
         userId, type: "system", title: "Transaction PIN updated ✓",
         message: "Your transaction PIN has been set and is now required for outgoing transactions.",
@@ -6867,6 +6870,240 @@ export async function registerRoutes(
     }).returning();
     return entry;
   };
+
+  // Service wallets are intentionally administered separately from Trade Market
+  // balances.  These routes use the same per-wallet advisory lock as the
+  // customer-facing service-wallet operations.
+  app.get("/api/admin/service-wallets", async (req, res) => {
+    try {
+      if (!await requireAdminUser(req, res)) return;
+      const requestedType = typeof req.query.serviceType === "string" ? req.query.serviceType : "all";
+      if (requestedType !== "all" && !isServiceWalletType(requestedType)) {
+        return res.status(400).json({ message: "serviceType must be manual, signals, tsmart, or all" });
+      }
+      const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+      const rawLimit = Number(req.query.limit ?? 50);
+      const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, Math.floor(rawLimit))) : 50;
+      const serviceValues = requestedType === "all"
+        ? sql`('manual'), ('signals'), ('tsmart')`
+        : sql`(${requestedType})`;
+      const queryFilter = q ? sql`(
+        u.first_name ILIKE ${`%${q}%`} OR u.last_name ILIKE ${`%${q}%`}
+        OR u.email ILIKE ${`%${q}%`} OR CAST(u.id AS TEXT) ILIKE ${`%${q}%`}
+      )` : sql`TRUE`;
+      const [totalsResult, walletsResult, ecosystemResult] = await Promise.all([
+        db.execute(sql`
+          SELECT service_type AS "serviceType", COALESCE(SUM(balance), 0)::text AS "totalBalance",
+                 COUNT(*)::int AS "walletCount"
+          FROM service_wallets sw
+          INNER JOIN users u ON u.id = sw.user_id
+          WHERE u.role <> 'admin'
+            AND ${requestedType === "all" ? sql`TRUE` : sql`sw.service_type = ${requestedType}`}
+          GROUP BY service_type ORDER BY service_type`),
+        db.execute(sql`
+          WITH selected_users AS (
+            SELECT u.id, u.first_name, u.last_name, u.email, u.created_at
+            FROM users u
+            WHERE u.role <> 'admin' AND ${queryFilter}
+            ORDER BY u.created_at DESC, u.id DESC LIMIT ${limit}
+          )
+          SELECT sw.id, u.id AS "userId", svc.service_type AS "serviceType",
+                 COALESCE(sw.balance, 0)::text AS balance, sw.created_at AS "createdAt", sw.updated_at AS "updatedAt",
+                 u.first_name AS "firstName", u.last_name AS "lastName", u.email,
+                 activity.id AS "latestActivityId", activity.amount::text AS "latestActivityAmount",
+                 activity.kind AS "latestActivityKind", activity.reference AS "latestActivityReference",
+                 activity.created_at AS "latestActivityAt"
+          FROM selected_users u
+          CROSS JOIN (VALUES ${serviceValues}) AS svc(service_type)
+          LEFT JOIN service_wallets sw ON sw.user_id = u.id AND sw.service_type = svc.service_type
+          LEFT JOIN LATERAL (
+            SELECT id, amount, kind, reference, created_at
+            FROM service_wallet_transactions
+            WHERE wallet_id = sw.id
+            ORDER BY created_at DESC, id DESC LIMIT 1
+          ) activity ON TRUE
+          ORDER BY u.created_at DESC, u.id DESC, svc.service_type`),
+        db.execute(sql`
+          SELECT
+            COALESCE((SELECT SUM(w.balance) FROM wallets w JOIN users u ON u.id = w.user_id WHERE u.role <> 'admin'), 0)::text AS "swift",
+            COALESCE((SELECT SUM(tw.trade_balance) FROM trade_wallets tw JOIN users u ON u.id = tw.user_id WHERE u.role <> 'admin'), 0)::text AS "trade",
+            COALESCE((SELECT SUM(sw.balance) FROM service_wallets sw JOIN users u ON u.id = sw.user_id WHERE u.role <> 'admin'), 0)::text AS "services"`),
+      ]);
+      const totals = { manual: "0.00", signals: "0.00", tsmart: "0.00" } as Record<string, string>;
+      for (const row of totalsResult.rows as any[]) totals[row.serviceType] = row.totalBalance;
+      res.json({ totals, ecosystemTotals: ecosystemResult.rows[0], aggregate: totalsResult.rows, items: walletsResult.rows, limit });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/admin/service-wallets/:userId/adjust", async (req, res) => {
+    try {
+      const admin = await requireAdminUser(req, res);
+      if (!admin) return;
+      const targetId = Number(req.params.userId);
+      const serviceType = typeof req.body?.serviceType === "string" ? req.body.serviceType : "";
+      const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+      const rawAmount = req.body?.amount;
+      // Do not coerce arbitrary input (e.g. "1foo") into a financial amount.
+      const amountText = typeof rawAmount === "number" || typeof rawAmount === "string" ? String(rawAmount).trim() : "";
+      if (!Number.isInteger(targetId) || !isServiceWalletType(serviceType)) {
+        return res.status(400).json({ message: "Valid user id and serviceType are required" });
+      }
+      if (!/^[+-]?(?:\d+)(?:\.\d{1,2})?$/.test(amountText)) {
+        return res.status(400).json({ message: "amount must be a signed USD delta with no more than two decimal places" });
+      }
+      const amount = Number(amountText);
+      if (!Number.isFinite(amount) || amount === 0) return res.status(400).json({ message: "amount must be nonzero" });
+      if (note.length < 3) return res.status(400).json({ message: "A reason/note of at least 3 characters is required" });
+      const suppliedKey = typeof req.body?.idempotencyKey === "string" ? req.body.idempotencyKey.trim() : "";
+      if (suppliedKey.length < 16 || suppliedKey.length > 180) return res.status(400).json({ message: "A valid idempotencyKey is required" });
+      // The ledger reference is returned to the user-facing wallet API, so it
+      // must be stable for replay handling without encoding staff or request
+      // details.  The audit entry retains that privileged context instead.
+      const reference = `service-admin-${createHash("sha256")
+        .update(`service-wallet-admin-adjustment:v1:${databaseUrl}:${admin.id}:${targetId}:${serviceType}:${suppliedKey}`)
+        .digest("hex")}`;
+      const result = await db.transaction(async (tx) => {
+        const targetResult = await tx.execute(sql`SELECT id, role FROM users WHERE id = ${targetId} FOR UPDATE`);
+        const target = targetResult.rows[0] as any;
+        if (!target || target.role === "admin") throw new Error("USER_NOT_FOUND");
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`service-wallet:${serviceType}`}), ${targetId})`);
+        const prior = (await tx.execute(sql`
+          SELECT swt.amount::text AS amount, sw.balance::text AS balance
+          FROM service_wallet_transactions swt JOIN service_wallets sw ON sw.id = swt.wallet_id
+          WHERE swt.service_type = ${serviceType} AND swt.reference = ${reference}`)).rows[0] as any;
+        if (prior) return { replayed: true, balance: prior.balance, amount: prior.amount };
+        await tx.execute(sql`INSERT INTO service_wallets (user_id, service_type, balance)
+          VALUES (${targetId}, ${serviceType}, 0) ON CONFLICT (user_id, service_type) DO NOTHING`);
+        const updated = (await tx.execute(sql`
+          UPDATE service_wallets SET balance = balance + ${amount.toFixed(2)}, updated_at = NOW()
+          WHERE user_id = ${targetId} AND service_type = ${serviceType}
+            AND balance + ${amount.toFixed(2)} >= 0
+          RETURNING id, balance::text AS balance`)).rows[0] as any;
+        if (!updated) throw new Error("INSUFFICIENT_BALANCE");
+        const beforeBalance = (Number(updated.balance) - amount).toFixed(6);
+        await tx.execute(sql`INSERT INTO service_wallet_transactions
+          (wallet_id, user_id, service_type, amount, reference, kind, metadata)
+          VALUES (${updated.id}, ${targetId}, ${serviceType}, ${amount.toFixed(6)}, ${reference},
+            'admin_adjustment', ${JSON.stringify({ source: "admin_reconciliation" })}::jsonb)`);
+        await tx.insert(adminAuditLogs).values({
+          actorUserId: admin.id, targetUserId: targetId, action: "service_wallet.adjusted", reason: note,
+          reference, beforeState: { serviceType, balance: beforeBalance },
+          afterState: { serviceType, balance: updated.balance }, metadata: { amount: amount.toFixed(2), idempotencyKey: suppliedKey },
+        });
+        return { replayed: false, balance: updated.balance, amount: amount.toFixed(6) };
+      });
+      res.json({ success: true, reference, ...result });
+    } catch (e: any) {
+      if (e.message === "USER_NOT_FOUND") return res.status(404).json({ message: "User not found" });
+      if (e.message === "INSUFFICIENT_BALANCE") return res.status(409).json({ message: "Adjustment would make wallet balance negative" });
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/admin/transaction-pins", async (req, res) => {
+    try {
+      if (!await requireAdminUser(req, res)) return;
+      const status = typeof req.query.status === "string" ? req.query.status : "all";
+      if (!["all", "set", "unset", "locked"].includes(status)) return res.status(400).json({ message: "status must be all, set, unset, or locked" });
+      const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+      const rawLimit = Number(req.query.limit ?? 50);
+      const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, Math.floor(rawLimit))) : 50;
+      const filters: any[] = [ne(users.role, "admin")];
+      if (status === "set") filters.push(sql`${users.transactionPinHash} IS NOT NULL`);
+      if (status === "unset") filters.push(sql`${users.transactionPinHash} IS NULL`);
+      if (status === "locked") filters.push(sql`${users.transactionPinLockedUntil} > NOW()`);
+      if (q) {
+        const pattern = `%${q}%`;
+        filters.push(or(ilike(users.firstName, pattern), ilike(users.lastName, pattern), ilike(users.email, pattern), sql`CAST(${users.id} AS TEXT) ILIKE ${pattern}`));
+      }
+      const items = await db.select({
+        id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email,
+        transactionPinSetAt: users.transactionPinSetAt, failedAttempts: users.transactionPinFailedAttempts,
+        lockedUntil: users.transactionPinLockedUntil,
+        announcementSeenAt: users.transactionPinAnnouncementSeenAt,
+        announcementNotifiedAt: users.transactionPinAnnouncementNotifiedAt,
+      }).from(users).where(and(...filters)).orderBy(desc(users.transactionPinSetAt), desc(users.id)).limit(limit);
+      res.json({ items: items.map(pin => ({ ...pin, status: pin.lockedUntil && pin.lockedUntil > new Date() ? "locked" : pin.transactionPinSetAt ? "set" : "unset" })), limit });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  const administerTransactionPin = async (
+    req: Request, res: Response, mode: "unlock" | "reset",
+  ) => {
+    try {
+      const admin = await requireAdminUser(req, res);
+      if (!admin) return;
+      const targetId = Number(req.params.userId);
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      if (!Number.isInteger(targetId)) return res.status(400).json({ message: "Invalid user id" });
+      if (reason.length < 3) return res.status(400).json({ message: "A reason of at least 3 characters is required" });
+      const suppliedKey = typeof req.body?.idempotencyKey === "string" ? req.body.idempotencyKey.trim() : "";
+      if (suppliedKey.length < 16 || suppliedKey.length > 180) return res.status(400).json({ message: "A valid idempotencyKey is required" });
+      const reference = `admin-transaction-pin-${mode}:${admin.id}:${targetId}:${suppliedKey}`;
+      const result = await db.transaction(async (tx) => {
+        // This lock serializes a repeated request with a concurrent PIN attempt.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"transaction-pin"}), ${targetId})`);
+        const target = (await tx.execute(sql`
+          SELECT id, role, transaction_pin_hash, transaction_pin_set_at,
+                 transaction_pin_failed_attempts, transaction_pin_locked_until
+          FROM users WHERE id = ${targetId} FOR UPDATE`)).rows[0] as any;
+        if (!target || target.role === "admin") throw new Error("USER_NOT_FOUND");
+        const prior = (await tx.execute(sql`SELECT id FROM admin_audit_logs
+          WHERE actor_user_id = ${admin.id} AND target_user_id = ${targetId}
+            AND reference = ${reference} LIMIT 1`)).rows[0];
+        if (prior) return { replayed: true, notification: null };
+        const before = {
+          hasPin: !!target.transaction_pin_hash, setAt: target.transaction_pin_set_at,
+          failedAttempts: target.transaction_pin_failed_attempts, lockedUntil: target.transaction_pin_locked_until,
+        };
+        if (mode === "unlock") {
+          await tx.execute(sql`UPDATE users SET transaction_pin_failed_attempts = 0,
+            transaction_pin_locked_until = NULL WHERE id = ${targetId}`);
+        } else {
+          await tx.execute(sql`UPDATE users SET transaction_pin_hash = NULL, transaction_pin_set_at = NULL,
+            transaction_pin_failed_attempts = 0, transaction_pin_locked_until = NULL WHERE id = ${targetId}`);
+        }
+        const after = mode === "unlock"
+          ? { hasPin: before.hasPin, setAt: before.setAt, failedAttempts: 0, lockedUntil: null }
+          : { hasPin: false, setAt: null, failedAttempts: 0, lockedUntil: null, setupRequired: true };
+        await tx.insert(adminAuditLogs).values({
+          actorUserId: admin.id, targetUserId: targetId,
+          action: mode === "unlock" ? "transaction_pin.unlocked" : "transaction_pin.reset",
+          reason, reference, beforeState: before, afterState: after,
+          metadata: { idempotencyKey: suppliedKey },
+        });
+        const [notification] = await tx.insert(notifications).values({
+          userId: targetId,
+          // notification_type has no "security" enum value; system notices are
+          // the established channel for account-security events.
+          type: "system",
+          title: mode === "unlock" ? "Transaction PIN unlocked" : "Transaction PIN reset",
+          message: mode === "unlock"
+            ? "An administrator unlocked your transaction PIN after a support review."
+            : "An administrator reset your transaction PIN after a support review. Set a new PIN before making outgoing payments.",
+          data: { securityNotice: `transaction_pin_${mode}`, reference },
+          isRead: false,
+          financialEventKey: reference,
+        }).onConflictDoNothing().returning();
+        return { replayed: false, notification };
+      });
+      // Never include a PIN or hash in an administrative response.
+      if (result.notification) pushToUser(targetId, "notification", result.notification);
+      res.json({ success: true, action: mode, reference, replayed: result.replayed });
+    } catch (e: any) {
+      if (e.message === "USER_NOT_FOUND") return res.status(404).json({ message: "User not found" });
+      res.status(500).json({ message: e.message });
+    }
+  };
+
+  app.post("/api/admin/users/:userId/transaction-pin/unlock", (req, res) =>
+    administerTransactionPin(req, res, "unlock"));
+  app.post("/api/admin/users/:userId/transaction-pin/reset", (req, res) =>
+    administerTransactionPin(req, res, "reset"));
 
   app.get("/api/admin/users", async (req, res) => {
     try {

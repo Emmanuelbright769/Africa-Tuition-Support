@@ -14,3 +14,9 @@ An active account lien must block every user-initiated funds-out path across eve
 **Why:** Checking only one wallet or checking before a debit without serialization lets users route funds through another product, switch linked roles, or win a race against lien placement.
 
 **How to apply:** Serialize funds-out requests and every automatic/manual lien mutation on one stable linked-account identity. Preserve lien ownership: a lifecycle may release only the lien it created, while explicit admin release may clear the whole hold.
+
+Service-wallet corrections must use a signed delta under the same wallet lock as user operations, reject negative resulting balances, and preserve one idempotency key across ambiguous retries. Keep staff identity, support notes, and replay keys only in the admin audit record; user-visible ledger references and metadata must be opaque.
+
+**Why:** Direct balance replacement can overwrite concurrent activity, retry-generated keys can double-apply funds, and service-ledger metadata is visible to the affected user.
+
+**How to apply:** Record a sanitized `admin_adjustment` ledger entry atomically with the balance and audit change. Never expose administrator IDs, internal case notes, or idempotency material through user wallet-history APIs.

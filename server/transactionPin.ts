@@ -33,30 +33,35 @@ export function verifyTransactionPin(pin: string, stored: string): boolean {
 
 /** Verifies a transaction PIN and persists lockout state; never logs the PIN. */
 export async function requireTransactionPin(userId: number, pin: unknown): Promise<TransactionPinResult> {
-  const [user] = await db.select({
-    hash: users.transactionPinHash,
-    lockedUntil: users.transactionPinLockedUntil,
-  }).from(users).where(eq(users.id, userId)).limit(1);
-  if (!user?.hash) return { ok: false, code: "PIN_REQUIRED", message: "Set a transaction PIN before making transactions." };
-  if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
-    return { ok: false, code: "PIN_LOCKED", message: "Transaction PIN is locked. Try again in 15 minutes." };
-  }
-  if (isValidTransactionPin(pin) && verifyTransactionPin(pin, user.hash)) {
-    await db.update(users).set({
-      transactionPinFailedAttempts: 0,
-      transactionPinLockedUntil: null,
-    }).where(eq(users.id, userId));
-    return { ok: true };
-  }
+  return db.transaction(async tx => {
+    // Shared with PIN setup and admin unlock/reset so a stale authorization
+    // cannot succeed concurrently with an administrative security change.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"transaction-pin"}), ${userId})`);
+    const [user] = await tx.select({
+      hash: users.transactionPinHash,
+      lockedUntil: users.transactionPinLockedUntil,
+    }).from(users).where(eq(users.id, userId)).limit(1);
+    if (!user?.hash) return { ok: false, code: "PIN_REQUIRED", message: "Set a transaction PIN before making transactions." } as TransactionPinResult;
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      return { ok: false, code: "PIN_LOCKED", message: "Transaction PIN is locked. Try again in 15 minutes." } as TransactionPinResult;
+    }
+    if (isValidTransactionPin(pin) && verifyTransactionPin(pin, user.hash)) {
+      await tx.update(users).set({
+        transactionPinFailedAttempts: 0,
+        transactionPinLockedUntil: null,
+      }).where(eq(users.id, userId));
+      return { ok: true } as TransactionPinResult;
+    }
 
-  const lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
-  await db.update(users).set({
-    transactionPinFailedAttempts: sql`CASE WHEN COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 >= ${LOCK_AFTER_FAILURES} THEN 0 ELSE COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 END`,
-    transactionPinLockedUntil: sql`CASE WHEN COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 >= ${LOCK_AFTER_FAILURES} THEN ${lockUntil} ELSE NULL END`,
-  }).where(eq(users.id, userId));
-  const [updated] = await db.select({ lockedUntil: users.transactionPinLockedUntil })
-    .from(users).where(eq(users.id, userId)).limit(1);
-  return updated?.lockedUntil && updated.lockedUntil.getTime() > Date.now()
-    ? { ok: false, code: "PIN_LOCKED", message: "Transaction PIN is locked. Try again in 15 minutes." }
-    : { ok: false, code: "PIN_INVALID", message: "Incorrect transaction PIN." };
+    const lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
+    await tx.update(users).set({
+      transactionPinFailedAttempts: sql`CASE WHEN COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 >= ${LOCK_AFTER_FAILURES} THEN 0 ELSE COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 END`,
+      transactionPinLockedUntil: sql`CASE WHEN COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 >= ${LOCK_AFTER_FAILURES} THEN ${lockUntil} ELSE NULL END`,
+    }).where(eq(users.id, userId));
+    const [updated] = await tx.select({ lockedUntil: users.transactionPinLockedUntil })
+      .from(users).where(eq(users.id, userId)).limit(1);
+    return updated?.lockedUntil && updated.lockedUntil.getTime() > Date.now()
+      ? { ok: false, code: "PIN_LOCKED", message: "Transaction PIN is locked. Try again in 15 minutes." }
+      : { ok: false, code: "PIN_INVALID", message: "Incorrect transaction PIN." };
+  });
 }

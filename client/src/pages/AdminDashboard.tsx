@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import BackToSchoolAdminSection from "@/components/BackToSchoolAdminSection";
 import AdminUsersWorkspace from "@/components/AdminUsersWorkspace";
 import AdminSponsorCodes from "@/components/AdminSponsorCodes";
+import AdminWalletOperations from "@/components/AdminWalletOperations";
 import { ProctoringPlayback } from "@/components/ProctoringPlayback";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -109,6 +110,7 @@ const NAV = [
   { id: "crypto_withdrawals", icon: Coins,    label: "Crypto W/D",    badgeKey: "pendingCryptoWd" },
   { id: "bank_transfers", icon: Send,         label: "Bank Transfers", badgeKey: "pendingBankTransfers" },
   { id: "reserve",      icon: ShieldCheck,    label: "Str. Reserve" },
+  { id: "wallet_pin_security", icon: Lock,     label: "Wallets & PIN Security" },
   { id: "trustfunders", icon: Award,          label: "Affiliate Trust Fund" },
   { id: "messages",     icon: MessageSquare,  label: "Forum Messages" },
   { id: "notifications", icon: Bell,          label: "Notifications" },
@@ -121,7 +123,7 @@ const NAV = [
 const NAV_GROUPS = [
   { label: "Operations", items: ["overview", "applications", "payouts", "loans"] },
   { label: "Users & growth", items: ["users", "affiliates", "sponsor_codes", "referrals", "kiddies"] },
-  { label: "Money", items: ["transactions", "deposits", "crypto_withdrawals", "bank_transfers", "trade_withdrawals", "reserve"] },
+  { label: "Money", items: ["transactions", "deposits", "crypto_withdrawals", "bank_transfers", "trade_withdrawals", "reserve", "wallet_pin_security"] },
   { label: "Products & community", items: ["ecommerce", "trade", "trustfunders", "messages", "notifications", "scholarships", "enrollment"] },
   { label: "Configuration", items: ["audit", "settings"] },
 ];
@@ -1726,6 +1728,11 @@ export default function AdminDashboard() {
                 onDelete={(target) => setDeleteUserDialog({ open: true, user: target })}
                 onManualCredit={() => setManualCreditOpen(true)}
               />
+            )}
+            {activeTab === "wallet_pin_security" && (
+              <motion.div key="wallet-pin-security" variants={slide} initial="hidden" animate="visible" exit="exit">
+                <AdminWalletOperations />
+              </motion.div>
             )}
             {activeTab === "audit" && (
               <motion.div key="audit" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">

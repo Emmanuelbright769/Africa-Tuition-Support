@@ -101,7 +101,7 @@ export default function TSIASplashScreen({
           </div>
 
           <div className="tsia-splash__footer">
-            <span>Education creates momentum</span>
+            <span>Audacity to learn</span>
             <span className="tsia-splash__footer-mark" aria-hidden="true">TSIA / 01</span>
           </div>
         </motion.div>

@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import {
+  financialEvents,
   notifications,
   platformSettings,
   TRADE_MARKET,
@@ -205,6 +206,169 @@ export async function settleOverdueTradeBotSession(
   const ageMs = now.getTime() - new Date(wallet.botActivatedAt).getTime();
   if (ageMs < 12 * 60 * 60 * 1000) return { completed: false };
   return completeTradeBotSessionAtomic(userId, now);
+}
+
+const USER_TWO_DUPLICATE_SESSION_IDS = [
+  3836, 3840, 3843, 3849, 3852, 3854, 3857,
+  3859, 3862, 3877, 3878, 3879, 3880, 3899,
+] as const;
+
+/**
+ * One-time production reconciliation for the Aug 31 session that legacy
+ * completion requests applied fourteen extra times. Original ledger rows are
+ * retained and marked failed; an immutable financial event records the exact
+ * before/after correction. The event key makes startup retries harmless.
+ */
+export async function reconcileKnownDuplicateTradeSession(): Promise<boolean> {
+  const userId = 2;
+  const eventKey = "trade-session-reconciliation:user-2:2026-08-31T12:10:45.270Z";
+  const preflight = await db.execute(sql`
+    SELECT COUNT(*)::int AS source_rows
+    FROM trade_transactions
+    WHERE user_id = ${userId}
+      AND id IN (3836,3840,3843,3849,3852,3854,3857,3859,3862,3877,3878,3879,3880,3899)
+      AND status = 'completed'
+  `);
+  const sourceRows = Number((preflight.rows[0] as any)?.source_rows ?? 0);
+  if (sourceRows === 0) return false;
+  if (sourceRows !== USER_TWO_DUPLICATE_SESSION_IDS.length) {
+    throw new Error("Trade reconciliation found only part of the audited duplicate set");
+  }
+  return db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${userId})`);
+    const [event] = await tx.insert(financialEvents).values({
+      eventKey,
+      userId,
+      eventType: "trade_session_reconciliation",
+      payload: { status: "started" },
+    }).onConflictDoNothing().returning({ id: financialEvents.id });
+    if (!event) return false;
+
+    const [wallet] = await tx.select().from(tradeWallets)
+      .where(eq(tradeWallets.userId, userId))
+      .for("update");
+    if (!wallet) throw new Error("Trade reconciliation wallet is missing");
+    const [canonical] = await tx.select({
+      id: tradeTransactions.id,
+      amountUsd: tradeTransactions.amountUsd,
+      status: tradeTransactions.status,
+      note: tradeTransactions.note,
+      txHash: tradeTransactions.txHash,
+    }).from(tradeTransactions)
+      .where(and(
+        eq(tradeTransactions.id, 3833),
+        eq(tradeTransactions.userId, userId),
+      ))
+      .for("update");
+    if (
+      !canonical
+      || canonical.status !== "completed"
+      || Number(canonical.amountUsd) !== -1.175501
+      || canonical.txHash !== null
+      || !canonical.note?.startsWith("Bot session day 84/120 (loss)")
+    ) {
+      throw new Error("Trade reconciliation canonical session check failed");
+    }
+    if (
+      Number(wallet.tradeBalance) !== 164.942945
+      || Number(wallet.lockedPrincipal) !== 99
+      || Number(wallet.totalBotEarnings) !== 173.248741
+      || wallet.tradingDayNumber !== 98
+      || wallet.tradingPlanDays !== 120
+      || wallet.botActivatedAt !== null
+      || wallet.roiComplete
+      || wallet.earlyExitCompleted
+    ) {
+      throw new Error("Trade reconciliation wallet baseline changed; manual review required");
+    }
+
+    const duplicateRows = await tx.execute(sql`
+      SELECT id, amount_usd::numeric AS amount
+      FROM trade_transactions
+      WHERE user_id = ${userId}
+        AND id IN (3836,3840,3843,3849,3852,3854,3857,3859,3862,3877,3878,3879,3880,3899)
+        AND status = 'completed'
+      ORDER BY id
+      FOR UPDATE
+    `);
+    if (duplicateRows.rows.length !== USER_TWO_DUPLICATE_SESSION_IDS.length) {
+      throw new Error("Trade reconciliation source rows do not match the audited duplicate set");
+    }
+    const ids = duplicateRows.rows.map((row: any) => Number(row.id));
+    if (!USER_TWO_DUPLICATE_SESSION_IDS.every((id, index) => ids[index] === id)) {
+      throw new Error("Trade reconciliation source identity check failed");
+    }
+    const balanceOverstatement = money(duplicateRows.rows.reduce(
+      (sum, row: any) => sum + Number(row.amount),
+      0,
+    ));
+    const earningsOverstatement = money(duplicateRows.rows.reduce(
+      (sum, row: any) => sum + Math.max(0, Number(row.amount)),
+      0,
+    ));
+    if (balanceOverstatement !== 31.775497 || earningsOverstatement !== 35.457652) {
+      throw new Error("Trade reconciliation source amounts changed");
+    }
+
+    const before = {
+      tradeBalance: Number(wallet.tradeBalance),
+      totalBotEarnings: Number(wallet.totalBotEarnings),
+      tradingDayNumber: wallet.tradingDayNumber,
+    };
+    const correctedBalance = money(Math.max(
+      Number(wallet.lockedPrincipal),
+      before.tradeBalance - balanceOverstatement,
+    ));
+    const plan = PLANS[wallet.tradingPlanDays] ?? PLANS[120];
+    const profitCap = money(Number(wallet.lockedPrincipal) * plan.profitCapPct);
+    const correctedEarnings = money(Math.min(
+      Math.max(0, before.totalBotEarnings - earningsOverstatement),
+      profitCap,
+    ));
+    const correctedDay = Math.max(0, before.tradingDayNumber - USER_TWO_DUPLICATE_SESSION_IDS.length);
+
+    await tx.execute(sql`
+      UPDATE trade_transactions
+      SET status = 'failed',
+          note = CONCAT(COALESCE(note, ''), ' [reversed: duplicate completion of Aug 31 session]')
+      WHERE user_id = ${userId}
+        AND id IN (3836,3840,3843,3849,3852,3854,3857,3859,3862,3877,3878,3879,3880,3899)
+    `);
+    await tx.update(tradeWallets).set({
+      tradeBalance: correctedBalance.toFixed(6),
+      totalBotEarnings: correctedEarnings.toFixed(6),
+      tradingDayNumber: correctedDay,
+      botActivatedAt: null,
+      updatedAt: new Date(),
+    }).where(eq(tradeWallets.userId, userId));
+
+    const after = {
+      tradeBalance: correctedBalance,
+      totalBotEarnings: correctedEarnings,
+      tradingDayNumber: correctedDay,
+    };
+    await tx.update(financialEvents).set({
+      payload: {
+        reason: "One persisted bot activation was settled fifteen times by legacy concurrent requests",
+        canonicalTransactionId: 3833,
+        reversedTransactionIds: [...USER_TWO_DUPLICATE_SESSION_IDS],
+        balanceOverstatement,
+        earningsOverstatement,
+        before,
+        after,
+      },
+    }).where(eq(financialEvents.id, event.id));
+    await tx.insert(notifications).values({
+      userId,
+      financialEventKey: eventKey,
+      type: "system",
+      title: "Trade Wallet Reconciled",
+      message: "Duplicate bot-session settlements were removed. Your principal was preserved and your Trade Wallet totals were corrected.",
+      data: { eventKey, before, after },
+      isRead: false,
+    });
+    return true;
+  });
 }
 
 /** Read-only audit.  Legacy rows have no session key, so reversing them would

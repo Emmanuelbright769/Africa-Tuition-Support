@@ -12,6 +12,7 @@ import { processCurrentMonthlyBilling, reconcileMonthlyBilling } from "./monthly
 import { creditVerifiedDepositAtomic } from "./walletBalance";
 import { creditTradeDepositAtomic, recordDepositOutcomeAtomic } from "./depositCredits";
 import { enqueueFinancialEvent, processFinancialEventOutbox } from "./financialNotifications";
+import { reconcileKnownDuplicateTradeSession } from "./tradeBotCompletion";
 import {
   TSIA_BEP20_ADDRESS,
   hasFinalBscSuccess,
@@ -618,12 +619,18 @@ async function startIdentityVerificationReviewJob() {
 
   await runReview(); // catches a review missed while the app was offline
   const scheduleNext = () => {
+    const MAX_TIMEOUT_MS = 24 * 24 * 60 * 60 * 1000;
     const now = new Date();
     const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 10, 0));
+    const waitMs = nextFirst.getTime() - Date.now();
     setTimeout(async () => {
+      if (Date.now() < nextFirst.getTime()) {
+        scheduleNext();
+        return;
+      }
       await runReview();
       scheduleNext();
-    }, nextFirst.getTime() - Date.now());
+    }, Math.min(waitMs, MAX_TIMEOUT_MS)).unref();
     console.log(`[IDENTITY-REVIEW] Next review scheduled: ${nextFirst.toUTCString()}`);
   };
   scheduleNext();
@@ -1032,6 +1039,9 @@ async function startMonthlyBillingJob() {
 
 (async () => {
   await runMigrations();
+  if (process.env.NODE_ENV === "production") {
+    await reconcileKnownDuplicateTradeSession();
+  }
   await registerRoutes(httpServer, app);
   await seedAdmin();
   startAutoRefundJob();

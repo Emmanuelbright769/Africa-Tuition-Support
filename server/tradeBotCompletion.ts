@@ -216,20 +216,21 @@ export async function settleOverdueTradeBotSession(
 }
 
 const DUPLICATE_BURST_REVIEW_CASES = [
-  { userId: 1, rows: 15, firstDay: 1, lastDay: 15 },
-  { userId: 2, rows: 15, firstDay: 84, lastDay: 98 },
-  { userId: 60, rows: 11, firstDay: 19, lastDay: 29 },
-  { userId: 649, rows: 52, firstDay: 30, lastDay: 81 },
-  { userId: 741, rows: 69, firstDay: 10, lastDay: 78 },
+  { userId: 1, rows: 15, firstDay: 1, lastDay: 15, fingerprint: "38e236cb866e08e14384c85732041d06", canonicalId: 3723, expectedHashOwnerId: null, expectedBalance: 684.174351, correctedEarnings: 26.314351, lienIncrease: 0, sessionAt: "2026-08-31T12:00:35.843Z", cycleStartedAt: "2026-08-29T23:38:17.735Z", baseline: [780.446375, 774.25, 181.111978, 6, 60, false, false, 0] },
+  { userId: 2, rows: 15, firstDay: 84, lastDay: 98, fingerprint: "17fb86920cf63ad1fc59bba7ebf81d69", canonicalId: 3833, expectedHashOwnerId: 3899, expectedBalance: 133.164499, correctedEarnings: 99, lienIncrease: 0, sessionAt: "2026-08-31T12:10:45.270Z", cycleStartedAt: "2026-04-22T12:07:42.418Z", baseline: [124.942945, 99, 134.248741, 82, 120, false, false, 0] },
+  { userId: 60, rows: 11, firstDay: 19, lastDay: 29, fingerprint: "553e1f3aeba0860eaf9aa9aed793c280", canonicalId: 3695, expectedHashOwnerId: null, expectedBalance: 106.079961, correctedEarnings: 18.472889, lienIncrease: 0, sessionAt: "2026-08-31T12:03:58.152Z", cycleStartedAt: "2026-08-04T08:49:19.416Z", baseline: [114.598962, 93.75, 35.672634, 29, 120, false, false, 0] },
+  { userId: 649, rows: 52, firstDay: 30, lastDay: 81, fingerprint: "eddf1e3733a5e58edcc448557231c837", canonicalId: 3741, expectedHashOwnerId: null, expectedBalance: 71.832059, correctedEarnings: 34.083558, lienIncrease: 0, sessionAt: "2026-08-31T12:02:54.913Z", cycleStartedAt: "2026-07-22T09:17:16.710Z", baseline: [78.717896, 63.8115, 75.8607, 31, 90, false, true, 0] },
+  { userId: 741, rows: 69, firstDay: 10, lastDay: 78, fingerprint: "ec6cb1ca5b76f94f7c6e59141eac2522", canonicalId: 3706, expectedHashOwnerId: null, expectedBalance: 71.911693, correctedEarnings: 24.430774, lienIncrease: 74.67, sessionAt: "2026-08-31T12:21:22.067Z", cycleStartedAt: "2026-08-18T19:49:13.468Z", baseline: [154.13014, 146.585, 44.563183, 11, 90, false, false, 47.04] },
 ] as const;
 
 /**
- * Freezes accounts with the proven Sep 1 legacy completion burst for manual
- * review. This deliberately does not change balances, principal, earnings,
- * transaction rows, or session markers.
+ * Reconciles the proven Sep 1 legacy completion bursts. Duplicate value is
+ * recovered only from Trade balance above locked principal. A lien is added
+ * only for an independently proven outflow that cannot be recovered without
+ * reducing principal.
  */
-export async function freezeDuplicateBurstAccountsForReview(): Promise<number> {
-  let frozen = 0;
+export async function reconcileDuplicateBurstAccounts(): Promise<number> {
+  let reconciled = 0;
   for (const reviewCase of DUPLICATE_BURST_REVIEW_CASES) {
     const changed = await db.transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${reviewCase.userId})`);
@@ -239,8 +240,51 @@ export async function freezeDuplicateBurstAccountsForReview(): Promise<number> {
       const [wallet] = await tx.select().from(tradeWallets)
         .where(eq(tradeWallets.userId, reviewCase.userId))
         .for("update");
+      const [swiftWallet] = await tx.select().from(wallets)
+        .where(eq(wallets.userId, reviewCase.userId))
+        .for("update");
       if (!user || user.role === "admin" || !wallet) {
-        throw new Error(`Trade review freeze identity check failed for user ${reviewCase.userId}`);
+        throw new Error(`Trade reconciliation identity check failed for user ${reviewCase.userId}`);
+      }
+      const eventKey = `trade-duplicate-burst-reconciliation:2026-09-01:user-${reviewCase.userId}`;
+      const [existingEvent] = await tx.select({ id: financialEvents.id }).from(financialEvents)
+        .where(eq(financialEvents.eventKey, eventKey))
+        .limit(1);
+      if (existingEvent) return false;
+      const targetHash = `BOT-SESSION-${reviewCase.userId}-${reviewCase.sessionAt}`;
+      const hashOwners = await tx.select({
+        id: tradeTransactions.id,
+        status: tradeTransactions.status,
+      }).from(tradeTransactions)
+        .where(and(
+          eq(tradeTransactions.userId, reviewCase.userId),
+          eq(tradeTransactions.txHash, targetHash),
+        ))
+        .for("update");
+      const hashOwner = hashOwners[0] ?? null;
+      if (
+        hashOwners.length > 1
+        || (reviewCase.expectedHashOwnerId === null && hashOwner !== null)
+        || (reviewCase.expectedHashOwnerId !== null && (
+          hashOwner?.id !== reviewCase.expectedHashOwnerId
+          || hashOwner.status !== "completed"
+        ))
+      ) {
+        console.warn(`[TRADE-RECONCILIATION] Session hash ownership changed for user ${reviewCase.userId}; skipped for manual review.`);
+        return false;
+      }
+      const [canonical] = await tx.select({
+        id: tradeTransactions.id,
+        txHash: tradeTransactions.txHash,
+      }).from(tradeTransactions)
+        .where(and(
+          eq(tradeTransactions.id, reviewCase.canonicalId),
+          eq(tradeTransactions.userId, reviewCase.userId),
+        ))
+        .for("update");
+      if (!canonical || canonical.txHash !== null) {
+        console.warn(`[TRADE-RECONCILIATION] Canonical transaction changed for user ${reviewCase.userId}; skipped for manual review.`);
+        return false;
       }
 
       const evidence = await tx.execute(sql`
@@ -250,7 +294,8 @@ export async function freezeDuplicateBurstAccountsForReview(): Promise<number> {
           MIN(id)::int AS first_transaction_id,
           MAX(id)::int AS last_transaction_id,
           MIN(created_at) AS first_at,
-          MAX(created_at) AS last_at
+          MAX(created_at) AS last_at,
+          md5(string_agg(id::text || ':' || amount_usd::text || ':' || created_at::text || ':' || COALESCE(note, ''), '|' ORDER BY id)) AS fingerprint
         FROM trade_transactions
         WHERE user_id = ${reviewCase.userId}
           AND type = 'bot_earning'
@@ -264,53 +309,155 @@ export async function freezeDuplicateBurstAccountsForReview(): Promise<number> {
         Number(proof?.rows) !== reviewCase.rows
         || Number(proof?.first_day) !== reviewCase.firstDay
         || Number(proof?.last_day) !== reviewCase.lastDay
+        || Number(proof?.first_transaction_id) !== reviewCase.canonicalId
+        || proof?.fingerprint !== reviewCase.fingerprint
       ) {
-        throw new Error(`Trade review freeze evidence changed for user ${reviewCase.userId}`);
+        console.warn(`[TRADE-RECONCILIATION] Evidence changed for user ${reviewCase.userId}; skipped for manual review.`);
+        return false;
       }
 
-      const eventKey = `trade-duplicate-burst-review-freeze:2026-09-01:user-${reviewCase.userId}`;
+      const [expectedBalance, expectedPrincipal, expectedEarnings, expectedDay, expectedPlan, expectedRoi, expectedExit, expectedLien] = reviewCase.baseline;
+      const currentSession = wallet.botActivatedAt?.toISOString() ?? null;
+      const expectedSession = reviewCase.userId === 2 ? null : reviewCase.sessionAt;
+      if (
+        Number(wallet.tradeBalance) !== expectedBalance
+        || Number(wallet.lockedPrincipal) !== expectedPrincipal
+        || Number(wallet.totalBotEarnings) !== expectedEarnings
+        || wallet.tradingDayNumber !== expectedDay
+        || wallet.tradingPlanDays !== expectedPlan
+        || wallet.roiComplete !== expectedRoi
+        || wallet.earlyExitCompleted !== expectedExit
+        || Number(swiftWallet?.lienAmount ?? 0) !== expectedLien
+        || wallet.cycleStartedAt?.toISOString() !== reviewCase.cycleStartedAt
+        || currentSession !== expectedSession
+        || wallet.botLocked
+        || user.accountStatus !== "active"
+      ) {
+        console.warn(`[TRADE-RECONCILIATION] Wallet lifecycle changed for user ${reviewCase.userId}; skipped for manual review.`);
+        return false;
+      }
+      if (reviewCase.userId === 741) {
+        const [withdrawal] = await tx.select().from(tradeTransactions)
+          .where(and(
+            eq(tradeTransactions.id, 3841),
+            eq(tradeTransactions.userId, 741),
+          ))
+          .for("update");
+        if (
+          !withdrawal
+          || withdrawal.type !== "withdraw_exchange"
+          || withdrawal.status !== "completed"
+          || Number(withdrawal.amountUsd) !== 79
+          || Number(withdrawal.netAmount) !== 79
+          || withdrawal.createdAt.toISOString() !== "2026-09-01T01:03:34.104Z"
+        ) {
+          console.warn("[TRADE-RECONCILIATION] User 741 withdrawal proof changed; skipped for manual review.");
+          return false;
+        }
+      }
+      const before = {
+        accountStatus: user.accountStatus,
+        botLocked: wallet.botLocked,
+        botActivatedAt: wallet.botActivatedAt,
+        tradeBalance: Number(wallet.tradeBalance),
+        lockedPrincipal: Number(wallet.lockedPrincipal),
+        totalBotEarnings: Number(wallet.totalBotEarnings),
+        tradingDayNumber: wallet.tradingDayNumber,
+        lienAmount: Number(swiftWallet?.lienAmount ?? 0),
+      };
       const [event] = await tx.insert(financialEvents).values({
         eventKey,
         userId: reviewCase.userId,
-        eventType: "trade_duplicate_burst_review_freeze",
+        eventType: "trade_duplicate_burst_reconciliation",
         payload: {
           reason: "Multiple bot settlements were recorded within one legacy session window",
-          action: "Account frozen for manual review; no financial values changed",
+          action: "Proven duplicates reversed; principal preserved; proven unrecovered outflow placed under lien",
           evidence: proof,
-          before: {
-            accountStatus: user.accountStatus,
-            botLocked: wallet.botLocked,
-            botActivatedAt: wallet.botActivatedAt,
-            tradeBalance: wallet.tradeBalance,
-            lockedPrincipal: wallet.lockedPrincipal,
-            totalBotEarnings: wallet.totalBotEarnings,
-            tradingDayNumber: wallet.tradingDayNumber,
-          },
+          before,
         },
       }).onConflictDoNothing().returning({ id: financialEvents.id });
       if (!event) return false;
 
-      await tx.update(users).set({
-        accountStatus: "suspended",
-      }).where(eq(users.id, reviewCase.userId));
+      const canonicalId = reviewCase.canonicalId;
+      await tx.execute(sql`
+        UPDATE trade_transactions
+        SET status = 'failed',
+          tx_hash = CONCAT('REVERSED-DUPLICATE-', id::text),
+          note = CONCAT(COALESCE(note, ''), ' [reversed: duplicate settlement from Sep 1 legacy burst]')
+        WHERE user_id = ${reviewCase.userId}
+          AND type = 'bot_earning'
+          AND status = 'completed'
+          AND note LIKE 'Bot session day %'
+          AND created_at >= '2026-09-01 00:00:00'::timestamp
+          AND created_at < '2026-09-02 00:00:00'::timestamp
+          AND id <> ${canonicalId}
+      `);
+      await tx.update(tradeTransactions).set({
+        txHash: targetHash,
+      }).where(and(
+        eq(tradeTransactions.id, canonicalId),
+        eq(tradeTransactions.userId, reviewCase.userId),
+      ));
+
+      const protectedTarget = Math.max(Number(wallet.lockedPrincipal), reviewCase.expectedBalance);
+      const correctedBalance = money(Math.min(Number(wallet.tradeBalance), protectedTarget));
+      const correctedDay = Math.min(wallet.tradingDayNumber, reviewCase.firstDay);
       await tx.update(tradeWallets).set({
-        botLocked: true,
+        tradeBalance: correctedBalance.toFixed(6),
+        totalBotEarnings: reviewCase.correctedEarnings.toFixed(6),
+        tradingDayNumber: correctedDay,
+        botActivatedAt: null,
+        botLocked: false,
         updatedAt: new Date(),
       }).where(eq(tradeWallets.userId, reviewCase.userId));
+      let resultingLien = before.lienAmount;
+      if (reviewCase.lienIncrease > 0) {
+        if (!swiftWallet) throw new Error(`Trade reconciliation wallet lien target missing for user ${reviewCase.userId}`);
+        resultingLien = money(before.lienAmount + reviewCase.lienIncrease);
+        await tx.update(wallets).set({
+          lienAmount: resultingLien.toFixed(2),
+          lienReason: "Unrecovered proceeds from duplicate Trade bot settlements",
+          lienPlacedAt: new Date(),
+        }).where(eq(wallets.userId, reviewCase.userId));
+      }
+      const after = {
+        tradeBalance: correctedBalance,
+        lockedPrincipal: before.lockedPrincipal,
+        totalBotEarnings: reviewCase.correctedEarnings,
+        tradingDayNumber: correctedDay,
+        botActivatedAt: null,
+        botLocked: false,
+        lienAmount: resultingLien,
+      };
+      await tx.update(financialEvents).set({
+        payload: {
+          reason: "Multiple bot settlements were recorded within one legacy session window",
+          canonicalTransactionId: canonicalId,
+          duplicateCount: reviewCase.rows - 1,
+          expectedBalanceAfterCanonicalActions: reviewCase.expectedBalance,
+          recoveryPolicy: "Preserve locked principal and lien only proven unrecovered outflow",
+          lienIncrease: reviewCase.lienIncrease,
+          evidence: proof,
+          before,
+          after,
+        },
+      }).where(eq(financialEvents.id, event.id));
       await tx.insert(notifications).values({
         userId: reviewCase.userId,
         financialEventKey: eventKey,
-        type: "trade_warning",
-        title: "Account Under Trade Review",
-        message: "Your account has been temporarily frozen while duplicate Trade bot settlements are reviewed. No wallet balance or principal has been changed.",
-        data: { eventKey, reason: "duplicate_trade_session_review" },
+        type: "system",
+        title: "Trade Wallet Reconciled",
+        message: reviewCase.lienIncrease > 0
+          ? "Duplicate bot settlements were corrected without reducing your locked principal. Funds already withdrawn are held as an account lien pending recovery."
+          : "Duplicate bot settlements were corrected and your locked principal was preserved.",
+        data: { eventKey, reason: "duplicate_trade_session_reconciliation", after },
         isRead: false,
       });
       return true;
     });
-    if (changed) frozen += 1;
+    if (changed) reconciled += 1;
   }
-  return frozen;
+  return reconciled;
 }
 
 /** Read-only audit.  Legacy rows have no session key, so reversing them would

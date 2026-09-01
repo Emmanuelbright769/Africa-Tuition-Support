@@ -173,3 +173,51 @@ test("final day atomically returns principal and earnings even without an existi
     }
   }
 });
+
+test("a frozen active session cannot settle or mutate its financial state", async () => {
+  const marker = `Frozen-${Date.now()}-${process.pid}`;
+  let userId = 0;
+  try {
+    const inserted = rows<{ id: number }>(await db.execute(sql`
+      INSERT INTO users (first_name, last_name, email, phone, password, role, account_status)
+      VALUES ('Frozen', 'Test', ${`${marker}@example.invalid`}, ${marker},
+        'otp-only', 'affiliate', 'active') RETURNING id
+    `));
+    userId = Number(inserted[0].id);
+    const activatedAt = new Date("2025-02-01T00:00:00.000Z");
+    await db.execute(sql`
+      INSERT INTO trade_wallets (
+        user_id, trade_balance, locked_principal, total_bot_earnings,
+        trading_day_number, trading_plan_days, bot_activated_at, bot_locked
+      ) VALUES (
+        ${userId}, '125.000000', '100.000000', '25.000000',
+        7, 120, ${activatedAt}, TRUE
+      )
+    `);
+
+    const result = await completeTradeBotSessionAtomic(
+      userId,
+      new Date("2025-02-01T13:00:00.000Z"),
+    );
+    assert.equal(result.completed, false);
+
+    const after = rows<any>(await db.execute(sql`
+      SELECT trade_balance, locked_principal, total_bot_earnings,
+        trading_day_number, bot_activated_at,
+        (SELECT COUNT(*)::int FROM trade_transactions WHERE user_id = ${userId}) AS ledger_rows
+      FROM trade_wallets WHERE user_id = ${userId}
+    `))[0];
+    assert.equal(Number(after.trade_balance), 125);
+    assert.equal(Number(after.locked_principal), 100);
+    assert.equal(Number(after.total_bot_earnings), 25);
+    assert.equal(after.trading_day_number, 7);
+    assert.equal(new Date(after.bot_activated_at).toISOString(), activatedAt.toISOString());
+    assert.equal(after.ledger_rows, 0);
+  } finally {
+    if (userId) {
+      await db.execute(sql`DELETE FROM trade_transactions WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM trade_wallets WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+    }
+  }
+});

@@ -48,6 +48,13 @@ export async function completeTradeBotSessionAtomic(userId: number, now = new Da
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${userId})`);
     const [wallet] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, userId)).for("update");
     if (!wallet?.botActivatedAt) return { completed: false };
+    const [account] = await tx.select({ accountStatus: users.accountStatus })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (wallet.botLocked || account?.accountStatus === "suspended") {
+      return { completed: false };
+    }
 
     const activatedAt = new Date(wallet.botActivatedAt);
     const sessionHash = `BOT-SESSION-${userId}-${activatedAt.toISOString()}`;
@@ -206,6 +213,104 @@ export async function settleOverdueTradeBotSession(
   const ageMs = now.getTime() - new Date(wallet.botActivatedAt).getTime();
   if (ageMs < 12 * 60 * 60 * 1000) return { completed: false };
   return completeTradeBotSessionAtomic(userId, now);
+}
+
+const DUPLICATE_BURST_REVIEW_CASES = [
+  { userId: 1, rows: 15, firstDay: 1, lastDay: 15 },
+  { userId: 2, rows: 15, firstDay: 84, lastDay: 98 },
+  { userId: 60, rows: 11, firstDay: 19, lastDay: 29 },
+  { userId: 649, rows: 52, firstDay: 30, lastDay: 81 },
+  { userId: 741, rows: 69, firstDay: 10, lastDay: 78 },
+] as const;
+
+/**
+ * Freezes accounts with the proven Sep 1 legacy completion burst for manual
+ * review. This deliberately does not change balances, principal, earnings,
+ * transaction rows, or session markers.
+ */
+export async function freezeDuplicateBurstAccountsForReview(): Promise<number> {
+  let frozen = 0;
+  for (const reviewCase of DUPLICATE_BURST_REVIEW_CASES) {
+    const changed = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${reviewCase.userId})`);
+      const [user] = await tx.select().from(users)
+        .where(eq(users.id, reviewCase.userId))
+        .for("update");
+      const [wallet] = await tx.select().from(tradeWallets)
+        .where(eq(tradeWallets.userId, reviewCase.userId))
+        .for("update");
+      if (!user || user.role === "admin" || !wallet) {
+        throw new Error(`Trade review freeze identity check failed for user ${reviewCase.userId}`);
+      }
+
+      const evidence = await tx.execute(sql`
+        SELECT COUNT(*)::int AS rows,
+          MIN((regexp_match(note, 'day ([0-9]+)/'))[1]::int) AS first_day,
+          MAX((regexp_match(note, 'day ([0-9]+)/'))[1]::int) AS last_day,
+          MIN(id)::int AS first_transaction_id,
+          MAX(id)::int AS last_transaction_id,
+          MIN(created_at) AS first_at,
+          MAX(created_at) AS last_at
+        FROM trade_transactions
+        WHERE user_id = ${reviewCase.userId}
+          AND type = 'bot_earning'
+          AND status = 'completed'
+          AND note LIKE 'Bot session day %'
+          AND created_at >= '2026-09-01 00:00:00'::timestamp
+          AND created_at < '2026-09-02 00:00:00'::timestamp
+      `);
+      const proof = evidence.rows[0] as any;
+      if (
+        Number(proof?.rows) !== reviewCase.rows
+        || Number(proof?.first_day) !== reviewCase.firstDay
+        || Number(proof?.last_day) !== reviewCase.lastDay
+      ) {
+        throw new Error(`Trade review freeze evidence changed for user ${reviewCase.userId}`);
+      }
+
+      const eventKey = `trade-duplicate-burst-review-freeze:2026-09-01:user-${reviewCase.userId}`;
+      const [event] = await tx.insert(financialEvents).values({
+        eventKey,
+        userId: reviewCase.userId,
+        eventType: "trade_duplicate_burst_review_freeze",
+        payload: {
+          reason: "Multiple bot settlements were recorded within one legacy session window",
+          action: "Account frozen for manual review; no financial values changed",
+          evidence: proof,
+          before: {
+            accountStatus: user.accountStatus,
+            botLocked: wallet.botLocked,
+            botActivatedAt: wallet.botActivatedAt,
+            tradeBalance: wallet.tradeBalance,
+            lockedPrincipal: wallet.lockedPrincipal,
+            totalBotEarnings: wallet.totalBotEarnings,
+            tradingDayNumber: wallet.tradingDayNumber,
+          },
+        },
+      }).onConflictDoNothing().returning({ id: financialEvents.id });
+      if (!event) return false;
+
+      await tx.update(users).set({
+        accountStatus: "suspended",
+      }).where(eq(users.id, reviewCase.userId));
+      await tx.update(tradeWallets).set({
+        botLocked: true,
+        updatedAt: new Date(),
+      }).where(eq(tradeWallets.userId, reviewCase.userId));
+      await tx.insert(notifications).values({
+        userId: reviewCase.userId,
+        financialEventKey: eventKey,
+        type: "trade_warning",
+        title: "Account Under Trade Review",
+        message: "Your account has been temporarily frozen while duplicate Trade bot settlements are reviewed. No wallet balance or principal has been changed.",
+        data: { eventKey, reason: "duplicate_trade_session_review" },
+        isRead: false,
+      });
+      return true;
+    });
+    if (changed) frozen += 1;
+  }
+  return frozen;
 }
 
 /** Read-only audit.  Legacy rows have no session key, so reversing them would

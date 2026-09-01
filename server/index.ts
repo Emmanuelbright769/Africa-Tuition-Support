@@ -12,6 +12,7 @@ import { processCurrentMonthlyBilling, reconcileMonthlyBilling } from "./monthly
 import { creditVerifiedDepositAtomic } from "./walletBalance";
 import { creditTradeDepositAtomic, recordDepositOutcomeAtomic } from "./depositCredits";
 import { enqueueFinancialEvent, processFinancialEventOutbox } from "./financialNotifications";
+import { freezeDuplicateBurstAccountsForReview } from "./tradeBotCompletion";
 import {
   TSIA_BEP20_ADDRESS,
   hasFinalBscSuccess,
@@ -1038,6 +1039,10 @@ async function startMonthlyBillingJob() {
 
 (async () => {
   await runMigrations();
+  if (process.env.NODE_ENV === "production") {
+    const frozen = await freezeDuplicateBurstAccountsForReview();
+    console.log(`[TRADE-REVIEW] Frozen ${frozen} duplicate-burst accounts for manual review.`);
+  }
   await registerRoutes(httpServer, app);
   await seedAdmin();
   startAutoRefundJob();

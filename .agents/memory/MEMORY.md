@@ -12,3 +12,4 @@
 - [Trade deposit routing](trade-deposit-routing.md) — gateway callbacks and retries must credit the persisted wallet target atomically, never default Trade deposits to SwiftHub.
 - [Proctoring upload immutability](proctoring-upload-immutability.md) — storage timeouts do not cancel writes; isolate attempts and serialize media indexing with finalization.
 - [Financial credit proof](financial-credit-proof.md) — wallet credits require immutable provider/on-chain proof; all effects and receipts are replay-safe and transactionally coupled.
+- [External production database](external-production-database.md) — the live site uses EXTERNAL_DATABASE_URL; Replit production SQL queries target a different managed database.

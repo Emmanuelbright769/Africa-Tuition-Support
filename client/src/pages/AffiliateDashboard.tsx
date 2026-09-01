@@ -36,7 +36,7 @@ import { LearnMore } from "@/components/ui/LearnMore";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { DashboardSwitcher } from "@/components/ui/DashboardSwitcher";
 import { CO_AFFILIATE_PROGRAM, TRADE_MARKET, TRADING_PLANS, TRADE_BROKERS, getEliteSharePercentage, calculateLoanMonthly } from "@shared/schema";
-import { getTradeEarlyExitQuote, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
+import { getTradeEarlyExitQuote, getTradeProfitWithdrawable, getTradeRoiProgress } from "@shared/tradeWithdrawalPolicy";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend,
@@ -1420,11 +1420,14 @@ export default function AffiliateDashboard() {
   // early-exit settlement must be a separate, explicit action.
   const withdrawableAmt = getTradeProfitWithdrawable(tradeBalance, lockedPrincipal);
   const earlyExitQuote = getTradeEarlyExitQuote(tradeBalance, lockedPrincipal);
-  // Progress toward earnings cap (informational — not a withdrawal gate)
-  // profitCapPct is the profit portion (0.70 / 0.80 / 1.00).
-  // totalBotEarned is profit only: a 100% cap on $99 is $99 of earnings.
-  const profitTarget     = lockedPrincipal > 0 ? lockedPrincipal * (activePlanConfig.profitCapPct ?? 1.00) : 0;
-  const returnPct        = lockedPrincipal > 0 && profitTarget > 0 ? Math.min(100, (totalBotEarned / profitTarget) * 100) : 0;
+  const roiProgress = getTradeRoiProgress(tradeBalance, lockedPrincipal, planDaysFromWallet);
+  const {
+    profitTarget,
+    netRoiPct,
+    progressPct: returnPct,
+    remainingToCap,
+    capReached,
+  } = roiProgress;
   const eliteAmt       = Math.max(500, Math.min(10000, parseFloat(eliteCustomAmount) || 500));
   const eliteShare     = getEliteSharePercentage(eliteAmt);
 
@@ -1990,18 +1993,20 @@ export default function AffiliateDashboard() {
                             <div className="bg-white/70 dark:bg-blue-900/30 rounded-lg px-3 py-2">
                               <div className="flex items-center justify-between mb-1">
                                 <p className="text-[10px] text-muted-foreground font-medium">Earnings Progress</p>
-                                <p className={`text-[10px] font-bold ${returnPct >= 100 ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-blue-400"}`}>
-                                  {tradeBalanceHidden ? "••••" : `${returnPct.toFixed(1)}% ${returnPct >= 100 ? "✓ Cap reached" : `of ${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap`}`}
+                                <p className={`text-[10px] font-bold ${capReached ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-blue-400"}`}>
+                                  {tradeBalanceHidden ? "••••" : capReached
+                                    ? `${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap reached ✓`
+                                    : `${netRoiPct.toFixed(1)}% ROI · ${returnPct.toFixed(1)}% of cap`}
                                 </p>
                               </div>
                               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all duration-500 ${returnPct >= 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+                                <div className={`h-full rounded-full transition-all duration-500 ${capReached ? "bg-emerald-500" : "bg-blue-500"}`}
                                   style={{ width: `${returnPct}%` }} />
                               </div>
                               <p className="text-[9px] text-muted-foreground mt-0.5">
-                                {tradeBalanceHidden ? "••••" : returnPct >= 100
+                                  {tradeBalanceHidden ? "••••" : capReached
                                   ? `${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap reached — bot runs until Day ${planDaysFromWallet} · $${withdrawableAmt.toFixed(2)} available to withdraw`
-                                  : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — $${Math.max(0, profitTarget - totalBotEarned).toFixed(2)} remaining to ${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap`}
+                                    : `${activePlanConfig.label} · ${activePlanConfig.rateLabel} — $${remainingToCap.toFixed(2)} remaining to ${(activePlanConfig.profitCapPct * 100).toFixed(0)}% cap`}
                               </p>
                             </div>
                           )}

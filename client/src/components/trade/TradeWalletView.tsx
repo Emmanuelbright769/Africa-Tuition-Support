@@ -7,7 +7,7 @@ import {
   CreditCard, Banknote, Lock,
   LogOut,
 } from "lucide-react";
-import { getTradeEarlyExitQuote, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
+import { getTradeEarlyExitQuote, getTradeProfitWithdrawable, getTradeRoiProgress } from "@shared/tradeWithdrawalPolicy";
 
 const MAX_TOPUPS = 3;
 
@@ -42,9 +42,8 @@ export default function TradeWalletView({
   const withdrawable    = getTradeProfitWithdrawable(tradeBalance, lockedPrincipal);
 
   const planDays        = wallet?.tradingPlanDays ?? 120;
-  const profitCapPct    = planDays === 60 ? 0.70 : planDays === 90 ? 0.80 : 1.00;
-  // totalEarnings is profit only: a 100% cap on $99 is $99 of earnings.
-  const profitTarget    = lockedPrincipal * profitCapPct;
+  const roiProgress     = getTradeRoiProgress(tradeBalance, lockedPrincipal, planDays);
+  const { profitCapPct, profitTarget, netRoiPct, progressPct, remainingToCap, capReached } = roiProgress;
 
   // Cycle state — must be declared BEFORE the ROI bar calculations that depend on them
   const roiComplete      = !!(wallet?.roiComplete);
@@ -52,17 +51,6 @@ export default function TradeWalletView({
   const cycleComplete    = roiComplete || tradingDayNumber >= planDays;
   const earlyExitQuote   = getTradeEarlyExitQuote(tradeBalance, lockedPrincipal);
   const canEarlyExit     = tradeBalance > 0 && lockedPrincipal > 0 && !wallet?.earlyExitCompleted && !cycleComplete;
-
-  // ── ROI bar ──────────────────────────────────────────────────────────────────
-  // Use `roiComplete` (server-set flag) as the ONLY gate for "cap reached".
-  // totalBotEarnings can be inflated by data issues (e.g. a deposit being
-  // double-counted), so never show 100% unless the server has explicitly
-  // confirmed the cycle is done.
-  const rawReturnPct    = profitTarget > 0 ? (totalEarnings / profitTarget) * 100 : 0;
-  const returnPct       = roiComplete ? 100 : Math.min(99.9, rawReturnPct);
-  // capReached: true when server set roiComplete=true OR when cumulative earnings
-  // have actually reached/exceeded the profit target (using transaction-computed value).
-  const capReached      = roiComplete || (profitTarget > 0 && totalEarnings >= profitTarget);
 
   const hasWallet       = wallet?.trc20Address || wallet?.bep20Address;
   // Keep the client locked during the short interval before the wallet query
@@ -285,13 +273,13 @@ export default function TradeWalletView({
               <span className={`font-bold ${capReached ? "text-tsia-gold" : "text-white/90"}`}>
                 {capReached
                   ? `${(profitCapPct * 100).toFixed(0)}% cap reached ✓`
-                  : `${returnPct.toFixed(1)}% of ${(profitCapPct * 100).toFixed(0)}%`}
+                  : `${netRoiPct.toFixed(1)}% ROI · ${progressPct.toFixed(1)}% of cap`}
               </span>
             </div>
             <div className="mt-1.5 h-2 rounded-full bg-white/10">
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: `${returnPct}%` }}
+                animate={{ width: `${progressPct}%` }}
                 transition={{ duration: 1, ease: "easeOut" }}
                 className={`h-full rounded-full ${capReached ? "bg-tsia-gold" : "bg-tsia-green"}`}
               />
@@ -302,7 +290,7 @@ export default function TradeWalletView({
                   ? withdrawable > 0
                     ? `$${withdrawable.toFixed(2)} available to withdraw`
                     : "Earnings fully withdrawn"
-                  : `Target: $${profitTarget.toFixed(2)}`}
+                  : `$${remainingToCap.toFixed(2)} remaining to ${(profitCapPct * 100).toFixed(0)}% cap`}
               </span>
               <span className="text-slate-400">
                 Day {Math.min(tradingDayNumber, planDays)}/{planDays}

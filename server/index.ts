@@ -12,7 +12,6 @@ import { processCurrentMonthlyBilling, reconcileMonthlyBilling } from "./monthly
 import { creditVerifiedDepositAtomic } from "./walletBalance";
 import { creditTradeDepositAtomic, recordDepositOutcomeAtomic } from "./depositCredits";
 import { enqueueFinancialEvent, processFinancialEventOutbox } from "./financialNotifications";
-import { reconcileKnownDuplicateTradeSession } from "./tradeBotCompletion";
 import {
   TSIA_BEP20_ADDRESS,
   hasFinalBscSuccess,
@@ -1039,9 +1038,6 @@ async function startMonthlyBillingJob() {
 
 (async () => {
   await runMigrations();
-  if (process.env.NODE_ENV === "production") {
-    await reconcileKnownDuplicateTradeSession();
-  }
   await registerRoutes(httpServer, app);
   await seedAdmin();
   startAutoRefundJob();

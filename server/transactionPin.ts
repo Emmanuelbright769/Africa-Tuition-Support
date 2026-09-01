@@ -4,7 +4,6 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 
 const LOCK_AFTER_FAILURES = 5;
-const LOCK_DURATION_MS = 15 * 60 * 1000;
 
 export type TransactionPinResult =
   | { ok: true }
@@ -53,10 +52,9 @@ export async function requireTransactionPin(userId: number, pin: unknown): Promi
       return { ok: true } as TransactionPinResult;
     }
 
-    const lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
     await tx.update(users).set({
       transactionPinFailedAttempts: sql`CASE WHEN COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 >= ${LOCK_AFTER_FAILURES} THEN 0 ELSE COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 END`,
-      transactionPinLockedUntil: sql`CASE WHEN COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 >= ${LOCK_AFTER_FAILURES} THEN ${lockUntil} ELSE NULL END`,
+      transactionPinLockedUntil: sql`CASE WHEN COALESCE(${users.transactionPinFailedAttempts}, 0) + 1 >= ${LOCK_AFTER_FAILURES} THEN NOW() + INTERVAL '15 minutes' ELSE NULL END`,
     }).where(eq(users.id, userId));
     const [updated] = await tx.select({ lockedUntil: users.transactionPinLockedUntil })
       .from(users).where(eq(users.id, userId)).limit(1);

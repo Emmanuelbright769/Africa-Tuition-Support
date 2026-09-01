@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { hashTransactionPin, isValidTransactionPin, verifyTransactionPin } from "./transactionPin";
 
 test("transaction PIN accepts exactly four decimal digits", () => {
@@ -20,4 +21,10 @@ test("transaction PIN hashes are salted scrypt values and never contain the PIN"
   assert.equal(verifyTransactionPin("4829", first), true);
   assert.equal(verifyTransactionPin("0000", first), false);
   assert.equal(verifyTransactionPin("4829", "not-a-valid-hash"), false);
+});
+
+test("PIN lock expiry is typed by PostgreSQL instead of binding a JavaScript Date in CASE", () => {
+  const source = readFileSync(new URL("./transactionPin.ts", import.meta.url), "utf8");
+  assert.match(source, /NOW\(\) \+ INTERVAL '15 minutes'/);
+  assert.doesNotMatch(source, /THEN \$\{lockUntil\}/);
 });

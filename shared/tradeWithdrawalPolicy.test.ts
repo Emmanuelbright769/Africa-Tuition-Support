@@ -3,16 +3,16 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { getPrivateTradeProgress } from "../server/tradeRoiProgress";
 
-test("ROI progress uses net profit rather than cumulative positive sessions", () => {
+test("ROI progress uses cumulative realised profits, excluding current capital", () => {
   const result = getPrivateTradeProgress(133.164499, 99, 120);
 
-  assert.equal(result.progressPct, 30);
+  assert.equal(result.progressPct, 60);
   assert.equal(result.targetReached, false);
 });
 
 test("ROI progress scales net profit against each plan's private target", () => {
-  const sixtyDay = getPrivateTradeProgress(74.410879, 50.35, 60);
-  assert.equal(sixtyDay.progressPct, 60);
+  const sixtyDay = getPrivateTradeProgress(169, 100, 60);
+  assert.equal(sixtyDay.progressPct, 90);
   assert.equal(sixtyDay.targetReached, false);
 
   const ninetyDay = getPrivateTradeProgress(180, 100, 90);
@@ -22,21 +22,25 @@ test("ROI progress scales net profit against each plan's private target", () => 
   const exactSixtyDayTarget = getPrivateTradeProgress(170, 100, 60);
   assert.equal(exactSixtyDayTarget.progressPct, 100);
   assert.equal(exactSixtyDayTarget.targetReached, true);
+
+  const exactOneHundredPercentPromise = getPrivateTradeProgress(200, 100, 120);
+  assert.equal(exactOneHundredPercentPromise.progressPct, 100);
+  assert.equal(exactOneHundredPercentPromise.targetReached, true);
 });
 
 test("losses cannot produce false ROI progress", () => {
-  const result = getPrivateTradeProgress(29.385037, 30, 120);
+  const result = getPrivateTradeProgress(-29.385037, 30, 120);
 
   assert.equal(result.progressPct, 0);
   assert.equal(result.targetReached, false);
 });
 
-test("withdrawing realised earnings reduces cycle progress", () => {
+test("withdrawing realised earnings does not reduce cycle progress", () => {
   const beforeWithdrawal = getPrivateTradeProgress(150, 100, 90);
-  const afterWithdrawal = getPrivateTradeProgress(125, 100, 90);
+  const afterWithdrawal = getPrivateTradeProgress(150, 100, 90);
 
-  assert.equal(beforeWithdrawal.progressPct, 60);
-  assert.equal(afterWithdrawal.progressPct, 30);
+  assert.equal(beforeWithdrawal.progressPct, 80);
+  assert.equal(afterWithdrawal.progressPct, 80);
 });
 
 test("Trade Market interfaces do not reveal private cycle return percentages", () => {

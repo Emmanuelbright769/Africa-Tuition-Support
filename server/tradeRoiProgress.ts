@@ -1,7 +1,7 @@
 const PRIVATE_CYCLE_TARGETS: Record<number, number> = {
-  60: 0.70,
-  90: 0.80,
-  120: 1.00,
+  60: 1.70,
+  90: 1.80,
+  120: 2.00,
 };
 
 export type PrivateTradeProgress = {
@@ -10,15 +10,14 @@ export type PrivateTradeProgress = {
 };
 
 export function getPrivateTradeProgress(
-  tradeBalance: number,
+  cumulativeProfits: number,
   lockedPrincipal: number,
   planDays: number,
 ): PrivateTradeProgress {
-  const balance = Number.isFinite(tradeBalance) ? Math.max(0, tradeBalance) : 0;
+  const profits = Number.isFinite(cumulativeProfits) ? Math.max(0, cumulativeProfits) : 0;
   const locked = Number.isFinite(lockedPrincipal) ? Math.max(0, lockedPrincipal) : 0;
-  const netProfit = Math.max(0, balance - locked);
-  const target = locked * (PRIVATE_CYCLE_TARGETS[planDays] ?? PRIVATE_CYCLE_TARGETS[120]);
-  const exactProgress = target > 0 ? Math.min(100, (netProfit / target) * 100) : 0;
+  const profitTarget = locked * (PRIVATE_CYCLE_TARGETS[planDays] ?? PRIVATE_CYCLE_TARGETS[120]);
+  const exactProgress = profitTarget > 0 ? Math.min(100, (profits / profitTarget) * 100) : 0;
 
   // The browser receives only a coarse visual step. It never receives the
   // private target, multiplier, exact target-relative ratio, or amount left.
@@ -26,6 +25,6 @@ export function getPrivateTradeProgress(
 
   return {
     progressPct,
-    targetReached: target > 0 && netProfit >= target,
+    targetReached: profitTarget > 0 && profits >= profitTarget,
   };
 }

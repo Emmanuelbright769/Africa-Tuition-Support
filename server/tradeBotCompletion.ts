@@ -105,9 +105,10 @@ export async function completeTradeBotSessionAtomic(userId: number, now = new Da
         }
       }
       amount = money(gross - affiliate);
-      // totalBotEarnings contains profit only, so a 100% profit cap on $99 is
-      // $99 of earnings—not $198. Daily rates and plan durations are unchanged.
-      const target = Number(wallet.lockedPrincipal) * config.profitCapPct;
+      // totalBotEarnings contains cumulative realised profit only. The promised
+      // cycle percentage is applied to the full capital-plus-profit target:
+      // 100% on $100 reaches completion at $200 of accumulated profit.
+      const target = Number(wallet.lockedPrincipal) * (1 + config.profitCapPct);
       const remaining = Math.max(0, target - Number(wallet.totalBotEarnings));
       if (Number(wallet.lockedPrincipal) > 0 && Number(wallet.totalBotEarnings) >= target) {
         amount = 0;

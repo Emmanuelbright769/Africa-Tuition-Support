@@ -4073,7 +4073,7 @@ export async function registerRoutes(
       const cm = (cycleMetrics.rows[0] as any) ?? {};
       const depositCount         = parseInt(cm.deposit_count ?? "0", 10);
       const privateProgress = getPrivateTradeProgress(
-        Number(wallet.tradeBalance),
+        Number(wallet.totalBotEarnings),
         Number(wallet.lockedPrincipal),
         wallet.tradingPlanDays ?? 120,
       );

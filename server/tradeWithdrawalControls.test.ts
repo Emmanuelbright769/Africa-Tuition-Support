@@ -142,6 +142,17 @@ test("bot activation is serialized with early exit and fresh cycles clear stale 
   assert.match(credits, /earlyExitCompleted:\s*false,[\s\S]{0,200}botActivatedAt:\s*null/);
 });
 
+test("three top-ups keep funding closed until normal cycle settlement resets the cycle", () => {
+  const walletView = readFileSync(
+    new URL("../client/src/components/trade/TradeWalletView.tsx", import.meta.url),
+    "utf8",
+  );
+  const completion = readFileSync(new URL("./tradeBotCompletion.ts", import.meta.url), "utf8");
+  assert.match(walletView, /const topUpDisabled\s+= limitReached/);
+  assert.match(walletView, /const topUpIsReinvest = false/);
+  assert.match(completion, /cycleStartedAt: null/);
+});
+
 test("disabled bank-transfer responses expose no internal shutdown metadata", () => {
   const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
   assert.doesNotMatch(routes, /bankTransfersDisabled:\s*true/);

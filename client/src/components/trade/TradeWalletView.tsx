@@ -77,9 +77,10 @@ export default function TradeWalletView({
 
   // ── Action grid (2 × 2) ─────────────────────────────────────
   const depositDisabled = limitReached || controlsLocked;
-  // When all slots are used AND the cycle is complete, the "Top Up" slot becomes "Reinvest"
-  const topUpIsReinvest = limitReached && cycleComplete;
-  const topUpDisabled   = limitReached && !cycleComplete;
+  // Three top-ups always closes funding for this cycle. The normal bot
+  // completion flow must settle and reset the cycle before funding reopens.
+  const topUpIsReinvest = false;
+  const topUpDisabled   = limitReached;
 
   const actions = [
     {

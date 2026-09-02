@@ -188,7 +188,7 @@ export async function completeTradeBotSessionAtomic(userId: number, now = new Da
     }
     const [updated] = await tx.update(tradeWallets).set(cycleComplete ? {
       tradeBalance: "0.000000", lockedPrincipal: "0.000000", totalBotEarnings: nextEarnings.toFixed(6),
-      tradingDayNumber: nextDay, roiComplete: true, botActivatedAt: null, updatedAt: now,
+      tradingDayNumber: nextDay, roiComplete: true, botActivatedAt: null, cycleStartedAt: null, updatedAt: now,
     } : {
       tradeBalance: nextBalance.toFixed(6), totalBotEarnings: nextEarnings.toFixed(6),
       tradingDayNumber: nextDay, botActivatedAt: null, updatedAt: now,

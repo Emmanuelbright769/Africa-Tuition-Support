@@ -4212,6 +4212,7 @@ export async function registerRoutes(
           ), 0) AS cumulative_profit
         FROM trade_transactions
         WHERE user_id = ${userId}
+        AND (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}) IS NOT NULL
         AND created_at >= COALESCE(
           (SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${userId}),
           '1970-01-01'::timestamptz

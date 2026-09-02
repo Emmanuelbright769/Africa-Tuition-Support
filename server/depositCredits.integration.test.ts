@@ -293,6 +293,9 @@ test("deposit intents and wallet transfers remain single-credit under concurrent
       await db.execute(sql`DELETE FROM trade_wallets WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM identity_verifications WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM wallets WHERE user_id = ${userId}`);
+      // The financial outbox worker may enqueue a notification while this
+      // integration test is cleaning up its fixture.
+      await db.execute(sql`DELETE FROM notifications WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
     }
   }

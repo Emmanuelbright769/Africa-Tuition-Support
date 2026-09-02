@@ -5055,9 +5055,9 @@ export async function registerRoutes(
       const ukDay  = ukNow.getDay();   // 0=Sun, 1=Mon … 6=Sat
       const ukHour = ukNow.getHours();
       const isWeekend = ukDay === 0 || ukDay === 6;
-      const isBeforeOpen = ukHour < 13 && !(ukDay >= 2 && ukDay <= 6 && ukHour < 1);
+      const isActivationWindow = ukDay >= 1 && ukDay <= 5 && ukHour >= 13;
       if (isWeekend) return res.status(400).json({ message: "The market is closed on weekends. Trading resumes Monday at 1:00 PM GMT." });
-      if (isBeforeOpen) return res.status(400).json({ message: "The activation window opens at 1:00 PM GMT (Mon–Fri)." });
+      if (!isActivationWindow) return res.status(400).json({ message: "The activation window opens at 1:00 PM GMT (Mon–Fri)." });
       const now = new Date();
       const updated = await db.transaction(async tx => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"trade-wallet-early-exit"}), ${userId})`);
@@ -5071,6 +5071,18 @@ export async function registerRoutes(
           throw new Error("Your bot access has been suspended by the platform. Please contact support to restore access.");
         }
         if (wallet.botActivatedAt) throw new Error("A bot session is already active.");
+        const tradingDatePrefix = `BOT-SESSION-${userId}-${now.toISOString().slice(0, 10)}T%`;
+        const priorSession = await tx.execute(sql`
+          SELECT 1
+          FROM trade_transactions
+          WHERE user_id = ${userId}
+            AND status = 'completed'
+            AND tx_hash LIKE ${tradingDatePrefix}
+          LIMIT 1
+        `);
+        if (priorSession.rows.length > 0) {
+          throw new Error("Today's trading session has already been completed. You can activate the bot again on the next trading day.");
+        }
         const activatePlanDays = wallet.tradingPlanDays && [60, 90, 120].includes(wallet.tradingPlanDays) ? wallet.tradingPlanDays : 120;
         const cycleCompleteByDays = (wallet.tradingDayNumber ?? 0) >= activatePlanDays;
         if (cycleCompleteByDays) {
@@ -5098,6 +5110,13 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const result = await completeTradeBotSessionAtomic(userId);
       if (!result.completed) {
+        if (result.tooEarly) {
+          return res.status(409).json({
+            message: "The bot session has only just started. Keep it running for at least 5 minutes before stopping it.",
+            sessionActive: true,
+            retryAfterSeconds: result.retryAfterSeconds,
+          });
+        }
         return res.status(400).json({ message: "No active bot session found. The session may have already been completed." });
       }
       if (!result.isLossDay && result.earning) {

@@ -60,8 +60,8 @@ test("keyed bot completion is concurrent-safe, repeat-safe, and credits referral
     assert.equal(state.referral_sessions, 1);
     assert.equal(Number(state.commission), .1);
 
-    // A mid-cycle top-up starts a real new accounting boundary in the same
-    // wallet update that resets day/earnings; it cannot inherit old sessions.
+    // A mid-cycle top-up resets day/earnings without moving the active cycle
+    // boundary, so prior top-up usage remains attributable to this cycle.
     const before = rows<any>(await db.execute(sql`SELECT cycle_started_at FROM trade_wallets WHERE user_id = ${owner}`))[0];
     await transferSwiftToTradeAtomic({ userId: owner, gross: 10, planDays: 120 });
     const rolled = rows<any>(await db.execute(sql`
@@ -69,7 +69,7 @@ test("keyed bot completion is concurrent-safe, repeat-safe, and credits referral
       FROM trade_wallets WHERE user_id = ${owner}`))[0];
     assert.equal(rolled.trading_day_number, 0);
     assert.equal(Number(rolled.earnings), 0);
-    assert.ok(new Date(rolled.cycle_started_at).getTime() > new Date(before.cycle_started_at).getTime());
+    assert.equal(new Date(rolled.cycle_started_at).getTime(), new Date(before.cycle_started_at).getTime());
 
     await db.execute(sql`
       UPDATE trade_wallets SET bot_activated_at = NOW() WHERE user_id = ${owner}`);
@@ -213,6 +213,43 @@ test("a frozen active session cannot settle or mutate its financial state", asyn
     assert.equal(after.trading_day_number, 7);
     assert.equal(new Date(after.bot_activated_at).toISOString(), activatedAt.toISOString());
     assert.equal(after.ledger_rows, 0);
+  } finally {
+    if (userId) {
+      await db.execute(sql`DELETE FROM trade_transactions WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM trade_wallets WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+    }
+  }
+});
+
+test("a session completed within seconds stays active and cannot advance the trading day", async () => {
+  const marker = `Premature-${Date.now()}-${process.pid}`;
+  let userId = 0;
+  try {
+    const inserted = rows<{ id: number }>(await db.execute(sql`
+      INSERT INTO users (first_name, last_name, email, phone, password, role, account_status)
+      VALUES ('Premature', 'Test', ${`${marker}@example.invalid`}, ${marker},
+        'otp-only', 'affiliate', 'active') RETURNING id
+    `));
+    userId = Number(inserted[0].id);
+    const activatedAt = new Date("2025-02-03T13:00:00.000Z");
+    await db.execute(sql`
+      INSERT INTO trade_wallets (
+        user_id, trade_balance, locked_principal, trading_day_number,
+        trading_plan_days, bot_activated_at, cycle_started_at
+      ) VALUES (${userId}, '100.000000', '100.000000', 11, 90, ${activatedAt}, ${activatedAt})
+    `);
+    const result = await completeTradeBotSessionAtomic(userId, new Date("2025-02-03T13:00:10.000Z"));
+    assert.equal(result.completed, false);
+    assert.equal(result.tooEarly, true);
+    const state = rows<any>(await db.execute(sql`
+      SELECT trading_day_number, bot_activated_at,
+        (SELECT COUNT(*)::int FROM trade_transactions WHERE user_id = ${userId}) AS rows
+      FROM trade_wallets WHERE user_id = ${userId}
+    `))[0];
+    assert.equal(state.trading_day_number, 11);
+    assert.equal(new Date(state.bot_activated_at).toISOString(), activatedAt.toISOString());
+    assert.equal(state.rows, 0);
   } finally {
     if (userId) {
       await db.execute(sql`DELETE FROM trade_transactions WHERE user_id = ${userId}`);

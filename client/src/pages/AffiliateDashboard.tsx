@@ -795,7 +795,10 @@ export default function AffiliateDashboard() {
         // 4xx = non-recoverable (no balance, stale session, etc.) — clear locally, no retry
         // 5xx = server error — keep locally so user can retry on next visit
         const status = r.status;
-        if (status >= 400 && status < 500) {
+        const errorData = await r.json().catch(() => ({}));
+        if (status === 409 && errorData?.sessionActive) {
+          toast({ title: "Bot session still active", description: errorData.message, className: "border-amber-500" });
+        } else if (status >= 400 && status < 500) {
           setBotActivatedAt(null);
           botPendingToastRef.current = false;
           try { localStorage.removeItem("tsia_bot_activated_at"); localStorage.removeItem("tsia_bot_broker_id"); } catch {}

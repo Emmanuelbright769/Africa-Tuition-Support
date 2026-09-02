@@ -14,6 +14,7 @@
 - [Financial credit proof](financial-credit-proof.md) — wallet credits require immutable provider/on-chain proof; all effects and receipts are replay-safe and transactionally coupled.
 - [External production database](external-production-database.md) — the live site uses EXTERNAL_DATABASE_URL; Replit production SQL queries target a different managed database.
 - [Trade cycle profit progress](trade-cycle-profit-progress.md) — progress and caps use cumulative realised profit, excluding capital and ignoring withdrawals.
+- [Trade session day integrity](trade-session-day-integrity.md) — trading days require real server-validated sessions; seconds-long or repeated same-day completions cannot advance the cycle.
 - [Trade cycle lifecycle flags](trade-cycle-lifecycle-flags.md) — funded incomplete cycles remain active when stale completion flags contradict day count and locked principal.
 - [Trade Market capital limit](trade-capital-limit.md) — cumulative locked principal is capped at $1,200 across initial funding, top-ups, and pending reservations.
 - [Service wallet isolation](service-wallet-isolation.md) — Manual, Signals, and TS-Mart use independent atomic ledgers; Itera BOT retains its protected Trade cycle wallet.

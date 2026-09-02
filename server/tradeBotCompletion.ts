@@ -20,6 +20,7 @@ const PLANS: Record<number, { dailyRate: number; lossMin: number; lossMax: numbe
 };
 
 const money = (value: number) => Number(value.toFixed(6));
+export const MINIMUM_BOT_SESSION_MS = 5 * 60 * 1000;
 const lossRate = (day: number, plan: number) => {
   const config = PLANS[plan] ?? PLANS[120];
   return config.lossMin + (((day * 37 + 17) % 100) / 100) * (config.lossMax - config.lossMin);
@@ -36,6 +37,8 @@ export type BotCompletionResult = {
   cycleDays?: number;
   cycleComplete?: boolean;
   capped?: boolean;
+  tooEarly?: boolean;
+  retryAfterSeconds?: number;
 };
 
 /**
@@ -63,6 +66,14 @@ export async function completeTradeBotSessionAtomic(userId: number, now = new Da
     const existing = await tx.select({ id: tradeTransactions.id }).from(tradeTransactions)
       .where(and(eq(tradeTransactions.userId, userId), eq(tradeTransactions.txHash, sessionHash))).limit(1);
     if (existing.length) return { completed: false };
+    const rawElapsedMs = now.getTime() - activatedAt.getTime();
+    if (rawElapsedMs < MINIMUM_BOT_SESSION_MS) {
+      return {
+        completed: false,
+        tooEarly: true,
+        retryAfterSeconds: Math.ceil((MINIMUM_BOT_SESSION_MS - Math.max(0, rawElapsedMs)) / 1000),
+      };
+    }
 
     const balance = Number(wallet.tradeBalance);
     if (balance <= 0) throw new Error("No balance to earn from.");
@@ -70,7 +81,7 @@ export async function completeTradeBotSessionAtomic(userId: number, now = new Da
     const config = PLANS[planDays];
     const cycleDay = (wallet.tradingDayNumber ?? 0) + 1;
     const isLossDay = (wallet.lossDayNumbers ?? []).includes(cycleDay);
-    const elapsedMs = Math.max(0, Math.min(now.getTime() - activatedAt.getTime(), 12 * 3600 * 1000));
+    const elapsedMs = Math.min(rawElapsedMs, 12 * 3600 * 1000);
     const elapsedHours = (elapsedMs / 3600000).toFixed(1);
     const fraction = elapsedMs / (12 * 3600 * 1000);
     const [setting] = await tx.select({ value: platformSettings.value }).from(platformSettings)

@@ -10,6 +10,7 @@ import {
   walletCreditClaims,
   walletDeposits,
   wallets,
+  TRADE_MARKET,
 } from "@shared/schema";
 import { db } from "./db";
 import { settleOverdueTradeBotSession } from "./tradeBotCompletion";
@@ -42,6 +43,49 @@ export class TradeTopUpLimitError extends Error {
   constructor() {
     super("Top-up limit reached for this Trade Market cycle");
     this.name = "TradeTopUpLimitError";
+  }
+}
+
+export class TradeCapitalLimitError extends Error {
+  constructor(remainingCapital = 0) {
+    const remaining = Math.max(0, remainingCapital);
+    super(
+      remaining > 0
+        ? `Trading capital cannot exceed $${TRADE_MARKET.MAX_TRADING_CAPITAL.toLocaleString()}. Only $${remaining.toFixed(2)} more can be credited to capital.`
+        : `Trading capital limit reached. Capital cannot exceed $${TRADE_MARKET.MAX_TRADING_CAPITAL.toLocaleString()}.`,
+    );
+    this.name = "TradeCapitalLimitError";
+  }
+}
+
+function tradeCapitalCredit(gross: number): number {
+  return Number((gross * (1 - TRADE_MARKET.AFFILIATE_SHARE_RATE)).toFixed(6));
+}
+
+async function assertTradeCapitalCapacity(
+  tx: any,
+  userId: number,
+  lockedPrincipal: string | number,
+  gross: number,
+  excludeDepositId?: number,
+) {
+  const exclusion = excludeDepositId
+    ? sql`AND id <> ${excludeDepositId}`
+    : sql``;
+  const pending = await tx.execute(sql`
+    SELECT COALESCE(SUM(ROUND(amount_usd::numeric * ${1 - TRADE_MARKET.AFFILIATE_SHARE_RATE}, 6)), 0) AS reserved
+    FROM wallet_deposits
+    WHERE user_id = ${userId}
+      AND wallet_type IN ('trade_trc20', 'trade_bep20', 'squad_trade', 'korapay_trade')
+      AND status IN ('pending', 'confirmed')
+      ${exclusion}
+  `);
+  const currentCapital = Number(lockedPrincipal);
+  const reservedCapital = Number(pending.rows?.[0]?.reserved ?? 0);
+  const requestedCapital = tradeCapitalCredit(gross);
+  const remainingCapital = TRADE_MARKET.MAX_TRADING_CAPITAL - currentCapital - reservedCapital;
+  if (requestedCapital > remainingCapital + 0.000001) {
+    throw new TradeCapitalLimitError(remainingCapital);
   }
 }
 
@@ -89,6 +133,7 @@ export async function createTradeDepositIntentAtomic(input: {
     await tx.insert(tradeWallets).values({ userId: input.userId, tradeBalance: "0.000000" }).onConflictDoNothing();
     const [wallet] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, input.userId)).for("update");
     if (!wallet) throw new Error("Unable to prepare Trade Market wallet");
+    await assertTradeCapitalCapacity(tx, input.userId, wallet.lockedPrincipal, input.amount);
     const isTopUp = !wallet.roiComplete && (wallet.lossDayNumbers?.length ?? 0) > 0;
     if (isTopUp) await assertTradeTopUpCapacity(tx, input.userId, wallet.cycleStartedAt);
     const [deposit] = await tx.insert(walletDeposits).values({
@@ -179,6 +224,7 @@ export async function createCryptoDepositIntentAtomic(input: {
         await tx.insert(tradeWallets).values({ userId: input.userId, tradeBalance: "0.000000" }).onConflictDoNothing();
         const [wallet] = await tx.select().from(tradeWallets).where(eq(tradeWallets.userId, input.userId)).for("update");
         if (!wallet) throw new Error("Unable to prepare Trade Market wallet");
+        await assertTradeCapitalCapacity(tx, input.userId, wallet.lockedPrincipal, input.amount);
         const isTopUp = !wallet.roiComplete && (wallet.lossDayNumbers?.length ?? 0) > 0;
         if (isTopUp) {
           const capacity = await tx.execute(sql`
@@ -295,7 +341,7 @@ export async function creditTradeDepositAtomic(input: {
   await settleOverdueTradeBotSession(input.userId);
   const planDays = [60, 90, 120].includes(input.planDays) ? input.planDays : 120;
   const affiliateCut = Number((input.gross * 0.05).toFixed(6));
-  const userCredit = Number((input.gross - affiliateCut).toFixed(6));
+  const userCredit = tradeCapitalCredit(input.gross);
   const lossDays = lossDaysForPlan(planDays);
 
   const result = await db.transaction(async (tx) => {
@@ -338,6 +384,7 @@ export async function creditTradeDepositAtomic(input: {
     if (wallet.botActivatedAt) {
       throw new Error("Trade Market funding is unavailable while a bot session is active");
     }
+    await assertTradeCapitalCapacity(tx, input.userId, wallet.lockedPrincipal, input.gross, deposit.id);
     const topUp = !wallet.roiComplete && (wallet.lossDayNumbers?.length ?? 0) > 0;
     const hasReservedTopUpSlot = (deposit.metadata as any)?.topUpReservation === true;
     if (topUp && !hasReservedTopUpSlot) {
@@ -380,7 +427,7 @@ export async function creditTradeDepositAtomic(input: {
     } else if ((wallet.lossDayNumbers?.length ?? 0) === 0) {
       update.lossDayNumbers = lossDays;
     } else if ((wallet.tradingDayNumber ?? 0) > 0) {
-      Object.assign(update, { tradingDayNumber: 0, lossDayNumbers: lossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false, cycleStartedAt: new Date(), botActivatedAt: null });
+      Object.assign(update, { tradingDayNumber: 0, lossDayNumbers: lossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false, botActivatedAt: null });
     }
     await tx.update(tradeWallets).set(update).where(eq(tradeWallets.userId, input.userId));
 
@@ -512,7 +559,7 @@ export async function transferSwiftToTradeAtomic(input: {
   await settleOverdueTradeBotSession(input.userId);
   const reference = `INTERNAL-TRADE-${input.userId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const affiliateCut = Number((input.gross * 0.05).toFixed(6));
-  const userCredit = Number((input.gross - affiliateCut).toFixed(6));
+  const userCredit = tradeCapitalCredit(input.gross);
   const lossDays = lossDaysForPlan(input.planDays);
   return db.transaction(async (tx) => {
     await acquireWalletUserLock(tx, input.userId);
@@ -529,6 +576,7 @@ export async function transferSwiftToTradeAtomic(input: {
     if (wallet.botActivatedAt) {
       throw new Error("Trade Market funding is unavailable while a bot session is active");
     }
+    await assertTradeCapitalCapacity(tx, input.userId, wallet.lockedPrincipal, input.gross);
     const topUp = !wallet.roiComplete && (wallet.lossDayNumbers?.length ?? 0) > 0;
     if (topUp) {
       await assertTradeTopUpCapacity(tx, input.userId, wallet.cycleStartedAt);
@@ -559,7 +607,7 @@ export async function transferSwiftToTradeAtomic(input: {
       botActivatedAt: null,
     });
     else if (!(wallet.lossDayNumbers?.length)) update.lossDayNumbers = lossDays;
-    else if ((wallet.tradingDayNumber ?? 0) > 0) Object.assign(update, { tradingDayNumber: 0, lossDayNumbers: lossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false, cycleStartedAt: new Date(), botActivatedAt: null });
+    else if ((wallet.tradingDayNumber ?? 0) > 0) Object.assign(update, { tradingDayNumber: 0, lossDayNumbers: lossDays, totalBotEarnings: "0.000000", earlyExitCompleted: false, botActivatedAt: null });
     const [updated] = await tx.update(tradeWallets).set(update).where(eq(tradeWallets.userId, input.userId)).returning();
     await tx.insert(transactions).values({
       userId: input.userId, type: "trade_transfer", amount: (-input.gross).toFixed(2),

@@ -8,6 +8,7 @@ import {
   creditExchangeDepositAtomic,
   creditTradeDepositAtomic,
   CryptoDepositIntentConflictError,
+  TradeCapitalLimitError,
   TradeTopUpLimitError,
   transferExchangeToSwiftAtomic,
   transferSwiftToExchangeAtomic,
@@ -288,6 +289,60 @@ test("deposit intents and wallet transfers remain single-credit under concurrent
       await db.execute(sql`DELETE FROM wallet_credit_claims WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM wallet_deposits WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM transactions WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM trade_transactions WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM trade_wallets WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM identity_verifications WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM wallets WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+    }
+  }
+});
+
+test("Trade Market capital cannot exceed $1,200 across top-ups and pending reservations", async () => {
+  const marker = `${Date.now()}-${process.pid}`;
+  let userId = 0;
+  try {
+    const userResult = await db.execute(sql`
+      INSERT INTO users (first_name, last_name, email, phone, password, role, account_status)
+      VALUES ('Capital', 'Limit', ${`capital-limit-${marker}@example.invalid`}, ${`0088${Date.now()}`}, 'otp-only', 'student', 'active')
+      RETURNING id
+    `);
+    userId = Number(rowsOf<{ id: number }>(userResult)[0].id);
+    await db.execute(sql`
+      INSERT INTO identity_verifications (
+        user_id, document_country, document_type, provider, provider_status,
+        status, liveness_status, verified_at, expires_at
+      ) VALUES (${userId}, 'NG', 'nin', 'test-fixture', 'VERIFIED', 'verified', 'verified', NOW(), NOW() + INTERVAL '1 year')
+    `);
+    await db.execute(sql`
+      INSERT INTO wallets (user_id, balance, activated, cashback_balance, lien_amount)
+      VALUES (${userId}, '100.00', TRUE, '0.00', '0.00')
+    `);
+    await db.execute(sql`
+      INSERT INTO trade_wallets (
+        user_id, trade_balance, total_invested, locked_principal,
+        loss_day_numbers, cycle_started_at
+      ) VALUES (${userId}, '1195.000000', '1195.000000', '1195.000000', ARRAY[2,4], NOW() - INTERVAL '1 day')
+    `);
+    await assert.rejects(
+      transferSwiftToTradeAtomic({ userId, gross: 10, planDays: 60 }),
+      TradeCapitalLimitError,
+    );
+    const walletAfter = await db.execute(sql`SELECT balance FROM wallets WHERE user_id = ${userId}`);
+    assert.equal(Number(rowsOf<{ balance: string }>(walletAfter)[0].balance), 100);
+
+    await assert.rejects(
+      createTradeDepositIntentAtomic({
+        userId,
+        amount: 10,
+        target: "squad_trade",
+        reference: `CAP-${marker}`,
+      }),
+      TradeCapitalLimitError,
+    );
+  } finally {
+    if (userId) {
+      await db.execute(sql`DELETE FROM wallet_deposits WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM trade_transactions WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM trade_wallets WHERE user_id = ${userId}`);
       await db.execute(sql`DELETE FROM identity_verifications WHERE user_id = ${userId}`);

@@ -1120,6 +1120,7 @@ export default function AffiliateDashboard() {
     const amt = parseFloat(tradePSAmt);
     const minAmt = selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT;
     if (!amt || amt < minAmt) { toast({ title: "Enter a valid amount", description: `Minimum is $${minAmt}`, variant: "destructive" }); return; }
+    if (amt > maxTopUpGross) { toast({ title: "Capital limit", description: `Trading capital cannot exceed $${maxTradingCapital.toLocaleString()}. Maximum available top-up is $${maxTopUpGross.toFixed(2)} before the 5% allocation.`, variant: "destructive" }); return; }
     setTradePSKoraLoading(true);
     try {
       const res = await apiRequest("POST", "/api/trade/korapay/initiate", { amountUsd: amt, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
@@ -1148,6 +1149,7 @@ export default function AffiliateDashboard() {
     const amt = parseFloat(tradePSAmt);
     const minAmt = selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT;
     if (!amt || amt < minAmt) { toast({ title: "Enter a valid amount", description: `Minimum is $${minAmt}`, variant: "destructive" }); return; }
+    if (amt > maxTopUpGross) { toast({ title: "Capital limit", description: `Trading capital cannot exceed $${maxTradingCapital.toLocaleString()}. Maximum available top-up is $${maxTopUpGross.toFixed(2)} before the 5% allocation.`, variant: "destructive" }); return; }
     setTradePSSquadLoading(true);
     try {
       await loadTradeSquadScript();
@@ -1205,6 +1207,7 @@ export default function AffiliateDashboard() {
       const amt = parseFloat(fundTradeAmt);
       const minAmt = selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT;
       if (!amt || amt < minAmt) throw new Error(`Minimum for ${selectedBroker?.name ?? "this exchange"} is $${minAmt}`);
+      if (amt > maxTopUpGross) throw new Error(`Trading capital cannot exceed $${maxTradingCapital.toLocaleString()}. Maximum available top-up is $${maxTopUpGross.toFixed(2)}.`);
       const res = await apiRequest("POST", "/api/trade/fund-from-wallet", { amountUsd: amt, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message);
@@ -1221,6 +1224,7 @@ export default function AffiliateDashboard() {
 
   const depositMutation = useMutation({
     mutationFn: async () => {
+      if (parseFloat(depositAmt) > maxTopUpGross) throw new Error(`Trading capital cannot exceed $${maxTradingCapital.toLocaleString()}. Maximum available top-up is $${maxTopUpGross.toFixed(2)}.`);
       const res = await apiRequest("POST", "/api/trade/deposit", { amountUsd: parseFloat(depositAmt), walletType: depositWallet, txHash: depositTxHash, brokerId: selectedBrokerId, tradingPlanDays: selectedTradingPlan });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Deposit could not be submitted");
@@ -1410,6 +1414,9 @@ export default function AffiliateDashboard() {
   const mySharePct         = myCoAff ? (parseFloat(myCoAff.sharePercentage) * 100).toFixed(8) : "0";
   const tradeBalance     = parseFloat(tradeWallet?.tradeBalance ?? "0");
   const totalInvested    = parseFloat(tradeWallet?.totalInvested ?? "0");
+  const maxTradingCapital = Number((tradeWallet as any)?.maxTradingCapital ?? TRADE_MARKET.MAX_TRADING_CAPITAL);
+  const capitalRemaining = Math.max(0, Number((tradeWallet as any)?.capitalRemaining ?? maxTradingCapital));
+  const maxTopUpGross = Math.max(0, Number((tradeWallet as any)?.maxTopUpGross ?? TRADE_MARKET.MAX_DEPOSIT));
   // Wallet totalBotEarnings is atomically maintained for the current cycle.
   const totalBotEarned   = parseFloat(tradeWallet?.totalBotEarnings ?? "0");
   const roiComplete      = !!(tradeWallet?.roiComplete);
@@ -3639,7 +3646,7 @@ export default function AffiliateDashboard() {
                 {/* Amount input */}
                 <div>
                   <Label>Amount (USD)</Label>
-                  <Input type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} max={TRADE_MARKET.MAX_DEPOSIT}
+                  <Input type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} max={maxTopUpGross}
                     placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}`}
                     value={tradePSAmt} onChange={e => { setTradePSAmt(e.target.value); stopTradePSKoraPoll(); }} className="mt-1" />
                   {tradePSAmt && parseFloat(tradePSAmt) > 0 && (
@@ -3648,6 +3655,9 @@ export default function AffiliateDashboard() {
                       <div className="flex justify-between font-semibold text-tsia-green"><span>You receive (95%)</span><span>${(parseFloat(tradePSAmt) * 0.95).toFixed(2)}</span></div>
                     </div>
                   )}
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    Capital: ${(maxTradingCapital - capitalRemaining).toFixed(2)} / ${maxTradingCapital.toLocaleString()} · Maximum available top-up: ${maxTopUpGross.toFixed(2)}
+                  </p>
                 </div>
 
                 {/* Quick-select amounts */}
@@ -3686,13 +3696,13 @@ export default function AffiliateDashboard() {
                 <div className="space-y-2">
                   {/* Squad — inline modal */}
                   <Button onClick={openTradePSSquad}
-                    disabled={tradePSSquadLoading || tradePSKoraLoading || !tradePSAmt || parseFloat(tradePSAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT)}
+                    disabled={tradePSSquadLoading || tradePSKoraLoading || !tradePSAmt || parseFloat(tradePSAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(tradePSAmt) > maxTopUpGross}
                     className="w-full h-11 bg-gradient-to-r from-tsia-green to-tsia-gold text-white font-bold rounded-xl">
                     {tradePSSquadLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening Squad…</> : <><CreditCard className="w-4 h-4 mr-2" />Pay via Squad (inline modal)</>}
                   </Button>
                   {/* KoraPay — new tab */}
                   <Button onClick={openTradePSKora}
-                    disabled={tradePSKoraLoading || tradePSSquadLoading || !tradePSAmt || parseFloat(tradePSAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT)}
+                    disabled={tradePSKoraLoading || tradePSSquadLoading || !tradePSAmt || parseFloat(tradePSAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(tradePSAmt) > maxTopUpGross}
                     className="w-full h-11 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold rounded-xl">
                     {tradePSKoraLoading && !tradePSKoraRef ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening Korapay…</> : <><ExternalLink className="w-4 h-4 mr-2" />Pay via Korapay (new tab)</>}
                   </Button>
@@ -3808,8 +3818,8 @@ export default function AffiliateDashboard() {
                 </div>
                 <div>
                   <Label htmlFor="fund-trade-amt">Amount (USD)</Label>
-                  <Input id="fund-trade-amt" type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} max={TRADE_MARKET.MAX_DEPOSIT} step={0.01}
-                    placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} · Max $${TRADE_MARKET.MAX_DEPOSIT}`}
+                  <Input id="fund-trade-amt" type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} max={maxTopUpGross} step={0.01}
+                    placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} · Max $${maxTopUpGross.toFixed(2)}`}
                     value={fundTradeAmt} onChange={e => setFundTradeAmt(e.target.value)}
                     className="mt-1 text-lg font-bold" data-testid="input-fund-trade-amt" />
                   {parseFloat(fundTradeAmt) >= (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) && parseFloat(fundTradeAmt) <= TRADE_MARKET.MAX_DEPOSIT && (
@@ -3820,12 +3830,12 @@ export default function AffiliateDashboard() {
                       <div className="flex justify-between font-bold text-green-600 border-t border-border pt-1 mt-1"><span>Trade wallet receives (95%)</span><span>${(parseFloat(fundTradeAmt) * 0.95).toFixed(2)}</span></div>
                     </div>
                   )}
-                  {parseFloat(fundTradeAmt) > TRADE_MARKET.MAX_DEPOSIT && (
+                  {parseFloat(fundTradeAmt) > maxTopUpGross && (
                     <p className="mt-2 text-xs text-red-500 font-semibold flex items-center gap-1">
-                      <span>⚠</span> Maximum deposit per top-up is ${TRADE_MARKET.MAX_DEPOSIT.toLocaleString()}.
+                      <span>⚠</span> Trading capital is capped at ${maxTradingCapital.toLocaleString()}. Maximum available top-up: ${maxTopUpGross.toFixed(2)}.
                     </p>
                   )}
-                  {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) <= TRADE_MARKET.MAX_DEPOSIT && parseFloat(fundTradeAmt) > personalBalance - 2 && (
+                  {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) <= maxTopUpGross && parseFloat(fundTradeAmt) > personalBalance - 2 && (
                     <p className="mt-2 text-xs text-red-500 font-semibold flex items-center gap-1">
                       <span>⚠</span> Insufficient balance — you need ${parseFloat(fundTradeAmt).toFixed(2)} in SwiftWallet
                     </p>
@@ -3835,7 +3845,7 @@ export default function AffiliateDashboard() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => setFundTradeBrokerStep("plan")}>← Back</Button>
                 <Button onClick={() => fundTradeMutation.mutate()}
-                  disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(fundTradeAmt) > TRADE_MARKET.MAX_DEPOSIT || parseFloat(fundTradeAmt) > personalBalance - 2}
+                  disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(fundTradeAmt) > maxTopUpGross || parseFloat(fundTradeAmt) > personalBalance - 2}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold" data-testid="btn-confirm-fund-trade">
                   {fundTradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />}
                   Transfer ${parseFloat(fundTradeAmt || "0").toFixed(2)}
@@ -3867,7 +3877,7 @@ export default function AffiliateDashboard() {
             </div>
             <div className="space-y-2">
               <Label>Amount (USD)</Label>
-              <Input type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT}`} value={depositAmt} onChange={e => setDepositAmt(e.target.value)} data-testid="input-deposit-amount" />
+              <Input type="number" min={selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} max={maxTopUpGross} placeholder={`Min $${selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT} · Max $${maxTopUpGross.toFixed(2)}`} value={depositAmt} onChange={e => setDepositAmt(e.target.value)} data-testid="input-deposit-amount" />
               {parseFloat(depositAmt) > 0 && <p className="text-xs text-muted-foreground">≈ {formatAmount(parseFloat(depositAmt))} {rateLabel()}</p>}
             </div>
             <div className="space-y-2">
@@ -3884,7 +3894,7 @@ export default function AffiliateDashboard() {
           </div>
           <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setDepositOpen(false)}>Cancel</Button>
-            <Button onClick={() => depositMutation.mutate()} disabled={depositMutation.isPending || !depositAmt || parseFloat(depositAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT)} className="bg-green-600 hover:bg-green-700 text-white" data-testid="button-confirm-deposit">
+            <Button onClick={() => depositMutation.mutate()} disabled={depositMutation.isPending || !depositAmt || parseFloat(depositAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(depositAmt) > maxTopUpGross} className="bg-green-600 hover:bg-green-700 text-white" data-testid="button-confirm-deposit">
               {depositMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />} Confirm Deposit
             </Button>
           </DialogFooter>

@@ -61,6 +61,7 @@ import {
   createTradeDepositIntentAtomic,
   cancelTradeDepositIntentAtomic,
   CryptoDepositIntentConflictError,
+  TradeCapitalLimitError,
   TradeTopUpLimitError,
   creditExchangeDepositAtomic,
   creditTradeDepositAtomic,
@@ -4219,14 +4220,19 @@ export async function registerRoutes(
       const cm = (cycleMetrics.rows[0] as any) ?? {};
       const depositCount         = parseInt(cm.deposit_count ?? "0", 10);
       const cumulativeProfit     = Number(cm.cumulative_profit ?? 0);
+      const lockedPrincipal      = Number(wallet.lockedPrincipal);
+      const capitalRemaining     = Math.max(0, TRADE_MARKET.MAX_TRADING_CAPITAL - lockedPrincipal);
       const privateProgress = getPrivateTradeProgress(
         cumulativeProfit,
-        Number(wallet.lockedPrincipal),
+        lockedPrincipal,
         wallet.tradingPlanDays ?? 120,
       );
       res.json({
         ...wallet,
         depositCount,
+        maxTradingCapital: TRADE_MARKET.MAX_TRADING_CAPITAL,
+        capitalRemaining,
+        maxTopUpGross: Math.floor((capitalRemaining / (1 - TRADE_MARKET.AFFILIATE_SHARE_RATE)) * 100) / 100,
         totalBotEarnings: cumulativeProfit.toFixed(6),
         currentCycleEarnings: cumulativeProfit.toFixed(6),
         earningsProgressPct: privateProgress.progressPct,
@@ -4380,7 +4386,7 @@ export async function registerRoutes(
         message: "Deposit submitted for on-chain verification. Your Trade Wallet will be credited only after TSIA receives and verifies the USDT transfer.",
       });
     } catch (e: any) {
-      res.status(e instanceof CryptoDepositIntentConflictError || e instanceof TradeTopUpLimitError ? 409 : 500).json({ message: e.message });
+      res.status(e instanceof CryptoDepositIntentConflictError || e instanceof TradeTopUpLimitError || e instanceof TradeCapitalLimitError ? 409 : 500).json({ message: e.message });
     }
   });
 
@@ -4430,7 +4436,9 @@ export async function registerRoutes(
         breakdown: { deposited: amount, reserveFund: 0, affiliatePool: transfer.affiliateCut, creditedToYou: transfer.userCredit },
       });
     } catch (e: any) {
-      const status = String(e?.message).includes("Insufficient") ? 409 : 500;
+      const status = e instanceof TradeTopUpLimitError || e instanceof TradeCapitalLimitError
+        ? 400
+        : String(e?.message).includes("Insufficient") ? 409 : 500;
       res.status(status).json({ message: e.message });
     }
   });
@@ -4608,7 +4616,7 @@ export async function registerRoutes(
       });
       res.json({ transactionRef, amountKobo, amountNgn: (amount * rates.buying).toFixed(2), publicKey, email: user.email, firstName: user.firstName, lastName: user.lastName });
     } catch (e: any) {
-      res.status(e instanceof TradeTopUpLimitError ? 400 : 500).json({ message: e.message });
+      res.status(e instanceof TradeTopUpLimitError || e instanceof TradeCapitalLimitError ? 400 : 500).json({ message: e.message });
     }
   });
 
@@ -4648,7 +4656,7 @@ export async function registerRoutes(
       const { credited, userCredit } = await creditTradeWallet(userId, gross, "squad_trade", transactionRef, sqPlanDays, existing);
       if (!credited) return res.status(409).json({ message: "This payment has already been credited to your trade wallet." });
       res.json({ message: `$${userCredit.toFixed(2)} has been credited to your Trade Wallet`, amountUsd: userCredit });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(e instanceof TradeCapitalLimitError ? 409 : 500).json({ message: e.message }); }
   });
 
   // ── Trade Market — KoraPay initiate ───────────────────────────────────────
@@ -4700,7 +4708,7 @@ export async function registerRoutes(
       }
       res.json({ checkoutUrl: koraData.data.checkout_url, reference, amountNgn });
     } catch (e: any) {
-      res.status(e instanceof TradeTopUpLimitError ? 400 : 500).json({ message: e.message });
+      res.status(e instanceof TradeTopUpLimitError || e instanceof TradeCapitalLimitError ? 400 : 500).json({ message: e.message });
     }
   });
 
@@ -4743,7 +4751,7 @@ export async function registerRoutes(
       const { credited, userCredit } = await creditTradeWallet(userId, gross, "korapay_trade", reference, krPlanDays, existing);
       if (!credited) return res.status(409).json({ message: "This payment has already been credited to your trade wallet." });
       res.json({ message: `$${userCredit.toFixed(2)} has been credited to your Trade Wallet`, amountUsd: userCredit });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { res.status(e instanceof TradeCapitalLimitError ? 409 : 500).json({ message: e.message }); }
   });
 
   // ── REINVEST earnings back into locked principal ──────────────────────────

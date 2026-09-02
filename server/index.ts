@@ -469,6 +469,40 @@ async function runMigrations() {
         WHERE user_id = tw.user_id AND type = 'deposit' AND status = 'completed'
       )
     `);
+    // Older top-ups reset cycle_started_at a fraction of a second after their
+    // ledger row was written, causing that top-up (and earlier ones) to vanish
+    // from the per-cycle counter. Restore the true deposit/reinvest boundary.
+    await db.execute(sql`
+      WITH repairs AS (
+        SELECT tw.user_id, (
+          SELECT MAX(t.created_at)
+          FROM trade_transactions t
+          WHERE t.user_id = tw.user_id
+            AND t.status = 'completed'
+            AND (
+              t.type = 'deposit'
+              OR (t.type = 'withdraw_exchange' AND t.note LIKE 'Re-invested % as new locked principal%')
+            )
+            AND t.created_at < tw.cycle_started_at
+        ) AS started_at
+        FROM trade_wallets tw
+        WHERE EXISTS (
+          SELECT 1
+          FROM trade_transactions recent_topup
+          WHERE recent_topup.user_id = tw.user_id
+            AND recent_topup.type = 'topup'
+            AND recent_topup.status = 'completed'
+            AND recent_topup.created_at >= tw.cycle_started_at - INTERVAL '2 seconds'
+            AND recent_topup.created_at < tw.cycle_started_at
+        )
+      )
+      UPDATE trade_wallets tw
+      SET cycle_started_at = repairs.started_at,
+          updated_at = NOW()
+      FROM repairs
+      WHERE repairs.user_id = tw.user_id
+        AND repairs.started_at IS NOT NULL
+    `);
 
     // ── Reconcile cumulative bot-profit counters from canonical ledger rows ───
     // total_bot_earnings is a cache of realised profit, never a source of truth.

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { formatLagosTimestamp, type StatementRow } from "./statementHelpers";
 
 const FROM_NAME = "TSIA";
 const FROM_EMAIL = process.env.SMTP_FROM || process.env.FROM_EMAIL || "noreply@tsiforafrica.com";
@@ -6,6 +7,42 @@ const BREVO_API  = "https://api.brevo.com/v3/smtp/email";
 const RESEND_API = "https://api.resend.com/emails";
 
 export const ADMIN_EMAIL = "support@tsiforafrica.com";
+
+export function escapeHtml(value: unknown): string {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[character]!));
+}
+
+export function renderStatementEmail(input: {
+  firstName: string;
+  startDate: string;
+  endDate: string;
+  generatedAt: Date | string;
+  rows: StatementRow[];
+}): string {
+  const rows = input.rows.map((row, index) => `<tr style="background:${index % 2 ? "#ffffff" : "#f8fdf9"};">
+    <td style="padding:10px 8px;border-bottom:1px solid #e5ede8;vertical-align:top;">${escapeHtml(formatLagosTimestamp(row.timestamp))}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #e5ede8;vertical-align:top;">${escapeHtml(row.source)}<br/><span style="color:#6b7c72;font-size:11px;">${escapeHtml(row.service)}</span></td>
+    <td style="padding:10px 8px;border-bottom:1px solid #e5ede8;vertical-align:top;">${escapeHtml(row.type)}<br/><span style="color:#6b7c72;font-size:11px;">${escapeHtml(row.description)}</span></td>
+    <td style="padding:10px 8px;border-bottom:1px solid #e5ede8;text-align:right;vertical-align:top;">$${escapeHtml(row.amount)}<br/><span style="color:#6b7c72;font-size:11px;">Fee: $${escapeHtml(row.fee)}</span></td>
+    <td style="padding:10px 8px;border-bottom:1px solid #e5ede8;vertical-align:top;">${escapeHtml(row.status)}<br/><span style="color:#6b7c72;font-size:11px;">${escapeHtml(row.reference || "—")}</span></td>
+  </tr>`).join("");
+  return baseTemplate(`
+    <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">Your TSIA Account Statement</h2>
+    <p style="color:#4a5e50;font-size:14px;line-height:1.6;">Hi <strong>${escapeHtml(input.firstName)}</strong>, this statement covers <strong>${escapeHtml(input.startDate)}</strong> through <strong>${escapeHtml(input.endDate)}</strong> (Africa/Lagos).</p>
+    <div style="background:#f0f8f4;border-radius:12px;padding:14px 16px;margin:16px 0;color:#1a6b3c;font-size:13px;"><strong>${input.rows.length}</strong> transaction${input.rows.length === 1 ? "" : "s"} · Generated ${escapeHtml(formatLagosTimestamp(input.generatedAt))}</div>
+    <div style="overflow-x:auto;"><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;color:#1a1a1a;">
+      <thead><tr style="background:#1a6b3c;color:#fff;"><th align="left" style="padding:10px 8px;">Date &amp; time</th><th align="left" style="padding:10px 8px;">Source / service</th><th align="left" style="padding:10px 8px;">Transaction</th><th align="right" style="padding:10px 8px;">Amount</th><th align="left" style="padding:10px 8px;">Status / reference</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="5" style="padding:18px;text-align:center;color:#6b7c72;">No transactions in this period.</td></tr>`}</tbody>
+    </table></div>
+    <p style="color:#9caa9f;font-size:11px;line-height:1.5;">Balances are not shown because a post-transaction balance is not persisted for every source record.</p>
+  `);
+}
+
+export async function sendAccountStatementEmail(to: string, input: Parameters<typeof renderStatementEmail>[0]): Promise<void> {
+  await sendEmail(to, `Your TSIA account statement (${input.startDate} to ${input.endDate})`, renderStatementEmail(input));
+}
 
 function baseTemplate(content: string): string {
   return `<!DOCTYPE html>
@@ -161,8 +198,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
   // 4 — Resend REST API (legacy fallback)
   const resendKey = process.env.RESEND_API_KEY;
   if (!resendKey) {
-    console.warn(`[EMAIL] No email provider configured — skipping send to ${to}`);
-    return;
+    throw new Error("No email provider is configured.");
   }
   const res = await fetch(RESEND_API, {
     method: "POST",
@@ -1731,6 +1767,8 @@ export async function sendTransactionReceiptEmail(
     reference: string;
     rows: ReceiptEmailRow[];
     footerNote?: string;
+    /** Persisted transaction time. Omit when the source did not provide one. */
+    transactionTimestamp?: Date | string;
   },
 ): Promise<void> {
   const statusConfig = {
@@ -1739,13 +1777,16 @@ export async function sendTransactionReceiptEmail(
     pending:    { color: "#b45309", bg: "#fffbeb", border: "#d97706", label: "&#x1F504; Pending" },
   }[opts.status];
 
-  const rowsHtml = opts.rows.map((row, i) => {
+  const receiptRows = opts.transactionTimestamp
+    ? [{ label: "Date & Time", value: formatLagosTimestamp(opts.transactionTimestamp) }, ...opts.rows]
+    : opts.rows;
+  const rowsHtml = receiptRows.map((row, i) => {
     const valColor  = row.color === "red" ? "#c0392b" : row.color === "green" ? "#1a6b3c" : row.color === "gold" ? "#c9a227" : "#1a1a1a";
     const valWeight = row.color || row.mono ? "700" : "500";
     const valFamily = row.mono ? "font-family:monospace;" : "";
     return `<tr style="${i > 0 ? "border-top:1px dashed #d5e8dc;" : ""}">
-      <td style="padding:11px 18px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;width:45%;">${row.label}</td>
-      <td style="padding:11px 18px;font-size:13px;color:${valColor};font-weight:${valWeight};${valFamily}text-align:right;">${row.value}</td>
+      <td style="padding:11px 18px;font-size:12px;color:#6b7c72;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;width:45%;">${escapeHtml(row.label)}</td>
+      <td style="padding:11px 18px;font-size:13px;color:${valColor};font-weight:${valWeight};${valFamily}text-align:right;">${escapeHtml(row.value)}</td>
     </tr>`;
   }).join("\n");
 

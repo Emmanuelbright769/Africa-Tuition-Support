@@ -21,3 +21,4 @@
 - [Transaction PIN policy](transaction-pin-policy.md) — outgoing payments use a hashed 4-digit PIN; email OTP is reserved for setting or recovering the PIN.
 - [Trading chart integrity](trading-chart-integrity.md) — user-facing live charts show only allowlisted provider OHLC data; never fabricate fallback candles.
 - [Signal position controls](signal-position-controls.md) — open signals use provider-priced live P&L; added funds blend entry by units and close atomically into the Signals wallet.
+- [Financial statement timestamps](financial-statement-timestamps.md) — histories, receipts, and admin statements use persisted timestamps rendered in Africa/Lagos time.

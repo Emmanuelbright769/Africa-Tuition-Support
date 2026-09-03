@@ -691,6 +691,27 @@ export default function PromoLanding() {
         </div>
       </section>
 
+      {/* ── Back to School Kiddies announcement ── */}
+      <section id="back-to-school" className="border-b border-orange-200 bg-[#fff8ed] px-4 py-14 dark:border-orange-950 dark:bg-slate-900">
+        <div className="mx-auto grid max-w-5xl items-center gap-8 md:grid-cols-[1.05fr_.95fr]">
+          <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
+            <p className="mb-3 text-xs font-black uppercase tracking-[0.2em] text-orange-700 dark:text-orange-300">A new school-year benefit from TSIA</p>
+            <h2 className="mb-4 text-3xl font-black leading-tight md:text-4xl">Back to School Kiddies</h2>
+            <p className="mb-5 text-muted-foreground leading-relaxed">Families can save up to <strong className="text-foreground">$30 per child</strong>, with no fixed duration or timeframe. Children ages 0–15 may qualify for tuition grants up to <strong className="text-foreground">$100</strong> through the in-app spelling bee.</p>
+            <div className="mb-6 space-y-2 text-sm">
+              {["Savings is the only eligibility criterion.", "No withdrawal limits.", "Open to every registered TSIA wallet, Student or Affiliate.", "Register your children in the app to participate."].map(item => <div key={item} className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-tsia-green" /><span>{item}</span></div>)}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/signup"><button className="inline-flex items-center rounded-xl bg-tsia-green px-5 py-3 text-sm font-black text-white transition-colors hover:bg-tsia-green/90">Register children <ArrowRight className="ml-2 h-4 w-4" /></button></Link>
+              <a href="https://tsiforafrica.com" target="_blank" rel="noopener noreferrer" className="inline-flex items-center rounded-xl border border-orange-300 px-5 py-3 text-sm font-bold text-orange-900 hover:bg-orange-100 dark:text-orange-100 dark:hover:bg-orange-950">Learn more at tsiforafrica.com <ExternalLink className="ml-2 h-3.5 w-3.5" /></a>
+            </div>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} className="overflow-hidden rounded-3xl border border-orange-200 shadow-xl shadow-orange-900/10">
+            <img src="/back-to-school-kiddies.jpeg" alt="Back to School Kiddies programme" className="aspect-[4/3] w-full object-cover" />
+          </motion.div>
+        </div>
+      </section>
+
       {/* ── Sponsorship Cohort Info ── */}
       <CohortBanner />
 

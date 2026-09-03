@@ -33,7 +33,9 @@ import {
   sendWithdrawalOtpEmail,
   sendTransferOtpEmail,
   sendTransactionReceiptEmail,
+  sendAccountStatementEmail,
 } from "./email";
+import { lagosDayRange, sortStatementRows, type StatementRow } from "./statementHelpers";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pg from "pg";
@@ -1980,7 +1982,7 @@ export async function registerRoutes(
         paidBatchId: batch.id,
       } as any);
 
-      await storage.createTransaction({
+      const bankWithdrawalTransaction = await storage.createTransaction({
         userId,
         type: "verification_fee",
         amount: `-${totalCharged.toFixed(2)}`,
@@ -2447,6 +2449,7 @@ export async function registerRoutes(
         amount: `₦${netAmountNgn.toLocaleString()}`,
         amountLabel: `$${withdrawAmount.toFixed(2)} deducted`,
         reference: txRef,
+        transactionTimestamp: bankWithdrawalTransaction.createdAt,
         rows: [
           { label: "Amount Deducted", value: `$${withdrawAmount.toFixed(2)}` },
           { label: "VAT (7.5%)",      value: `-$${vatAmount.toFixed(2)}`,              color: "red" },
@@ -2587,7 +2590,7 @@ export async function registerRoutes(
       await storage.updateWalletBalance(userId, newBalance);
       const networkLabel = network === "bep20" ? "BEP20/BSC" : "TRC20/TRON";
       const truncated = `${String(address).trim().slice(0, 8)}…${String(address).trim().slice(-6)}`;
-      await storage.createTransaction({
+      const cryptoWithdrawalTransaction = await storage.createTransaction({
         userId, type: "crypto_withdrawal",
         amount: (-withdrawAmt).toFixed(2), fee: feeAmt.toFixed(2),
         paymentMethod: "crypto",
@@ -2709,6 +2712,7 @@ export async function registerRoutes(
           amount: `$${netAmt.toFixed(2)} USDT`,
           amountLabel: `$${withdrawAmt.toFixed(2)} requested`,
           reference: cryptoTxRef,
+          transactionTimestamp: cryptoWithdrawalTransaction.createdAt,
           rows: [
             { label: "Amount Requested", value: `$${withdrawAmt.toFixed(2)} USDT` },
             { label: "Handling Fee (8%)", value: `-$${feeAmt.toFixed(2)}`, color: "red" },
@@ -8227,6 +8231,101 @@ export async function registerRoutes(
     }
   });
 
+  // Statement delivery is deliberately separate from the paginated admin ledger:
+  // it uses persisted timestamps and the selected user's stored email only.
+  app.post("/api/admin/account-statements", async (req, res) => {
+    try {
+      const admin = await requireAdminUser(req, res);
+      if (!admin) return;
+      const userId = Number(req.body?.userId);
+      const startDate = typeof req.body?.startDate === "string" ? req.body.startDate : "";
+      const endDate = typeof req.body?.endDate === "string" ? req.body.endDate : "";
+      if (!Number.isSafeInteger(userId) || userId <= 0) {
+        return res.status(400).json({ message: "A valid userId is required." });
+      }
+      let range: { start: Date; endExclusive: Date };
+      try {
+        range = lagosDayRange(startDate, endDate);
+      } catch (error: any) {
+        return res.status(400).json({ message: error.message });
+      }
+      const recipient = await storage.getUser(userId);
+      if (!recipient) return res.status(404).json({ message: "User not found." });
+      if (!recipient.email?.trim()) return res.status(422).json({ message: "The selected user has no stored email address." });
+
+      const result = await db.execute(sql`
+        WITH ledger AS (
+          SELECT 'Swift Wallet'::text source, 'Main wallet'::text service, t.created_at,
+            t.type::text type, t.amount::text amount, t.fee::text fee, 'completed'::text status,
+            NULL::text reference, t.description
+          FROM transactions t
+          WHERE t.user_id = ${userId}
+            AND t.type NOT IN ('bill', 'withdrawal', 'crypto_withdrawal')
+            AND (t.type <> 'deposit' OR t.payment_method = 'internal')
+          UNION ALL
+          SELECT 'Trade Market', COALESCE(t.wallet_type::text, 'Trade wallet'), t.created_at,
+            t.type::text, CASE WHEN t.type IN ('withdraw_exchange','withdraw_bank') THEN (-ABS(t.amount_usd))::text ELSE t.amount_usd::text END,
+            t.fee_usd::text, t.status::text, t.tx_hash, COALESCE(t.note, t.type::text)
+          FROM trade_transactions t WHERE t.user_id = ${userId}
+          UNION ALL
+          SELECT 'Service Wallet', s.service_type, s.created_at, s.kind, s.amount::text, '0.00',
+            'completed', s.reference, COALESCE(s.metadata->>'description', s.kind)
+          FROM service_wallet_transactions s WHERE s.user_id = ${userId}
+          UNION ALL
+          SELECT 'Wallet Deposit', d.wallet_type, d.created_at, 'deposit', d.amount_usd::text, '0.00',
+            d.status, d.tx_hash, COALESCE(d.metadata->>'description', 'Wallet deposit')
+          FROM wallet_deposits d WHERE d.user_id = ${userId}
+          UNION ALL
+          SELECT 'Withdrawal Request', w.type, w.created_at, 'withdrawal', (-w.amount)::text, w.fee::text,
+            w.status, COALESCE(w.address, w.account_number), COALESCE(w.admin_note, 'Withdrawal request')
+          FROM withdrawal_requests w WHERE w.user_id = ${userId}
+          UNION ALL
+          SELECT 'Back to School', 'School Kiddies vest', b.created_at, b.type, b.amount_usd::text,
+            b.fee_amount_usd::text, 'completed', ('vest:' || b.vest_id)::text,
+            ('Back to School vest ' || b.type)::text
+          FROM back_to_school_vest_transactions b WHERE b.guardian_user_id = ${userId}
+          UNION ALL
+          SELECT 'QCE Savings', 'Quick Credit Eligibility', q.created_at, q.type,
+            CASE WHEN q.type = 'withdrawal' THEN (-q.amount_usd)::text ELSE q.amount_usd::text END,
+            '0.00', 'completed', ('qce:' || q.id)::text, COALESCE(q.note, ('QCE ' || q.type)::text)
+          FROM qce_transactions q WHERE q.user_id = ${userId}
+          UNION ALL
+          SELECT 'Bill Payment', b.service, b.created_at, 'bill payment', (-b.amount)::text, '0.00',
+            b.status, b.reference, (b.service || ' payment')::text
+          FROM bill_payments b WHERE b.user_id = ${userId}
+        )
+        SELECT * FROM ledger
+        WHERE created_at >= ${range.start} AND created_at < ${range.endExclusive}
+        ORDER BY created_at ASC
+      `);
+      const rows = sortStatementRows((result.rows ?? result).map((row: any): StatementRow => ({
+        source: row.source, service: row.service, timestamp: row.created_at, type: row.type,
+        amount: row.amount, fee: row.fee, status: row.status, reference: row.reference,
+        description: row.description,
+      })));
+      const generatedAt = new Date();
+      try {
+        await sendAccountStatementEmail(recipient.email, {
+          firstName: recipient.firstName, startDate, endDate, generatedAt, rows,
+        });
+      } catch (error: any) {
+        await writeAdminAudit({
+          actorUserId: admin.id, targetUserId: recipient.id, action: "account_statement.sent",
+          outcome: "failed", metadata: { startDate, endDate, transactionCount: rows.length, error: error?.message ?? "Email send failed" },
+        });
+        return res.status(502).json({ message: "The statement could not be delivered. Please try again." });
+      }
+      await writeAdminAudit({
+        actorUserId: admin.id, targetUserId: recipient.id, action: "account_statement.sent",
+        outcome: "success", metadata: { startDate, endDate, transactionCount: rows.length },
+      });
+      res.json({ success: true, transactionCount: rows.length, message: "Statement sent to the user's stored email address." });
+    } catch (error: any) {
+      console.error("[STATEMENT] Failed to send account statement:", error);
+      res.status(500).json({ message: "Unable to generate the account statement." });
+    }
+  });
+
   // ─── ADMIN: TS-Mart Online Stores stats ─────────────────────────────────────────────────
   app.get("/api/admin/ecommerce-stats", async (req, res) => {
     try {
@@ -10375,8 +10474,8 @@ export async function registerRoutes(
     if (lienAmt > 0 && availableForBill < amountUsd) throw Object.assign(new Error(`Your wallet has an active lien of $${lienAmt.toFixed(2)}. Available balance: $${availableForBill.toFixed(2)}.`), { status: 400, code: "LIEN_BLOCKED" });
     if (balance < amountUsd) throw Object.assign(new Error(`Insufficient balance. You have $${balance.toFixed(2)}`), { status: 400 });
     await storage.updateWalletBalance(userId, (balance - amountUsd).toFixed(2));
-    await storage.createBillPayment({ userId, service, amount: amountUsd, reference });
-    await storage.createTransaction({ userId, type: "bill", amount: (-amountUsd).toFixed(2), fee: "0.00", paymentMethod: "wallet", description });
+    const billPayment = await storage.createBillPayment({ userId, service, amount: amountUsd, reference });
+    const transaction = await storage.createTransaction({ userId, type: "bill", amount: (-amountUsd).toFixed(2), fee: "0.00", paymentMethod: "wallet", description });
     const notif = await storage.createNotification({ userId, type: "wallet_credit", title: notifTitle, message: notifMessage, data: notifData, isRead: false });
     pushToUser(userId, "notification", notif);
     // ── 10% cashback on every bill payment ──────────────────────────────────
@@ -10390,7 +10489,7 @@ export async function registerRoutes(
     invalidateCacheKey(`wallet:${userId}`);
     invalidateCacheKey(`transactions:${userId}`);
     invalidateCacheKey(`wallet_bills:${userId}`);
-    return await storage.getOrCreateWallet(userId);
+    return { wallet: await storage.getOrCreateWallet(userId), billPayment, transaction };
   }
 
   // ── Weekend maintenance block (Fri 23:59 – Mon 08:00 WAT) ───────────────────
@@ -10702,7 +10801,7 @@ export async function registerRoutes(
       const ref = `${serviceId.toUpperCase()} | ${phone} | ₦${amountNgn.toLocaleString()} | Ref: ${result.ref}`;
       const desc = `Airtime ₦${amountNgn.toLocaleString()} → ${phone} (${serviceId.toUpperCase()}) via VTU.ng | Ref: ${result.ref}`;
       const msg = `₦${amountNgn.toLocaleString()} airtime delivered to ${phone} (${serviceId.toUpperCase()}).`;
-      await fintechDebitWallet(userId, amountUsd, "airtime", ref, desc, "Airtime Delivered ✓", msg, { ref: result.ref });
+      const airtimeDebit = await fintechDebitWallet(userId, amountUsd, "airtime", ref, desc, "Airtime Delivered ✓", msg, { ref: result.ref });
       res.json({ success: true, reference: result.ref, amountNgn, message: msg });
       storage.getUser(userId).then(u => {
         if (!u) return;
@@ -10712,6 +10811,7 @@ export async function registerRoutes(
           amount: `₦${amountNgn.toLocaleString()}`,
           amountLabel: `$${amountUsd.toFixed(2)}`,
           reference: result.ref,
+          transactionTimestamp: airtimeDebit.transaction.createdAt,
           rows: [
             { label: "Network", value: serviceId.toUpperCase() },
             { label: "Phone", value: phone },
@@ -10751,7 +10851,7 @@ export async function registerRoutes(
       const ref = `${serviceId.toUpperCase()} | ${planDisplay} | ${phone} | Ref: ${result.ref}`;
       const desc = `Data ${planDisplay} → ${phone} (${serviceId.toUpperCase()}) via VTU.ng | Ref: ${result.ref}`;
       const msg = `${planDisplay} data bundle activated on ${phone} (${serviceId.toUpperCase()}).`;
-      await fintechDebitWallet(userId, amountUsd, "internet", ref, desc, "Data Bundle Activated ✓", msg, { ref: result.ref });
+      const dataDebit = await fintechDebitWallet(userId, amountUsd, "internet", ref, desc, "Data Bundle Activated ✓", msg, { ref: result.ref });
       res.json({ success: true, reference: result.ref, amountNgn, message: msg });
       storage.getUser(userId).then(u => {
         if (!u) return;
@@ -10761,6 +10861,7 @@ export async function registerRoutes(
           amount: `₦${amountNgn.toLocaleString()}`,
           amountLabel: `$${amountUsd.toFixed(2)}`,
           reference: result.ref,
+          transactionTimestamp: dataDebit.transaction.createdAt,
           rows: [
             { label: "Network", value: serviceId.toUpperCase() },
             { label: "Plan", value: planDisplay },
@@ -10804,7 +10905,7 @@ export async function registerRoutes(
       const msg = token
         ? `₦${amountNgn.toLocaleString()} electricity credited. Meter: ${meterNumber}. Token: ${token}`
         : `₦${amountNgn.toLocaleString()} electricity submitted for ${meterNumber} (${discoCode}).`;
-      await fintechDebitWallet(userId, amountUsd, "electricity", ref, desc, "Electricity Credited ✓", msg, { ref: result.ref, token });
+      const electricityDebit = await fintechDebitWallet(userId, amountUsd, "electricity", ref, desc, "Electricity Credited ✓", msg, { ref: result.ref, token });
       res.json({ success: true, reference: result.ref, amountNgn, token, customerName: result.customerName, message: msg });
       storage.getUser(userId).then(u => {
         if (!u) return;
@@ -10823,6 +10924,7 @@ export async function registerRoutes(
           amount: `₦${amountNgn.toLocaleString()}`,
           amountLabel: `$${amountUsd.toFixed(2)}`,
           reference: result.ref,
+          transactionTimestamp: electricityDebit.transaction.createdAt,
           rows,
         }).catch(() => {});
       }).catch(() => {});
@@ -10854,7 +10956,7 @@ export async function registerRoutes(
       const ref = `${serviceId.toUpperCase()} | ${packageName || variationId} | Card: ${smartcardNumber} | ₦${amountNgn.toLocaleString()} | Ref: ${result.ref}`;
       const desc = `Cable TV ${serviceId.toUpperCase()} ${packageName || ""} → ${smartcardNumber} via VTU.ng | Ref: ${result.ref}`;
       const msg = `${serviceId.toUpperCase()} ${packageName || "subscription"} activated for smartcard ${smartcardNumber}.`;
-      await fintechDebitWallet(userId, amountUsd, "cable-tv", ref, desc, "Cable TV Activated ✓", msg, { ref: result.ref });
+      const tvDebit = await fintechDebitWallet(userId, amountUsd, "cable-tv", ref, desc, "Cable TV Activated ✓", msg, { ref: result.ref });
       res.json({ success: true, reference: result.ref, amountNgn, customerName: result.customerName, message: msg });
       storage.getUser(userId).then(u => {
         if (!u) return;
@@ -10864,6 +10966,7 @@ export async function registerRoutes(
           amount: `₦${amountNgn.toLocaleString()}`,
           amountLabel: `$${amountUsd.toFixed(2)}`,
           reference: result.ref,
+          transactionTimestamp: tvDebit.transaction.createdAt,
           rows: [
             { label: "Provider", value: serviceId.toUpperCase() },
             { label: "Package", value: packageName || String(variationId) },
@@ -10901,7 +11004,7 @@ export async function registerRoutes(
       const ref = `${platform} | ID: ${bettingUserId} | ₦${amountNgn.toLocaleString()} | Ref: ${result.ref}`;
       const desc = `Betting fund ${platform} ID: ${bettingUserId} | ₦${amountNgn.toLocaleString()} via VTU.ng | Ref: ${result.ref}`;
       const msg = `₦${amountNgn.toLocaleString()} funded to ${platform} wallet (ID: ${bettingUserId}).`;
-      await fintechDebitWallet(userId, amountUsd, "betting", ref, desc, "Betting Wallet Funded ✓", msg, { ref: result.ref });
+      const bettingDebit = await fintechDebitWallet(userId, amountUsd, "betting", ref, desc, "Betting Wallet Funded ✓", msg, { ref: result.ref });
       res.json({ success: true, reference: result.ref, amountNgn, customerName: result.customerName, message: msg });
       storage.getUser(userId).then(u => {
         if (!u) return;
@@ -10911,6 +11014,7 @@ export async function registerRoutes(
           amount: `₦${amountNgn.toLocaleString()}`,
           amountLabel: `$${amountUsd.toFixed(2)}`,
           reference: result.ref,
+          transactionTimestamp: bettingDebit.transaction.createdAt,
           rows: [
             { label: "Platform", value: platform },
             { label: "User ID", value: bettingUserId, mono: true },

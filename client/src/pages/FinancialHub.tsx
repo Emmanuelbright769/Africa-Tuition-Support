@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ComponentProps } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatLagosDateTime } from "@/lib/date";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -1489,7 +1490,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
                   </div>
                   <div className="flex-1">
                     <p className="font-semibold text-sm capitalize">{tx.type}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</p>
+                    <p className="text-xs text-muted-foreground">{formatLagosDateTime(tx.createdAt)}</p>
                   </div>
                   <p className={`font-bold text-sm ${tx.type === "deposit" ? "text-tsia-green" : "text-red-500"}`}>
                     {tx.type === "deposit" ? "+" : "−"}${parseFloat(tx.amountUsd).toFixed(2)}
@@ -3010,7 +3011,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             const isOut = t.senderId === user?.id;
             const txStatus: "success" | "pending" | "processing" =
               t.status === "completed" ? "success" : t.status === "pending" ? "pending" : "processing";
-            const txDate = new Date(t.createdAt).toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
+            const txDate = formatLagosDateTime(t.createdAt);
             const openTransferReceipt = () => showReceipt({
               status: txStatus,
               title: isOut ? "Money Sent" : "Money Received",
@@ -3041,7 +3042,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
                 </div>
                 <div className="text-right">
                   <p className={`font-bold text-sm ${isOut ? "text-red-500" : "text-tsia-green"}`}>{isOut ? "−" : "+"}${parseFloat(t.amount).toFixed(2)}</p>
-                  <p className="text-[10px] text-muted-foreground">{new Date(t.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                  <p className="text-[10px] text-muted-foreground">{formatLagosDateTime(t.createdAt)}</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
               </button>
@@ -3066,7 +3067,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
           return (<div className="space-y-2">{btPageItems.map(b => {
             const btStatus: "success" | "pending" | "processing" =
               b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
-            const btDate = new Date(b.createdAt).toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
+            const btDate = formatLagosDateTime(b.createdAt);
             let btDetails: any = {};
             try { btDetails = JSON.parse(b.reference); } catch { btDetails = { txRef: b.reference }; }
             const openBtReceipt = () => showReceipt({
@@ -3129,7 +3130,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
             const svc = SERVICES.find(s => s.id === b.service) || SERVICES[0];
             const billStatus: "success" | "pending" | "processing" =
               b.status === "completed" ? "success" : b.status === "pending" ? "pending" : "processing";
-            const billDate = new Date(b.createdAt).toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit" });
+            const billDate = formatLagosDateTime(b.createdAt);
             const openBillReceipt = () => showReceipt({
               status: billStatus,
               title: `${svc.label} Payment`,
@@ -3160,7 +3161,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-sm text-red-500">−${parseFloat(b.amount).toFixed(2)}</p>
-                  <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                  <p className="text-[10px] text-muted-foreground">{formatLagosDateTime(b.createdAt)}</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
               </button>
@@ -3193,7 +3194,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
                     <p className="font-semibold text-sm capitalize">
                       {d.walletType === "squad" ? "Squad (Card/Bank)" : d.walletType === "paystack" ? "Card/Bank" : d.walletType === "korapay" ? "Korapay" : d.walletType?.toUpperCase()} Deposit
                     </p>
-                    <p className="text-xs text-muted-foreground font-mono truncate">{new Date(d.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}</p>
+                    <p className="text-xs text-muted-foreground font-mono truncate">{formatLagosDateTime(d.createdAt)}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-sm text-tsia-green">+${parseFloat(d.amountUsd).toFixed(2)}</p>
@@ -4778,7 +4779,7 @@ export default function FinancialHub({ restrictedFundingOnly = false }: { restri
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-sm font-bold text-tsia-green">${parseFloat(b.amount).toFixed(2)}</p>
-                          <p className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-GB", { day:"2-digit", month:"short" })}</p>
+                          <p className="text-[10px] text-muted-foreground">{formatLagosDateTime(b.createdAt)}</p>
                         </div>
                       </button>
                     );

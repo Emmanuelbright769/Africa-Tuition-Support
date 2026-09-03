@@ -120,6 +120,30 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* ── Back to School Kiddies ───────────────────────────────────── */}
+        <section id="back-to-school" className="relative overflow-hidden border-b bg-[#fff8ed] py-14 dark:bg-slate-900">
+          <div className="container mx-auto grid max-w-6xl items-center gap-10 px-4 md:grid-cols-[0.95fr_1.05fr]">
+            <motion.div initial={{ opacity: 0, x: -24 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
+              <span className="mb-4 inline-flex rounded-full border border-orange-200 bg-orange-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-orange-800 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-200">Back to School Kiddies</span>
+              <h2 className="mb-4 text-3xl font-bold leading-tight md:text-5xl">A little more room for every family.</h2>
+              <p className="mb-6 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg">Register your children with TSIA and save up to <strong className="text-foreground">$30 per child</strong>. Children aged 0–15 may also qualify for tuition grants of up to <strong className="text-foreground">$100</strong> through the in-app spelling bee.</p>
+              <div className="mb-7 grid gap-3 sm:grid-cols-2">
+                {["Savings is the only eligibility criterion", "No withdrawal limits", "Available to every registered wallet", "Student and Affiliate wallets welcome"].map(f => (
+                  <div key={f} className="flex items-start gap-2 text-sm font-medium"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-tsia-green" />{f}</div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/signup"><Button className="h-12 rounded-xl bg-tsia-green px-6 text-white hover:bg-tsia-green/90">Register your children <ArrowRight className="ml-2 h-4 w-4" /></Button></Link>
+                <a href="https://tsiforafrica.com" target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center rounded-xl border border-orange-300 px-5 text-sm font-semibold text-orange-900 transition-colors hover:bg-orange-100 dark:text-orange-100 dark:hover:bg-orange-950">Visit tsiforafrica.com</a>
+              </div>
+            </motion.div>
+            <motion.div initial={{ opacity: 0, x: 24 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} className="relative overflow-hidden rounded-[2rem] border border-orange-200 shadow-xl shadow-orange-900/10">
+              <img src="/back-to-school-kiddies.jpeg" alt="Back to School Kiddies programme with children and school bags" className="aspect-[4/3] w-full object-cover" />
+              <div className="absolute bottom-0 left-0 right-0 bg-slate-950/75 px-5 py-3 text-sm font-semibold text-white">For registered TSIA wallets. Savings has no fixed duration.</div>
+            </motion.div>
+          </div>
+        </section>
+
         {/* ── Explore Dropdown Toggle ───────────────────────────── */}
         <div className="bg-gradient-to-r from-tsia-green/5 via-tsia-gold/5 to-tsia-green/5 border-y border-border">
           <button

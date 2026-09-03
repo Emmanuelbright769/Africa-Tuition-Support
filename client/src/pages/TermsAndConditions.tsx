@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, Shield, AlertTriangle, Globe, Scale, Lock, CreditCard, Users, TrendingUp, ShoppingBag, Home, Plane, Handshake } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 
-const EFFECTIVE_DATE = "14 May 2026";
+const EFFECTIVE_DATE = "3 September 2026";
 const COMPANY = "SMAKEMGGOLD Ltd";
 const RC = "1359954";
 const CONTACT_EMAIL = "legal@tsia.org";
@@ -48,6 +48,7 @@ const TOC = [
   { id: "accounts", label: "User Accounts & Security" },
   { id: "verification", label: "Student Verification Process" },
   { id: "sponsorship", label: "Sponsorship & Payouts" },
+  { id: "back-to-school", label: "Back to School Kiddies" },
   { id: "wallet", label: "Digital Wallet & Payments" },
   { id: "trade", label: "Trade Market & Investment" },
   { id: "affiliate", label: "Affiliate Program" },
@@ -198,6 +199,9 @@ export default function TermsAndConditions() {
               <Clause num="4.4" title="No Sharing of Credentials">
                 <p>OTP codes, session tokens, and account access must not be shared with any third party. TSIA will never ask for your OTP code via WhatsApp, phone call, or any channel other than the official Platform.</p>
               </Clause>
+              <Clause num="4.5" title="Transaction PIN">
+                <p>Where enabled, transactions are protected by a <strong>4-digit transaction PIN</strong>. TSIA stores the PIN only as a one-way hash and does not retain the readable PIN. Repeated incorrect attempts may lock transaction actions. You must use the Platform's verified recovery process to reset a locked PIN; support will not request or disclose your PIN.</p>
+              </Clause>
             </Section>
 
             {/* 5. Verification */}
@@ -278,7 +282,25 @@ export default function TermsAndConditions() {
                 <p>Sending money directly to another TSIA member via the Swift Hub (wallet-to-wallet peer transfer) attracts a <strong>25% platform service fee</strong> — comprising <strong>20%</strong> allocated to the operational reserve fund and <strong>5%</strong> to the Co-Affiliate rewards pool. This fee is deducted from the amount you enter; the recipient receives 75% of the gross amount. Trade Market → SwiftWallet transfers carry <strong>no fee</strong> (see clause 8.4). Deposits to your wallet are credited in full with no deductions at the point of deposit. Bill payments (airtime, data, electricity, cable TV, betting) are processed at face value with <strong>no additional platform fee</strong>. Bank transfers attract a 7.5% VAT as set out in clause 7.2.</p>
               </Clause>
               <Clause num="7.11" title="Monthly Platform Subscription and Maintenance">
-                <p>Starting <strong>1 September 2026</strong>, a <strong>$1.50 monthly platform subscription fee</strong> and a <strong>$0.50 wallet maintenance fee</strong> are due on the <strong>1st of each calendar month</strong>. Each full $2.00 monthly charge is collected from the user's TSIA SwiftWallet. If the wallet cannot cover the current month's full charge, no partial charge is taken and platform access is restricted to login, account status, identity verification, and wallet-funding channels. Missed months do not accumulate; paying one current monthly charge restores access.</p>
+                <p>A <strong>$2 monthly platform billing charge</strong> is due on the <strong>1st of each calendar month</strong>. If the wallet cannot cover the current month's full charge, the month is waived and no partial charge is taken. Missed months do not accumulate or become arrears; a later month never collects a missed month's charge.</p>
+              </Clause>
+              <Clause num="7.12" title="Wallet and Service Isolation">
+                <p>Student, Affiliate, and service wallets are separate accounting environments. Balances, permissions, liabilities, and transaction histories are not interchangeable unless the Platform expressly provides a documented transfer route. Manual, Signals, TS-Mart, and Itera BOT service wallets remain separate from personal and Trade Market wallets.</p>
+              </Clause>
+              <Clause num="7.13" title="Account Liens and External Payouts">
+                <p>Any lien or hold is limited to the specific TSIA account connected to the relevant obligation or transaction. It does not attach to another account or wallet. External bank and cryptocurrency payouts may be subject to applicable network, bank, exchange, and provider processing fees.</p>
+              </Clause>
+            </Section>
+
+            <Section id="back-to-school" icon={Users} title="7A. Back to School Kiddies Programme">
+              <Clause num="7A.1" title="Family Savings">
+                <p>Registered TSIA wallet holders may register their children for the Back to School Kiddies programme. Families may save up to <strong>$30 per child</strong>. The savings benefit has no fixed duration or timeframe, and there are no withdrawal limits stated by this programme.</p>
+              </Clause>
+              <Clause num="7A.2" title="Children and Spelling Bee Grants">
+                <p>Children aged <strong>0–15</strong> may qualify for tuition grants of up to <strong>$100</strong> through the in-app spelling bee. A child's savings is the only eligibility criterion for this programme; grant qualification is subject to the in-app process and server records.</p>
+              </Clause>
+              <Clause num="7A.3" title="Eligible Wallets and Registration">
+                <p>The programme is available to every registered TSIA wallet, including Student and Affiliate wallets. Users must register their children in the Platform. Programme information is also available at <a href="https://tsiforafrica.com" target="_blank" rel="noopener noreferrer" className="text-tsia-green underline">tsiforafrica.com</a>.</p>
               </Clause>
             </Section>
 
@@ -291,7 +313,7 @@ export default function TermsAndConditions() {
                 <p>TSIA's Itera Trading BOT operates according to the selected trading cycle. Returns are not guaranteed, and market conditions can result in lower or negative results on individual sessions.</p>
               </Clause>
               <Clause num="8.3" title="Bot Window">
-                <p>The Itera Trading BOT is active from <strong>1:00 PM GMT to 1:00 AM GMT</strong> on standard working days. You must manually activate your bot session within this window. Sessions started outside this window will not generate returns.</p>
+                <p>The Itera Trading BOT is active from <strong>1:00 PM GMT to 1:00 AM GMT</strong> on standard working days. You must manually activate your bot session within this window. Sessions started outside this window will not generate returns. Bot sessions and trading days must be genuine, server-validated, and maintain timestamped day integrity; client-side time, fabricated sessions, and duplicate or replayed requests do not qualify.</p>
               </Clause>
               <Clause num="8.4" title="Deposit Allocation">
                 <p>Every trade market deposit is allocated as follows: 95% to your active trade wallet and 5% to the affiliate pool. These allocations are non-negotiable and applied automatically. Wallet-to-wallet transfers (Trade → SwiftWallet) carry no fee — the full amount is credited. Fees apply only on bank and crypto withdrawals.</p>
@@ -304,6 +326,15 @@ export default function TermsAndConditions() {
               </Clause>
               <Clause num="8.7" title="Risk Acknowledgement">
                 <p>By depositing into the trade market, you confirm that: (a) you are aware of the risks associated with cryptocurrency and forex trading; (b) you are investing only funds you can afford to lose; (c) you are not relying on trade returns as your sole source of income.</p>
+              </Clause>
+              <Clause num="8.8" title="Trade Market Capital Cap and Top-Ups">
+                <p>Trade Market cumulative capital contributions are capped at <strong>$1,200</strong> per account. An account may make no more than <strong>three top-ups</strong>; rejected, reversed, or provider-failed attempts do not create additional entitlement. TSIA may refuse contributions that would exceed these limits.</p>
+              </Clause>
+              <Clause num="8.9" title="Principal, Profit, and Ordinary Withdrawals">
+                <p>Trade ordinary withdrawals expose realised profit only. Locked principal remains unavailable until the applicable cycle or eligible early-exit condition permits release. Bank and cryptocurrency withdrawals may incur stated TSIA fees, network or bank charges, and provider processing fees.</p>
+              </Clause>
+              <Clause num="8.10" title="Trade Records and Chart Data">
+                <p>TSIA maintains full timestamped records of Trade Market deposits, top-ups, sessions, allocations, results, withdrawals, and holds. Administrators may generate and email account statements. Chart and performance data is sourced from the applicable provider or broker feed and may be delayed, unavailable, or revised; displayed data is not a guarantee of results.</p>
               </Clause>
             </Section>
 

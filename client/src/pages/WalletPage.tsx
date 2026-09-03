@@ -15,6 +15,7 @@ declare global {
 type FundMethod = "squad" | "korapay" | "crypto";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatLagosDateTime } from "@/lib/date";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -866,7 +867,7 @@ export default function WalletPage() {
                         <div className="min-w-0">
                           <p className="font-semibold text-sm">{isAccountCredit ? "Credit Alert" : (typeLabel[tx.type] ?? tx.type)}</p>
                           <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">{isAccountCredit ? "Funds added to your wallet" : tx.description}</p>
-                          <p className="text-[10px] text-muted-foreground">{methodLabel[tx.paymentMethod ?? ""] ?? tx.paymentMethod ?? "Wallet"} · {new Date(tx.createdAt).toLocaleDateString()}</p>
+                          <p className="text-[10px] text-muted-foreground">{methodLabel[tx.paymentMethod ?? ""] ?? tx.paymentMethod ?? "Wallet"} · {formatLagosDateTime(tx.createdAt)}</p>
                         </div>
                       </div>
                       <div className="text-right shrink-0 ml-2">
@@ -918,7 +919,7 @@ export default function WalletPage() {
                     <div>
                       <p className="font-semibold text-sm">${parseFloat(d.amountUsd).toFixed(2)}</p>
                       <p className="text-[10px] text-muted-foreground">
-                        {d.walletType === "squad" ? "Bank Card" : d.walletType === "paystack" ? "Card / Bank" : d.walletType?.toUpperCase()} · {new Date(d.createdAt).toLocaleDateString()}
+                        {d.walletType === "squad" ? "Bank Card" : d.walletType === "paystack" ? "Card / Bank" : d.walletType?.toUpperCase()} · {formatLagosDateTime(d.createdAt)}
                       </p>
                     </div>
                   </div>
@@ -958,7 +959,7 @@ export default function WalletPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-sm">{SERVICE_LABELS[b.service] ?? b.service}</p>
-                      <p className="text-[10px] text-muted-foreground">${parseFloat(b.amount).toFixed(2)} · {new Date(b.createdAt).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-muted-foreground">${parseFloat(b.amount).toFixed(2)} · {formatLagosDateTime(b.createdAt)}</p>
                     </div>
                   </div>
                   {statusBadge(b.status)}

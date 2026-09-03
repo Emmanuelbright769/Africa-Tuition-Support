@@ -22,6 +22,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatLagosDateTime } from "@/lib/date";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import BackToSchoolAdminSection from "@/components/BackToSchoolAdminSection";
@@ -171,6 +172,10 @@ export default function AdminDashboard() {
   const [txPage, setTxPage] = useState(1);
   const [txFrom, setTxFrom] = useState("");
   const [txTo, setTxTo] = useState("");
+  const [statementUserSearch, setStatementUserSearch] = useState("");
+  const [statementUserId, setStatementUserId] = useState("");
+  const [statementStartDate, setStatementStartDate] = useState("");
+  const [statementEndDate, setStatementEndDate] = useState("");
   const [financialChangeReason, setFinancialChangeReason] = useState("");
   const [editBalanceDialog, setEditBalanceDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [editBalanceAmount, setEditBalanceAmount] = useState("");
@@ -269,7 +274,7 @@ export default function AdminDashboard() {
   const { data: pendingDisbursements = [] } = useQuery({ queryKey: ["/api/admin/pending-disbursements"] });
   const { data: allDisbursements = [] }     = useQuery({ queryKey: ["/api/admin/all-disbursements"], enabled: activeTab === "payouts" });
   const { data: walletLiensData, refetch: refetchWalletLiens } = useQuery<{ withLiens: any[]; disbursed: any[] }>({ queryKey: ["/api/admin/wallet-liens"], enabled: activeTab === "payouts" });
-  const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: false });
+  const { data: allUsers = [] }            = useQuery({ queryKey: ["/api/admin/all-users"], enabled: activeTab === "users" || activeTab === "transactions" });
   const { data: allAffiliates = [] }       = useQuery({ queryKey: ["/api/admin/affiliates-all"], enabled: activeTab === "affiliates" });
   const { data: allLoans = [] }            = useQuery({ queryKey: ["/api/admin/loans-all"], enabled: activeTab === "loans" });
   const { data: transactionLedger } = useQuery<any>({
@@ -374,6 +379,26 @@ export default function AdminDashboard() {
       toast({ title: "Amount Updated ✓", description: "Disbursement amount adjusted. Student notified by email." });
     },
     onError: (e: any) => toast({ title: "Update Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const emailStatementMutation = useMutation({
+    mutationFn: async ({ userId, startDate, endDate }: { userId: number; startDate: string; endDate: string }) => {
+      const res = await apiRequest("POST", "/api/admin/account-statements", { userId, startDate, endDate });
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      const recipient = (allUsers as any[]).find((candidate: any) => String(candidate.id) === String(variables.userId));
+      toast({
+        title: "Statement shared",
+        description: `The statement has been sent to ${recipient?.email ?? "the selected user"}.`,
+        className: "border-tsia-green",
+      });
+    },
+    onError: (error: unknown) => toast({
+      title: "Statement could not be shared",
+      description: error instanceof Error ? error.message : "Please try again.",
+      variant: "destructive",
+    }),
   });
 
   const declineDisburseMutation = useMutation({
@@ -1042,6 +1067,13 @@ export default function AdminDashboard() {
     !q || `${l.user?.firstName} ${l.user?.lastName} ${l.user?.email} ${l.status}`.toLowerCase().includes(q)
   );
   const filteredTxns = transactionLedger?.items ?? [];
+  const statementCandidates = (allUsers as any[]).filter((candidate: any) => {
+    const term = statementUserSearch.trim().toLowerCase();
+    return !term || `${candidate.firstName ?? ""} ${candidate.lastName ?? ""} ${candidate.email ?? ""}`.toLowerCase().includes(term);
+  }).slice(0, 8);
+  const selectedStatementUser = (allUsers as any[]).find((candidate: any) => String(candidate.id) === statementUserId);
+  const statementDateRangeIsValid = Boolean(statementStartDate && statementEndDate && statementStartDate <= statementEndDate);
+  const canShareStatement = Boolean(statementUserId && statementDateRangeIsValid && !emailStatementMutation.isPending);
   const filteredVerifications = (allVerifications as any[]).filter(v =>
     (vFilter === "all" || v.status === vFilter) &&
     (!q || `${v.user?.firstName} ${v.user?.lastName} ${v.user?.email} ${v.nin}`.toLowerCase().includes(q))
@@ -2025,6 +2057,80 @@ export default function AdminDashboard() {
             {/* ═══════════════════════════════ TRANSACTIONS ═══════════════════════════════ */}
             {activeTab === "transactions" && (
               <motion.div key="transactions" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+                <Card className="border border-tsia-green/15 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2 text-base text-slate-900">
+                          <Mail className="h-4 w-4 text-tsia-green" />
+                          Share / Email Statement
+                        </CardTitle>
+                        <CardDescription>Select a user and reporting period to send their transaction statement.</CardDescription>
+                      </div>
+                      {selectedStatementUser && (
+                        <Badge variant="outline" className="w-fit border-tsia-green/30 bg-tsia-green/5 text-tsia-green">
+                          {selectedStatementUser.firstName} {selectedStatementUser.lastName}
+                        </Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="statement-user-search">User</Label>
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <Input
+                            id="statement-user-search"
+                            value={statementUserSearch}
+                            onChange={(event) => { setStatementUserSearch(event.target.value); setStatementUserId(""); }}
+                            placeholder="Search by name or email"
+                            className="h-10 pl-9"
+                            autoComplete="off"
+                          />
+                        </div>
+                        {statementUserSearch.trim() && !statementUserId && (
+                          <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+                            {statementCandidates.length ? statementCandidates.map((candidate: any) => (
+                              <button
+                                type="button"
+                                key={candidate.id}
+                                onClick={() => {
+                                  setStatementUserId(String(candidate.id));
+                                  setStatementUserSearch(`${candidate.firstName ?? ""} ${candidate.lastName ?? ""}`.trim() || candidate.email);
+                                }}
+                                className="flex w-full flex-col px-3 py-2 text-left hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+                              >
+                                <span className="text-sm font-medium text-slate-800">{candidate.firstName} {candidate.lastName}</span>
+                                <span className="text-xs text-slate-500">{candidate.email}</span>
+                              </button>
+                            )) : <p className="px-3 py-2 text-sm text-slate-500">No matching users found.</p>}
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="statement-start-date">Start date</Label>
+                        <Input id="statement-start-date" type="date" value={statementStartDate} onChange={(event) => setStatementStartDate(event.target.value)} className="h-10" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="statement-end-date">End date</Label>
+                        <Input id="statement-end-date" type="date" value={statementEndDate} min={statementStartDate || undefined} onChange={(event) => setStatementEndDate(event.target.value)} className="h-10" />
+                      </div>
+                      <Button
+                        className="h-10 gap-2 bg-tsia-green hover:bg-tsia-green/90"
+                        disabled={!canShareStatement}
+                        onClick={() => emailStatementMutation.mutate({ userId: Number(statementUserId), startDate: statementStartDate, endDate: statementEndDate })}
+                        data-testid="button-email-statement"
+                      >
+                        {emailStatementMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                        {emailStatementMutation.isPending ? "Sending statement" : "Share statement"}
+                      </Button>
+                    </div>
+                    {statementStartDate && statementEndDate && !statementDateRangeIsValid && (
+                      <p className="text-xs font-medium text-red-600">The end date must be on or after the start date.</p>
+                    )}
+                  </CardContent>
+                </Card>
                 <div className="grid gap-3 md:grid-cols-5">
                   <Select value={txFilter} onValueChange={(value) => { setTxFilter(value); setTxPage(1); }}>
                     <SelectTrigger className="w-52 h-9 bg-white dark:bg-slate-800 border text-sm">
@@ -2082,7 +2188,7 @@ export default function AdminDashboard() {
                               {parseFloat(t.amount) >= 0 ? "+" : ""}{fmtUSD(t.amount)}
                             </TableCell>
                             <TableCell className="text-xs text-slate-500 max-w-xs"><p className="truncate">{t.description}</p>{t.reference && <p className="truncate font-mono text-[10px]">{t.reference}</p>}<StatusBadge status={t.status} /></TableCell>
-                            <TableCell className="text-xs text-slate-500">{fmtDate(t.createdAt)}</TableCell>
+                            <TableCell className="text-xs text-slate-500 whitespace-nowrap">{formatLagosDateTime(t.createdAt)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

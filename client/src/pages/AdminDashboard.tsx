@@ -2139,6 +2139,7 @@ export default function AdminDashboard() {
                     <SelectContent>
                       <SelectItem value="all">All sources</SelectItem>
                       <SelectItem value="wallet">Wallet ledger</SelectItem>
+                      <SelectItem value="service_wallet">Service wallets</SelectItem>
                       <SelectItem value="bill">Airtime, data & bills</SelectItem>
                       <SelectItem value="trade">Trade Market</SelectItem>
                       <SelectItem value="ts_mart">TS-Mart</SelectItem>

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, parseApiError } from "@/lib/queryClient";
+import { formatLagosDateTime } from "@/lib/date";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,11 +14,16 @@ import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, User, Mail, Phone, Globe, Shield, Lock, Eye, EyeOff,
   CheckCircle2, KeyRound, GraduationCap, Briefcase,
-  Loader2, History, CreditCard, ArrowUpRight, MessageSquare, ExternalLink, MapPin
+  Loader2, History, CreditCard, ArrowUpRight, MessageSquare, ExternalLink, MapPin,
+  FileText, LogOut, UserRoundX, ChevronRight, AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { queryClient } from "@/lib/queryClient";
 import ReserveFund from "./ReserveFund";
+import {
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 
 const COUNTRIES = [
   { code: "ng", name: "Nigeria" }, { code: "gh", name: "Ghana" }, { code: "ke", name: "Kenya" },
@@ -35,7 +41,7 @@ type SecurityStep = "idle" | "sending" | "otp" | "newpass" | "saving";
 type EmailStep = "idle" | "sending" | "otp" | "newemail" | "saving";
 
 export default function UserProfile() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -62,6 +68,10 @@ export default function UserProfile() {
   /* ─── My Location ─── */
   const [selectedCountry, setSelectedCountry] = useState("");
   const [locationSaved, setLocationSaved] = useState(false);
+  const [closeAccountOpen, setCloseAccountOpen] = useState(false);
+  const [closeConfirmation, setCloseConfirmation] = useState("");
+  const [closingAccount, setClosingAccount] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const locationMutation = useMutation({
     mutationFn: async (country: string) => {
@@ -77,6 +87,36 @@ export default function UserProfile() {
       toast({ title: "Update failed", description: err.message, variant: "destructive" });
     },
   });
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    await logout();
+    setLocation("/login");
+  };
+
+  const handleCloseAccount = async () => {
+    if (closeConfirmation !== "CLOSE MY ACCOUNT") return;
+    setClosingAccount(true);
+    try {
+      const res = await apiRequest("POST", "/api/account/close", {
+        confirmation: "CLOSE MY ACCOUNT",
+      });
+      if (!res.ok) {
+        let message = "We couldn't close your account. Please try again.";
+        try {
+          const body = await res.json();
+          message = body.message || message;
+        } catch {}
+        throw new Error(message);
+      }
+      await logout();
+      window.location.href = "/login?reason=closed";
+    } catch (err: any) {
+      toast({ title: "Account not closed", description: parseApiError(err), variant: "destructive" });
+    } finally {
+      setClosingAccount(false);
+    }
+  };
 
   if (!user) {
     return (
@@ -581,7 +621,7 @@ export default function UserProfile() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-medium text-sm truncate">{tx.description}</p>
-                        <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground">{formatLagosDateTime(tx.createdAt)}</p>
                       </div>
                     </div>
                     <span className={`font-bold text-sm shrink-0 ml-2 ${parseFloat(tx.amount) >= 0 ? "text-green-600" : "text-destructive"}`}>
@@ -591,6 +631,54 @@ export default function UserProfile() {
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* ── Account & legal ── */}
+        <Card className="shadow-sm overflow-hidden">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <FileText className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Account &amp; legal</CardTitle>
+                <CardDescription className="text-xs">Your access, policies, and account controls</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Link href="/terms" className="group flex items-center gap-3 rounded-xl border p-3.5 transition-colors hover:bg-muted/50">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <FileText className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">Terms of Service</p>
+                <p className="text-xs text-muted-foreground">How TSIA services and accounts work</p>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </Link>
+            <Link href="/terms#privacy" className="group flex items-center gap-3 rounded-xl border p-3.5 transition-colors hover:bg-muted/50">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">Privacy Policy</p>
+                <p className="text-xs text-muted-foreground">How your information is handled</p>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </Link>
+            <div className="my-3 border-t" />
+            <Button variant="outline" className="h-auto min-h-11 w-full justify-start gap-3 px-3.5 text-left" onClick={handleLogout} disabled={loggingOut}>
+              {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4 text-muted-foreground" />}
+              <span className="flex-1">{loggingOut ? "Logging out…" : "Log out"}</span>
+              {!loggingOut && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            </Button>
+            <Button variant="ghost" className="h-auto min-h-11 w-full justify-start gap-3 px-3.5 text-left text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => { setCloseConfirmation(""); setCloseAccountOpen(true); }}>
+              <UserRoundX className="h-4 w-4" />
+              <span className="flex-1">Close account</span>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </CardContent>
         </Card>
 
@@ -619,6 +707,42 @@ export default function UserProfile() {
           </Button>
         </div>
       </div>
+      <AlertDialog open={closeAccountOpen} onOpenChange={setCloseAccountOpen}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <AlertDialogTitle>Close your TSIA account?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3 text-left leading-relaxed">
+              <span className="block">This permanently closes your access. Your financial records are retained as required for legal, regulatory, and audit purposes.</span>
+              <span className="block font-medium text-foreground">Before continuing, resolve any funds, open positions, or pending obligations on your account.</span>
+              <span className="block">Type <strong className="font-mono text-foreground">CLOSE MY ACCOUNT</strong> below to confirm.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            value={closeConfirmation}
+            onChange={e => setCloseConfirmation(e.target.value)}
+            placeholder="CLOSE MY ACCOUNT"
+            autoComplete="off"
+            aria-label="Type CLOSE MY ACCOUNT to confirm"
+            data-testid="input-close-account-confirmation"
+            className="font-mono"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closingAccount}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={handleCloseAccount}
+              disabled={closeConfirmation !== "CLOSE MY ACCOUNT" || closingAccount}
+              data-testid="button-confirm-close-account"
+            >
+              {closingAccount && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {closingAccount ? "Closing account…" : "Close account"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -57,6 +57,11 @@ import { isValidSponsorCodeIdempotencyKey, SPONSOR_CODE_PRICE_USD } from "./spon
 import { canCompleteProctoring, hasContinuousChunkTimeline, hasSustainedProctoringCoverage, isSafeProctoringMime, parseProctoringFinalStatus } from "./proctoringPolicy";
 import { reconcileMonthlyBilling } from "./monthlyBilling";
 import { isMonthlyBillingAllowedRequest, type MonthlyBillingStatus } from "@shared/monthlyBillingPolicy";
+import {
+  ACCOUNT_CLOSE_CONFIRMATION,
+  getAccountClosureBlockers,
+  isAccountCloseConfirmationValid,
+} from "./accountClosurePolicy";
 import { creditVerifiedDepositAtomic } from "./walletBalance";
 import {
   createCryptoDepositIntentAtomic,
@@ -398,6 +403,13 @@ export async function registerRoutes(
     if (!sessionUserId || req.path === "/auth/logout") return next();
     try {
       const sessionUser = await storage.getUser(sessionUserId);
+      // Logout and account closure must stay reachable so a user can end a
+      // session or complete closure even while otherwise blocked.
+      if (req.path === "/auth/logout" || req.path === "/account/close") return next();
+      if (sessionUser?.accountStatus === "closed") {
+        req.session.destroy(() => {});
+        return res.status(403).json({ message: "ACCOUNT_CLOSED", reason: "This account has been closed." });
+      }
       if (sessionUser?.accountStatus === "suspended") {
         req.session.destroy(() => {});
         return res.status(403).json({ message: "ACCOUNT_SUSPENDED", reason: "This account has been suspended." });
@@ -417,7 +429,7 @@ export async function registerRoutes(
     try {
       const billing = await reconcileMonthlyBilling(sessionUserId);
       (req as any).monthlyBilling = billing;
-      if (!billing.hasAccess && !isMonthlyBillingAllowedRequest(req.method, req.path)) {
+      if (!billing.hasAccess && req.path !== "/account/close" && !isMonthlyBillingAllowedRequest(req.method, req.path)) {
         return res.status(402).json({
           code: "MONTHLY_BILLING_REQUIRED",
           message: "Monthly platform fees must be paid before you can use this feature.",
@@ -714,6 +726,9 @@ export async function registerRoutes(
         if (!targetUser) {
           return res.status(404).json({ message: `No ${loginRole} account found with this email.` });
         }
+        if (targetUser.accountStatus === "closed") {
+          return res.status(403).json({ message: "ACCOUNT_CLOSED", reason: "This account has been closed." });
+        }
         if (targetUser.accountStatus === "suspended") {
           return res.status(403).json({ message: "This account is suspended. Contact support if you believe this is an error." });
         }
@@ -865,6 +880,7 @@ export async function registerRoutes(
         ? await storage.getUserByEmailAndRole(email, loginRole)
         : await storage.getUserByEmail(email);
       if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.accountStatus === "closed") return res.status(403).json({ message: "ACCOUNT_CLOSED", reason: "This account has been closed." });
       if (user.accountStatus === "suspended") return res.status(403).json({ message: "This account is suspended. Contact support if you believe this is an error." });
 
       (req.session as any).userId = user.id;
@@ -904,6 +920,10 @@ export async function registerRoutes(
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ message: "User not found" });
+    if (user.accountStatus === "closed") {
+      req.session.destroy(() => {});
+      return res.status(403).json({ message: "ACCOUNT_CLOSED", reason: "This account has been closed." });
+    }
     if (user.accountStatus === "suspended") {
       req.session.destroy(() => {});
       return res.status(403).json({ message: "ACCOUNT_SUSPENDED", reason: "This account has been suspended." });
@@ -951,6 +971,58 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // A closure is deliberately a soft-close: money, KYC, and audit evidence are
+  // retained, while this one role-specific user record can no longer authenticate.
+  app.post("/api/account/close", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (!isAccountCloseConfirmationValid(req.body?.confirmation)) {
+      return res.status(400).json({ message: `Confirmation must exactly equal "${ACCOUNT_CLOSE_CONFIRMATION}".` });
+    }
+    try {
+      const outcome = await db.transaction(async tx => {
+        const userResult = await tx.execute(sql`
+          SELECT id, role, account_status FROM users WHERE id = ${userId} FOR UPDATE`);
+        const user = userResult.rows?.[0] as any;
+        if (!user) throw new Error("USER_NOT_FOUND");
+        if (user.role === "admin") throw new Error("ADMIN_ACCOUNT");
+        if (user.account_status === "closed") return { alreadyClosed: true };
+
+        // These checks are by user_id, never email, so a linked role account is
+        // neither inspected nor closed as a side effect.
+        const blockers = await tx.execute(sql`
+          SELECT
+            COALESCE((SELECT balance FROM wallets WHERE user_id = ${userId}), 0)::numeric > 0 AS swift_balance,
+            COALESCE((SELECT trade_balance + exchange_balance + referral_commission_balance + locked_principal FROM trade_wallets WHERE user_id = ${userId}), 0)::numeric > 0 AS trade_balance,
+            EXISTS (SELECT 1 FROM service_wallets WHERE user_id = ${userId} AND service_type IN ('manual', 'signals', 'tsmart') AND balance::numeric > 0) AS service_balance,
+            EXISTS (SELECT 1 FROM manual_trades WHERE user_id = ${userId} AND status = 'open') AS manual_position,
+            EXISTS (SELECT 1 FROM signal_trades WHERE user_id = ${userId} AND status = 'open') AS signal_position,
+            EXISTS (SELECT 1 FROM trade_wallets WHERE user_id = ${userId}
+              AND (bot_activated_at IS NOT NULL OR locked_principal::numeric > 0
+                OR (cycle_started_at IS NOT NULL AND NOT roi_complete AND NOT early_exit_completed))) AS trade_cycle,
+            EXISTS (SELECT 1 FROM withdrawal_requests WHERE user_id = ${userId} AND status IN ('pending', 'approved')) AS pending_withdrawal,
+            EXISTS (SELECT 1 FROM wallet_deposits WHERE user_id = ${userId}
+              AND status IN ('pending', 'initiated', 'processing', 'manual_review')) AS pending_deposit,
+            EXISTS (SELECT 1 FROM orders WHERE (buyer_id = ${userId} OR seller_id = ${userId}) AND status NOT IN ('delivered', 'cancelled')) AS pending_order,
+            EXISTS (SELECT 1 FROM loans WHERE user_id = ${userId} AND status IN ('pending', 'approved', 'active')) AS loan_obligation`);
+        const blocked = blockers.rows?.[0] as any;
+        const reasons = getAccountClosureBlockers(blocked);
+        if (reasons.length) return { blocked: reasons };
+        await tx.execute(sql`UPDATE users SET account_status = 'closed', active_session_id = NULL WHERE id = ${userId} AND role <> 'admin'`);
+        return { closed: true };
+      });
+      if ("blocked" in outcome) {
+        return res.status(409).json({ message: `Account cannot be closed while it has ${outcome.blocked.join(", ")}.`, code: "ACCOUNT_CLOSURE_BLOCKED", blockers: outcome.blocked });
+      }
+      req.session.destroy(() => {});
+      return res.json({ success: true, alreadyClosed: "alreadyClosed" in outcome && Boolean(outcome.alreadyClosed) });
+    } catch (e: any) {
+      if (e.message === "USER_NOT_FOUND") return res.status(401).json({ message: "Not authenticated" });
+      if (e.message === "ADMIN_ACCOUNT") return res.status(403).json({ message: "Admin accounts cannot be closed through this endpoint." });
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
   app.patch("/api/user/country", async (req, res) => {
     const userId = (req.session as any)?.userId;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -994,6 +1066,7 @@ export async function registerRoutes(
       if (!targetUser) {
         return res.status(404).json({ error: `No ${targetRole} account found for this email. Please sign up for a ${targetRole} account first.` });
       }
+      if (targetUser.accountStatus === "closed") return res.status(403).json({ error: "ACCOUNT_CLOSED", reason: "That linked account has been closed." });
       if (targetUser.accountStatus === "suspended") return res.status(403).json({ error: "That linked account is suspended." });
       (req.session as any).userId = targetUser.id;
       req.session.save(async (err) => {
@@ -1015,6 +1088,7 @@ export async function registerRoutes(
       const user = await storage.getUserByEmail(email);
       if (!user || (user.password !== password && user.password !== "otp-only"))
         return res.status(401).json({ message: "Invalid credentials" });
+      if (user.accountStatus === "closed") return res.status(403).json({ message: "ACCOUNT_CLOSED", reason: "This account has been closed." });
       if (user.accountStatus === "suspended") return res.status(403).json({ message: "This account is suspended." });
       (req.session as any).userId = user.id;
       req.session.save((err) => {
@@ -1069,6 +1143,7 @@ export async function registerRoutes(
         ? await storage.getUserByEmailAndRole(email, loginRole)
         : (await storage.getUsersByEmail(email))[0];
       if (!user) return res.status(401).json({ message: "No account found with this email." });
+      if (user.accountStatus === "closed") return res.status(403).json({ message: "ACCOUNT_CLOSED", reason: "This account has been closed." });
       if (user.accountStatus === "suspended") return res.status(403).json({ message: "This account is suspended." });
       if (!hasPasswordSet(user.password)) return res.status(401).json({ message: "This account uses OTP login. Please sign in with a one-time code." });
       if (!verifyPassword(password, user.password)) return res.status(401).json({ message: "Incorrect password. Try again or use OTP login." });
@@ -2165,7 +2240,21 @@ export async function registerRoutes(
     if (!isServiceWalletType(type)) return res.status(400).json({ message: "Unknown service wallet" });
     try {
       const reference = `SWIFT-${type}-${userId}-${Date.now()}`;
-      res.json({ reference, ...(await transferSwiftToServiceWalletAtomic({ userId, serviceType: type, amount, reference })) });
+      const transfer = await transferSwiftToServiceWalletAtomic({ userId, serviceType: type, amount, reference });
+      // The atomic transfer has committed before this best-effort notification is
+      // persisted and pushed; a notification failure can never reverse funds.
+      try {
+        const notification = await storage.createNotification({
+          userId, type: "system", title: `${type === "manual" ? "Manual Trading" : type === "signals" ? "Trading Signals" : "TS-Mart"} wallet funded`,
+          message: `$${amount.toFixed(2)} was transferred from SwiftWallet. Balance: $${Number(transfer.serviceBalance).toFixed(2)}.`,
+          data: { serviceType: type, amountUsd: amount.toFixed(2), reference, resultingBalance: transfer.serviceBalance },
+          isRead: false,
+        });
+        pushToUser(userId, "notification", notification);
+      } catch (notificationError) {
+        console.error("[SERVICE WALLET] Funding notification failed after commit:", notificationError);
+      }
+      res.json({ reference, ...transfer });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.post("/api/service-wallets/:type/transfer-to-swift", async (req, res) => {
@@ -2211,6 +2300,21 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Payment amount does not match the service wallet intent" });
       }
       const credited = await creditServiceDepositAtomic({ userId, serviceType: type, amount, reference });
+      if (credited.credited) {
+        // creditServiceDepositAtomic's durable claim makes this branch run only
+        // for the verified credit, not a provider retry.
+        try {
+          const notification = await storage.createNotification({
+            userId, type: "system", title: `${type === "manual" ? "Manual Trading" : type === "signals" ? "Trading Signals" : "TS-Mart"} wallet funded`,
+            message: `Your KoraPay payment of $${amount.toFixed(2)} was confirmed. Balance: $${Number(credited.balance).toFixed(2)}.`,
+            data: { serviceType: type, amountUsd: amount.toFixed(2), reference, resultingBalance: credited.balance, provider: "korapay" },
+            isRead: false,
+          });
+          pushToUser(userId, "notification", notification);
+        } catch (notificationError) {
+          console.error("[SERVICE WALLET] KoraPay funding notification failed after commit:", notificationError);
+        }
+      }
       res.json(credited);
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
@@ -5435,6 +5539,20 @@ export async function registerRoutes(
         const [opened] = await tx.insert(manualTrades).values({ userId: uid, symbol: req.body.symbol, symbolLabel: req.body.symbolLabel || req.body.symbol, direction: req.body.direction === "short" ? "short" : "long", leverage, marginUsd: String(margin), sizeUsd: String(margin * leverage), entryPrice: String(entry), stopLossPrice: req.body.stopLossPrice ? String(req.body.stopLossPrice) : null, takeProfitPrice: req.body.takeProfitPrice ? String(req.body.takeProfitPrice) : null }).returning();
         return opened;
       });
+      try {
+        const notification = await storage.createNotification({
+          userId: uid, type: "system", title: "Manual position opened",
+          message: `${trade.direction.toUpperCase()} ${trade.symbol} opened at $${Number(trade.entryPrice).toFixed(8)} with ${trade.leverage}× leverage.`,
+          data: {
+            positionId: trade.id, symbol: trade.symbol, symbolLabel: trade.symbolLabel,
+            direction: trade.direction, leverage: trade.leverage, marginUsd: trade.marginUsd,
+            entryPrice: trade.entryPrice, createdAt: trade.createdAt,
+          }, isRead: false,
+        });
+        pushToUser(uid, "notification", notification);
+      } catch (notificationError) {
+        console.error("[MANUAL TRADE] Open notification failed after commit:", notificationError);
+      }
       res.json(trade);
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
@@ -5452,13 +5570,30 @@ export async function registerRoutes(
         const pnlPct = trade.direction === "long" ? pricePct : -pricePct;
         const pnlUsd = Number(trade.sizeUsd) * pnlPct;
         const returnAmt = Math.max(0, Number(trade.marginUsd) + pnlUsd);
-        await tx.update(manualTrades).set({
+        const closedAt = new Date();
+        const [settledTrade] = await tx.update(manualTrades).set({
           exitPrice: String(exitPrice), pnlUsd: String(pnlUsd), pnlPct: String(pnlPct * 100),
-          status: pnlUsd >= 0 ? "won" : "lost", closedAt: new Date()
-        }).where(eq(manualTrades.id, trade.id));
-        if (returnAmt > 0) await creditServiceWalletInTransaction(tx, { userId: uid, serviceType: "manual", amount: returnAmt, reference: `manual-close-${trade.id}`, kind: "position_closed", metadata: { pnlUsd } });
-        return { pnlUsd, pnlPct, returnAmt };
+          status: pnlUsd >= 0 ? "won" : "lost", closedAt
+        }).where(eq(manualTrades.id, trade.id)).returning();
+        const creditedWallet = returnAmt > 0
+          ? await creditServiceWalletInTransaction(tx, { userId: uid, serviceType: "manual", amount: returnAmt, reference: `manual-close-${trade.id}`, kind: "position_closed", metadata: { pnlUsd, returnedAmount: returnAmt, manualTradeId: trade.id } })
+          : null;
+        return { pnlUsd, pnlPct, returnAmt, trade: settledTrade, serviceBalance: creditedWallet?.balance ?? null };
       });
+      try {
+        const notification = await storage.createNotification({
+          userId: uid, type: "system", title: "Manual position settled",
+          message: `${result.trade.direction.toUpperCase()} ${result.trade.symbol} closed with P&L $${result.pnlUsd.toFixed(2)}. Returned: $${result.returnAmt.toFixed(2)}.`,
+          data: {
+            positionId: result.trade.id, symbol: result.trade.symbol, direction: result.trade.direction,
+            pnlUsd: result.pnlUsd, returnedAmount: result.returnAmt, exitPrice,
+            closedAt: result.trade.closedAt, resultingBalance: result.serviceBalance,
+          }, isRead: false,
+        });
+        pushToUser(uid, "notification", notification);
+      } catch (notificationError) {
+        console.error("[MANUAL TRADE] Settlement notification failed after commit:", notificationError);
+      }
       res.json({ pnlUsd: result.pnlUsd, pnlPct: result.pnlPct * 100, exitPrice, returnAmt: result.returnAmt, status: result.pnlUsd >= 0 ? "won" : "lost" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -8173,6 +8308,10 @@ export async function registerRoutes(
           FROM transactions t
           WHERE t.type NOT IN ('bill', 'withdrawal', 'crypto_withdrawal')
             AND (t.type <> 'deposit' OR t.payment_method = 'internal')
+            -- The corresponding service-wallet row is the canonical entry for
+            -- an internal Swift/service move, preventing a doubled ledger sum.
+            AND t.description NOT LIKE 'SwiftWallet to % wallet (%'
+            AND t.description NOT LIKE '% wallet to SwiftWallet (%'
           UNION ALL
           SELECT 'bill'::text, ('bill:' || bp.id)::text, bp.id, bp.user_id, bp.service::text,
             bp.status::text, (-bp.amount)::numeric, 0::numeric, 'wallet'::text,
@@ -8198,6 +8337,21 @@ export async function registerRoutes(
             COALESCE(t.note, t.type::text), t.tx_hash, t.created_at
           FROM trade_transactions t
           UNION ALL
+          SELECT 'service_wallet'::text, ('service:' || s.id)::text, s.id, s.user_id,
+            s.kind::text, 'completed'::text, s.amount::numeric, 0::numeric,
+            s.service_type::text,
+            COALESCE(s.metadata->>'description',
+              CASE s.kind
+                WHEN 'swift_transfer_in' THEN 'SwiftWallet funding for ' || s.service_type || ' wallet'
+                WHEN 'swift_transfer_out' THEN s.service_type || ' wallet transfer to SwiftWallet'
+                WHEN 'korapay_deposit' THEN 'KoraPay funding for ' || s.service_type || ' wallet'
+                WHEN 'position_open' THEN 'Opened ' || s.service_type || ' position'
+                WHEN 'position_closed' THEN 'Settled ' || s.service_type || ' position'
+                ELSE s.kind
+              END),
+            s.reference, s.created_at
+          FROM service_wallet_transactions s
+          UNION ALL
           SELECT 'ts_mart'::text, ('order:' || o.id)::text, o.id, o.buyer_id, 'order'::text,
             o.status::text, (-o.total_amount)::numeric, o.commission_amount::numeric, 'marketplace'::text,
             ('TS-Mart order #' || o.id)::text, NULL::text, o.created_at
@@ -8220,7 +8374,8 @@ export async function registerRoutes(
       const items = (rows.rows ?? rows).map((row: any) => ({
         id: row.ledger_id, sourceId: row.source_id, source: row.source, userId: row.user_id,
         type: row.type, status: row.status, amount: row.amount, fee: row.fee,
-        paymentMethod: row.payment_method, description: row.description, reference: row.reference,
+        paymentMethod: row.payment_method, service: row.payment_method,
+        description: row.description, reference: row.reference,
         createdAt: row.created_at,
         user: { firstName: row.first_name, lastName: row.last_name, email: row.email, role: row.role },
       }));
@@ -8262,6 +8417,8 @@ export async function registerRoutes(
           WHERE t.user_id = ${userId}
             AND t.type NOT IN ('bill', 'withdrawal', 'crypto_withdrawal')
             AND (t.type <> 'deposit' OR t.payment_method = 'internal')
+            AND t.description NOT LIKE 'SwiftWallet to % wallet (%'
+            AND t.description NOT LIKE '% wallet to SwiftWallet (%'
           UNION ALL
           SELECT 'Trade Market', COALESCE(t.wallet_type::text, 'Trade wallet'), t.created_at,
             t.type::text, CASE WHEN t.type IN ('withdraw_exchange','withdraw_bank') THEN (-ABS(t.amount_usd))::text ELSE t.amount_usd::text END,
@@ -9888,7 +10045,38 @@ export async function registerRoutes(
                 console.warn(`[KORAPAY WEBHOOK] Service wallet metadata mismatch for ${ref} — skipping credit.`);
                 return res.sendStatus(200);
               }
-              await creditServiceDepositAtomic({ userId: dep.user_id, serviceType: serviceType as any, amount: gross, reference: ref });
+              const credited = await creditServiceDepositAtomic({
+                userId: dep.user_id,
+                serviceType: serviceType as any,
+                amount: gross,
+                reference: ref,
+              });
+              if (credited.credited) {
+                try {
+                  const serviceLabel = serviceType === "manual"
+                    ? "Manual Trading"
+                    : serviceType === "signals"
+                      ? "Trading Signals"
+                      : "TS-Mart";
+                  const notification = await storage.createNotification({
+                    userId: dep.user_id,
+                    type: "system",
+                    title: `${serviceLabel} wallet funded`,
+                    message: `Your KoraPay payment of $${gross.toFixed(2)} was confirmed. Balance: $${Number(credited.balance).toFixed(2)}.`,
+                    data: {
+                      serviceType,
+                      amountUsd: gross.toFixed(2),
+                      reference: ref,
+                      resultingBalance: credited.balance,
+                      provider: "korapay",
+                    },
+                    isRead: false,
+                  });
+                  pushToUser(dep.user_id, "notification", notification);
+                } catch (notificationError) {
+                  console.error("[SERVICE WALLET] KoraPay webhook notification failed after commit:", notificationError);
+                }
+              }
             } else {
               console.log(`[KORAPAY WEBHOOK] Crediting user ${dep.user_id} $${gross} for ref ${ref}`);
               await creditWalletWithSplit(dep.user_id, gross, "korapay", ref, { id: dep.id, amountUsd: dep.amount_usd, status: dep.status });

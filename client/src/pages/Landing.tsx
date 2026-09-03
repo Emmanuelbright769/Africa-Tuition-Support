@@ -485,7 +485,7 @@ export default function Landing() {
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-12">Have questions about TSIA? Our team is ready to assist you on your sponsorship journey.</p>
               <div className="grid sm:grid-cols-3 gap-8 max-w-3xl mx-auto mb-12">
                 {[
-                  { icon: Mail, title: "Email Us", detail: "support@tsia.africa", sub: "Response within 24hrs" },
+                  { icon: Mail, title: "Email Us", detail: "support@tsiforafrica.com", sub: "Response within 24hrs" },
                   { icon: Phone, title: "Call / WhatsApp", detail: "+4407916395474", sub: "Mon - Fri, 9am - 5pm GMT" },
                   { icon: MapPin, title: "Visit Us", detail: "London, United Kingdom", sub: "Head Office" },
                 ].map((item, i) => (

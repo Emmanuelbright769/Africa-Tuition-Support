@@ -6,8 +6,8 @@ import { Logo } from "@/components/ui/Logo";
 const EFFECTIVE_DATE = "3 September 2026";
 const COMPANY = "SMAKEMGGOLD Ltd";
 const RC = "1359954";
-const CONTACT_EMAIL = "legal@tsia.org";
-const ADMIN_EMAIL = "admin@tsiforafrica.com";
+const CONTACT_EMAIL = "support@tsiforafrica.com";
+const ADMIN_EMAIL = "support@tsiforafrica.com";
 
 interface SectionProps {
   id: string;

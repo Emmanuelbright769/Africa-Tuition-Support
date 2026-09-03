@@ -127,7 +127,7 @@ const KB: { patterns: RegExp[]; response: string }[] = [
   // ─── Contact / Support ───────────────────────────────────────────────
   {
     patterns: [/contact|support|help|team|staff|human|person|agent|speak|whatsapp|call|email.*team/i],
-    response: `i'd love to help further! for issues needing our team's direct attention:\n\n📱 **whatsapp / call** — +4407916395474 — or click "talk to TSIA team" below to open whatsapp directly\n⏰ available monday–friday, 9am–6pm (GMT)\n\n📧 **email** — support@tsia.africa — response within 24 hours\n\n📋 **contact form** — visit /contact to send a formal inquiry\n\nour team responds within 2–4 hours on business days.`,
+    response: `i'd love to help further! for issues needing our team's direct attention:\n\n📱 **whatsapp / call** — +4407916395474 — or click "talk to TSIA team" below to open whatsapp directly\n⏰ available monday–friday, 9am–6pm (GMT)\n\n📧 **email** — support@tsiforafrica.com — response within 24 hours\n\n📋 **contact form** — visit /contact to send a formal inquiry\n\nour team responds within 2–4 hours on business days.`,
   },
 
   // ─── Admin / Admin Panel ─────────────────────────────────────────────

@@ -85,7 +85,7 @@ const KB: KBEntry[] = [
   },
   {
     patterns: [/contact|support|help.*team|human|agent|speak|whatsapp|call|email.*team|reach.*team|talk.*to|get.*help/i],
-    response: `**Reach the TSIA Support Team**\n\nI'm happy to escalate this to our human team!\n\n📱 **WhatsApp / Call** — Click the button below to open WhatsApp directly\n📞 **Number:** +4407916395474\n⏰ **Hours:** Monday–Friday, 9am–6pm GMT\n\n📧 **Email:** support@tsia.africa\n→ Response within 24 hours\n\n📋 **Contact Form:** Visit **/contact** to send a formal inquiry\n\nOur team typically responds within **2–4 hours** on business days. For urgent verification issues, WhatsApp is fastest! 🚀`,
+    response: `**Reach the TSIA Support Team**\n\nI'm happy to escalate this to our human team!\n\n📱 **WhatsApp / Call** — Click the button below to open WhatsApp directly\n📞 **Number:** +4407916395474\n⏰ **Hours:** Monday–Friday, 9am–6pm GMT\n\n📧 **Email:** support@tsiforafrica.com\n→ Response within 24 hours\n\n📋 **Contact Form:** Visit **/contact** to send a formal inquiry\n\nOur team typically responds within **2–4 hours** on business days. For urgent verification issues, WhatsApp is fastest! 🚀`,
   },
   {
     patterns: [/login|sign.*in|otp|password|forgot|can'?t.*log|not.*log|session|logout|access.*account/i],
@@ -1111,7 +1111,7 @@ export default function PromoLanding() {
             <div className="flex flex-col items-center sm:items-start gap-2">
               <Logo variant="badge" height={36} />
               <p className="text-xs text-muted-foreground">SMAKEMGGOLD Ltd · RC: 1359954</p>
-              <p className="text-xs text-muted-foreground">support@tsia.africa · +4407916395474</p>
+              <p className="text-xs text-muted-foreground">support@tsiforafrica.com · +4407916395474</p>
               {/* Social media links */}
               <div className="flex items-center gap-2 mt-1">
                 {[

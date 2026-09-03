@@ -13,16 +13,36 @@ export function normalizeApiPath(originalUrl: string): string {
   return withoutApiPrefix || "/";
 }
 
+export function isTradeMarketBankWithdrawal(method: string, originalUrl: string, body?: unknown): boolean {
+  const normalizedMethod = method.toUpperCase();
+  const path = normalizeApiPath(originalUrl);
+  return normalizedMethod === "POST"
+    && path === "/trade/withdraw"
+    && typeof body === "object"
+    && body !== null
+    && "withdrawalType" in body
+    && body.withdrawalType === "withdraw_bank";
+}
+
 export function isUserFundsOutRequest(method: string, originalUrl: string, body?: unknown): boolean {
   const normalizedMethod = method.toUpperCase();
   const path = normalizeApiPath(originalUrl);
-  if (normalizedMethod === "POST" && path === "/trade/withdraw") {
-    return typeof body === "object"
-      && body !== null
-      && "withdrawalType" in body
-      && body.withdrawalType === "withdraw_bank";
-  }
+  if (isTradeMarketBankWithdrawal(method, originalUrl, body)) return true;
   return FUNDS_OUT_REQUESTS.some(
     ([expectedMethod, pattern]) => expectedMethod === normalizedMethod && pattern.test(path),
   );
+}
+
+/**
+ * Returns whether the generic student/SwiftWallet lien should block this
+ * external payout. Trade Market bank withdrawals debit the separate Trade
+ * wallet and therefore have their own balance and control checks.
+ */
+export function isStudentWalletLienProtectedFundsOutRequest(
+  method: string,
+  originalUrl: string,
+  body?: unknown,
+): boolean {
+  return isUserFundsOutRequest(method, originalUrl, body)
+    && !isTradeMarketBankWithdrawal(method, originalUrl, body);
 }

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { isUserFundsOutRequest, normalizeApiPath } from "./accountLienPolicy";
+import {
+  isStudentWalletLienProtectedFundsOutRequest,
+  isTradeMarketBankWithdrawal,
+  isUserFundsOutRequest,
+  normalizeApiPath,
+} from "./accountLienPolicy";
 
 test("normalizes mounted API paths without losing route parameters", () => {
   assert.equal(normalizeApiPath("/api/wallet/send?source=swift"), "/wallet/send");
@@ -26,6 +31,32 @@ test("classifies only external bank and crypto payout routes", () => {
     isUserFundsOutRequest("POST", "/api/trade/withdraw", { withdrawalType: "withdraw_bank" }),
     true,
     "Trade Market bank withdrawals are external payouts",
+  );
+  assert.equal(
+    isTradeMarketBankWithdrawal("POST", "/api/trade/withdraw", { withdrawalType: "withdraw_bank" }),
+    true,
+    "Trade Market bank withdrawals are identified by their separate source wallet",
+  );
+});
+
+test("student wallet liens do not block payouts sourced from the separate Trade wallet", () => {
+  assert.equal(
+    isStudentWalletLienProtectedFundsOutRequest(
+      "POST",
+      "/api/trade/withdraw",
+      { withdrawalType: "withdraw_bank" },
+    ),
+    false,
+  );
+  assert.equal(
+    isStudentWalletLienProtectedFundsOutRequest("POST", "/api/fintech/bank-transfer"),
+    true,
+    "student/SwiftWallet bank payouts remain lien-protected",
+  );
+  assert.equal(
+    isStudentWalletLienProtectedFundsOutRequest("POST", "/api/fintech/crypto-withdraw"),
+    true,
+    "student/SwiftWallet crypto payouts remain lien-protected",
   );
 });
 
@@ -94,9 +125,9 @@ test("allows trading, internal transfers, financial services, and non-payout act
   );
 });
 
-test("server guard checks linked accounts and serializes against admin lien changes", () => {
+test("server guard checks linked student wallets and serializes against admin lien changes", () => {
   const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
-  const middlewareStart = routes.indexOf("// A lien is an account-wide funds-out lock.");
+  const middlewareStart = routes.indexOf("// Hold the same database advisory lock used by admin lien placement");
   const middlewareEnd = routes.indexOf("const requireWalletFundingIdentity", middlewareStart);
   const middleware = routes.slice(middlewareStart, middlewareEnd);
 
@@ -105,7 +136,7 @@ test("server guard checks linked accounts and serializes against admin lien chan
   assert.match(middleware, /LOWER\(TRIM\(u\.email\)\) = \$1/);
   assert.match(middleware, /u\.id = \$2/);
   assert.match(middleware, /w\.lien_amount::numeric > 0/);
-  assert.match(middleware, /isUserFundsOutRequest\(req\.method, req\.originalUrl, req\.body\)/);
+  assert.match(middleware, /isStudentWalletLienProtectedFundsOutRequest\(req\.method, req\.originalUrl, req\.body\)/);
   assert.match(routes, /fundsLockPool\.connect\(\)/);
   assert.match(routes, /lockClient\.release\(error as Error\)/);
   assert.match(middleware, /res\.once\("finish"/);
@@ -119,6 +150,17 @@ test("server guard checks linked accounts and serializes against admin lien chan
     2,
     "both lien placement and release must use the same account lock",
   );
+});
+
+test("Trade Market bank withdrawals do not consult the separate student wallet lien", () => {
+  const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+  const routeStart = routes.indexOf('app.post("/api/trade/withdraw"');
+  const routeEnd = routes.indexOf("// ── Trading cycle helpers", routeStart);
+  const tradeWithdrawalRoute = routes.slice(routeStart, routeEnd);
+
+  assert.doesNotMatch(tradeWithdrawalRoute, /lienAmount/);
+  assert.doesNotMatch(tradeWithdrawalRoute, /lien_amount/);
+  assert.doesNotMatch(tradeWithdrawalRoute, /getOrCreateWallet\(userId\)/);
 });
 
 test("loan lifecycle cannot overwrite or release a different active lien", () => {

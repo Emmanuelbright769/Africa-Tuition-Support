@@ -71,14 +71,14 @@ test("Trade Market does not reveal the bank-transfer shutdown before submission"
   assert.doesNotMatch(dashboard, /bankTransfersOpen/);
 });
 
-test("Trade Market bank withdrawals reject active liens at check and debit time", () => {
+test("Trade Market bank withdrawals ignore the separate student wallet lien", () => {
   const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
   const routeStart = routes.indexOf('app.post("/api/trade/withdraw"');
-  const routeEnd = routes.indexOf('app.get("/api/trade/withdrawals"', routeStart);
-  const tradeWithdrawRoute = routes.slice(routeStart, routeEnd > routeStart ? routeEnd : routeStart + 14000);
+  const routeEnd = routes.indexOf("// ── Trading cycle helpers", routeStart);
+  const tradeWithdrawRoute = routes.slice(routeStart, routeEnd);
 
-  assert.match(tradeWithdrawRoute, /accountWallet\.lienAmount/);
-  assert.match(tradeWithdrawRoute, /wallets\.lien_amount::numeric > 0/);
+  assert.doesNotMatch(tradeWithdrawRoute, /accountWallet\.lienAmount/);
+  assert.doesNotMatch(tradeWithdrawRoute, /wallets\.lien_amount::numeric > 0/);
   assert.match(tradeWithdrawRoute, /platform_settings\.value = 'false'/);
 });
 

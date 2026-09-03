@@ -50,7 +50,7 @@ import YahooFinance from "yahoo-finance2";
 import { doesVerifiedNameMatch, hashVerifiedName } from "./identityVerificationSecurity";
 import { selectSpellingQuestions, spellingQuestionFor } from "./backToSchoolSpellingBank";
 import { areBankTransfersEnabled, getTradeProfitWithdrawable } from "@shared/tradeWithdrawalPolicy";
-import { isUserFundsOutRequest } from "./accountLienPolicy";
+import { isStudentWalletLienProtectedFundsOutRequest } from "./accountLienPolicy";
 import { isValidSponsorCodeIdempotencyKey, SPONSOR_CODE_PRICE_USD } from "./sponsorCodePurchase";
 import { canCompleteProctoring, hasContinuousChunkTimeline, hasSustainedProctoringCoverage, isSafeProctoringMime, parseProctoringFinalStatus } from "./proctoringPolicy";
 import { reconcileMonthlyBilling } from "./monthlyBilling";
@@ -530,13 +530,14 @@ export async function registerRoutes(
     });
   };
 
-  // A lien is an account-wide funds-out lock. Hold the same database advisory
-  // lock used by admin lien placement until the response finishes, so a lien
-  // cannot be placed between a route-level check and its eventual debit.
-  // Linked student/affiliate accounts share the lock and lien check by email.
+  // Hold the same database advisory lock used by admin lien placement until
+  // the response finishes, so a lien cannot be placed between a route-level
+  // check and its eventual debit. The student wallet lien applies to payouts
+  // sourced from that wallet; Trade Market uses a separate wallet and applies
+  // its own source-specific controls in its withdrawal route.
   app.use("/api", async (req, res, next) => {
     const sessionUserId = (req.session as any)?.userId;
-    if (!sessionUserId || !isUserFundsOutRequest(req.method, req.originalUrl, req.body)) return next();
+    if (!sessionUserId || !isStudentWalletLienProtectedFundsOutRequest(req.method, req.originalUrl, req.body)) return next();
 
     let lockClient: pg.PoolClient | null = null;
     let lockKey = "";
@@ -4809,10 +4810,6 @@ export async function registerRoutes(
         if (!areBankTransfersEnabled(bankTransfersEnabled)) {
           return res.status(503).json({ message: "Network error. Please try again later." });
         }
-        const accountWallet = await storage.getOrCreateWallet(userId);
-        if (parseFloat(accountWallet.lienAmount ?? "0") > 0) {
-          return res.status(403).json({ message: "Your account is restricted. Please contact support." });
-        }
       }
       if (withdrawalType === "withdraw_bank" && (!bankCode || !accountNumber || !accountName)) {
         return res.status(400).json({ message: "Bank details required for bank withdrawal: bankCode, accountNumber, accountName." });
@@ -4877,11 +4874,6 @@ export async function registerRoutes(
           })
           .where(sql`user_id = ${userId}
             AND trade_balance >= locked_principal + ${amount.toFixed(6)}::decimal
-            AND (${withdrawalType !== "withdraw_bank"} OR NOT EXISTS (
-              SELECT 1 FROM wallets
-              WHERE wallets.user_id = ${userId}
-                AND wallets.lien_amount::numeric > 0
-            ))
             AND (${withdrawalType !== "withdraw_bank"} OR NOT EXISTS (
               SELECT 1 FROM platform_settings
               WHERE platform_settings.key = 'bank_transfers_enabled'

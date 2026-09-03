@@ -3,7 +3,6 @@ import BackToSchoolSection from "@/components/BackToSchoolSection";
 import FinancialHub from "./FinancialHub";
 import { TransactionPinAnnouncement } from "@/components/TransactionPinAnnouncement";
 import MoviesSection from "@/components/MoviesSection";
-import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import EcommerceSection from "./EcommerceSection";
 import ForumSection from "./ForumSection";
 import QCESection from "./QCESection";
@@ -53,6 +52,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "emergency_response", label: "Emergency Response", icon: HeartPulse, badge: "Soon" },
   { id: "forum",              label: "Community Forum",   icon: MessageSquareText },
   { id: "back_to_school",    label: "Back to school kiddies", icon: Sparkles, badge: "New" },
+  { id: "reserve_fund",      label: "Strategic Reserve Fund", icon: Shield },
 ];
 
 const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
@@ -454,6 +454,7 @@ export default function StudentDashboard() {
 
   const navigate = (section: Section) => {
     if (section === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
+    if (section === "reserve_fund") { setMenuOpen(false); setLocation("/reserve-fund"); return; }
     if (section !== "ecommerce") setOpenChatId(null);
     if (section === "ecommerce" && tsmartNewCount > 0) {
       apiRequest("PATCH", "/api/notifications/mark-type-read", { type: "new_arrival" })
@@ -1405,19 +1406,6 @@ export default function StudentDashboard() {
                     <Badge className="bg-tsia-green text-white text-xs px-3 py-1.5 shrink-0">Auto-notified</Badge>
                   </CardContent>
                 </Card>
-              </motion.div>
-            )}
-
-            {/* ── STRATEGIC RESERVE FUND ── */}
-            {activeSection === "reserve_fund" && (
-              <motion.div variants={itemVariants}>
-                <div className="mb-5">
-                  <h2 className="text-2xl font-bold flex items-center gap-2">
-                    <Shield className="w-6 h-6 text-tsia-green" /> Strategic Reserve Fund
-                  </h2>
-                  <p className="text-muted-foreground text-sm">20% of every trade deposit — growing in real-time</p>
-                </div>
-                <ReserveFund />
               </motion.div>
             )}
 

@@ -26,6 +26,7 @@ import TourAfrica from "@/pages/TourAfrica";
 import TenancyPage from "@/pages/TenancyPage";
 import TermsAndConditions from "@/pages/TermsAndConditions";
 import UserProfile from "@/pages/UserProfile";
+import ReserveFund from "@/pages/ReserveFund";
 import PromoLanding from "@/pages/PromoLanding";
 import ScholarshipPortal from "@/pages/ScholarshipPortal";
 import { AiAssistant } from "@/components/AiAssistant";
@@ -89,6 +90,7 @@ function Router() {
       <Route path="/tour-africa" component={TourAfrica} />
       <Route path="/tenancy" component={TenancyPage} />
       <Route path="/terms" component={TermsAndConditions} />
+      <Route path="/reserve-fund" component={ReserveFund} />
       <Route path="/wallet">{() => { window.location.replace("/student-dashboard"); return null; }}</Route>
       <Route path="/profile" component={UserProfile} />
       <Route path="/promo" component={PromoLanding} />

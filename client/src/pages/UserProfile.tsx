@@ -3,8 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, parseApiError } from "@/lib/queryClient";
-import { formatLagosDateTime } from "@/lib/date";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,12 +13,11 @@ import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, User, Mail, Phone, Globe, Shield, Lock, Eye, EyeOff,
   CheckCircle2, KeyRound, GraduationCap, Briefcase,
-  Loader2, History, CreditCard, ArrowUpRight, MessageSquare, ExternalLink, MapPin,
+  Loader2, MessageSquare, ExternalLink, MapPin,
   FileText, LogOut, UserRoundX, ChevronRight, AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { queryClient } from "@/lib/queryClient";
-import ReserveFund from "./ReserveFund";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
@@ -127,8 +125,6 @@ export default function UserProfile() {
   }
 
   const dashPath = user.role === "affiliate" ? "/affiliate-dashboard" : "/dashboard";
-  const { data: transactions = [] } = useQuery<any[]>({ queryKey: ["/api/transactions"] });
-
   /* ─── Start editing personal info ─── */
   const startEdit = () => {
     setEditFirst(user.firstName);
@@ -586,54 +582,6 @@ export default function UserProfile() {
           </CardContent>
         </Card>
 
-        {/* ── Activity ── */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <History className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <CardTitle className="text-base">Activity</CardTitle>
-                <CardDescription className="text-xs">Your complete transaction history</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {transactions.length === 0 ? (
-              <div className="text-center py-10">
-                <History className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">No transactions yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-                {transactions.map((tx: any) => (
-                  <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl border hover:shadow-sm transition-shadow" data-testid={`row-profile-tx-${tx.id}`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                        tx.type === "sponsorship_credit" ? "bg-green-100 dark:bg-green-900/30 text-green-600" :
-                        tx.type === "withdrawal" ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" :
-                        "bg-muted text-muted-foreground"
-                      }`}>
-                        {tx.type === "sponsorship_credit" ? <CheckCircle2 className="w-4 h-4" /> :
-                         tx.type === "withdrawal" ? <ArrowUpRight className="w-4 h-4" /> :
-                         <CreditCard className="w-4 h-4" />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm truncate">{tx.description}</p>
-                        <p className="text-xs text-muted-foreground">{formatLagosDateTime(tx.createdAt)}</p>
-                      </div>
-                    </div>
-                    <span className={`font-bold text-sm shrink-0 ml-2 ${parseFloat(tx.amount) >= 0 ? "text-green-600" : "text-destructive"}`}>
-                      {parseFloat(tx.amount) >= 0 ? "+" : ""}${tx.amount}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* ── Account & legal ── */}
         <Card className="shadow-sm overflow-hidden">
           <CardHeader className="pb-4">
@@ -679,24 +627,6 @@ export default function UserProfile() {
               <span className="flex-1">Close account</span>
               <ChevronRight className="h-4 w-4" />
             </Button>
-          </CardContent>
-        </Card>
-
-        {/* ── Strategic Reserve Fund ── */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <CardTitle className="text-base">Strategic Reserve Fund</CardTitle>
-                <CardDescription className="text-xs">20% of every trade deposit — growing in real-time</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ReserveFund />
           </CardContent>
         </Card>
 

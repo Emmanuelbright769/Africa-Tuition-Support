@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { useAuth } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { Shield, TrendingUp, Zap, Globe, Lock, RefreshCw, Info, ChevronRight, ChevronDown, BarChart3, Coins, Receipt, ArrowUpRight } from "lucide-react";
@@ -139,6 +141,8 @@ export function ReserveFundWidget({ onNavigate }: { onNavigate: () => void }) {
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────────────────
 export default function ReserveFund() {
+  const { user, isLoading: authLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const [lastTick, setLastTick] = useState(Date.now());
   const [secondsAgo, setSecondsAgo] = useState(0);
   const [openFundItems, setOpenFundItems] = useState<Set<string>>(new Set());
@@ -150,13 +154,25 @@ export default function ReserveFund() {
     queryKey: ["/api/reserve-fund/live"],
     refetchInterval: 600_000,
     staleTime: 300_000,
+    enabled: !!user,
   });
 
   const { data: commData } = useQuery<CommissionData>({
     queryKey: ["/api/reserve-fund/commission-profits"],
     refetchInterval: 1_800_000,
     staleTime: 600_000,
+    enabled: !!user,
   });
+
+  useEffect(() => {
+    if (!authLoading && !user) setLocation("/login");
+  }, [authLoading, user, setLocation]);
+
+  if (authLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
+  }
+
+  if (!user) return null;
 
   useEffect(() => {
     if (data?.updatedAt) setLastTick(Date.now());
@@ -191,7 +207,26 @@ export default function ReserveFund() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-background">
+      <div className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setLocation(user.role === "affiliate" ? "/affiliate-dashboard" : "/dashboard")}
+            className="rounded-xl p-2 transition-colors hover:bg-muted"
+            aria-label="Back to dashboard"
+            data-testid="button-reserve-fund-back"
+          >
+            <ChevronRight className="h-5 w-5 rotate-180" />
+          </button>
+          <div>
+            <h1 className="text-base font-bold">Strategic Reserve Fund</h1>
+            <p className="text-xs text-muted-foreground">Live reserve reporting and allocation</p>
+          </div>
+          <Badge className="ml-auto hidden bg-tsia-green text-white sm:inline-flex">20% ring-fenced</Badge>
+        </div>
+      </div>
+      <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
 
       {/* ── Header card ──────────────────────────────────────────────── */}
       <div className="relative rounded-3xl overflow-hidden">
@@ -569,6 +604,7 @@ export default function ReserveFund() {
         <RefreshCw className="w-3 h-3" />
         Auto-refreshes every 5 seconds · Powered by TSIA Trade Market
       </div>
+      </main>
     </div>
   );
 }

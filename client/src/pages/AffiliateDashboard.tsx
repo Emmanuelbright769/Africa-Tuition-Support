@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import FinancialHub from "./FinancialHub";
 import { TransactionPinAnnouncement } from "@/components/TransactionPinAnnouncement";
 import MoviesSection from "@/components/MoviesSection";
-import ReserveFund, { ReserveFundWidget } from "./ReserveFund";
 import ExchangeMarket from "./ExchangeMarket";
 import QCESection from "./QCESection";
 import { useLocation, useSearch, Link } from "wouter";
@@ -61,7 +60,7 @@ const TIER_STYLES: Record<string, { bg: string; border: string; text: string; ba
 };
 const getTierStyle = (cat: number) => TIER_STYLES[String(cat)] ?? TIER_STYLES["500"];
 
-type Section = "overview" | "trade" | "mmmf" | "exchange_market" | "trust_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "forum" | "qce" | "emergency_response" | "movies" | "auto_care" | "sponsorship_cohort" | "back_to_school";
+type Section = "overview" | "trade" | "mmmf" | "exchange_market" | "trust_fund" | "reserve_fund" | "ecommerce" | "tenancy" | "loan" | "tour_africa" | "fintech" | "forum" | "qce" | "emergency_response" | "movies" | "auto_care" | "sponsorship_cohort" | "back_to_school";
 
 const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[] = [
   { id: "overview",        label: "Overview",               icon: LayoutDashboard },
@@ -73,6 +72,7 @@ const BASE_NAV_ITEMS: { id: Section; label: string; icon: any; badge?: string }[
   { id: "mmmf",            label: "Money Market Mutual Funds (MMMF)", icon: () => <span className="text-xl leading-none">💠</span>, badge: "Soon" },
   { id: "exchange_market", label: "Exchange Market",          icon: BarChart3 },
   { id: "trust_fund",   label: "Affiliate Trust Fund",   icon: Crown },
+  { id: "reserve_fund", label: "Strategic Reserve Fund", icon: Shield },
   { id: "ecommerce",    label: "TS-Mart Online Stores",  icon: ShoppingCart },
   { id: "tour_africa",  label: "Glide Africa",           icon: Car },
   { id: "movies",             label: "Movies & Streaming", icon: Film },
@@ -1451,6 +1451,7 @@ export default function AffiliateDashboard() {
 
   const navigate = (s: Section) => {
     if (s === "tour_africa") { setMenuOpen(false); setLocation("/tour-africa"); return; }
+    if (s === "reserve_fund") { setMenuOpen(false); setLocation("/reserve-fund"); return; }
     if (s !== "ecommerce") setOpenChatId(null);
     if (s === "ecommerce" && tsmartNewCount > 0) {
       apiRequest("PATCH", "/api/notifications/mark-type-read", { type: "new_arrival" })

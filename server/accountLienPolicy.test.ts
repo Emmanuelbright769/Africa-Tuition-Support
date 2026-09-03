@@ -125,7 +125,7 @@ test("allows trading, internal transfers, financial services, and non-payout act
   );
 });
 
-test("server guard checks linked student wallets and serializes against admin lien changes", () => {
+test("server guard checks only the signed-in account wallet and serializes against admin lien changes", () => {
   const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
   const middlewareStart = routes.indexOf("// Hold the same database advisory lock used by admin lien placement");
   const middlewareEnd = routes.indexOf("const requireWalletFundingIdentity", middlewareStart);
@@ -133,8 +133,8 @@ test("server guard checks linked student wallets and serializes against admin li
 
   assert.match(routes, /pg_try_advisory_lock\(hashtextextended\(\$1, 0\)\)/);
   assert.match(routes, /pg_advisory_unlock\(hashtextextended\(\$1, 0\)\)/);
-  assert.match(middleware, /LOWER\(TRIM\(u\.email\)\) = \$1/);
-  assert.match(middleware, /u\.id = \$2/);
+  assert.match(middleware, /w\.user_id = \$1/);
+  assert.doesNotMatch(middleware, /LOWER\(TRIM\(u\.email\)\)/);
   assert.match(middleware, /w\.lien_amount::numeric > 0/);
   assert.match(middleware, /isStudentWalletLienProtectedFundsOutRequest\(req\.method, req\.originalUrl, req\.body\)/);
   assert.match(routes, /fundsLockPool\.connect\(\)/);

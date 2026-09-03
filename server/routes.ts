@@ -532,9 +532,8 @@ export async function registerRoutes(
 
   // Hold the same database advisory lock used by admin lien placement until
   // the response finishes, so a lien cannot be placed between a route-level
-  // check and its eventual debit. The student wallet lien applies to payouts
-  // sourced from that wallet; Trade Market uses a separate wallet and applies
-  // its own source-specific controls in its withdrawal route.
+  // check and its eventual debit. A lien belongs to one user account and must
+  // not spill into a separate student/affiliate account sharing an email.
   app.use("/api", async (req, res, next) => {
     const sessionUserId = (req.session as any)?.userId;
     if (!sessionUserId || !isStudentWalletLienProtectedFundsOutRequest(req.method, req.originalUrl, req.body)) return next();
@@ -561,12 +560,10 @@ export async function registerRoutes(
       const lienResult = await lockClient.query(
         `SELECT 1
            FROM wallets w
-           JOIN users u ON u.id = w.user_id
-          WHERE (($1::text IS NOT NULL AND LOWER(TRIM(u.email)) = $1)
-              OR ($1::text IS NULL AND u.id = $2))
+          WHERE w.user_id = $1
             AND w.lien_amount::numeric > 0
           LIMIT 1`,
-        [identity.normalizedEmail, identity.userId],
+        [identity.userId],
       );
       if (lienResult.rowCount && lienResult.rowCount > 0) {
         await releaseLock();

@@ -67,6 +67,18 @@ test("only canonical completed bot sessions qualify as cumulative profit evidenc
     createdAt: "2026-08-29T09:44:25.491Z",
     note: "Bot session day 83/120: 12.0h → 2.0000% on $131.71",
   }), true, "strictly formatted pre-rollout sessions remain valid evidence");
+  assert.equal(isCanonicalBotProfitRecord({
+    ...canonical,
+    txHash: null,
+    createdAt: "2026-08-21T12:02:33.743Z",
+    note: "Bot session day 18/120: 12.0h → 2.0000% on $99.54 | 5% referral: $0.0995",
+  }), true, "pre-rollout owner earnings with the standard referral suffix remain valid evidence");
+  assert.equal(isCanonicalBotProfitRecord({
+    ...canonical,
+    txHash: null,
+    createdAt: "2026-08-21T12:02:33.743Z",
+    note: "Referral commission for bot session BOT-SESSION-2-example",
+  }), false, "referral commission rows are not owner profit evidence");
   assert.equal(isCanonicalBotProfitRecord({ ...canonical, txHash: null }), false);
   assert.equal(isCanonicalBotProfitRecord({ ...canonical, txHash: `${canonical.txHash}-REFERRAL` }), false);
   assert.equal(isCanonicalBotProfitRecord({ ...canonical, status: "failed" }), false);

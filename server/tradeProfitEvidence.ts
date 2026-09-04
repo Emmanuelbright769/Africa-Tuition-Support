@@ -24,7 +24,7 @@ export function canonicalBotProfitPredicate(alias?: TradeTransactionAlias) {
         ${txHash} IS NULL
         AND ${createdAt} < '2026-09-01T00:00:00Z'::timestamptz
         AND COALESCE(${note}, '') ~
-          '^Bot session day [0-9]+/(60|90|120): [0-9]+([.][0-9]+)?h → [0-9]+([.][0-9]+)?% on [$][0-9]+([.][0-9]+)?$'
+          '^Bot session day [0-9]+/(60|90|120): [0-9]+([.][0-9]+)?h → [0-9]+([.][0-9]+)?% on [$][0-9]+([.][0-9]+)?( [|] 5% referral: [$][0-9]+([.][0-9]+)?)?$'
       )
     )
   `;
@@ -46,7 +46,7 @@ export function isCanonicalBotProfitRecord(record: {
   const modernEvidence = typeof record.txHash === "string" && sessionHash.test(record.txHash);
   const legacyEvidence = record.txHash === null
     && new Date(record.createdAt ?? 0).getTime() < Date.parse("2026-09-01T00:00:00Z")
-    && /^Bot session day [0-9]+\/(60|90|120): [0-9]+([.][0-9]+)?h → [0-9]+([.][0-9]+)?% on [$][0-9]+([.][0-9]+)?$/.test(record.note ?? "");
+    && /^Bot session day [0-9]+\/(60|90|120): [0-9]+([.][0-9]+)?h → [0-9]+([.][0-9]+)?% on [$][0-9]+([.][0-9]+)?( \| 5% referral: [$][0-9]+([.][0-9]+)?)?$/.test(record.note ?? "");
   return record.type === "bot_earning"
     && record.status === "completed"
     && record.amountUsd > 0

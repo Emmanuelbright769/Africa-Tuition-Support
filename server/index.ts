@@ -608,6 +608,27 @@ async function runMigrations() {
       ON trade_transactions (user_id, tx_hash)
     `);
 
+    // The 30-minute expires_at value belongs to the anonymous signup handoff,
+    // not to the verified identity after that handoff has been consumed and
+    // bound to a user. Older bound records retained it and later failed wallet
+    // credit checks despite having no expired identity document.
+    const identityHandoffRepair = await db.execute(sql`
+      UPDATE identity_verifications
+      SET expires_at = NULL,
+          updated_at = NOW()
+      WHERE user_id IS NOT NULL
+        AND signup_token_hash IS NULL
+        AND status = 'verified'
+        AND document_expires_at IS NULL
+        AND verified_at IS NOT NULL
+        AND expires_at BETWEEN verified_at + INTERVAL '29 minutes'
+                           AND verified_at + INTERVAL '31 minutes'
+      RETURNING id
+    `);
+    if (identityHandoffRepair.rows.length > 0) {
+      console.log(`[MIGRATE] Cleared stale signup-handoff expiry from ${identityHandoffRepair.rows.length} bound identity record(s)`);
+    }
+
     console.log("[MIGRATE] cycle_started_at column and roi_complete data fix applied");
     console.log("[MIGRATE] Schema migrations applied successfully");
   } catch (e) {

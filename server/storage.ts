@@ -743,7 +743,9 @@ export class DatabaseStorage implements IStorage {
   async consumeIdentityVerificationSignupToken(tokenHash: string): Promise<IdentityVerification | undefined> {
     const now = new Date();
     const [claimed] = await db.update(identityVerifications)
-      .set({ signupTokenHash: null, updatedAt: now })
+      // expires_at protects only the anonymous signup handoff. Once consumed,
+      // document_expires_at is the authority for the bound identity's lifetime.
+      .set({ signupTokenHash: null, expiresAt: null, updatedAt: now })
       .where(and(
         eq(identityVerifications.signupTokenHash, tokenHash),
         isNull(identityVerifications.userId),

@@ -40,6 +40,11 @@ export function isMonthlyBillingStarted(now = new Date()): boolean {
   return now.getTime() >= MONTHLY_BILLING_START_AT.getTime();
 }
 
+export function isAccountEligibleForMonthlyBilling(accountCreatedAt: Date, now = new Date()): boolean {
+  if (!isMonthlyBillingStarted(now)) return false;
+  return getLagosBillingMonthKey(accountCreatedAt) < getLagosBillingMonthKey(now);
+}
+
 export function getMonthlyBillingDecision(balance: number, amountDue = MONTHLY_TOTAL_FEE_USD): "charge" | "restrict" {
   return Number.isFinite(balance) && balance >= amountDue
     ? "charge"

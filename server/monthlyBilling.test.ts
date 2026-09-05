@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   getLagosBillingMonthKey,
   getMonthlyBillingDecision,
+  isAccountEligibleForMonthlyBilling,
   isMonthlyBillingAllowedRequest,
   isMonthlyBillingStarted,
   MONTHLY_TOTAL_FEE_USD,
@@ -24,6 +25,22 @@ test("the full two-dollar amount is required and partial balances are not charge
   assert.equal(getMonthlyBillingDecision(2, 4), "restrict");
   assert.equal(getMonthlyBillingDecision(4, 4), "charge");
   assert.equal(getMonthlyBillingDecision(50), "charge");
+});
+
+test("new members begin monthly billing on the first day of their next Lagos month", () => {
+  const september15 = new Date("2026-09-15T12:00:00+01:00");
+  assert.equal(
+    isAccountEligibleForMonthlyBilling(new Date("2026-09-01T00:00:00+01:00"), september15),
+    false,
+  );
+  assert.equal(
+    isAccountEligibleForMonthlyBilling(new Date("2026-09-30T23:59:59+01:00"), new Date("2026-10-01T00:00:00+01:00")),
+    true,
+  );
+  assert.equal(
+    isAccountEligibleForMonthlyBilling(new Date("2026-08-31T23:59:59+01:00"), new Date("2026-09-01T00:00:00+01:00")),
+    true,
+  );
 });
 
 test("restricted users retain only authentication, status, identity, and wallet-funding APIs", () => {

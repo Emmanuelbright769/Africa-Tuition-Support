@@ -5,6 +5,7 @@ import { acquireWalletUserLock } from "./walletBalance";
 import {
   getLagosBillingMonthKey,
   getMonthlyBillingDecision,
+  isAccountEligibleForMonthlyBilling,
   isMonthlyBillingStarted,
   MONTHLY_MAINTENANCE_FEE_USD,
   MONTHLY_SUBSCRIPTION_FEE_USD,
@@ -63,15 +64,46 @@ export async function reconcileMonthlyBilling(
     await acquireWalletUserLock(tx, userId);
 
     const userResult = await tx.execute(sql`
-      SELECT id, role, account_status
+      SELECT id, role, account_status, created_at
       FROM users
       WHERE id = ${userId}
       LIMIT 1
     `);
-    const user = rowsOf<{ id: number; role: string; account_status: string }>(userResult)[0];
+    const user = rowsOf<{
+      id: number;
+      role: string;
+      account_status: string;
+      created_at: Date | string;
+    }>(userResult)[0];
     if (!user) throw new Error("User not found");
 
     if (user.role === "admin" || user.account_status !== "active") {
+      return {
+        userId,
+        required: false,
+        hasAccess: true,
+        state: "exempt",
+        monthKey,
+        ...feeMetadata(),
+        amountDue: 0,
+        unpaidMonths: 0,
+        walletBalance: 0,
+        shortfall: 0,
+        chargedNow: false,
+      };
+    }
+
+    // New members receive the remainder of their signup month without a
+    // subscription or maintenance charge. Their first cycle begins on the
+    // first day of the following Lagos calendar month.
+    if (!isAccountEligibleForMonthlyBilling(new Date(user.created_at), now)) {
+      await tx.execute(sql`
+        UPDATE monthly_billing_cycles
+        SET status = 'waived', updated_at = NOW()
+        WHERE user_id = ${userId}
+          AND month_key = ${monthKey}
+          AND status = 'payment_required'
+      `);
       return {
         userId,
         required: false,

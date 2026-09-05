@@ -12,6 +12,51 @@ function rowsOf<T>(result: unknown): T[] {
   return [];
 }
 
+test("a same-month signup has access without a billing cycle or fee deduction", async () => {
+  const marker = `new-member-${Date.now()}-${process.pid}`;
+  let userId: number | null = null;
+  try {
+    const result = await db.execute(sql`
+      INSERT INTO users (
+        first_name, last_name, email, phone, password, role,
+        account_status, created_at
+      )
+      VALUES (
+        'New', 'Member', ${`${marker}@example.invalid`}, ${marker},
+        'otp-only', 'student', 'active', '2026-09-05T12:00:00Z'
+      )
+      RETURNING id
+    `);
+    userId = Number(rowsOf<{ id: number }>(result)[0].id);
+
+    const status = await reconcileMonthlyBilling(
+      userId,
+      new Date("2026-09-20T12:00:00+01:00"),
+    );
+    assert.equal(status.required, false);
+    assert.equal(status.hasAccess, true);
+    assert.equal(status.state, "exempt");
+    assert.equal(status.amountDue, 0);
+
+    const audit = rowsOf<{ cycles: number; fees: number }>(await db.execute(sql`
+      SELECT
+        (SELECT COUNT(*)::int FROM monthly_billing_cycles WHERE user_id = ${userId}) AS cycles,
+        (SELECT COUNT(*)::int FROM transactions
+          WHERE user_id = ${userId}
+            AND type IN ('subscription_fee', 'maintenance_fee')) AS fees
+    `))[0];
+    assert.equal(audit.cycles, 0);
+    assert.equal(audit.fees, 0);
+  } finally {
+    if (userId !== null) {
+      await db.execute(sql`DELETE FROM monthly_billing_cycles WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM transactions WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM wallets WHERE user_id = ${userId}`);
+      await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+    }
+  }
+});
+
 test("monthly billing is atomic and a missed month never accumulates into arrears", async () => {
   const marker = `${Date.now()}-${process.pid}`;
   let userId: number | null = null;
@@ -23,6 +68,7 @@ test("monthly billing is atomic and a missed month never accumulates into arrear
       RETURNING id
     `);
     userId = Number(rowsOf<{ id: number }>(userResult)[0].id);
+    await db.execute(sql`UPDATE users SET created_at = '2026-08-31T12:00:00Z' WHERE id = ${userId}`);
     await db.execute(sql`
       INSERT INTO wallets (user_id, balance, activated, cashback_balance, lien_amount)
       VALUES (${userId}, '1.99', TRUE, '0.00', '0.00')

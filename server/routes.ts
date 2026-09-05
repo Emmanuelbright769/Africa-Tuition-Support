@@ -786,6 +786,25 @@ export async function registerRoutes(
               isRead: false,
             });
           } catch { /* non-critical */ }
+          // Keep the introductory billing terms available after the mandatory
+          // signup popup has been dismissed.
+          try {
+            await storage.createNotification({
+              userId: u!.id,
+              financialEventKey: `new-member-subscription-notice:${u!.id}`,
+              type: "system",
+              title: "Your Signup Month Is Free",
+              message: "TSIA is a subscription-based platform. You can use TSIA free during your signup month (up to 30 days). Starting on the first day of next month, your account will be charged $1.50 for the monthly subscription plus $0.50 for wallet maintenance — $2.00 total every month.",
+              data: {
+                signupMonthFree: true,
+                subscriptionFee: 1.5,
+                maintenanceFee: 0.5,
+                totalMonthlyFee: 2,
+                billingStarts: "first_day_of_next_lagos_month",
+              },
+              isRead: false,
+            });
+          } catch { /* non-critical */ }
           // Notify referrer
           if (normalizedReferralCode) {
             try {

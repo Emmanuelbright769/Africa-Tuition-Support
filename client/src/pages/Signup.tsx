@@ -620,7 +620,7 @@ export default function Signup() {
               </div>
               <div>
                 <DialogTitle className="text-lg">Welcome to TSIA! 🎉</DialogTitle>
-                <p className="text-xs text-muted-foreground">One last step to get started</p>
+                <p className="text-xs text-muted-foreground">Your signup month is free</p>
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
@@ -629,6 +629,20 @@ export default function Signup() {
           </DialogHeader>
 
           <div className="space-y-3 py-2">
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0">
+                  <Info className="w-4 h-4 text-blue-700 dark:text-blue-300" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-blue-950 dark:text-blue-100">Free access during your signup month</p>
+                  <p className="text-xs leading-relaxed text-blue-800 dark:text-blue-200 mt-1">
+                    TSIA is a subscription-based platform. You can use it free during your signup month, for up to 30 days. Starting on the first day of next month, you will be charged <strong>$1.50 monthly subscription + $0.50 wallet maintenance</strong> — <strong>$2.00 total every month</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-4 flex items-start gap-3">
               <div className="w-9 h-9 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
                 <Zap className="w-4 h-4 text-tsia-green" />

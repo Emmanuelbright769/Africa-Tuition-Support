@@ -1,0 +1,31 @@
+I want to completely migrate my application’s transactional email system from Brevo to Replit’s built-in email service.
+
+Please handle this migration carefully:
+
+1. Audit every place in the application where Brevo is currently used.
+2. Replace Brevo entirely with Replit’s built-in email service.
+3. Preserve all existing email functionality, including:
+    * OTP emails
+    * Email verification
+    * Password reset emails
+    * Welcome/account emails
+    * Login/security emails
+    * Any other transactional emails currently sent through Brevo.
+4. Preserve the existing email templates, branding, sender name, wording, OTP expiration rules, and security logic wherever possible.
+5. Make sure OTP generation, validation, expiration, resend limits, and password-reset flows continue working exactly as they do now.
+6. Do NOT remove Brevo credentials or dependencies until the new Replit email implementation has been fully configured and tested.
+7. Test every email flow in the development environment before removing Brevo.
+8. After successful testing, remove all Brevo API calls, SDK/package dependencies, environment variables, configuration, and unused code.
+9. Make sure there are no remaining references to Brevo anywhere in the application.
+10. Do not introduce another third-party email provider such as Resend, SendGrid, Mailgun, or Amazon SES. I specifically want to use Replit’s built-in email service.
+11. Make sure the implementation is production-ready and works with the currently deployed application.
+12. After completing the migration, give me a clear report showing:
+
+* What Brevo components were removed
+* What Replit email functionality replaced them
+* Which email flows were tested
+* Whether any limitations exist
+* Whether I need to configure anything manually in Replit
+* Whether the application will still send emails correctly after redeployment
+
+IMPORTANT: Do not break the existing authentication system. Treat this as a production migration and make the changes incrementally.

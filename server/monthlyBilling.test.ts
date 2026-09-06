@@ -46,7 +46,8 @@ test("new members begin monthly billing on the first day of their next Lagos mon
 test("signup clearly discloses the free month and recurring two-dollar charge", () => {
   const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
   const signup = readFileSync(new URL("../client/src/pages/Signup.tsx", import.meta.url), "utf8");
-  for (const source of [routes, signup]) {
+  const email = readFileSync(new URL("./email.ts", import.meta.url), "utf8");
+  for (const source of [routes, signup, email]) {
     assert.match(source, /subscription-based platform/);
     assert.match(source, /\$1\.50/);
     assert.match(source, /\$0\.50/);
@@ -54,6 +55,7 @@ test("signup clearly discloses the free month and recurring two-dollar charge", 
     assert.match(source, /first day of next month/);
   }
   assert.match(routes, /new-member-subscription-notice:/);
+  assert.match(email, /Your Signup Month Is Free/);
 });
 
 test("restricted users retain only authentication, status, identity, and wallet-funding APIs", () => {

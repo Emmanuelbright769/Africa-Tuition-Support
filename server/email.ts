@@ -324,13 +324,23 @@ export async function sendTransferOtpEmail(
 
 export async function sendWelcomeEmail(to: string, firstName: string, role: "student" | "affiliate"): Promise<void> {
   const isAffiliate = role === "affiliate";
-  const subject = `Welcome to TSIA, ${firstName}! — Activate Your Wallet`;
+  const subject = `Welcome to TSIA, ${firstName}! — Your Signup Month Is Free`;
   const html = baseTemplate(`
     <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">Welcome, ${firstName}! 🌍</h2>
     <p style="color:#4a5e50;font-size:15px;margin:0 0 16px;line-height:1.6;">
       Your <strong>${isAffiliate ? "Affiliate" : "Student"}</strong> account is now active on the TSIA platform.
       To unlock <em>all</em> features, your first step is to activate your SwiftWallet.
     </p>
+
+    <div style="background:#eff6ff;border:2px solid #93c5fd;border-radius:16px;padding:20px;margin:0 0 20px;">
+      <p style="color:#1e3a8a;font-size:16px;font-weight:700;margin:0 0 8px;">Your Signup Month Is Free</p>
+      <p style="color:#1e40af;font-size:14px;margin:0;line-height:1.7;">
+        TSIA is a subscription-based platform. You can use TSIA free during your signup month, for up to 30 days.
+        Starting on the <strong>first day of next month</strong>, your account will be charged
+        <strong>$1.50 for the monthly subscription</strong> plus <strong>$0.50 for wallet maintenance</strong> —
+        <strong>$2.00 total every month</strong>.
+      </p>
+    </div>
 
     <div style="background:#f0f8f4;border:2px solid #1a6b3c;border-radius:16px;padding:20px;margin:0 0 20px;">
       <p style="color:#1a6b3c;font-size:16px;font-weight:700;margin:0 0 6px;">⚡ Wallet Activation Required</p>

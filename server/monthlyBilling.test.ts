@@ -58,6 +58,23 @@ test("signup clearly discloses the free month and recurring two-dollar charge", 
   assert.match(email, /Your Signup Month Is Free/);
 });
 
+test("general wallets have no activation deposit or retained minimum balance", () => {
+  const schema = readFileSync(new URL("../shared/schema.ts", import.meta.url), "utf8");
+  const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+  const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  const signup = readFileSync(new URL("../client/src/pages/Signup.tsx", import.meta.url), "utf8");
+  const affiliate = readFileSync(new URL("../client/src/pages/AffiliateDashboard.tsx", import.meta.url), "utf8");
+  const onboarding = readFileSync(new URL("../client/src/pages/Onboarding.tsx", import.meta.url), "utf8");
+
+  assert.match(schema, /activated: boolean\("activated"\)\.notNull\(\)\.default\(true\)/);
+  assert.match(schema, /MIN_BALANCE: 0/);
+  assert.doesNotMatch(routes, /Activate your SwiftWallet first/);
+  assert.doesNotMatch(index, /startWalletFundPurgeJob/);
+  assert.doesNotMatch(signup, /Activate with above \\$2|must always remain/);
+  assert.doesNotMatch(affiliate, /personalBalance - 2|Activate Your Wallet|\\$2 must remain/);
+  assert.doesNotMatch(onboarding, /72-Hour Wallet Funding Requirement|Activate your Wallet/);
+});
+
 test("restricted users retain only authentication, status, identity, and wallet-funding APIs", () => {
   const allowed: Array<[string, string]> = [
     ["GET", "/api/auth/me"],

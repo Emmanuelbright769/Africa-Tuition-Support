@@ -500,25 +500,6 @@ export default function Onboarding() {
                 </div>
 
                 <div className="p-8 space-y-6">
-                  {/* 72h wallet fund deadline disclaimer */}
-                  <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-400 dark:border-red-700 rounded-2xl p-5" data-testid="notice-72h-deadline">
-                    <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 bg-red-100 dark:bg-red-800/50 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                        <Clock className="w-5 h-5 text-red-600 dark:text-red-400" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-red-800 dark:text-red-200 text-base mb-1">Important: 72-Hour Wallet Funding Requirement</p>
-                        <p className="text-sm text-red-700 dark:text-red-300 leading-relaxed">
-                          After completing your WAEC validation (the next step), you will have exactly <strong>72 hours</strong> to fund your TSIA SwiftWallet with above <strong>$2</strong>.
-                        </p>
-                        <p className="text-sm text-red-700 dark:text-red-300 mt-2 leading-relaxed">
-                          <strong>Failure to fund your wallet within this window will reset your enrollment.</strong> Your account will remain, but your WAEC and NIN verification records will be cleared and you will need to restart the onboarding process — including re-payment of the portal fee — when you return.
-                        </p>
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-2 font-semibold">By proceeding, you acknowledge this requirement.</p>
-                      </div>
-                    </div>
-                  </div>
-
                   {/* Fee breakdown card */}
                   <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-6 shadow-lg">
                     <div className="space-y-3 mb-4">
@@ -727,8 +708,8 @@ export default function Onboarding() {
                 <div className="p-8 space-y-4">
                   <p className="text-sm text-muted-foreground">Our team will review within 24–48 hours. You'll receive a notification once approved and your wallet is funded.</p>
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-left">
-                    <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Next step: Activate your Wallet</p>
-                    <p className="text-xs text-blue-700 dark:text-blue-400">Head to the <strong>Wallet</strong> section in your dashboard to complete BVN verification and GPS location — required to fund and transact.</p>
+                    <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Your application is ready for review</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-400">You can return to your dashboard now. We will notify you when the review is complete.</p>
                   </div>
                   <Button onClick={() => {
                     queryClient.invalidateQueries({ queryKey: ["/api/verification/status"] });

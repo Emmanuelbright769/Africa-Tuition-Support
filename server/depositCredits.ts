@@ -664,7 +664,7 @@ export async function settleTradeEarlyExitAtomic(userId: number) {
     await tx.insert(wallets).values({
       userId,
       balance: "0.00",
-      activated: false,
+      activated: true,
       cashbackBalance: "0.00",
       lienAmount: "0.00",
     }).onConflictDoNothing();

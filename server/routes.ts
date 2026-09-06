@@ -775,17 +775,6 @@ export async function registerRoutes(
           const affCode = generateAffiliateCode(firstName, u.id);
           await storage.updateUserAffiliateCode(u.id, affCode);
           u = await storage.getUser(u.id);
-          // Send wallet activation in-app notification to new user
-          try {
-            await storage.createNotification({
-              userId: u!.id,
-              type: "wallet_activation",
-              title: "Activate Your TSIA Wallet",
-              message: `Welcome to TSIA! To unlock all platform features — including QCE SwiftVault, loans, TS-Mart Online Stores and more — please fund your SwiftWallet with above $2. You can withdraw your money at any time; however, a minimum balance of $2 must remain in your wallet to keep the system running seamlessly. Head to your SwiftWallet section to make your first deposit.`,
-              data: { minActivation: QCE.MIN_ACTIVATION, minBalance: QCE.MIN_BALANCE },
-              isRead: false,
-            });
-          } catch { /* non-critical */ }
           // Keep the introductory billing terms available after the mandatory
           // signup popup has been dismissed.
           try {
@@ -1685,17 +1674,12 @@ export async function registerRoutes(
         ...(sponsorshipReason ? { sponsorshipReason } : {}),
       });
 
-      // Set 72-hour wallet funding deadline — if wallet not activated by then, account is purged
-      const deadline = new Date(Date.now() + 72 * 60 * 60 * 1000);
-      await storage.setWalletFundDeadline(userId, deadline);
-
       // Return success regardless of age — disqualification is invisible to user
       res.json({
         ...verification,
         calculatedPercentage: percentage,
         payoutRange: payoutInfo,
         waecValidation: waecApiResponse,
-        walletFundDeadline: deadline.toISOString(),
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -2203,9 +2187,8 @@ export async function registerRoutes(
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
     let wallet = await storage.getOrCreateWallet(userId);
-    // Self-heal: activate wallets that already have > $2 but were never activated
-    // (can happen if balance was set before the activated column existed)
-    if (!wallet.activated && parseFloat(wallet.balance) > 2) {
+    // General SwiftWallet access is not gated by a funding deposit.
+    if (!wallet.activated) {
       wallet = await storage.activateWallet(userId);
     }
     const balanceUsd = parseFloat(wallet.balance);
@@ -5666,19 +5649,6 @@ export async function registerRoutes(
       if (cachedFund) return res.json(cachedFund);
       const fund = await storage.getTradeReserveFund();
 
-      // Aggregate the $2 minimum balance locked across activated wallets only
-      const floorResult = await db.execute(sql`
-        SELECT
-          COUNT(*) FILTER (WHERE activated = true AND CAST(balance AS numeric) >= 2) AS wallets_at_min,
-          COUNT(*) FILTER (WHERE activated = true) AS total_wallets,
-          COALESCE(SUM(LEAST(CAST(balance AS numeric), 2)) FILTER (WHERE activated = true), 0) AS floor_reserve
-        FROM wallets
-      `);
-      const floorRow = (floorResult.rows[0] as any) ?? {};
-      const walletFloorReserve = parseFloat(floorRow.floor_reserve ?? "0");
-      const walletsAtMin       = parseInt(floorRow.wallets_at_min ?? "0", 10);
-      const totalWallets       = parseInt(floorRow.total_wallets ?? "0", 10);
-
       // Sum actual trade deposit amounts (initial deposits + mid-cycle top-ups)
       const depositSumResult = await db.execute(sql`
         SELECT
@@ -5700,11 +5670,11 @@ export async function registerRoutes(
         depositCount,
         contributionRate: 20,
         description: "20% of every Global Trade Market deposit is ring-fenced into this strategic reserve.",
-        walletFloorReserve: walletFloorReserve.toFixed(2),
-        walletsAtMin,
-        totalWallets,
-        minBalancePerWallet: 2,
-        combinedReserve: (tradeReserve + walletFloorReserve).toFixed(2),
+        walletFloorReserve: "0.00",
+        walletsAtMin: 0,
+        totalWallets: 0,
+        minBalancePerWallet: 0,
+        combinedReserve: tradeReserve.toFixed(2),
         updatedAt: new Date().toISOString(),
       };
       setCached("reserve_fund_live", fundResult, 120_000);
@@ -9255,27 +9225,24 @@ export async function registerRoutes(
       // Mark the code as used
       await storage.useSponsorCode(code, userId);
 
-      // Credit $5.50 activation bonus and activate the wallet if not yet active
+      // Credit the $5.50 sponsor benefit.
       const SPONSOR_CODE_BONUS = 5.50;
       const wallet = await storage.getOrCreateWallet(userId);
       const newBalance = (parseFloat(wallet.balance) + SPONSOR_CODE_BONUS).toFixed(2);
       await storage.updateWalletBalance(userId, newBalance);
-      if (!wallet.activated) {
-        await storage.activateWallet(userId);
-      }
       await storage.createTransaction({
         userId,
         type: "admin_credit",
         amount: SPONSOR_CODE_BONUS.toFixed(2),
         fee: "0.00",
         paymentMethod: "sponsor_code",
-        description: `Sponsor code activation bonus — $${SPONSOR_CODE_BONUS.toFixed(2)} credited to TSIA SwiftWallet (${validation.cohortName ?? "sponsored cohort"})`,
+        description: `Sponsor code benefit — $${SPONSOR_CODE_BONUS.toFixed(2)} credited to TSIA SwiftWallet (${validation.cohortName ?? "sponsored cohort"})`,
       });
       await storage.createNotification({
         userId,
         type: "wallet_credit",
-        title: "Sponsor Code Activated!",
-        message: `$${SPONSOR_CODE_BONUS.toFixed(2)} has been credited to your TSIA SwiftWallet and your account is now active.`,
+        title: "Sponsor Code Applied!",
+        message: `$${SPONSOR_CODE_BONUS.toFixed(2)} has been credited to your TSIA SwiftWallet.`,
         data: { bonus: SPONSOR_CODE_BONUS, cohortName: validation.cohortName },
         isRead: false,
       });
@@ -13528,8 +13495,6 @@ export async function registerRoutes(
         if (record.portalFeePaid) return res.status(400).json({ message: "Fee already paid" });
 
         const wallet = await storage.getOrCreateWallet(userId);
-        if (!wallet.activated) return res.status(403).json({ message: "Activate your SwiftWallet first" });
-
         const portalFee = 3.00;
         const serviceCharge = 0.30;
         const totalCharged = portalFee + serviceCharge;

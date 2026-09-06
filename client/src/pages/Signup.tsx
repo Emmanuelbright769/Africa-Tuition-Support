@@ -610,7 +610,7 @@ export default function Signup() {
         </AnimatePresence>
       </div>
 
-      {/* ── Welcome / Wallet Activation Popup ── */}
+      {/* ── Welcome / Subscription Disclosure Popup ── */}
       <Dialog open={welcomeOpen} onOpenChange={() => {}}>
         <DialogContent className="sm:max-w-md" onInteractOutside={e => e.preventDefault()}>
           <DialogHeader>
@@ -624,7 +624,7 @@ export default function Signup() {
               </div>
             </div>
             <DialogDescription className="text-sm leading-relaxed pt-2">
-              Your account is ready. To unlock all TSIA features — wallet transactions, QCE SwiftVault, loans, TS-Mart Online Stores and more — please <strong>fund your SwiftWallet with above $2</strong>.
+              Your account is ready and you can start using TSIA immediately. No wallet deposit or minimum balance is required to activate your account.
             </DialogDescription>
           </DialogHeader>
 
@@ -643,27 +643,10 @@ export default function Signup() {
               </div>
             </div>
 
-            <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-4 flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
-                <Zap className="w-4 h-4 text-tsia-green" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Activate with above $2</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Head to your SwiftWallet to make your first deposit via USDT (TRC20 or BEP20).</p>
-              </div>
-            </div>
-
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-start gap-2">
               <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-800 dark:text-amber-200">
-                You can withdraw your money whenever you want. A check notification and email have been sent with full details on how to get started.
-              </p>
-            </div>
-
-            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-3 flex items-start gap-2">
-              <Info className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-slate-700 dark:text-slate-300">
-                <strong>Minimum balance:</strong> A minimum of <strong>$2</strong> must always remain in your wallet to ensure seamless operations across the platform — payments, transfers, and platform features stay active.
+                Your SwiftWallet can be funded whenever you choose, and you may withdraw or transfer its full available balance. A notification and email have been sent with your subscription details.
               </p>
             </div>
           </div>

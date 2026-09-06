@@ -255,18 +255,6 @@ export default function StudentDashboard() {
   const [batchCountdown, setBatchCountdown] = useState("");
   const [commitmentCountdown, setCommitmentCountdown] = useState("");
   const [planCountdown, setPlanCountdown] = useState("");
-  const [deadlineCountdown, setDeadlineCountdown] = useState<string | null>(null);
-
-  const walletActivated = walletData?.activated === true;
-
-  const [activationPopupOpen, setActivationPopupOpen] = useState(false);
-  useEffect(() => {
-    if (!walletData) return;
-    const dismissed = localStorage.getItem("tsia_wallet_activation_dismissed_" + user?.id);
-    if (!dismissed && parseFloat(walletData.balance ?? "0") === 0) {
-      setActivationPopupOpen(true);
-    }
-  }, [walletData, user?.id]);
 
   const applyLoanMutation = useMutation({
     mutationFn: async () => {
@@ -313,7 +301,7 @@ export default function StudentDashboard() {
       const res = await apiRequest("POST", "/api/verification/use-sponsor-code", { code: sponsorCodeInput.trim().toUpperCase() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Invalid code");
-      toast({ title: "Sponsor Code Activated!", description: `$${Number(data.bonus ?? 5.5).toFixed(2)} has been credited to your wallet and your account is now active.` });
+      toast({ title: "Sponsor Code Applied!", description: `$${Number(data.bonus ?? 5.5).toFixed(2)} has been credited to your wallet.` });
       setSponsorCodeDialogOpen(false);
       setSponsorCodeInput("");
       queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
@@ -394,23 +382,6 @@ export default function StudentDashboard() {
     const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
   }, [(verification as any)?.commitmentStartDate]);
-
-  // Live countdown for 72h wallet fund deadline
-  useEffect(() => {
-    if (!user?.walletFundDeadline || walletActivated) { setDeadlineCountdown(null); return; }
-    const due = new Date(user.walletFundDeadline).getTime();
-    const update = () => {
-      const diff = due - Date.now();
-      if (diff <= 0) { setDeadlineCountdown("EXPIRED — enrollment reset in progress"); return; }
-      const h = Math.floor(diff / 3600000);
-      const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, "0");
-      const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
-      setDeadlineCountdown(`${h}h ${m}m ${s}s`);
-    };
-    update();
-    const timer = setInterval(update, 1000);
-    return () => clearInterval(timer);
-  }, [user?.walletFundDeadline, walletActivated]);
 
   // Live countdown for 365-day active sponsorship plan
   useEffect(() => {
@@ -642,17 +613,17 @@ export default function StudentDashboard() {
                       <p className="text-slate-300 text-sm max-w-xl leading-relaxed mb-4">
                         {isVerified ? "Your documents are approved. Choose a sponsorship plan to begin receiving funding."
                           : showPendingApproval ? "Your application is under review by the TSIA team. You'll be notified within 24–48 hours."
-                          : "Start by activating your wallet, then complete your verification (NIN + WAEC) to unlock sponsorship funding."}
+                          : "Complete your verification (NIN + WAEC) to continue your sponsorship application."}
                       </p>
                       <div className="flex flex-wrap gap-3 items-center">
                         {showGoToOnboarding && (
                           <Button
-                            onClick={() => walletActivated ? setLocation("/onboarding") : navigate("fintech")}
+                            onClick={() => setLocation("/onboarding")}
                             className="bg-tsia-gold hover:bg-tsia-gold/90 text-slate-900 font-bold h-11 px-6"
                             data-testid="button-go-onboarding"
                           >
-                            {walletActivated ? <ArrowUpRight className="w-4 h-4 mr-2" /> : <Wallet className="w-4 h-4 mr-2" />}
-                            {walletActivated ? "Swift-Apply" : "Complete Verification"}
+                            <ArrowUpRight className="w-4 h-4 mr-2" />
+                            Swift-Apply
                           </Button>
                         )}
                         <Button
@@ -673,7 +644,7 @@ export default function StudentDashboard() {
                               Enter Your Sponsor Code
                             </DialogTitle>
                             <DialogDescription>
-                              Have a code from a sponsor? Enter it below to activate your wallet and receive $5.50 instantly.
+                              Have a code from a sponsor? Enter it below to receive the $5.50 sponsor credit instantly.
                             </DialogDescription>
                           </DialogHeader>
                           <div className="space-y-3 py-2">
@@ -737,31 +708,6 @@ export default function StudentDashboard() {
                     )}
                   </div>
                 </motion.div>
-
-                {/* 72h wallet fund deadline countdown banner — urgent */}
-                {!walletActivated && deadlineCountdown && (
-                  <motion.div
-                    variants={itemVariants}
-                    data-testid="banner-fund-deadline"
-                    className="bg-red-600 text-white rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 shadow-lg shadow-red-500/30"
-                  >
-                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0">
-                      <Clock className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-white mb-0.5 text-base">Action Required — Fund Your Wallet Within 72 Hours!</p>
-                      <p className="text-sm text-red-100 leading-relaxed">
-                        Your WAEC validation has been completed. You must fund your TSIA SwiftWallet with above <strong>$2</strong> within <strong>72 hours</strong>, or your enrollment will be reset and you will need to restart the full onboarding process (including re-payment of the portal fee) to continue.
-                        <br />
-                        <span className="font-mono font-bold text-yellow-300 text-base mt-1 block">Time remaining: {deadlineCountdown}</span>
-                      </p>
-                    </div>
-                    <Button size="sm" className="bg-white text-red-700 hover:bg-red-50 font-bold shrink-0" onClick={() => navigate("fintech")} data-testid="button-deadline-fund-wallet">
-                      Fund Now
-                    </Button>
-                  </motion.div>
-                )}
-
 
                 <motion.div variants={itemVariants}>
                   <Card className="shadow-md border-0 overflow-hidden relative group">
@@ -1613,49 +1559,6 @@ export default function StudentDashboard() {
         </div>
       </main>
 
-      {/* ── Welcome Popup (first login) ── */}
-      <Dialog open={activationPopupOpen} onOpenChange={() => {}}>
-        <DialogContent className="sm:max-w-md" onInteractOutside={e => e.preventDefault()}>
-          <DialogHeader>
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-tsia-green to-emerald-600 flex items-center justify-center shadow-md">
-                <GraduationCap className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <DialogTitle className="text-lg">Welcome to TSIA! 🎉</DialogTitle>
-                <p className="text-xs text-muted-foreground">Your journey starts here</p>
-              </div>
-            </div>
-            <DialogDescription className="text-sm leading-relaxed pt-2">
-              You now have full access to explore everything TSIA has to offer — scholarships, loans, e-commerce, community, and more.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2.5 py-2">
-            {[
-              { icon: Trophy, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-900/20", title: "Browse Scholarships & Plans", desc: "Explore sponsorship tiers and funding options." },
-              { icon: BookOpen, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20", title: "Forum & Community", desc: "Connect with fellow students across Africa." },
-              { icon: Wallet, color: "text-tsia-green", bg: "bg-tsia-green/10", title: "Swift Hub — Fund & Transact", desc: "Deposit funds when you're ready to start your application." },
-            ].map(({ icon: Icon, color, bg, title, desc }) => (
-              <div key={title} className={`${bg} rounded-xl p-3 flex items-center gap-3`}>
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${bg}`}>
-                  <Icon className={`w-4 h-4 ${color}`} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold">{title}</p>
-                  <p className="text-xs text-muted-foreground">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button className="w-full bg-tsia-green hover:bg-tsia-green/90 text-white"
-              onClick={() => { localStorage.setItem("tsia_wallet_activation_dismissed_" + user?.id, "1"); setActivationPopupOpen(false); }}
-              data-testid="button-welcome-explore">
-              Explore the Platform
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

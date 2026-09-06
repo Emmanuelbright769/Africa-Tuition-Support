@@ -121,7 +121,7 @@ export async function reconcileMonthlyBilling(
 
     await tx.execute(sql`
       INSERT INTO wallets (user_id, balance, activated, cashback_balance, lien_amount)
-      VALUES (${userId}, 0, FALSE, 0, 0)
+      VALUES (${userId}, 0, TRUE, 0, 0)
       ON CONFLICT (user_id) DO NOTHING
     `);
     const walletResult = await tx.execute(sql`

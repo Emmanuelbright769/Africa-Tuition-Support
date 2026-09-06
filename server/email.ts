@@ -329,7 +329,7 @@ export async function sendWelcomeEmail(to: string, firstName: string, role: "stu
     <h2 style="color:#1a6b3c;margin:0 0 8px;font-size:22px;">Welcome, ${firstName}! 🌍</h2>
     <p style="color:#4a5e50;font-size:15px;margin:0 0 16px;line-height:1.6;">
       Your <strong>${isAffiliate ? "Affiliate" : "Student"}</strong> account is now active on the TSIA platform.
-      To unlock <em>all</em> features, your first step is to activate your SwiftWallet.
+      You can begin using the platform immediately. No wallet deposit or minimum balance is required to activate your account.
     </p>
 
     <div style="background:#eff6ff;border:2px solid #93c5fd;border-radius:16px;padding:20px;margin:0 0 20px;">
@@ -342,21 +342,7 @@ export async function sendWelcomeEmail(to: string, firstName: string, role: "stu
       </p>
     </div>
 
-    <div style="background:#f0f8f4;border:2px solid #1a6b3c;border-radius:16px;padding:20px;margin:0 0 20px;">
-      <p style="color:#1a6b3c;font-size:16px;font-weight:700;margin:0 0 6px;">⚡ Wallet Activation Required</p>
-      <p style="color:#4a5e50;font-size:14px;margin:0 0 12px;line-height:1.6;">
-        Deposit a minimum of <strong style="color:#1a6b3c;">$5.00 USDT</strong> (TRC20 or BEP20) to your TSIA SwiftWallet.
-        Admin confirms deposits within 30 minutes. Once confirmed, <strong>75% is credited to your wallet</strong>,
-        20% goes to the Strategic Reserve Fund, and 5% to the Affiliate Pool.
-      </p>
-      <p style="color:#c17b00;font-size:13px;background:#fff8e6;border-radius:8px;padding:10px 14px;margin:0;">
-        ⚠️ <strong>Important:</strong> A minimum balance of <strong>$2.00 must always remain</strong> in your wallet to keep
-        platform services — payments, transfers, and features — running seamlessly.
-        You can withdraw the rest at any time.
-      </p>
-    </div>
-
-    <p style="color:#4a5e50;font-size:14px;margin:0 0 12px;font-weight:600;">What you can access after activation:</p>
+    <p style="color:#4a5e50;font-size:14px;margin:0 0 12px;font-weight:600;">What you can access now:</p>
     <ul style="color:#4a5e50;font-size:14px;padding-left:18px;line-height:2;">
       ${isAffiliate
         ? "<li>🤝 Share your referral link and earn commissions</li><li>📈 Access the AI-powered Trade Market</li>"
@@ -365,7 +351,7 @@ export async function sendWelcomeEmail(to: string, firstName: string, role: "stu
       <li>🏦 Access student/affiliate loans</li>
       <li>🔔 Real-time notifications and live support</li>
     </ul>
-    ${btn("https://tsiforafrica.com/wallet", "Activate My Wallet Now")}
+    ${btn("https://tsiforafrica.com/dashboard", "Go to My Dashboard")}
   `);
   await sendEmail(to, subject, html);
 }

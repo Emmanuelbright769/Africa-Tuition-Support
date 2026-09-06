@@ -171,7 +171,7 @@ export default function QCESection() {
     const m = Math.floor((s % 3600) / 60);
     return `${d}d ${String(h).padStart(2,"0")}h ${String(m).padStart(2,"0")}m`;
   };
-  const canWithdraw = qceBalance > QCE.MIN_BALANCE && inWithdrawWindow;
+  const canWithdraw = qceBalance > 0 && inWithdrawWindow;
 
   const vcEligibilityOk = eligibilityPct >= 30;
   const formatNaira = (n: number) => `₦${n.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
@@ -555,12 +555,6 @@ export default function QCESection() {
                     </div>
                   </CardContent>
                 </Card>
-
-                {/* Min balance notice */}
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-200 flex gap-2">
-                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p>Min <strong>${QCE.MIN_BALANCE}</strong> always retained. Withdrawals return to your SwiftWallet.</p>
-                </div>
 
                 {/* Transaction history */}
                 {transactions.length > 0 && (() => {
@@ -1031,7 +1025,7 @@ export default function QCESection() {
             <DialogDescription>
               {withdrawLocked
                 ? <>Funds are locked for the full 90-day savings period.</>
-                : <>Available: <strong>${maxWithdraw.toFixed(2)}</strong> (min ${QCE.MIN_BALANCE} retained)</>}
+                : <>Available: <strong>${maxWithdraw.toFixed(2)}</strong>. You may withdraw the full matured balance.</>}
             </DialogDescription>
           </DialogHeader>
 

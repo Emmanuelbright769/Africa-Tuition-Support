@@ -28,6 +28,14 @@ test("a same-month signup has access without a billing cycle or fee deduction", 
       RETURNING id
     `);
     userId = Number(rowsOf<{ id: number }>(result)[0].id);
+    const walletResult = await db.execute(sql`
+      INSERT INTO wallets (user_id, balance)
+      VALUES (${userId}, '0.00')
+      RETURNING activated, balance::numeric AS balance
+    `);
+    const newWallet = rowsOf<{ activated: boolean; balance: string }>(walletResult)[0];
+    assert.equal(newWallet.activated, true);
+    assert.equal(Number(newWallet.balance), 0);
 
     const status = await reconcileMonthlyBilling(
       userId,

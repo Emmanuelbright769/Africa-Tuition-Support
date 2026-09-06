@@ -21,7 +21,7 @@ interface KBEntry { patterns: RegExp[]; response: string }
 const KB: KBEntry[] = [
   {
     patterns: [/^(hi|hello|hey|good\s*(morning|afternoon|evening)|greet|yo|sup)\b/i],
-    response: `Hello! Welcome to TSIA — the Tuition Support Initiative for Africa. 👋\n\nI'm your dedicated TSIA guide. I can answer questions on:\n\n🎓 **Sponsorship & Academic Tiers** — how merit-based payouts are assigned\n💳 **Wallet Activation** — the $5.50 minimum deposit\n🔐 **Verification Process** — NIN, WAEC, portal fee, biometrics\n📅 **Semester Disbursements** — 2 per year × 3 years = 6 total payouts\n🤝 **Affiliate Program** — earn by referring students\n📈 **Trade Market** — AI-powered investments\n🏠 **Tenancy Program** — housing made affordable\n💰 **Loans & Cashback** — borrow and earn rewards\n\nWhat would you like to know?`,
+    response: `Hello! Welcome to TSIA — the Tuition Support Initiative for Africa. 👋\n\nI'm your dedicated TSIA guide. I can answer questions on:\n\n🎓 **Sponsorship & Academic Tiers** — how merit-based payouts are assigned\n💳 **SwiftWallet** — fund when you want to transact; no minimum balance\n🔐 **Verification Process** — NIN, WAEC, portal fee, biometrics\n📅 **Semester Disbursements** — 2 per year × 3 years = 6 total payouts\n🤝 **Affiliate Program** — earn by referring students\n📈 **Trade Market** — AI-powered investments\n🏠 **Tenancy Program** — housing made affordable\n💰 **Loans & Cashback** — borrow and earn rewards\n\nWhat would you like to know?`,
   },
   {
     patterns: [/what is tsia|about tsia|who.*tsia|tsia.*what|explain tsia|tell me about tsia|what.*platform|overview/i],
@@ -29,15 +29,15 @@ const KB: KBEntry[] = [
   },
   {
     patterns: [/sign.?up|register|create.*account|how.*join|how.*start|get started|new.*account/i],
-    response: `**Creating your TSIA account is completely FREE.** Here's how:\n\n**Step 1 — Go to /signup**\n• Choose your account type: Student, Business (Affiliate), or Both\n• Enter your name, email, and phone number\n• No password needed — TSIA uses secure OTP login\n\n**Step 2 — Activate your wallet**\n• Deposit a minimum of **$5.50** to activate your TSIA digital wallet\n• This unlocks all platform features\n• Fund via bank transfer, card, or crypto (USDT)\n\n**Step 3 — Complete verification**\n• NIN verification (National ID)\n• WAEC/NECO/GCE result entry\n• Document upload\n• $3 portal fee payment\n• Biometric face scan\n\nOnce admin approves (within 24–48 hours), your sponsorship payout is credited to your wallet!\n\n👉 **Start now at /signup** — it takes less than 10 minutes.`,
+    response: `**Creating your TSIA account is completely FREE.** Here's how:\n\n**Step 1 — Go to /signup**\n• Choose your account type: Student, Business (Affiliate), or Both\n• Enter your name, email, and phone number\n• No password needed — TSIA uses secure OTP login\n\n**Step 2 — Start using your account**\n• No wallet deposit is required at signup\n• No minimum SwiftWallet balance is retained\n• Fund by bank, card, or crypto only when you want to transact\n\n**Step 3 — Complete verification for sponsorship**\n• NIN verification (National ID)\n• WAEC/NECO/GCE result entry\n• Document upload\n• One-time $3 sponsorship portal fee\n• Biometric face scan\n\nYour signup month is free. The recurring platform charge is $1.50 subscription plus $0.50 maintenance ($2 monthly) from the next month.\n\n👉 **Start now at /signup** — it takes less than 10 minutes.`,
   },
   {
     patterns: [/wallet.*activ|activ.*wallet|5\.5|5\.50|minimum.*deposit|deposit.*minimum|fund.*wallet|wallet.*fund|how.*activate/i],
-    response: `**TSIA Wallet Activation — $5.50 Minimum Deposit**\n\nTo unlock all platform features, you must fund your TSIA digital wallet with at least **$5.50**.\n\n**Why $5.50?**\nThis small commitment confirms your serious intent to participate in the platform and unlocks:\n✅ Identity verification process\n✅ Portal fee payment capability\n✅ Bill payments (airtime, data, electricity, cable TV)\n✅ Peer-to-peer transfers\n✅ Trade market access\n✅ Loan eligibility\n✅ Cashback earnings (10% on every transaction)\n\n**How to fund your wallet:**\n1. Log in → go to Financial Hub\n2. Tap "Fund Account"\n3. Choose: **Bank Transfer** (Korapay/Squad), **Card Payment**, or **Crypto (USDT TRC20/BEP20)**\n4. Complete payment — balance reflects instantly`,
+    response: `**Your TSIA SwiftWallet is ready when your account is created.**\n\nNo activation deposit is required and no minimum balance is retained. You may fund the wallet only when you want to make a payment or use a funded service, and you may transfer or withdraw the full available balance.\n\n**How to fund your wallet:**\n1. Log in → go to Financial Hub\n2. Tap "Fund Account"\n3. Choose: **Bank Transfer** (Korapay/Squad), **Card Payment**, or **Crypto (USDT TRC20/BEP20)**\n4. Complete payment — balance reflects instantly`,
   },
   {
     patterns: [/verif|nin|biometric|face.*scan|kyc|identity|onboard|how.*verify|document.*upload|upload.*doc/i],
-    response: `**Full TSIA Verification Process — 4 Steps**\n\n**Step 1 — NIN Verification** (National ID)\n• Enter your 11-digit NIN\n• Verified instantly against the NIMC database\n• Must match your registered name\n\n**Step 2 — WAEC/NECO/GCE Entry**\n• Enter your exam reg number, year, and grades\n• Select at least 5 subjects (2 compulsory: Math + English + 3 electives)\n• Upload a government-issued ID document (JPEG, PNG, PDF — max 5MB)\n\n**Step 3 — Wallet KYC + Portal Fee**\n• Complete 3-step KYC: NIN confirm + BVN + GPS location\n• Pay the **one-time $3 portal fee**\n• Wallet must be active ($5.50+ funded) before this step\n\n**Step 4 — Biometric Face Scan**\n• Quick selfie verification to confirm identity\n• Processed using AI facial recognition\n\n⏱️ Admin reviews submissions within **24–48 hours**\n✅ Approval triggers your sponsorship payout to your wallet`,
+    response: `**Full TSIA Verification Process — 4 Steps**\n\n**Step 1 — NIN Verification** (National ID)\n• Enter your 11-digit NIN\n• Verified instantly against the NIMC database\n• Must match your registered name\n\n**Step 2 — WAEC/NECO/GCE Entry**\n• Enter your exam reg number, year, and grades\n• Select at least 5 subjects (2 compulsory: Math + English + 3 electives)\n• Upload a government-issued ID document (JPEG, PNG, PDF — max 5MB)\n\n**Step 3 — Wallet KYC + Portal Fee**\n• Complete the required identity checks\n• Pay the **one-time $3 portal fee** when beginning a sponsorship application\n• No wallet activation deposit or retained minimum balance is required\n\n**Step 4 — Biometric Face Scan**\n• Quick selfie verification to confirm identity\n• Processed using AI facial recognition\n\n⏱️ Admin reviews submissions within **24–48 hours**\n✅ Approval triggers your sponsorship payout to your wallet`,
   },
   {
     patterns: [/waec|neco|gce|academic|grade|score|subject|result|performance|apm|percentage|average|math|english|50.*percent|below.*50|50.*average/i],
@@ -45,7 +45,7 @@ const KB: KBEntry[] = [
   },
   {
     patterns: [/portal.*fee|fee.*portal|\$3|portal.*cost|how much.*fee|one.*time.*fee|registration.*fee/i],
-    response: `**TSIA Portal Fee — $3 (One-Time Only)**\n\nThe portal fee is a **one-time, non-refundable** payment of **$3** that:\n\n✅ Activates your verification submission\n✅ Covers the cost of admin review & verification\n✅ Confirms your commitment to the programme\n✅ Cannot be paid without first activating your wallet ($5.50 minimum)\n\n**How to pay:**\n1. Complete your NIN + WAEC entry\n2. Go to "Pay Portal Fee" in your dashboard\n3. Fee is deducted from your TSIA wallet\n4. Biometric face scan is immediately unlocked\n\n⚠️ Total minimum to fully verify: **$5.50 wallet activation + $3 portal fee = $8.50**`,
+    response: `**TSIA Portal Fee — $3 (One-Time Only)**\n\nThe portal fee is a **one-time, non-refundable** payment of **$3** that:\n\n✅ Activates your verification submission\n✅ Covers the cost of admin review & verification\n✅ Confirms your commitment to the programme\n✅ Is paid from your SwiftWallet only when you begin a sponsorship application\n\n**How to pay:**\n1. Complete your NIN + WAEC entry\n2. Go to "Pay Portal Fee" in your dashboard\n3. Fee is deducted from your TSIA wallet\n4. Biometric face scan is immediately unlocked\n\n⚠️ There is no wallet activation deposit or retained minimum balance.`,
   },
   {
     patterns: [/tier|platinum|gold|silver|payout|sponsorship.*amount|how much.*earn|earn.*how much|disburs|reward|benefit/i],
@@ -118,7 +118,7 @@ function getBotResponse(msg: string): string {
   for (const entry of KB) {
     if (entry.patterns.some(p => p.test(lower))) return entry.response;
   }
-  return `I understand you're asking about **"${msg}"**.\n\nI may not have a specific answer for that, but here's what I cover best:\n\n• **Sign-up & account creation** — type "how do I sign up"\n• **Wallet activation** — type "wallet activation"\n• **Verification process** — type "how do I verify"\n• **WAEC grades & tiers** — type "sponsorship tiers"\n• **Semester payouts** — type "how many disbursements"\n• **Affiliate earnings** — type "affiliate program"\n• **Loans** — type "student loan"\n• **Security** — type "is TSIA safe"\n\n📱 For a specific or complex question, click **"Chat on WhatsApp"** below — our team typically responds within 2 hours!`;
+  return `I understand you're asking about **"${msg}"**.\n\nI may not have a specific answer for that, but here's what I cover best:\n\n• **Sign-up & account creation** — type "how do I sign up"\n• **SwiftWallet funding** — type "how do I fund my wallet"\n• **Verification process** — type "how do I verify"\n• **WAEC grades & tiers** — type "sponsorship tiers"\n• **Semester payouts** — type "how many disbursements"\n• **Affiliate earnings** — type "affiliate program"\n• **Loans** — type "student loan"\n• **Security** — type "is TSIA safe"\n\n📱 For a specific or complex question, click **"Chat on WhatsApp"** below — our team typically responds within 2 hours!`;
 }
 
 function renderMarkdown(text: string) {
@@ -182,7 +182,7 @@ function PromoAiChat() {
 
   const quickQ = [
     "How do I sign up?",
-    "What is wallet activation?",
+    "How do I fund my wallet?",
     "How are tiers determined?",
     "How many disbursements?",
     "Is TSIA safe?",
@@ -771,9 +771,9 @@ export default function PromoLanding() {
               detail={"• 100% free to create\n• Supports student and/or affiliate accounts under one email\n• OTP-based secure login — no passwords to forget\n• Takes less than 2 minutes to complete\n• Available on mobile and desktop"}
             />
             <StepCard step={2} icon={Wallet} color="bg-blue-600"
-              title="Activate Your Digital Wallet ($5.50 minimum)"
-              desc="Fund your TSIA wallet with a minimum of $5.50 to unlock all platform features including verification, bill payments, and the trade market."
-              detail={"• Minimum: $5.50\n• Payment methods: Bank transfer, card payment, crypto (USDT TRC20/BEP20)\n• Powered by Korapay & Squad — CBN-licensed payment gateways\n• Funds reflect in your wallet within minutes\n• Wallet displays in both USD and NGN"}
+              title="Use Your Digital Wallet"
+              desc="Your SwiftWallet is ready immediately. Fund it only when you want to transact; there is no activation deposit or retained minimum balance."
+              detail={"• No activation deposit\n• No retained minimum balance\n• Payment methods: Bank transfer, card payment, crypto (USDT TRC20/BEP20)\n• Funds reflect in your wallet within minutes\n• Wallet displays in both USD and NGN"}
             />
             <StepCard step={3} icon={Shield} color="bg-purple-600"
               title="Complete NIN Identity Verification"
@@ -788,7 +788,7 @@ export default function PromoLanding() {
             <StepCard step={5} icon={Award} color="bg-rose-600"
               title="Pay the One-Time $3 Portal Fee"
               desc="Pay a one-time $3 portal verification fee from your TSIA wallet. This activates your verification submission and unlocks the biometric face scan."
-              detail={"• One-time, non-refundable fee\n• Covers admin review costs and identity verification\n• Deducted directly from your TSIA wallet\n• Unlocks the biometric face scan step immediately\n• Total minimum to fully verify: $5.50 + $3 = $8.50"}
+              detail={"• One-time, non-refundable fee\n• Covers admin review costs and identity verification\n• Deducted directly from your TSIA wallet\n• Unlocks the biometric face scan step immediately\n• No wallet activation deposit or retained minimum balance"}
             />
             <StepCard step={6} icon={CheckCircle2} color="bg-tsia-green"
               title="Biometric Face Scan & Admin Approval"
@@ -1054,7 +1054,7 @@ export default function PromoLanding() {
             <h2 className="text-3xl font-black">Questions & Answers</h2>
           </div>
           <div className="space-y-3">
-            <FaqItem q="Is TSIA free to join?" a="Account registration is completely free. To access verification and sponsorship features, you need to activate your wallet with a minimum $5.50 deposit, followed by a one-time $3 portal fee. Total minimum: $8.50." />
+            <FaqItem q="Is TSIA free to join?" a="Account registration and your signup month are free. No wallet activation deposit or retained minimum balance is required. From the following month, TSIA charges $1.50 subscription plus $0.50 maintenance ($2 monthly). A separate one-time $3 portal fee applies only if you begin a sponsorship application." />
             <FaqItem q="What WAEC score do I need to qualify?" a="You need a minimum of 50% average on the APM (Academic Performance Matrix) across at least 5 subjects — Mathematics and English Language are compulsory. Scoring below 50% means you won't qualify for any sponsorship tier." />
             <FaqItem q="How many times will I receive a payout?" a="You receive 2 disbursements per academic year for 3 years — a total of 6 payouts. Think of it as: every academic year has a 1st Semester and a 2nd Semester. TSIA funds both, every year, for 3 years straight." />
             <FaqItem q="What does '6 semesters' mean exactly?" a="It means 2 semesters per year × 3 years = 6 total semester payouts. Each academic year has 2 semesters (1st and 2nd). TSIA disburses funding at the start of each semester, for 3 consecutive years after your verification is approved." />

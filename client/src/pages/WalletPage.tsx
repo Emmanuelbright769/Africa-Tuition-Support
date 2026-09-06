@@ -413,8 +413,8 @@ export default function WalletPage() {
                   <Lock className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-white font-bold text-sm">Activate Your Wallet</p>
-                  <p className="text-white/75 text-xs">Complete 3 quick steps to unlock funding & transactions</p>
+                  <p className="text-white font-bold text-sm">Verify Your Identity</p>
+                  <p className="text-white/75 text-xs">Complete the security checks required for wallet funding</p>
                 </div>
               </div>
               <div className="p-5 space-y-4">
@@ -555,7 +555,7 @@ export default function WalletPage() {
                     </div>
                   )}
                   <p className="text-white/50 text-xs mb-1">{hasLien ? `Available: $${available.toFixed(2)} · $${lienAmount.toFixed(2)} under lien` : "Available balance · Use Fintech to send money to a bank account"}</p>
-                  <p className="text-white/40 text-[10px] mb-5">Fund your wallet to access all platform services</p>
+                  <p className="text-white/40 text-[10px] mb-5">Fund only when you want to transact; no minimum balance is required</p>
                   <Button onClick={() => openFund("squad")} className="w-full h-12 bg-white text-[#1a5c38] font-bold hover:bg-white/90 rounded-2xl" data-testid="btn-fund-wallet">
                     <ArrowDownLeft className="w-4 h-4 mr-2" /> Fund Wallet
                   </Button>

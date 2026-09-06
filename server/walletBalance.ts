@@ -46,7 +46,7 @@ export async function creditWalletBalanceAtomic(
     await acquireWalletUserLock(tx, userId);
     await tx.execute(sql`
       INSERT INTO wallets (user_id, balance, activated, cashback_balance, lien_amount)
-      VALUES (${userId}, 0, FALSE, 0, 0)
+      VALUES (${userId}, 0, TRUE, 0, 0)
       ON CONFLICT (user_id) DO NOTHING
     `);
     const result = await tx.execute(sql`
@@ -115,7 +115,7 @@ export async function creditVerifiedDepositAtomic(input: {
 
     await tx.execute(sql`
       INSERT INTO wallets (user_id, balance, activated, cashback_balance, lien_amount)
-      VALUES (${input.userId}, 0, FALSE, 0, 0)
+      VALUES (${input.userId}, 0, TRUE, 0, 0)
       ON CONFLICT (user_id) DO NOTHING
     `);
     const walletResult = await tx.execute(sql`

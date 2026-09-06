@@ -1859,9 +1859,6 @@ export class DatabaseStorage implements IStorage {
     const savings = await this.getOrCreateQceSavings(userId);
     const currentBalance = parseFloat(savings.balance);
     const newBalance = Math.max(currentBalance - amountUsd, 0).toFixed(2);
-    if (parseFloat(newBalance) < QCE.MIN_BALANCE && currentBalance > QCE.MIN_BALANCE) {
-      throw new Error(`A minimum balance of $${QCE.MIN_BALANCE} must remain in your QCE savings.`);
-    }
     const updatedSavings = await this.updateQceSavings(userId, {
       balance: newBalance,
       eligibilityPercent: calculateQceEligibility(savings.daysActive, parseFloat(newBalance)).toString(),

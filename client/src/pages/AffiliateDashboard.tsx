@@ -1069,18 +1069,7 @@ export default function AffiliateDashboard() {
 
   const { data: personalWalletData, refetch: refetchPersonalWallet } = useQuery<any>({ queryKey: ["/api/wallet"], refetchInterval: 600_000, staleTime: 120_000 });
   const personalBalance = parseFloat(personalWalletData?.balance ?? "0");
-  const walletActivated = personalWalletData?.activated === true;
   const { data: referralStats } = useQuery<any>({ queryKey: ["/api/affiliate/referral-stats"] });
-
-  // Wallet activation popup — placed AFTER personalWalletData declaration to avoid TDZ
-  const [activationPopupOpen, setActivationPopupOpen] = useState(false);
-  useEffect(() => {
-    if (!personalWalletData) return;
-    const dismissed = localStorage.getItem("tsia_wallet_activation_dismissed_" + user?.id);
-    if (!dismissed && parseFloat(personalWalletData.balance ?? "0") === 0) {
-      setActivationPopupOpen(true);
-    }
-  }, [personalWalletData, user?.id]);
 
   // Trade Bank Deposit — Squad script loader (reuse if already loaded)
   const loadTradeSquadScript = (): Promise<void> => new Promise((resolve, reject) => {
@@ -3839,7 +3828,7 @@ export default function AffiliateDashboard() {
                       <span>⚠</span> Trading capital is capped at ${maxTradingCapital.toLocaleString()}. Maximum available top-up: ${maxTopUpGross.toFixed(2)}.
                     </p>
                   )}
-                  {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) <= maxTopUpGross && parseFloat(fundTradeAmt) > personalBalance - 2 && (
+                  {parseFloat(fundTradeAmt) > 0 && parseFloat(fundTradeAmt) <= maxTopUpGross && parseFloat(fundTradeAmt) > personalBalance && (
                     <p className="mt-2 text-xs text-red-500 font-semibold flex items-center gap-1">
                       <span>⚠</span> Insufficient balance — you need ${parseFloat(fundTradeAmt).toFixed(2)} in SwiftWallet
                     </p>
@@ -3849,7 +3838,7 @@ export default function AffiliateDashboard() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => setFundTradeBrokerStep("plan")}>← Back</Button>
                 <Button onClick={() => fundTradeMutation.mutate()}
-                  disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(fundTradeAmt) > maxTopUpGross || parseFloat(fundTradeAmt) > personalBalance - 2}
+                  disabled={fundTradeMutation.isPending || !fundTradeAmt || parseFloat(fundTradeAmt) < (selectedBroker?.minDeposit ?? TRADE_MARKET.MIN_DEPOSIT) || parseFloat(fundTradeAmt) > maxTopUpGross || parseFloat(fundTradeAmt) > personalBalance}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold" data-testid="btn-confirm-fund-trade">
                   {fundTradeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowDownLeft className="w-4 h-4 mr-2" />}
                   Transfer ${parseFloat(fundTradeAmt || "0").toFixed(2)}
@@ -4346,54 +4335,6 @@ export default function AffiliateDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Wallet Activation Popup ── */}
-      <Dialog open={activationPopupOpen} onOpenChange={() => {}}>
-        <DialogContent className="sm:max-w-md" onInteractOutside={e => e.preventDefault()}>
-          <DialogHeader>
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-tsia-green to-emerald-600 flex items-center justify-center shadow-md">
-                <Wallet className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <DialogTitle className="text-lg">Activate Your Wallet</DialogTitle>
-                <p className="text-xs text-muted-foreground">Required to unlock all TSIA features</p>
-              </div>
-            </div>
-            <DialogDescription className="text-sm leading-relaxed pt-2">
-              To access the trade market, QCE SwiftVault, e-commerce, loans, and all other platform features, please <strong>fund your SwiftWallet with above $2</strong>.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="bg-tsia-green/5 border border-tsia-green/20 rounded-xl p-4 flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-tsia-green/10 flex items-center justify-center shrink-0">
-                <Zap className="w-4 h-4 text-tsia-green" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Activate with above $2</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Go to SwiftWallet and deposit via USDT (TRC20 or BEP20). Admin confirms within 30 minutes.</p>
-              </div>
-            </div>
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-start gap-2">
-              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-800 dark:text-amber-200">
-                <strong>Minimum balance:</strong> At least <strong>$2 must remain</strong> in your wallet at all times to keep platform services active — payments, transfers, and trade features stay live.
-              </p>
-            </div>
-          </div>
-          <DialogFooter className="gap-2 flex-col sm:flex-row">
-            <Button variant="outline" className="flex-1"
-              onClick={() => { localStorage.setItem("tsia_wallet_activation_dismissed_" + user?.id, "1"); setActivationPopupOpen(false); }}
-              data-testid="button-activation-later">
-              Remind Me Later
-            </Button>
-            <Button className="flex-1 bg-tsia-green hover:bg-tsia-green/90 text-white"
-              onClick={() => { localStorage.setItem("tsia_wallet_activation_dismissed_" + user?.id, "1"); setActivationPopupOpen(false); navigate("fintech"); }}
-              data-testid="button-activation-goto-wallet">
-              <CreditCard className="w-4 h-4 mr-2" /> Fund via Swift Hub
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

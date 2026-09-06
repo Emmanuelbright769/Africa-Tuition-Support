@@ -3407,12 +3407,11 @@ export default function AdminDashboard() {
             {activeTab === "reserve" && (
               <motion.div key="reserve" variants={slide} initial="hidden" animate="visible" exit="exit" className="space-y-5">
                 {/* Balance cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {[
                     { label: "Trade Reserve Balance", value: fmtUSD((reserveFundData as any)?.totalBalance), icon: ShieldCheck, color: "text-tsia-green" },
                     { label: "Total Deposited (Trade)", value: fmtUSD((reserveFundData as any)?.totalDeposited), icon: TrendingUp, color: "text-blue-600" },
-                    { label: "Wallet Floor Reserve", value: fmtUSD((reserveFundData as any)?.walletFloorReserve), icon: Wallet, color: "text-purple-600" },
-                    { label: "Combined Reserve", value: fmtUSD((reserveFundData as any)?.combinedReserve), icon: Building2, color: "text-amber-600" },
+                    { label: "Current Trade Reserve", value: fmtUSD((reserveFundData as any)?.combinedReserve), icon: Building2, color: "text-amber-600" },
                   ].map(s => (
                     <Card key={s.label} className="border-0 shadow-sm p-4">
                       <div className="flex items-center gap-2 mb-1">
@@ -3423,22 +3422,6 @@ export default function AdminDashboard() {
                     </Card>
                   ))}
                 </div>
-                {/* Wallet floor detail */}
-                <Card className="border-0 shadow-sm">
-                  <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">
-                    <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-tsia-green" /> Wallet Floor Reserve Detail</CardTitle>
-                    <CardDescription>No wallet minimum is locked. All settled SwiftWallet funds are available to users.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="py-4 px-6">
-                    <div className="flex flex-wrap gap-6 text-sm">
-                      <div><p className="text-xs text-slate-500">Activated Wallets</p><p className="font-bold text-slate-900">{(reserveFundData as any)?.totalWallets ?? 0}</p></div>
-                      <div><p className="text-xs text-slate-500">Wallets at Min</p><p className="font-bold text-slate-900">{(reserveFundData as any)?.walletsAtMin ?? 0}</p></div>
-                      <div><p className="text-xs text-slate-500">Min per Wallet</p><p className="font-bold text-slate-900">${(reserveFundData as any)?.minBalancePerWallet ?? 2}</p></div>
-                      <div><p className="text-xs text-slate-500">Floor Reserve Total</p><p className="font-bold text-tsia-green">{fmtUSD((reserveFundData as any)?.walletFloorReserve)}</p></div>
-                      <div><p className="text-xs text-slate-500">Trade Reserve Rate</p><p className="font-bold text-slate-900">{(reserveFundData as any)?.contributionRate ?? 20}%</p></div>
-                    </div>
-                  </CardContent>
-                </Card>
                 {/* Commission profits */}
                 <Card className="border-0 shadow-sm overflow-hidden">
                   <CardHeader className="border-b bg-white dark:bg-slate-900 dark:border-slate-800 py-4 px-6">

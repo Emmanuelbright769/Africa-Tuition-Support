@@ -243,7 +243,7 @@ export const wallets = pgTable("wallets", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").notNull().references(() => users.id).unique(),
   balance: decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
-  activated: boolean("activated").notNull().default(false),
+  activated: boolean("activated").notNull().default(true),
   activatedAt: timestamp("activated_at"),
   cashbackBalance: decimal("cashback_balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
   lienAmount: decimal("lien_amount", { precision: 10, scale: 2 }).notNull().default("0.00"),
@@ -1191,7 +1191,7 @@ export function censorOffPlatform(text: string): { censored: string; flagged: bo
 // ─── QCE (QUICK CREDIT ELIGIBILITY) ──────────────────────────────────────────
 export const QCE = {
   MIN_ACTIVATION: 2,      // $2 minimum to activate wallet and QCE
-  MIN_BALANCE: 2,         // $2 minimum balance must always remain
+  MIN_BALANCE: 0,         // users may withdraw the full matured QCE balance
   PERIOD_DAYS: 90,        // 90-day savings period
   MAX_ELIGIBILITY: 30,    // Up to 30% credit eligibility
 } as const;

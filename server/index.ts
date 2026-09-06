@@ -404,6 +404,21 @@ async function runMigrations() {
       ADD CONSTRAINT monthly_billing_cycles_status_check
       CHECK (status IN ('payment_required', 'paid', 'waived'))
     `);
+    // General SwiftWallet access is included with account membership. Funding
+    // is optional, and no permanent balance floor is retained.
+    await db.execute(sql`
+      ALTER TABLE wallets ALTER COLUMN activated SET DEFAULT TRUE
+    `);
+    await db.execute(sql`
+      UPDATE wallets
+      SET activated = TRUE,
+          activated_at = COALESCE(activated_at, NOW())
+      WHERE activated = FALSE
+    `);
+    await db.execute(sql`
+      UPDATE users SET wallet_fund_deadline = NULL
+      WHERE wallet_fund_deadline IS NOT NULL
+    `);
     await db.execute(sql`
       CREATE INDEX IF NOT EXISTS monthly_billing_cycles_status_month_idx
       ON monthly_billing_cycles (month_key, status)
@@ -664,49 +679,6 @@ async function seedAdmin() {
   } catch (e) {
     console.error("[SEED] Failed to seed admin:", e);
   }
-}
-
-async function startWalletFundPurgeJob() {
-  const INTERVAL_MS = 30 * 60 * 1000; // check every 30 minutes
-  const runPurge = async () => {
-    try {
-      const expired = await storage.getStudentsPastFundDeadline();
-      for (const student of expired) {
-        // Double-check wallet is still not activated
-        const wallet = await storage.getOrCreateWallet(student.id);
-        if (wallet.activated) {
-          // Wallet is activated — clear the deadline and skip
-          await storage.setWalletFundDeadline(student.id, null);
-          continue;
-        }
-        try {
-          // Send notice email before resetting enrollment
-          await sendEmail(
-            student.email,
-            "Your TSIA Enrollment Has Been Reset — Action Required",
-            `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;background:#f9fafb;padding:32px;border-radius:12px">
-              <h2 style="color:#d97706">Enrollment Reset — Wallet Not Funded in Time</h2>
-              <p style="color:#374151">Hi ${student.firstName},</p>
-              <p style="color:#6b7280">Your TSIA enrollment has been reset because your SwiftWallet was not funded within the required <strong>72-hour window</strong> after completing your WAEC validation.</p>
-              <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#92400e">
-                <strong>Your account is still active.</strong><br/>
-                Your enrollment and WAEC verification records have been cleared. To re-enrol, you will need to log back in and restart the onboarding process — including re-payment of the portal fee.
-              </div>
-              <p style="font-size:13px;color:#6b7280">We welcome you back whenever you are ready. Simply log in at <a href="https://tsiforafrica.com/login" style="color:#d97706">tsiforafrica.com</a> and follow the onboarding steps again.</p>
-              <p style="font-size:13px;color:#6b7280">— The TSIA Team</p>
-            </div>`
-          );
-        } catch { /* non-critical */ }
-        await storage.resetStudentEnrollment(student.id);
-        console.log(`[PURGE] Reset enrollment for unfunded student ${student.id} (${student.email}) — deadline passed`);
-      }
-    } catch (e) {
-      console.error("[PURGE] Error in wallet fund purge job:", e);
-    }
-  };
-  await runPurge(); // run once at startup to catch any missed purges
-  setInterval(runPurge, INTERVAL_MS);
-  console.log("[PURGE] Wallet fund purge job started — checking every 30 minutes");
 }
 
 // Reviews only unresolved, failed, and expiring identity records. Successful
@@ -1170,7 +1142,6 @@ async function startMonthlyBillingJob() {
   await registerRoutes(httpServer, app);
   await seedAdmin();
   startAutoRefundJob();
-  startWalletFundPurgeJob();
   startTradeWindowBroadcastJob();
   startCryptoDepositVerifierJob();
   startFinancialNotificationJob();

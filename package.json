@@ -7,10 +7,10 @@
     "node": "20.x",
     "npm": "10.x"
   },
-  "scripts": {
+    "scripts": {
     "dev:client": "vite dev --port 5000",
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "tsx script/build.ts",
+    "build": "tsc && vite build",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test:identity": "tsx --test server/identityVerificationSecurity.test.ts",
@@ -20,6 +20,7 @@
     "test:platform-ledger": "tsx --test server/platformLedgerPricing.test.ts",
     "db:push": "drizzle-kit push"
   },
+
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",

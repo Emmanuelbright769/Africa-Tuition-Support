@@ -7,19 +7,14 @@
     "node": "20.x",
     "npm": "10.x"
   },
-    "scripts": {
+      "scripts": {
     "dev:client": "vite dev --port 5000",
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "tsc && vite build",
-    "start": "NODE_ENV=production node dist/index.cjs",
-    "check": "tsc",
-    "test:identity": "tsx --test server/identityVerificationSecurity.test.ts",
-    "test:kiddies": "tsx --test server/backToSchoolSpellingBank.test.ts",
-    "test:admin-control": "tsx --test server/adminControlIntegrity.test.ts",
-    "test:bank-transfer-pricing": "tsx --test server/bankTransferPricing.test.ts",
-    "test:platform-ledger": "tsx --test server/platformLedgerPricing.test.ts",
-    "db:push": "drizzle-kit push"
+    "build": "vite build && npx esbuild server/index.ts --bundle --platform=node --packages=external --external:yahoo-finance2 --outfile=dist/index.js --format=esm",
+    "start": "NODE_ENV=production node dist/index.js",
+    "check": "tsc"
   },
+
 
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
